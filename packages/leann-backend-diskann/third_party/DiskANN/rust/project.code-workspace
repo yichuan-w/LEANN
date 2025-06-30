@@ -1,0 +1,58 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "search.exclude": {
+      "target": true,
+    },
+    "files.exclude": {
+      "target": true,
+    },
+    "rust-analyzer.linkedProjects": [
+      ".\\vector\\Cargo.toml",
+      ".\\vector\\Cargo.toml",
+      ".\\vector\\Cargo.toml",
+      ".\\diskann\\Cargo.toml"
+    ],
+    "[rust]": {
+      "editor.defaultFormatter": "rust-lang.rust-analyzer",
+      "editor.formatOnSave": true,
+    }
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Build memory index",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceRoot}\\target\\debug\\build_memory_index.exe",
+        "args": [
+          "--data_type",
+          "float",
+          "--dist_fn",
+          "l2",
+          "--data_path",
+          ".\\base1m.fbin",
+          "--index_path_prefix",
+          ".\\rust_index_sift_base_R32_L50_A1.2_T1",
+          "-R",
+          "64",
+          "-L",
+          "100",
+          "--alpha",
+          "1.2",
+          "-T",
+          "1"
+        ],
+        "stopAtEntry": false,
+        "cwd": "c:\\data",
+        "environment": [],
+        "externalConsole": true
+      },
+    ]
+  }
+}

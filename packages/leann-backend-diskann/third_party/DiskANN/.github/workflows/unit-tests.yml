@@ -1,0 +1,32 @@
+name: Unit Tests
+on: [workflow_call]
+jobs:
+  acceptance-tests-labels:
+    name: Unit Tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2019, windows-latest]
+    runs-on: ${{matrix.os}}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Checkout repository
+        if: ${{ runner.os == 'Windows' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: DiskANN Build CLI Applications
+        uses: ./.github/actions/build   
+        
+      - name: Run Unit Tests
+        run: |
+          cd build
+          ctest -C Release

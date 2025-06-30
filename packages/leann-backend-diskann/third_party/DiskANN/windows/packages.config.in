@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<packages>
+  <package id="boost" version="1.78.0" />
+  <!-- This will be replaced by CMake with the corresponding VisualStudio
+  version (e.g. vc142 for Visual Studio 2019). -->
+  <package id="boost_program_options-vc${MSVC_TOOLSET_VERSION}" version="1.78.0" />
+  <package id="boost_unit_test_framework-vc${MSVC_TOOLSET_VERSION}" version="1.78.0" />
+  <package id="intelopenmp.redist.win" version="2022.0.3.3747" />
+  <package id="intelopenmp.devel.win" version="2022.0.3.3747" />
+  <package id="intelmkl.static.win-x64" version="2022.0.3.171" />
+</packages>

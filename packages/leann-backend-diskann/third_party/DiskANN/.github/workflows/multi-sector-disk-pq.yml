@@ -1,0 +1,60 @@
+name: Disk With PQ
+on: [workflow_call]
+jobs:
+  acceptance-tests-disk-pq:
+    name: Disk, PQ
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2019, windows-latest]
+    runs-on: ${{matrix.os}}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Checkout repository
+        if: ${{ runner.os == 'Windows' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: DiskANN Build CLI Applications
+        uses: ./.github/actions/build
+        
+      - name: Generate Data
+        uses: ./.github/actions/generate-high-dim-random
+
+      - name: build and search disk index (1020D, one shot graph build, L2, no diskPQ) (float)
+        if: success() || failure()
+        run: |
+          dist/bin/build_disk_index --data_type float --dist_fn l2 --data_path data/rand_float_1020D_5K_norm1.0.bin --index_path_prefix data/disk_index_l2_rand_float_1020D_5K_norm1.0_diskfull_oneshot -R 32 -L 500 -B 0.003 -M 1 
+          dist/bin/search_disk_index --data_type float --dist_fn l2 --fail_if_recall_below 70 --index_path_prefix data/disk_index_l2_rand_float_1020D_5K_norm1.0_diskfull_oneshot --result_path /tmp/res --query_file data/rand_float_1020D_1K_norm1.0.bin --gt_file data/l2_rand_float_1020D_5K_norm1.0_1020D_1K_norm1.0_gt100 --recall_at 5 -L 250 -W 2 --num_nodes_to_cache 100 -T 16
+      #- name: build and search disk index (1024D, one shot graph build, L2, no diskPQ) (float)
+      #  if: success() || failure()
+      #  run: |
+      #    dist/bin/build_disk_index --data_type float --dist_fn l2 --data_path data/rand_float_1024D_5K_norm1.0.bin --index_path_prefix data/disk_index_l2_rand_float_1024D_5K_norm1.0_diskfull_oneshot -R 32 -L 500 -B 0.003 -M 1 
+      #    dist/bin/search_disk_index --data_type float --dist_fn l2 --fail_if_recall_below 70 --index_path_prefix data/disk_index_l2_rand_float_1024D_5K_norm1.0_diskfull_oneshot --result_path /tmp/res --query_file data/rand_float_1024D_1K_norm1.0.bin --gt_file data/l2_rand_float_1024D_5K_norm1.0_1024D_1K_norm1.0_gt100 --recall_at 5 -L 250 -W 2 --num_nodes_to_cache 100 -T 16
+      - name: build and search disk index (1536D, one shot graph build, L2, no diskPQ) (float)
+        if: success() || failure()
+        run: |
+          dist/bin/build_disk_index --data_type float --dist_fn l2 --data_path data/rand_float_1536D_5K_norm1.0.bin --index_path_prefix data/disk_index_l2_rand_float_1536D_5K_norm1.0_diskfull_oneshot -R 32 -L 500 -B 0.003 -M 1 
+          dist/bin/search_disk_index --data_type float --dist_fn l2 --fail_if_recall_below 70 --index_path_prefix data/disk_index_l2_rand_float_1536D_5K_norm1.0_diskfull_oneshot --result_path /tmp/res --query_file data/rand_float_1536D_1K_norm1.0.bin --gt_file data/l2_rand_float_1536D_5K_norm1.0_1536D_1K_norm1.0_gt100 --recall_at 5 -L 250 -W 2 --num_nodes_to_cache 100 -T 16
+
+      - name: build and search disk index (4096D, one shot graph build, L2, no diskPQ) (int8)
+        if: success() || failure()
+        run: |
+          dist/bin/build_disk_index --data_type int8 --dist_fn l2 --data_path data/rand_int8_4096D_5K_norm1.0.bin --index_path_prefix data/disk_index_l2_rand_int8_4096D_5K_norm1.0_diskfull_oneshot -R 32 -L 500 -B 0.003 -M 1 
+          dist/bin/search_disk_index --data_type int8 --dist_fn l2 --fail_if_recall_below 70 --index_path_prefix data/disk_index_l2_rand_int8_4096D_5K_norm1.0_diskfull_oneshot --result_path /tmp/res --query_file data/rand_int8_4096D_1K_norm1.0.bin --gt_file data/l2_rand_int8_4096D_5K_norm1.0_4096D_1K_norm1.0_gt100 --recall_at 5 -L 250 -W 2 --num_nodes_to_cache 100 -T 16
+
+      - name: upload data and bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-sector-disk-pq-${{matrix.os}}
+          path: |
+            ./dist/**
+            ./data/**

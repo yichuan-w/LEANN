@@ -1,0 +1,28 @@
+name: DiskANN Common Checks
+# common means common to both pr-test and push-test
+on: [workflow_call]
+jobs:
+  formatting-check:
+    strategy:
+      fail-fast: true
+    name: Code Formatting Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Checking code formatting...
+        uses: ./.github/actions/format-check
+  docker-container-build:
+    name: Docker Container Build
+    needs: [formatting-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Docker build
+        run: |
+          docker build .

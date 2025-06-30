@@ -1,0 +1,6 @@
+[submodule "packages/leann-backend-diskann/third_party/DiskANN"]
+	path = packages/leann-backend-diskann/third_party/DiskANN
+	url = https://github.com/yichuan520030910320/DiskANN.git
+[submodule "packages/leann-backend-hnsw/third_party/faiss"]
+	path = packages/leann-backend-hnsw/third_party/faiss
+	url = https://github.com/yichuan520030910320/faiss.git

@@ -1,0 +1,23 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT license.
+
+[workspace]
+members = [
+  "cmd_drivers/build_memory_index",
+  "cmd_drivers/build_and_insert_memory_index",
+  "cmd_drivers/load_and_insert_memory_index",
+  "cmd_drivers/convert_f32_to_bf16",
+  "cmd_drivers/search_memory_index",
+  "cmd_drivers/build_disk_index",
+  "cmd_drivers/build_and_insert_delete_memory_index",
+  "vector",
+  "diskann",
+  "platform",
+  "logger",
+  "vector_base64"
+]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+codegen-units=1

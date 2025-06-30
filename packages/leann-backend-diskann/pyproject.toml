@@ -1,0 +1,16 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12.0", "numpy"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "leann-backend-diskann"
+version = "0.1.0"
+dependencies = ["leann-core==0.1.0", "numpy"]
+
+[tool.scikit-build]
+# 关键：简化的 CMake 路径
+cmake.source-dir = "third_party/DiskANN"
+# 关键：Python 包在根目录，路径完全匹配
+wheel.packages = ["leann_backend_diskann"]
+# 使用默认的 redirect 模式
+editable.mode = "redirect"

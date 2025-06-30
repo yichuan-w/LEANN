@@ -1,0 +1,35 @@
+name: DiskANN Pull Request Build and Test
+on: [pull_request]
+jobs:
+  common:
+    strategy:
+      fail-fast: true
+    name: DiskANN Common Build Checks
+    uses: ./.github/workflows/common.yml
+  unit-tests:
+    name: Unit tests
+    uses: ./.github/workflows/unit-tests.yml
+  in-mem-pq:
+    name: In-Memory with PQ
+    uses: ./.github/workflows/in-mem-pq.yml
+  in-mem-no-pq:
+    name: In-Memory without PQ
+    uses: ./.github/workflows/in-mem-no-pq.yml
+  disk-pq:
+    name: Disk with PQ
+    uses: ./.github/workflows/disk-pq.yml
+  multi-sector-disk-pq:
+    name: Multi-sector Disk with PQ
+    uses: ./.github/workflows/multi-sector-disk-pq.yml
+  labels:
+    name: Labels
+    uses: ./.github/workflows/labels.yml
+  dynamic:
+    name: Dynamic
+    uses: ./.github/workflows/dynamic.yml
+  dynamic-labels:
+    name: Dynamic Labels
+    uses: ./.github/workflows/dynamic-labels.yml
+  python:
+    name: Python
+    uses: ./.github/workflows/build-python.yml

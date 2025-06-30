@@ -1,0 +1,13 @@
+name: 'Checking code formatting...'
+description: 'Ensures code complies with code formatting rules'
+runs:
+  using: "composite"
+  steps:
+    - name: Checking code formatting...
+      run: |
+        sudo apt install clang-format
+        find include -name '*.h' -type f -print0 | xargs -0 -P 16 /usr/bin/clang-format --Werror --dry-run
+        find src -name '*.cpp' -type f -print0 | xargs -0 -P 16 /usr/bin/clang-format --Werror --dry-run
+        find apps -name '*.cpp' -type f -print0 | xargs -0 -P 16 /usr/bin/clang-format --Werror --dry-run
+        find python -name '*.cpp' -type f -print0 | xargs -0 -P 16 /usr/bin/clang-format --Werror --dry-run
+      shell: bash

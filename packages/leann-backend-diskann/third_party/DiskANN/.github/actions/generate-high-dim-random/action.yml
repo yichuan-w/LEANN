@@ -1,0 +1,28 @@
+name: 'Generating Random Data (Basic)'
+description: 'Generates the random data files used in acceptance tests'
+runs:
+  using: "composite"
+  steps:
+    - name: Generate Random Data (Basic)
+      run: |
+        mkdir data
+        
+        echo "Generating random 1020,1024,1536D float and 4096 int8 vectors for index"
+        dist/bin/rand_data_gen --data_type float --output_file data/rand_float_1020D_5K_norm1.0.bin -D 1020 -N 5000 --norm 1.0
+        #dist/bin/rand_data_gen --data_type float --output_file data/rand_float_1024D_5K_norm1.0.bin -D 1024 -N 5000 --norm 1.0
+        dist/bin/rand_data_gen --data_type float --output_file data/rand_float_1536D_5K_norm1.0.bin -D 1536 -N 5000 --norm 1.0
+        dist/bin/rand_data_gen --data_type int8  --output_file data/rand_int8_4096D_5K_norm1.0.bin  -D 4096 -N 5000 --norm 1.0
+        
+        echo "Generating random 1020,1024,1536D float and 4096D int8 avectors for query"
+        dist/bin/rand_data_gen --data_type float --output_file data/rand_float_1020D_1K_norm1.0.bin -D 1020 -N 1000 --norm 1.0
+        #dist/bin/rand_data_gen --data_type float --output_file data/rand_float_1024D_1K_norm1.0.bin -D 1024 -N 1000 --norm 1.0
+        dist/bin/rand_data_gen --data_type float --output_file data/rand_float_1536D_1K_norm1.0.bin -D 1536 -N 1000 --norm 1.0
+        dist/bin/rand_data_gen --data_type int8  --output_file data/rand_int8_4096D_1K_norm1.0.bin  -D 4096 -N 1000 --norm 1.0
+
+        echo "Computing ground truth for 1020,1024,1536D float and 4096D int8 avectors for query"
+        dist/bin/compute_groundtruth  --data_type float --dist_fn l2 --base_file data/rand_float_1020D_5K_norm1.0.bin --query_file data/rand_float_1020D_1K_norm1.0.bin --gt_file data/l2_rand_float_1020D_5K_norm1.0_1020D_1K_norm1.0_gt100 --K 100
+        #dist/bin/compute_groundtruth  --data_type float --dist_fn l2 --base_file data/rand_float_1024D_5K_norm1.0.bin --query_file data/rand_float_1024D_1K_norm1.0.bin --gt_file data/l2_rand_float_1024D_5K_norm1.0_1024D_1K_norm1.0_gt100 --K 100
+        dist/bin/compute_groundtruth  --data_type float --dist_fn l2 --base_file data/rand_float_1536D_5K_norm1.0.bin --query_file data/rand_float_1536D_1K_norm1.0.bin --gt_file data/l2_rand_float_1536D_5K_norm1.0_1536D_1K_norm1.0_gt100 --K 100
+        dist/bin/compute_groundtruth  --data_type int8 --dist_fn l2 --base_file data/rand_int8_4096D_5K_norm1.0.bin --query_file data/rand_int8_4096D_1K_norm1.0.bin --gt_file data/l2_rand_int8_4096D_5K_norm1.0_4096D_1K_norm1.0_gt100 --K 100
+        
+      shell: bash

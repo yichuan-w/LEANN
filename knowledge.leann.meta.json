@@ -1,0 +1,32 @@
+{
+  "version": "0.1.0",
+  "backend_name": "diskann",
+  "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+  "num_chunks": 6,
+  "chunks": [
+    {
+      "text": "Python is a powerful programming language",
+      "metadata": {}
+    },
+    {
+      "text": "Machine learning transforms industries",
+      "metadata": {}
+    },
+    {
+      "text": "Neural networks process complex data",
+      "metadata": {}
+    },
+    {
+      "text": "Java is a powerful programming language",
+      "metadata": {}
+    },
+    {
+      "text": "C++ is a powerful programming language",
+      "metadata": {}
+    },
+    {
+      "text": "C# is a powerful programming language",
+      "metadata": {}
+    }
+  ]
+}

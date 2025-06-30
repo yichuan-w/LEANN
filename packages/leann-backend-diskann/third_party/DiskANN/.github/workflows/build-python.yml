@@ -1,0 +1,42 @@
+name: DiskANN Build Python Wheel
+on: [workflow_call]
+jobs:
+  linux-build:
+    name: Python - Ubuntu - ${{matrix.cibw-identifier}}
+    strategy:
+      fail-fast: false
+      matrix:
+        cibw-identifier: ["cp39-manylinux_x86_64", "cp310-manylinux_x86_64", "cp311-manylinux_x86_64"]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Building python wheel ${{matrix.cibw-identifier}}
+        uses: ./.github/actions/python-wheel
+        with:
+          cibw-identifier: ${{matrix.cibw-identifier}}
+  windows-build:
+    name: Python - Windows - ${{matrix.cibw-identifier}}
+    strategy:
+      fail-fast: false
+      matrix:
+        cibw-identifier: ["cp39-win_amd64", "cp310-win_amd64", "cp311-win_amd64"]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Building python wheel ${{matrix.cibw-identifier}}
+        uses: ./.github/actions/python-wheel
+        with:
+          cibw-identifier: ${{matrix.cibw-identifier}}

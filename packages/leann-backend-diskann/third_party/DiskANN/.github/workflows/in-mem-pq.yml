@@ -1,0 +1,56 @@
+name: In-Memory With PQ
+on: [workflow_call]
+jobs:
+  acceptance-tests-mem-pq:
+    name: In-Mem, PQ
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2019, windows-latest]
+    runs-on: ${{matrix.os}}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Checkout repository
+        if: ${{ runner.os == 'Windows' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: DiskANN Build CLI Applications
+        uses: ./.github/actions/build
+
+      - name: Generate Data
+        uses: ./.github/actions/generate-random
+
+      - name: build and search in-memory index with L2 metric with PQ based distance comparisons (float)
+        if: success() || failure()
+        run: |
+          dist/bin/build_memory_index --data_type float --dist_fn l2 --data_path data/rand_float_10D_10K_norm1.0.bin --index_path_prefix data/index_l2_rand_float_10D_10K_norm1.0_buildpq5 --build_PQ_bytes 5 
+          dist/bin/search_memory_index --data_type float --dist_fn l2 --fail_if_recall_below 70 --index_path_prefix data/index_l2_rand_float_10D_10K_norm1.0_buildpq5 --query_file data/rand_float_10D_1K_norm1.0.bin --recall_at 10 --result_path temp --gt_file data/l2_rand_float_10D_10K_norm1.0_10D_1K_norm1.0_gt100 -L  16 32
+
+      - name: build and search in-memory index with L2 metrics with PQ base distance comparisons (int8)
+        if: success() || failure()
+        run: |
+          dist/bin/build_memory_index --data_type int8 --dist_fn l2 --data_path data/rand_int8_10D_10K_norm50.0.bin --index_path_prefix data/index_l2_rand_int8_10D_10K_norm50.0_buildpq5 --build_PQ_bytes 5
+          dist/bin/search_memory_index --data_type int8 --dist_fn l2 --fail_if_recall_below 70 --index_path_prefix data/index_l2_rand_int8_10D_10K_norm50.0_buildpq5 --query_file data/rand_int8_10D_1K_norm50.0.bin --recall_at 10 --result_path temp --gt_file data/l2_rand_int8_10D_10K_norm50.0_10D_1K_norm50.0_gt100 -L  16 32
+
+      - name: build and search in-memory index with L2 metrics with PQ base distance comparisons (uint8)
+        if: success() || failure()
+        run: |
+          dist/bin/build_memory_index --data_type uint8 --dist_fn l2 --data_path data/rand_uint8_10D_10K_norm50.0.bin --index_path_prefix data/index_l2_rand_uint8_10D_10K_norm50.0_buildpq5 --build_PQ_bytes 5
+          dist/bin/search_memory_index --data_type uint8 --dist_fn l2 --fail_if_recall_below 70 --index_path_prefix data/index_l2_rand_uint8_10D_10K_norm50.0_buildpq5 --query_file data/rand_uint8_10D_1K_norm50.0.bin --recall_at 10 --result_path temp --gt_file data/l2_rand_uint8_10D_10K_norm50.0_10D_1K_norm50.0_gt100 -L  16 32
+
+      - name: upload data and bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: in-memory-pq-${{matrix.os}}
+          path: |
+            ./dist/**
+            ./data/**

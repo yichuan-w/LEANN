@@ -1,0 +1,26 @@
+name: DiskANN Nightly Performance Metrics
+on:
+  schedule:
+    - cron: "41 14 * * *"  # 14:41 UTC, 7:41 PDT, 8:41 PST, 08:11 IST
+jobs:
+  perf-test:
+    name: Run Perf Test from main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Build Perf Container
+        run: |
+          docker build --build-arg GIT_COMMIT_ISH="$GITHUB_SHA" -t perf -f scripts/perf/Dockerfile scripts
+      - name: Performance Tests
+        run: |
+          mkdir metrics
+          docker run -v ./metrics:/app/logs perf &> ./metrics/combined_stdouterr.log
+      - name: Upload Metrics Logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-${{matrix.os}}
+          path: |
+            ./metrics/**

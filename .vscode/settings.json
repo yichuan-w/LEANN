@@ -1,0 +1,43 @@
+{
+    "python.analysis.extraPaths": [
+        "./sglang_repo/python"
+    ],
+    "cmake.sourceDirectory": "${workspaceFolder}/DiskANN",
+    "cmake.configureArgs": [
+        "-DPYBIND=True",
+        "-DUPDATE_EDITABLE_INSTALL=ON",
+    ],
+    "cmake.environment": {
+        "PATH": "/Users/ec2-user/Power-RAG/.venv/bin:${env:PATH}"
+    },
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "files.associations": {
+        "*.tcc": "cpp",
+        "deque": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp",
+        "map": "cpp",
+        "unordered_set": "cpp",
+        "atomic": "cpp",
+        "inplace_vector": "cpp",
+        "*.ipp": "cpp",
+        "forward_list": "cpp",
+        "list": "cpp",
+        "any": "cpp",
+        "system_error": "cpp",
+        "__hash_table": "cpp",
+        "__split_buffer": "cpp",
+        "__tree": "cpp",
+        "ios": "cpp",
+        "set": "cpp",
+        "__string": "cpp",
+        "string_view": "cpp",
+        "ranges": "cpp",
+        "iosfwd": "cpp"
+    },
+    "lldb.displayFormat": "auto",
+    "lldb.showDisassembly": "auto",
+    "lldb.dereferencePointers": true,
+    "lldb.consoleMode": "commands",
+}

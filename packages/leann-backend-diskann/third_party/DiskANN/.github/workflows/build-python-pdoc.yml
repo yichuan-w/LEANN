@@ -1,0 +1,81 @@
+name: DiskANN Build PDoc Documentation
+on: [workflow_call]
+jobs:
+  build-reference-documentation:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: Install python build
+        run: python -m pip install build
+        shell: bash
+      # Install required dependencies
+      - name: Prepare Linux environment
+        run: |
+          sudo scripts/dev/install-dev-deps-ubuntu.bash
+        shell: bash
+      # We need to build the wheel in order to run pdoc.  pdoc does not seem to work if you just point it at
+      # our source directory.
+      - name: Building Python Wheel for documentation generation
+        run: python -m build --wheel --outdir documentation_dist
+        shell: bash
+      - name: "Run Reference Documentation Generation"
+        run: |
+          pip install pdoc pipdeptree
+          pip install documentation_dist/*.whl 
+          echo "documentation" > dependencies_documentation.txt
+          pipdeptree >> dependencies_documentation.txt
+          pdoc -o docs/python/html diskannpy
+      - name: Create version environment variable
+        run: |
+          echo "DISKANN_VERSION=$(python <<EOF
+          from importlib.metadata import version
+          v = version('diskannpy')
+          print(v)
+          EOF
+          )" >> $GITHUB_ENV
+      - name: Archive documentation version artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependencies
+          path: |
+            ${{ github.run_id }}-dependencies_documentation.txt
+            overwrite: true
+      - name: Archive documentation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-site
+          path: |
+            docs/python/html
+      # Publish to /dev if we are on the "main" branch
+      - name: Publish reference docs for latest development version (main branch)
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/python/html
+          destination_dir: docs/python/dev
+      # Publish to /<version> if we are releasing
+      - name: Publish reference docs by version (main branch)
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.event_name == 'release'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/python/html
+          destination_dir: docs/python/${{ env.DISKANN_VERSION }}
+      # Publish to /latest if we are releasing
+      - name: Publish latest reference docs (main branch)
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.event_name == 'release'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/python/html
+          destination_dir: docs/python/latest

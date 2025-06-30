@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package diskann_logger;
+
+message Log {
+    IndexConstructionLog IndexConstructionLog = 1;
+    DiskIndexConstructionLog DiskIndexConstructionLog = 2;
+    ErrorLog ErrorLog = 3;
+    TraceLog TraceLog = 100;
+}
+
+enum LogLevel {
+    UNSPECIFIED = 0;
+    Error = 1; 
+    Warn = 2;
+    Info = 3;
+    Debug = 4; 
+    Trace = 5;
+}
+
+message IndexConstructionLog {
+    float PercentageComplete = 1;
+    float TimeSpentInSeconds = 2;
+    float GCyclesSpent = 3;
+    LogLevel LogLevel = 4;
+}
+
+message DiskIndexConstructionLog {
+    DiskIndexConstructionCheckpoint checkpoint = 1;
+    float TimeSpentInSeconds = 2;
+    float GCyclesSpent = 3;
+    LogLevel LogLevel = 4;
+}
+
+enum DiskIndexConstructionCheckpoint {
+    None = 0;
+    PqConstruction = 1;
+    InmemIndexBuild = 2;
+    DiskLayout = 3;
+}
+
+message TraceLog {    
+    string LogLine = 1;
+    LogLevel LogLevel = 2;
+}
+
+message ErrorLog {
+    string ErrorMessage = 1;
+    LogLevel LogLevel = 2;
+}

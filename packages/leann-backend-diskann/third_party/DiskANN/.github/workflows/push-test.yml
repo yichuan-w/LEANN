@@ -1,0 +1,50 @@
+name: DiskANN Push Build
+on: [push]
+jobs:
+  common:
+    strategy:
+      fail-fast: true
+    name: DiskANN Common Build Checks
+    uses: ./.github/workflows/common.yml
+  build-documentation:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: true
+    name: DiskANN Build Documentation
+    uses: ./.github/workflows/build-python-pdoc.yml
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-2019, windows-latest ]
+    name: Build for ${{matrix.os}}
+    runs-on: ${{matrix.os}}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Checkout repository
+        if: ${{ runner.os == 'Windows' }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: Build diskannpy dependency tree
+        run: |
+          pip install diskannpy pipdeptree
+          echo "dependencies" > dependencies_${{ matrix.os }}.txt
+          pipdeptree >> dependencies_${{ matrix.os }}.txt
+      - name: Archive diskannpy dependencies artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependencies_${{ matrix.os }}
+          path: |
+            dependencies_${{ matrix.os }}.txt
+      - name: DiskANN Build CLI Applications
+        uses: ./.github/actions/build

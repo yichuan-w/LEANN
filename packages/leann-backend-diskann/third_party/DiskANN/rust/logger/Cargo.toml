@@ -1,0 +1,29 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT license.
+[package]
+name = "logger"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lazy_static = "1.4.0"
+log="0.4.17"
+once_cell = "1.17.1"
+prost = "0.11.9"
+prost-types = "0.11.9"
+thiserror = "1.0.40"
+win_etw_macros="0.1.8"
+win_etw_provider="0.1.8"
+
+[build-dependencies]
+prost-build = "0.11.9"
+
+[[example]]
+name="trace_example"
+path= "src/examples/trace_example.rs"
+
+[target."cfg(target_os=\"windows\")".build-dependencies.vcpkg]
+version = "0.2"
+

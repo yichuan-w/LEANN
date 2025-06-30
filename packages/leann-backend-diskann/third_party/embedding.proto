@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package protoembedding;
+
+message NodeEmbeddingRequest { 
+  repeated uint32 node_ids = 1; 
+}
+
+message NodeEmbeddingResponse {
+  bytes embeddings_data = 1;        // All embedded binary datas
+  repeated int32 dimensions = 2;    // Shape [batch_size, embedding_dim]
+  repeated uint32 missing_ids = 3;  // Missing node ids
+}

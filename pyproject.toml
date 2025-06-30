@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "cmake>=3.24"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leann-workspace"
+version = "0.1.0"
+requires-python = ">=3.9"
+
+dependencies = [
+    "leann-core",
+    "leann-backend-diskann",
+    "leann-backend-hnsw",
+    "numpy==1.25.0",
+    "torch",
+    "tqdm",
+    "flask",
+    "flask_compress",
+    "datasets>=2.15.0",
+    "evaluate",
+    "colorama",
+    "boto3",
+    "protobuf==4.25.3",
+    "sglang[all]",
+    "ollama",
+    "requests>=2.25.0",
+    "sentence-transformers>=2.2.0",
+    "openai>=1.0.0",
+    "PyPDF2>=3.0.0",
+    "llama-index>=0.12.44",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "matplotlib",
+]
+
+[tool.setuptools]
+py-modules = []
+
+
+[tool.uv.sources]
+leann-core = { path = "packages/leann-core", editable = true }
+leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = true }
+leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }

@@ -1,0 +1,39 @@
+name: 'DiskANN Build Bootstrap'
+description: 'Prepares DiskANN build environment and executes build'
+runs:
+  using: "composite"
+  steps:
+    # ------------ Linux Build ---------------
+    - name: Prepare and Execute Build
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        sudo scripts/dev/install-dev-deps-ubuntu.bash
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUNIT_TEST=True
+        cmake --build build -- -j
+        cmake --install build --prefix="dist"
+      shell: bash
+    # ------------ End Linux Build ---------------
+    # ------------ Windows Build ---------------
+    - name: Add VisualStudio command line tools into path
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+    - name: Run configure and build for Windows
+      if: runner.os == 'Windows'
+      run: |
+        mkdir build && cd build && cmake .. -DUNIT_TEST=True && msbuild diskann.sln /m /nologo /t:Build /p:Configuration="Release" /property:Platform="x64" -consoleloggerparameters:"ErrorsOnly;Summary"
+        cd ..
+        mkdir dist
+        mklink /j .\dist\bin .\x64\Release\
+      shell: cmd
+    # ------------ End Windows Build ---------------
+    # ------------ Windows Build With EXEC_ENV_OLS and USE_BING_INFRA ---------------
+    - name: Add VisualStudio command line tools into path
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+    - name: Run configure and build for Windows with Bing feature flags
+      if: runner.os == 'Windows'
+      run: |
+        mkdir build_bing && cd build_bing && cmake .. -DEXEC_ENV_OLS=1 -DUSE_BING_INFRA=1 -DUNIT_TEST=True && msbuild diskann.sln /m /nologo /t:Build /p:Configuration="Release" /property:Platform="x64" -consoleloggerparameters:"ErrorsOnly;Summary"
+        cd ..
+      shell: cmd
+    # ------------ End Windows Build ---------------
