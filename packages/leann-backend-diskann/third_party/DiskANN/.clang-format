@@ -1,6 +1,0 @@
----
-BasedOnStyle:  Microsoft
----
-Language: Cpp
-SortIncludes: false
-...
