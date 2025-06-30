@@ -43,7 +43,7 @@ Traditional RAG systems face a fundamental trade-off:
 ### Installation
 
 ```bash
-git clone https://github.com/yichuan520030910320/Power-RAG.git leann
+git clone git@github.com:yichuan520030910320/LEANN-RAG.git leann
 cd leann
 uv sync
 ```
