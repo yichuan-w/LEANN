@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "leann-workspace"
 version = "0.1.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 dependencies = [
     "leann-core",
     "leann-backend-diskann",
     "leann-backend-hnsw",
-    "numpy==1.25.0",
+    "numpy>=1.26.0",
     "torch",
     "tqdm",
     "flask",
@@ -28,6 +28,8 @@ dependencies = [
     "openai>=1.0.0",
     "PyPDF2>=3.0.0",
     "llama-index>=0.12.44",
+    "llama-index-readers-docling",
+    "llama-index-node-parser-docling",
 ]
 
 [project.optional-dependencies]
