@@ -21,7 +21,7 @@ file_extractor: dict[str, BaseReader] = {
     ".xlsx": reader,
 }
 node_parser = DoclingNodeParser(
-    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=256)
+    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=512)
 )
 
 documents = SimpleDirectoryReader(
@@ -51,7 +51,7 @@ print(f"\n[PHASE 1] Building Leann index...")
 
 builder = LeannBuilder(
     backend_name="diskann",
-    embedding_model="sentence-transformers/all-mpnet-base-v2", # Using a common sentence transformer model
+    embedding_model="facebook/contriever", # Using a common sentence transformer model
     graph_degree=32, 
     complexity=64
 )
@@ -67,7 +67,7 @@ async def main():
     print(f"\n[PHASE 2] Starting Leann chat session...")
     chat = LeannChat(index_path=INDEX_PATH)
     
-    query = "Based on the paper, what are the two main techniques LEANN uses to achieve low storage overhead and high retrieval accuracy?"
+    query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead?"
     print(f"You: {query}")
     chat_response = chat.ask(query, recompute_beighbor_embeddings=True)
     print(f"Leann: {chat_response}")

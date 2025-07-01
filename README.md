@@ -45,6 +45,7 @@ Traditional RAG systems face a fundamental trade-off:
 ```bash
 git clone git@github.com:yichuan520030910320/LEANN-RAG.git leann
 cd leann
+git submodule update --init --recursive
 uv sync
 ```
 

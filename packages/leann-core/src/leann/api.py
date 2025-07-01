@@ -141,14 +141,14 @@ class LeannChat:
         
     def ask(self, question: str, **kwargs):
         # 1. 检索
-        results = self.searcher.search(question, top_k=3, **kwargs)
+        results = self.searcher.search(question, top_k=5, **kwargs)
         context = "\n\n".join([r['text'] for r in results])
 
         # 2. 构建 Prompt
         prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
 
         # 3. 调用 LLM
-        print(f"DEBUG: Calling LLM with prompt: {prompt[:200]}...")
+        print(f"DEBUG: Calling LLM with prompt: {prompt}...")
         try:
             client = self._get_openai_client()
             response = client.chat.completions.create(
