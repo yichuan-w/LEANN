@@ -246,7 +246,7 @@ class DiskannSearcher(LeannBackendSearcherInterface):
             raise
 
     def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, any]:
-        complexity = kwargs.get("complexity", 100)
+        complexity = kwargs.get("complexity", 32)
         beam_width = kwargs.get("beam_width", 4)
         
         USE_DEFERRED_FETCH = kwargs.get("USE_DEFERRED_FETCH", False)

@@ -69,7 +69,7 @@ async def main():
     
     query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead?"
     print(f"You: {query}")
-    chat_response = chat.ask(query, recompute_beighbor_embeddings=True)
+    chat_response = chat.ask(query, top_k=10, recompute_beighbor_embeddings=True)
     print(f"Leann: {chat_response}")
 
 if __name__ == "__main__":
