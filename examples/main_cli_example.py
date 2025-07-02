@@ -21,7 +21,7 @@ file_extractor: dict[str, BaseReader] = {
     ".xlsx": reader,
 }
 node_parser = DoclingNodeParser(
-    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=512)
+    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=64)
 )
 
 documents = SimpleDirectoryReader(
@@ -67,7 +67,7 @@ async def main():
     print(f"\n[PHASE 2] Starting Leann chat session...")
     chat = LeannChat(index_path=INDEX_PATH)
     
-    query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead?"
+    query = "Based on the paper, what are the main techniques LEANN and DLPM explores to reduce the storage overhead?"
     print(f"You: {query}")
     chat_response = chat.ask(query, top_k=10, recompute_beighbor_embeddings=True)
     print(f"Leann: {chat_response}")

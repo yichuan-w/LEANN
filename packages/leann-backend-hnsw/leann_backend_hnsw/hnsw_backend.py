@@ -192,6 +192,7 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         build_kwargs = {**self.build_params, **kwargs}
         metric_str = build_kwargs.get("distance_metric", "mips").lower()
         metric_enum = get_metric_map().get(metric_str)
+        print('metric_enum', metric_enum,' metric_str', metric_str)
         if metric_enum is None:
             raise ValueError(f"Unsupported distance_metric '{metric_str}'.")
 
@@ -217,7 +218,9 @@ class HNSWBuilder(LeannBackendBuilderInterface):
                 faiss.normalize_L2(data)
             
             # Add vectors to index
+            print('starting to add vectors to index')
             index.add(data.shape[0], faiss.swig_ptr(data))
+            print('vectors added to index')
             
             # Save index
             index_file = index_dir / f"{index_prefix}.index"
