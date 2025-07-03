@@ -7,7 +7,7 @@ import asyncio
 import os
 import dotenv
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
-import leann_backend_diskann # Import to ensure backend registration
+import leann_backend_hnsw # Import to ensure backend registration
 import shutil
 from pathlib import Path
 
@@ -50,7 +50,7 @@ if INDEX_DIR.exists():
 print(f"\n[PHASE 1] Building Leann index...")
 
 builder = LeannBuilder(
-    backend_name="diskann",
+    backend_name="hnsw",
     embedding_model="facebook/contriever", # Using a common sentence transformer model
     graph_degree=32, 
     complexity=64

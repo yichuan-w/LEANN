@@ -1,6 +1,6 @@
 {
   "version": "0.1.0",
-  "backend_name": "diskann",
+  "backend_name": "hnsw",
   "embedding_model": "facebook/contriever",
   "num_chunks": 826,
   "chunks": [

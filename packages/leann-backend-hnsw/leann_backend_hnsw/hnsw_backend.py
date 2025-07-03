@@ -151,7 +151,7 @@ class HNSWBackend(LeannBackendFactoryInterface):
     @staticmethod
     def searcher(index_path: str, **kwargs) -> LeannBackendSearcherInterface:
         path = Path(index_path)
-        meta_path = path.parent / f"{path.stem}.hnsw.meta.json"
+        meta_path = path.parent / f"{path.name}.meta.json"
         if not meta_path.exists():
              raise FileNotFoundError(f"Leann metadata file not found at {meta_path}. Cannot infer vector dimension for searcher.")
         
