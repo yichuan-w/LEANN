@@ -241,6 +241,25 @@ uv run python tests/sanity_checks/test_distance_functions.py
 # Verify L2 implementation
 uv run python tests/sanity_checks/test_l2_verification.py
 ```
+## ❓ FAQ
+
+### Common Issues
+
+#### NCCL Topology Error
+**Problem**: You encounter `ncclTopoComputePaths` error during document processing:
+```
+ncclTopoComputePaths (system=<optimized out>, comm=comm@entry=0x5555a82fa3c0) at graph/paths.cc:688
+```
+
+**Solution**: Set these environment variables before running your script:
+```bash
+export NCCL_TOPO_DUMP_FILE=/tmp/nccl_topo.xml
+export NCCL_DEBUG=INFO
+export NCCL_DEBUG_SUBSYS=INIT,GRAPH
+export NCCL_IB_DISABLE=1
+export NCCL_NET_PLUGIN=none
+export NCCL_SOCKET_IFNAME=ens5
+
 
 ## 📈 Roadmap
 

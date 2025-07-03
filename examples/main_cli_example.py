@@ -7,7 +7,7 @@ import asyncio
 import os
 import dotenv
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
-import leann_backend_hnsw # Import to ensure backend registration
+import leann_backend_diskann # Import to ensure backend registration
 import shutil
 from pathlib import Path
 
@@ -21,9 +21,9 @@ file_extractor: dict[str, BaseReader] = {
     ".xlsx": reader,
 }
 node_parser = DoclingNodeParser(
-    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=64)
+    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=256)
 )
-
+print("Loading documents...")
 documents = SimpleDirectoryReader(
     "examples/data", 
     recursive=True, 
@@ -31,7 +31,7 @@ documents = SimpleDirectoryReader(
     encoding="utf-8",
     required_exts=[".pdf", ".docx", ".pptx", ".xlsx"]
 ).load_data(show_progress=True)
-
+print("Documents loaded.")
 # Extract text from documents and prepare for Leann
 all_texts = []
 for doc in documents:
@@ -50,7 +50,7 @@ if INDEX_DIR.exists():
 print(f"\n[PHASE 1] Building Leann index...")
 
 builder = LeannBuilder(
-    backend_name="hnsw",
+    backend_name="diskann",
     embedding_model="facebook/contriever", # Using a common sentence transformer model
     graph_degree=32, 
     complexity=64
@@ -67,9 +67,10 @@ async def main():
     print(f"\n[PHASE 2] Starting Leann chat session...")
     chat = LeannChat(index_path=INDEX_PATH)
     
-    query = "Based on the paper, what are the main techniques LEANN and DLPM explores to reduce the storage overhead?"
+    query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
+    # query = "What is the Off-policy training in RL?"
     print(f"You: {query}")
-    chat_response = chat.ask(query, top_k=10, recompute_beighbor_embeddings=True)
+    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True)
     print(f"Leann: {chat_response}")
 
 if __name__ == "__main__":

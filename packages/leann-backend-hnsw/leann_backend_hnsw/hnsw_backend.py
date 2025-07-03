@@ -265,6 +265,7 @@ class HNSWSearcher(LeannBackendSearcherInterface):
 
     def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, any]:
         """Search using HNSW index with optional recompute functionality"""
+        from . import faiss
         ef = kwargs.get("ef", 200)  # Size of the dynamic candidate list for search
         
         # Recompute parameters
@@ -293,15 +294,20 @@ class HNSWSearcher(LeannBackendSearcherInterface):
             # Set search parameter
             self._index.hnsw.efSearch = ef
             
+            # Prepare output arrays for the older FAISS SWIG API
+            batch_size = query.shape[0]
+            distances = np.empty((batch_size, top_k), dtype=np.float32)
+            labels = np.empty((batch_size, top_k), dtype=np.int64)
+            
             if recompute_neighbor_embeddings:
                 # Use custom search with recompute
                 # This would require implementing custom HNSW search logic
                 # For now, we'll fall back to standard search
                 print("WARNING: Recompute functionality for HNSW not yet implemented, using standard search")
-                distances, labels = self._index.search(query, top_k)
+                self._index.search(query.shape[0], faiss.swig_ptr(query), top_k, faiss.swig_ptr(distances), faiss.swig_ptr(labels))
             else:
-                # Standard FAISS search
-                distances, labels = self._index.search(query, top_k)
+                # Standard FAISS search using SWIG API
+                self._index.search(query.shape[0], faiss.swig_ptr(query), top_k, faiss.swig_ptr(distances), faiss.swig_ptr(labels))
             
             return {"labels": labels, "distances": distances}
             
