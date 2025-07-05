@@ -1,3 +1,6 @@
+import faulthandler
+faulthandler.enable()
+
 from llama_index.core import SimpleDirectoryReader, Settings
 from llama_index.core.readers.base import BaseReader
 from llama_index.node_parser.docling import DoclingNodeParser
@@ -7,7 +10,7 @@ import asyncio
 import os
 import dotenv
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
-import leann_backend_diskann # Import to ensure backend registration
+import leann_backend_hnsw # Import to ensure backend registration
 import shutil
 from pathlib import Path
 
@@ -21,7 +24,7 @@ file_extractor: dict[str, BaseReader] = {
     ".xlsx": reader,
 }
 node_parser = DoclingNodeParser(
-    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=256)
+    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=64)
 )
 print("Loading documents...")
 documents = SimpleDirectoryReader(
@@ -32,10 +35,8 @@ documents = SimpleDirectoryReader(
     required_exts=[".pdf", ".docx", ".pptx", ".xlsx"]
 ).load_data(show_progress=True)
 print("Documents loaded.")
-# Extract text from documents and prepare for Leann
 all_texts = []
 for doc in documents:
-    # DoclingNodeParser returns Node objects, which have a text attribute
     nodes = node_parser.get_nodes_from_documents([doc])
     for node in nodes:
         all_texts.append(node.text)
@@ -43,34 +44,38 @@ for doc in documents:
 INDEX_DIR = Path("./test_pdf_index")
 INDEX_PATH = str(INDEX_DIR / "pdf_documents.leann")
 
-if INDEX_DIR.exists():
-    print(f"--- Cleaning up old index directory: {INDEX_DIR} ---")
-    shutil.rmtree(INDEX_DIR)
-
-print(f"\n[PHASE 1] Building Leann index...")
-
-builder = LeannBuilder(
-    backend_name="diskann",
-    embedding_model="facebook/contriever", # Using a common sentence transformer model
-    graph_degree=32, 
-    complexity=64
-)
-
-print(f"Loaded {len(all_texts)} text chunks from documents.")
-for chunk_text in all_texts:
-    builder.add_text(chunk_text)
+if not INDEX_DIR.exists():
+    print(f"--- Index directory not found, building new index ---")
     
-builder.build_index(INDEX_PATH)
-print(f"\nLeann index built at {INDEX_PATH}!")
+    print(f"\n[PHASE 1] Building Leann index...")
+
+    # CSR compact mode with recompute
+    builder = LeannBuilder(
+        backend_name="hnsw",
+        embedding_model="facebook/contriever",
+        graph_degree=32, 
+        complexity=64,
+        is_compact=True,
+        is_recompute=True
+    )
+
+    print(f"Loaded {len(all_texts)} text chunks from documents.")
+    for chunk_text in all_texts:
+        builder.add_text(chunk_text)
+        
+    builder.build_index(INDEX_PATH)
+    print(f"\nLeann index built at {INDEX_PATH}!")
+else:
+    print(f"--- Using existing index at {INDEX_DIR} ---")
 
 async def main():
     print(f"\n[PHASE 2] Starting Leann chat session...")
     chat = LeannChat(index_path=INDEX_PATH)
     
     query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
-    # query = "What is the Off-policy training in RL?"
     print(f"You: {query}")
-    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True)
+
+    chat_response = chat.ask(query, top_k=20)
     print(f"Leann: {chat_response}")
 
 if __name__ == "__main__":

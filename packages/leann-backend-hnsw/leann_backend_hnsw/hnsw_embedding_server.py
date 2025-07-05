@@ -101,7 +101,9 @@ def create_hnsw_embedding_server(
         model_name: Transformer model name
         custom_max_length_param: Custom max sequence length
     """
+    print(f"Loading tokenizer for {model_name}...")
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    print(f"Tokenizer loaded successfully!")
     
     # Device setup
     mps_available = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
@@ -122,7 +124,9 @@ def create_hnsw_embedding_server(
     
     # Load model to the appropriate device
     print(f"Starting HNSW server on port {zmq_port} with model {model_name}")
+    print(f"Loading model {model_name}... (this may take a while if downloading)")
     model = AutoModel.from_pretrained(model_name).to(device).eval()
+    print(f"Model {model_name} loaded successfully!")
 
     # Check port availability
     import socket
@@ -364,13 +368,14 @@ def create_hnsw_embedding_server(
                         missing_ids = []
                         with lookup_timer.timing():
                             for nid in node_ids:
-                                txtinfo = passages[nid]
-                                if txtinfo is None or txtinfo["text"] == "":
-                                    print(f"Warning: Passage with ID {nid} not found")
-                                    missing_ids.append(nid)
-                                    txt = ""
-                                else:
-                                    txt = txtinfo["text"]
+                                try:
+                                    txtinfo = passages[nid]
+                                    if txtinfo is None or txtinfo["text"] == "":
+                                        raise RuntimeError(f"FATAL: Passage with ID {nid} not found - failing fast")
+                                    else:
+                                        txt = txtinfo["text"]
+                                except (KeyError, IndexError):
+                                    raise RuntimeError(f"FATAL: Passage with ID {nid} not found - failing fast")
                                 texts.append(txt)
                         lookup_timer.print_elapsed()
                         
@@ -450,13 +455,14 @@ def create_hnsw_embedding_server(
                 missing_ids = []
                 with lookup_timer.timing():
                     for nid in node_ids:
-                        txtinfo = passages[nid]
-                        if txtinfo is None or txtinfo["text"] == "":
-                            print(f"Warning: Passage with ID {nid} not found")
-                            missing_ids.append(nid)
-                            txt = ""
-                        else:
-                            txt = txtinfo["text"]
+                        try:
+                            txtinfo = passages[nid]
+                            if txtinfo is None or txtinfo["text"] == "":
+                                raise RuntimeError(f"FATAL: Passage with ID {nid} not found - failing fast")
+                            else:
+                                txt = txtinfo["text"]
+                        except (KeyError, IndexError):
+                            raise RuntimeError(f"FATAL: Passage with ID {nid} not found - failing fast")
                         texts.append(txt)
                 lookup_timer.print_elapsed()
 
