@@ -10,7 +10,6 @@ import asyncio
 import os
 import dotenv
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
-import leann_backend_hnsw # Import to ensure backend registration
 import shutil
 from pathlib import Path
 
@@ -39,7 +38,7 @@ all_texts = []
 for doc in documents:
     nodes = node_parser.get_nodes_from_documents([doc])
     for node in nodes:
-        all_texts.append(node.text)
+        all_texts.append(node.get_content())
 
 INDEX_DIR = Path("./test_pdf_index")
 INDEX_PATH = str(INDEX_DIR / "pdf_documents.leann")
@@ -51,7 +50,7 @@ if not INDEX_DIR.exists():
 
     # CSR compact mode with recompute
     builder = LeannBuilder(
-        backend_name="hnsw",
+        backend_name="diskann",
         embedding_model="facebook/contriever",
         graph_degree=32, 
         complexity=64,
@@ -74,7 +73,7 @@ async def main():
     
     query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
     print(f"You: {query}")
-    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True,embedding_model="facebook/contriever")
+    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True)
     print(f"Leann: {chat_response}")
 
 if __name__ == "__main__":
