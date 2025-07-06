@@ -3,7 +3,7 @@ import os
 import json
 import struct
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Any
 import contextlib
 import threading
 import time
@@ -36,7 +36,7 @@ def chdir(path):
     finally:
         os.chdir(original_dir)
 
-def _write_vectors_to_bin(data: np.ndarray, file_path: str):
+def _write_vectors_to_bin(data: np.ndarray, file_path: Path):
     num_vectors, dim = data.shape
     with open(file_path, 'wb') as f:
         f.write(struct.pack('I', num_vectors))
@@ -146,11 +146,12 @@ class DiskannSearcher(LeannBackendSearcherInterface):
         
         num_threads = kwargs.get("num_threads", 8)
         num_nodes_to_cache = kwargs.get("num_nodes_to_cache", 0)
+        zmq_port = kwargs.get("zmq_port", 5555) # Get zmq_port from kwargs
         
         try:
             full_index_prefix = str(index_dir / index_prefix)
             self._index = diskannpy.StaticDiskFloatIndex(
-                metric_enum, full_index_prefix, num_threads, num_nodes_to_cache, 1, "", ""
+                metric_enum, full_index_prefix, num_threads, num_nodes_to_cache, 1, zmq_port, "", ""
             )
             self.num_threads = num_threads
             self.embedding_server_manager = EmbeddingServerManager(
@@ -161,7 +162,7 @@ class DiskannSearcher(LeannBackendSearcherInterface):
             print(f"💥 ERROR: Failed to load DiskANN index. Exception: {e}")
             raise
 
-    def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, any]:
+    def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, Any]:
         complexity = kwargs.get("complexity", 256)
         beam_width = kwargs.get("beam_width", 4)
         

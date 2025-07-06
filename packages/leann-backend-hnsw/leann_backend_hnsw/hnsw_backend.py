@@ -303,7 +303,8 @@ class HNSWSearcher(LeannBackendSearcherInterface):
         hnsw_config.is_recompute = self.is_pruned or kwargs.get("is_recompute", False)
         hnsw_config.disk_cache_ratio = kwargs.get("disk_cache_ratio", 0.0)
         hnsw_config.external_storage_path = kwargs.get("external_storage_path")
-        hnsw_config.zmq_port = kwargs.get("zmq_port", 5557)
+        
+        self.zmq_port = kwargs.get("zmq_port", 5557)
         
         if self.is_pruned and not hnsw_config.is_recompute:
             raise RuntimeError("Index is pruned (embeddings removed) but recompute is disabled. This is impossible - recompute must be enabled for pruned indices.")
@@ -361,13 +362,15 @@ class HNSWSearcher(LeannBackendSearcherInterface):
             faiss.normalize_L2(query)
         
         try:
-            self._index.hnsw.efSearch = ef
+            params = faiss.SearchParametersHNSW()
+            params.efSearch = ef
+            params.zmq_port = kwargs.get("zmq_port", self.zmq_port)
             
             batch_size = query.shape[0]
             distances = np.empty((batch_size, top_k), dtype=np.float32)
             labels = np.empty((batch_size, top_k), dtype=np.int64)
             
-            self._index.search(query.shape[0], faiss.swig_ptr(query), top_k, faiss.swig_ptr(distances), faiss.swig_ptr(labels))
+            self._index.search(query.shape[0], faiss.swig_ptr(query), top_k, faiss.swig_ptr(distances), faiss.swig_ptr(labels), params)
             
             return {"labels": labels, "distances": distances}
             
