@@ -3,7 +3,7 @@ import os
 import json
 import struct
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 import contextlib
 import threading
 import time
@@ -11,6 +11,7 @@ import atexit
 import socket
 import subprocess
 import sys
+import pickle
 
 from leann.embedding_server_manager import EmbeddingServerManager
 from leann.registry import register_backend
@@ -19,13 +20,13 @@ from leann.interface import (
     LeannBackendBuilderInterface,
     LeannBackendSearcherInterface
 )
-from . import _diskannpy as diskannpy
-
-METRIC_MAP = {
-    "mips": diskannpy.Metric.INNER_PRODUCT,
-    "l2": diskannpy.Metric.L2,
-    "cosine": diskannpy.Metric.COSINE,
-}
+def _get_diskann_metrics():
+    from . import _diskannpy as diskannpy
+    return {
+        "mips": diskannpy.Metric.INNER_PRODUCT,
+        "l2": diskannpy.Metric.L2,
+        "cosine": diskannpy.Metric.COSINE,
+    }
 
 @contextlib.contextmanager
 def chdir(path):
@@ -67,27 +68,8 @@ class DiskannBuilder(LeannBackendBuilderInterface):
     def __init__(self, **kwargs):
         self.build_params = kwargs
 
-    def _generate_passages_file(self, index_dir: Path, index_prefix: str, **kwargs):
-        """Generate passages file for recompute mode, mirroring HNSW backend."""
-        try:
-            chunks = kwargs.get('chunks', [])
-            if not chunks:
-                print("INFO: No chunks data provided, skipping passages file generation for DiskANN.")
-                return
-            
-            passages_data = {str(node_id): chunk["text"] for node_id, chunk in enumerate(chunks)}
-            
-            passages_file = index_dir / f"{index_prefix}.passages.json"
-            with open(passages_file, 'w', encoding='utf-8') as f:
-                json.dump(passages_data, f, ensure_ascii=False, indent=2)
-            
-            print(f"✅ Generated passages file for recompute mode at '{passages_file}' ({len(passages_data)} passages)")
-            
-        except Exception as e:
-            print(f"💥 ERROR: Failed to generate passages file for DiskANN. Exception: {e}")
-            pass
 
-    def build(self, data: np.ndarray, index_path: str, **kwargs):
+    def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs):
         path = Path(index_path)
         index_dir = path.parent
         index_prefix = path.stem
@@ -102,8 +84,15 @@ class DiskannBuilder(LeannBackendBuilderInterface):
         data_filename = f"{index_prefix}_data.bin"
         _write_vectors_to_bin(data, index_dir / data_filename)
 
+        # Create label map: integer -> string_id
+        label_map = {i: str_id for i, str_id in enumerate(ids)}
+        label_map_file = index_dir / "leann.labels.map"
+        with open(label_map_file, 'wb') as f:
+            pickle.dump(label_map, f)
+
         build_kwargs = {**self.build_params, **kwargs}
         metric_str = build_kwargs.get("distance_metric", "mips").lower()
+        METRIC_MAP = _get_diskann_metrics()
         metric_enum = METRIC_MAP.get(metric_str)
         if metric_enum is None:
             raise ValueError(f"Unsupported distance_metric '{metric_str}'.")
@@ -115,11 +104,11 @@ class DiskannBuilder(LeannBackendBuilderInterface):
         num_threads = build_kwargs.get("num_threads", 8)
         pq_disk_bytes = build_kwargs.get("pq_disk_bytes", 0)
         codebook_prefix = ""
-        is_recompute = build_kwargs.get("is_recompute", False)
 
         print(f"INFO: Building DiskANN index for {data.shape[0]} vectors with metric {metric_enum}...")
         
         try:
+            from . import _diskannpy as diskannpy
             with chdir(index_dir):
                 diskannpy.build_disk_float_index(
                     metric_enum,
@@ -134,8 +123,6 @@ class DiskannBuilder(LeannBackendBuilderInterface):
                     codebook_prefix
                 )
             print(f"✅ DiskANN index built successfully at '{index_dir / index_prefix}'")
-            if is_recompute:
-                self._generate_passages_file(index_dir, index_prefix, **build_kwargs)
         except Exception as e:
             print(f"💥 ERROR: DiskANN index build failed. Exception: {e}")
             raise
@@ -150,15 +137,6 @@ class DiskannSearcher(LeannBackendSearcherInterface):
         if not self.meta:
             raise ValueError("DiskannSearcher requires metadata from .meta.json.")
 
-        dimensions = self.meta.get("dimensions")
-        if not dimensions:
-            raise ValueError("Dimensions not found in Leann metadata.")
-        
-        self.distance_metric = self.meta.get("distance_metric", "mips").lower()
-        metric_enum = METRIC_MAP.get(self.distance_metric)
-        if metric_enum is None:
-            raise ValueError(f"Unsupported distance_metric '{self.distance_metric}'.")
-
         self.embedding_model = self.meta.get("embedding_model")
         if not self.embedding_model:
             print("WARNING: embedding_model not found in meta.json. Recompute will fail if attempted.")
@@ -167,11 +145,27 @@ class DiskannSearcher(LeannBackendSearcherInterface):
         self.index_dir = path.parent
         self.index_prefix = path.stem
         
+        # Load the label map
+        label_map_file = self.index_dir / "leann.labels.map"
+        if not label_map_file.exists():
+            raise FileNotFoundError(f"Label map file not found: {label_map_file}")
+        
+        with open(label_map_file, 'rb') as f:
+            self.label_map = pickle.load(f)
+        
+        # Extract parameters for DiskANN
+        distance_metric = kwargs.get("distance_metric", "mips").lower()
+        METRIC_MAP = _get_diskann_metrics()
+        metric_enum = METRIC_MAP.get(distance_metric)
+        if metric_enum is None:
+            raise ValueError(f"Unsupported distance_metric '{distance_metric}'.")
+        
         num_threads = kwargs.get("num_threads", 8)
         num_nodes_to_cache = kwargs.get("num_nodes_to_cache", 0)
         self.zmq_port = kwargs.get("zmq_port", 6666)
         
         try:
+            from . import _diskannpy as diskannpy
             full_index_prefix = str(self.index_dir / self.index_prefix)
             self._index = diskannpy.StaticDiskFloatIndex(
                 metric_enum, full_index_prefix, num_threads, num_nodes_to_cache, 1, self.zmq_port, "", ""
@@ -205,22 +199,18 @@ class DiskannSearcher(LeannBackendSearcherInterface):
 
             passages_file = kwargs.get("passages_file")
             if not passages_file:
-                potential_passages_file = self.index_dir / f"{self.index_prefix}.passages.json"
-                if potential_passages_file.exists():
-                    passages_file = str(potential_passages_file)
-                    print(f"INFO: Automatically found passages file: {passages_file}")
-
-            if not passages_file:
-                raise RuntimeError(
-                    f"Recompute mode is enabled, but no passages file was found. "
-                    f"A '{self.index_prefix}.passages.json' file should exist in the index directory "
-                    f"'{self.index_dir}'. Ensure you build the index with 'recompute=True'."
-                )
+                # Get the passages file path from meta.json
+                if 'passage_sources' in self.meta and self.meta['passage_sources']:
+                    passage_source = self.meta['passage_sources'][0]
+                    passages_file = passage_source['path']
+                    print(f"INFO: Found passages file from metadata: {passages_file}")
+                else:
+                    raise RuntimeError(f"FATAL: Recompute mode enabled but no passage_sources found in metadata.")
 
             server_started = self.embedding_server_manager.start_server(
                 port=self.zmq_port,
                 model_name=self.embedding_model,
-                distance_metric=self.distance_metric,
+                distance_metric=kwargs.get("distance_metric", "mips"),
                 passages_file=passages_file
             )
             
@@ -248,11 +238,23 @@ class DiskannSearcher(LeannBackendSearcherInterface):
                 batch_recompute,
                 global_pruning
             )
-            return {"labels": labels, "distances": distances}
+            
+            # Convert integer labels to string IDs
+            string_labels = []
+            for batch_labels in labels:
+                batch_string_labels = []
+                for int_label in batch_labels:
+                    if int_label in self.label_map:
+                        batch_string_labels.append(self.label_map[int_label])
+                    else:
+                        batch_string_labels.append(f"unknown_{int_label}")
+                string_labels.append(batch_string_labels)
+            
+            return {"labels": string_labels, "distances": distances}
         except Exception as e:
             print(f"💥 ERROR: DiskANN search failed. Exception: {e}")
             batch_size = query.shape[0]
-            return {"labels": np.full((batch_size, top_k), -1, dtype=np.int64), 
+            return {"labels": [[f"error_{i}" for i in range(top_k)] for _ in range(batch_size)], 
                    "distances": np.full((batch_size, top_k), float('inf'), dtype=np.float32)}
     
     def __del__(self):

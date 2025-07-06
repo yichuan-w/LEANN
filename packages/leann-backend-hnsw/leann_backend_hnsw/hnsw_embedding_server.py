@@ -58,21 +58,46 @@ class SimplePassageLoader:
 
 def load_passages_from_file(passages_file: str) -> SimplePassageLoader:
     """
-    Load passages from a JSON file
-    Expected format: {"passage_id": "passage_text", ...}
+    Load passages from a JSONL file with label map support
+    Expected format: {"id": "passage_id", "text": "passage_text", "metadata": {...}} (one per line)
     """
     if not os.path.exists(passages_file):
-        print(f"Warning: Passages file {passages_file} not found. Using empty loader.")
-        return SimplePassageLoader()
+        raise FileNotFoundError(f"Passages file {passages_file} not found.")
     
-    try:
-        with open(passages_file, 'r', encoding='utf-8') as f:
-            passages_data = json.load(f)
-        print(f"Loaded {len(passages_data)} passages from {passages_file}")
-        return SimplePassageLoader(passages_data)
-    except Exception as e:
-        print(f"Error loading passages from {passages_file}: {e}")
-        return SimplePassageLoader()
+    if not passages_file.endswith('.jsonl'):
+        raise ValueError(f"Expected .jsonl file format, got: {passages_file}")
+    
+    # Load label map (int -> string_id)
+    passages_dir = Path(passages_file).parent
+    label_map_file = passages_dir / "leann.labels.map"
+    
+    label_map = {}
+    if label_map_file.exists():
+        import pickle
+        with open(label_map_file, 'rb') as f:
+            label_map = pickle.load(f)
+        print(f"Loaded label map with {len(label_map)} entries")
+    else:
+        raise FileNotFoundError(f"Label map file not found: {label_map_file}")
+    
+    # Load passages by string ID
+    string_id_passages = {}
+    with open(passages_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():
+                passage = json.loads(line)
+                string_id_passages[passage['id']] = passage['text']
+    
+    # Create int ID -> text mapping using label map
+    passages_data = {}
+    for int_id, string_id in label_map.items():
+        if string_id in string_id_passages:
+            passages_data[str(int_id)] = string_id_passages[string_id]
+        else:
+            print(f"WARNING: String ID {string_id} from label map not found in passages")
+    
+    print(f"Loaded {len(passages_data)} passages from JSONL file {passages_file} using label map")
+    return SimplePassageLoader(passages_data)
 
 def create_hnsw_embedding_server(
     passages_file: Optional[str] = None,

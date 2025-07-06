@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import openai
 from dataclasses import dataclass, field
+import uuid
+import pickle
 
 # --- Helper Functions for Embeddings ---
 
@@ -56,10 +58,44 @@ def _get_embedding_dimensions(model_name: str) -> int:
 @dataclass
 class SearchResult:
     """Represents a single search result."""
-    id: int
+    id: str
     score: float
     text: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class PassageManager:
+    """Manages passage data and lazy loading from JSONL files."""
+    
+    def __init__(self, passage_sources: List[Dict[str, Any]]):
+        self.offset_maps = {}
+        self.passage_files = {}
+        
+        for source in passage_sources:
+            if source["type"] == "jsonl":
+                passage_file = source["path"]
+                index_file = source["index_path"]
+                
+                if not os.path.exists(index_file):
+                    raise FileNotFoundError(f"Passage index file not found: {index_file}")
+                
+                with open(index_file, 'rb') as f:
+                    offset_map = pickle.load(f)
+                
+                self.offset_maps[passage_file] = offset_map
+                self.passage_files[passage_file] = passage_file
+    
+    def get_passage(self, passage_id: str) -> Dict[str, Any]:
+        """Lazy load a passage by ID."""
+        for passage_file, offset_map in self.offset_maps.items():
+            if passage_id in offset_map:
+                offset = offset_map[passage_id]
+                with open(passage_file, 'r', encoding='utf-8') as f:
+                    f.seek(offset)
+                    line = f.readline()
+                    return json.loads(line)
+        
+        raise KeyError(f"Passage ID not found: {passage_id}")
 
 # --- Core Classes ---
 
@@ -82,7 +118,26 @@ class LeannBuilder:
         print(f"INFO: LeannBuilder initialized with '{backend_name}' backend.")
 
     def add_text(self, text: str, metadata: Optional[Dict[str, Any]] = None):
-        self.chunks.append({"text": text, "metadata": metadata or {}})
+        if metadata is None:
+            metadata = {}
+        
+        # Check if ID is provided in metadata
+        passage_id = metadata.get('id')
+        if passage_id is None:
+            passage_id = str(uuid.uuid4())
+        else:
+            # Validate uniqueness
+            existing_ids = {chunk['id'] for chunk in self.chunks}
+            if passage_id in existing_ids:
+                raise ValueError(f"Duplicate passage ID: {passage_id}")
+        
+        # Store the definitive ID with the chunk
+        chunk_data = {
+            "id": passage_id,
+            "text": text,
+            "metadata": metadata
+        }
+        self.chunks.append(chunk_data)
 
     def build_index(self, index_path: str):
         if not self.chunks:
@@ -92,28 +147,65 @@ class LeannBuilder:
             self.dimensions = _get_embedding_dimensions(self.embedding_model)
             print(f"INFO: Auto-detected dimensions for '{self.embedding_model}': {self.dimensions}")
 
+        path = Path(index_path)
+        index_dir = path.parent
+        index_name = path.name
+        
+        # Ensure the directory exists
+        index_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create the passages.jsonl file and offset index
+        passages_file = index_dir / f"{index_name}.passages.jsonl"
+        offset_file = index_dir / f"{index_name}.passages.idx"
+        
+        offset_map = {}
+        
+        with open(passages_file, 'w', encoding='utf-8') as f:
+            for chunk in self.chunks:
+                offset = f.tell()
+                passage_data = {
+                    "id": chunk["id"],
+                    "text": chunk["text"],
+                    "metadata": chunk["metadata"]
+                }
+                json.dump(passage_data, f, ensure_ascii=False)
+                f.write('\n')
+                offset_map[chunk["id"]] = offset
+        
+        # Save the offset map
+        with open(offset_file, 'wb') as f:
+            pickle.dump(offset_map, f)
+        
+        # Compute embeddings
         texts_to_embed = [c["text"] for c in self.chunks]
         embeddings = _compute_embeddings(texts_to_embed, self.embedding_model)
-
+        
+        # Extract string IDs for the backend
+        string_ids = [chunk["id"] for chunk in self.chunks]
+        
+        # Build the vector index
         current_backend_kwargs = self.backend_kwargs.copy()
         current_backend_kwargs['dimensions'] = self.dimensions
         builder_instance = self.backend_factory.builder(**current_backend_kwargs)
         
-        build_kwargs = current_backend_kwargs.copy()
-        build_kwargs['chunks'] = self.chunks
-        builder_instance.build(embeddings, index_path, **build_kwargs)
+        builder_instance.build(embeddings, string_ids, index_path, **current_backend_kwargs)
 
-        index_dir = Path(index_path).parent
-        leann_meta_path = index_dir / f"{Path(index_path).name}.meta.json"
+        # Create the lightweight meta.json file
+        leann_meta_path = index_dir / f"{index_name}.meta.json"
         
         meta_data = {
-            "version": "0.1.0",
+            "version": "1.0",
             "backend_name": self.backend_name,
             "embedding_model": self.embedding_model,
             "dimensions": self.dimensions,
             "backend_kwargs": self.backend_kwargs,
-            "num_chunks": len(self.chunks),
-            "chunks": self.chunks,
+            "passage_sources": [
+                {
+                    "type": "jsonl",
+                    "path": str(passages_file),
+                    "index_path": str(offset_file)
+                }
+            ]
         }
         with open(leann_meta_path, 'w', encoding='utf-8') as f:
             json.dump(meta_data, f, indent=2)
@@ -136,14 +228,16 @@ class LeannSearcher:
         backend_name = self.meta_data['backend_name']
         self.embedding_model = self.meta_data['embedding_model']
         
+        # Initialize the passage manager
+        passage_sources = self.meta_data.get('passage_sources', [])
+        self.passage_manager = PassageManager(passage_sources)
+        
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' (from index file) not found or not registered.")
 
-        final_kwargs = self.meta_data.get("backend_kwargs", {})
-        final_kwargs.update(backend_kwargs)
-        if 'dimensions' not in final_kwargs:
-            final_kwargs['dimensions'] = self.meta_data.get('dimensions')
+        final_kwargs = backend_kwargs.copy()
+        final_kwargs['meta'] = self.meta_data
 
         self.backend_impl = backend_factory.searcher(index_path, **final_kwargs)
         print(f"INFO: LeannSearcher initialized with '{backend_name}' backend using index '{index_path}'.")
@@ -155,15 +249,17 @@ class LeannSearcher:
         results = self.backend_impl.search(query_embedding, top_k, **search_kwargs)
         
         enriched_results = []
-        for label, dist in zip(results['labels'][0], results['distances'][0]):
-            if label < len(self.meta_data['chunks']):
-                chunk_info = self.meta_data['chunks'][label]
+        for string_id, dist in zip(results['labels'][0], results['distances'][0]):
+            try:
+                passage_data = self.passage_manager.get_passage(string_id)
                 enriched_results.append(SearchResult(
-                    id=label,
+                    id=string_id,
                     score=dist,
-                    text=chunk_info['text'],
-                    metadata=chunk_info.get('metadata', {})
+                    text=passage_data['text'],
+                    metadata=passage_data.get('metadata', {})
                 ))
+            except KeyError:
+                print(f"WARNING: Passage ID '{string_id}' not found in passage files")
         return enriched_results
 
 
