@@ -23,7 +23,7 @@ file_extractor: dict[str, BaseReader] = {
     ".xlsx": reader,
 }
 node_parser = DoclingNodeParser(
-    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=64)
+    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=128)
 )
 print("Loading documents...")
 documents = SimpleDirectoryReader(

@@ -32,6 +32,7 @@ def _compute_embeddings(chunks: List[str], model_name: str) -> np.ndarray:
     else:
         from sentence_transformers import SentenceTransformer
         model = SentenceTransformer(model_name)
+        model = model.half()
         print(f"INFO: Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}'...")
         embeddings = model.encode(chunks, show_progress_bar=True)
     
