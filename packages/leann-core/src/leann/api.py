@@ -5,56 +5,104 @@ import numpy as np
 import os
 import json
 from pathlib import Path
-import openai # Import openai library
+import openai
+from dataclasses import dataclass, field
 
-# 一个辅助函数，用于临时计算 embedding
+# --- Helper Functions for Embeddings ---
+
+def _get_openai_client():
+    """Initializes and returns an OpenAI client, ensuring the API key is set."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable not set, which is required for OpenAI models.")
+    return openai.OpenAI(api_key=api_key)
+
+def _is_openai_model(model_name: str) -> bool:
+    """Checks if the model is likely an OpenAI embedding model."""
+    # This is a simple check, can be improved with a more robust list.
+    return "ada" in model_name or "babbage" in model_name or model_name.startswith("text-embedding-")
+
 def _compute_embeddings(chunks: List[str], model_name: str) -> np.ndarray:
-    try:
+    """Computes embeddings for a list of text chunks using either SentenceTransformers or OpenAI."""
+    if _is_openai_model(model_name):
+        print(f"INFO: Computing embeddings for {len(chunks)} chunks using OpenAI model '{model_name}'...")
+        client = _get_openai_client()
+        response = client.embeddings.create(model=model_name, input=chunks)
+        embeddings = [item.embedding for item in response.data]
+    else:
         from sentence_transformers import SentenceTransformer
         model = SentenceTransformer(model_name)
-        print(f"INFO: Computing embeddings for {len(chunks)} chunks using '{model_name}'...")
+        print(f"INFO: Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}'...")
         embeddings = model.encode(chunks, show_progress_bar=True)
-        return np.asarray(embeddings, dtype=np.float32)
-    except ImportError:
-        print("WARNING: sentence-transformers not installed. Falling back to random embeddings.")
-        # 如果没有安装，则生成随机向量用于测试
-        # TODO: 应该从一个固定的地方获取维度信息
-        return np.random.rand(len(chunks), 768).astype(np.float32)
+    
+    return np.asarray(embeddings, dtype=np.float32)
 
+def _get_embedding_dimensions(model_name: str) -> int:
+    """Gets the embedding dimensions for a given model."""
+    print(f"INFO: Calculating dimensions for model '{model_name}'...")
+    if _is_openai_model(model_name):
+        client = _get_openai_client()
+        response = client.embeddings.create(model=model_name, input=["dummy text"])
+        return len(response.data[0].embedding)
+    else:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer(model_name)
+        dimension = model.get_sentence_embedding_dimension()
+        if dimension is None:
+            raise ValueError(f"Model '{model_name}' does not have a valid embedding dimension.")
+        return dimension
+
+
+@dataclass
+class SearchResult:
+    """Represents a single search result."""
+    id: int
+    score: float
+    text: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+# --- Core Classes ---
 
 class LeannBuilder:
     """
-    负责构建 Leann 索引的上层 API。
-    它协调 embedding 计算和后端索引构建。
+    The builder is responsible for building the index, it will compute the embeddings and then build the index.
+    It will also save the metadata of the index.
     """
-    def __init__(self, backend_name: str, embedding_model: str = "sentence-transformers/all-mpnet-base-v2", **backend_kwargs):
+    def __init__(self, backend_name: str, embedding_model: str = "sentence-transformers/all-mpnet-base-v2", dimensions: Optional[int] = None, **backend_kwargs):
         self.backend_name = backend_name
-        self.backend_factory = BACKEND_REGISTRY.get(backend_name)
-        if self.backend_factory is None:
+        backend_factory: LeannBackendFactoryInterface | None = BACKEND_REGISTRY.get(backend_name)
+        if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found or not registered.")
-        
+        self.backend_factory = backend_factory
+
         self.embedding_model = embedding_model
+        self.dimensions = dimensions
         self.backend_kwargs = backend_kwargs
         self.chunks: List[Dict[str, Any]] = []
         print(f"INFO: LeannBuilder initialized with '{backend_name}' backend.")
 
     def add_text(self, text: str, metadata: Optional[Dict[str, Any]] = None):
-        # 简单的分块逻辑
         self.chunks.append({"text": text, "metadata": metadata or {}})
 
     def build_index(self, index_path: str):
         if not self.chunks:
             raise ValueError("No chunks added. Use add_text() first.")
 
-        # 1. 计算 embedding (这是 leann-core 的职责)
+        if self.dimensions is None:
+            self.dimensions = _get_embedding_dimensions(self.embedding_model)
+            print(f"INFO: Auto-detected dimensions for '{self.embedding_model}': {self.dimensions}")
+
         texts_to_embed = [c["text"] for c in self.chunks]
         embeddings = _compute_embeddings(texts_to_embed, self.embedding_model)
 
-        # 2. 创建 builder 实例并构建索引
-        builder_instance = self.backend_factory.builder(**self.backend_kwargs)
-        builder_instance.build(embeddings, index_path, **self.backend_kwargs)
+        current_backend_kwargs = self.backend_kwargs.copy()
+        current_backend_kwargs['dimensions'] = self.dimensions
+        builder_instance = self.backend_factory.builder(**current_backend_kwargs)
+        
+        build_kwargs = current_backend_kwargs.copy()
+        build_kwargs['chunks'] = self.chunks
+        builder_instance.build(embeddings, index_path, **build_kwargs)
 
-        # 3. 保存 leann 特有的元数据（不包含向量）
         index_dir = Path(index_path).parent
         leann_meta_path = index_dir / f"{Path(index_path).name}.meta.json"
         
@@ -62,6 +110,8 @@ class LeannBuilder:
             "version": "0.1.0",
             "backend_name": self.backend_name,
             "embedding_model": self.embedding_model,
+            "dimensions": self.dimensions,
+            "backend_kwargs": self.backend_kwargs,
             "num_chunks": len(self.chunks),
             "chunks": self.chunks,
         }
@@ -72,7 +122,8 @@ class LeannBuilder:
 
 class LeannSearcher:
     """
-    负责加载索引并执行检索的上层 API。
+    The searcher is responsible for loading the index and performing the search.
+    It will also load the metadata of the index.
     """
     def __init__(self, index_path: str, **backend_kwargs):
         leann_meta_path = Path(index_path).parent / f"{Path(index_path).name}.meta.json"
@@ -89,36 +140,39 @@ class LeannSearcher:
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' (from index file) not found or not registered.")
 
-        # 创建 searcher 实例
-        self.backend_impl = backend_factory.searcher(index_path, **backend_kwargs)
+        final_kwargs = self.meta_data.get("backend_kwargs", {})
+        final_kwargs.update(backend_kwargs)
+        if 'dimensions' not in final_kwargs:
+            final_kwargs['dimensions'] = self.meta_data.get('dimensions')
+
+        self.backend_impl = backend_factory.searcher(index_path, **final_kwargs)
         print(f"INFO: LeannSearcher initialized with '{backend_name}' backend using index '{index_path}'.")
     
     def search(self, query: str, top_k: int = 5, **search_kwargs):
         query_embedding = _compute_embeddings([query], self.embedding_model)
         
-        # 委托给后端的 search 方法
+        search_kwargs['embedding_model'] = self.embedding_model
         results = self.backend_impl.search(query_embedding, top_k, **search_kwargs)
         
-        # 丰富返回结果，加入原始文本和元数据
         enriched_results = []
         for label, dist in zip(results['labels'][0], results['distances'][0]):
             if label < len(self.meta_data['chunks']):
                 chunk_info = self.meta_data['chunks'][label]
-                enriched_results.append({
-                    "id": label,
-                    "score": dist,
-                    "text": chunk_info['text'],
-                    "metadata": chunk_info['metadata']
-                })
+                enriched_results.append(SearchResult(
+                    id=label,
+                    score=dist,
+                    text=chunk_info['text'],
+                    metadata=chunk_info.get('metadata', {})
+                ))
         return enriched_results
 
 
 class LeannChat:
     """
-    封装了 Searcher 和 LLM 的对话式 RAG 接口。
+    The chat is responsible for the conversation with the LLM.
+    It will use the searcher to get the results and then use the LLM to generate the response.
     """
     def __init__(self, index_path: str, backend_name: Optional[str] = None, llm_model: str = "gpt-4o", **kwargs):
-        # 如果用户没有指定后端，尝试从索引元数据中读取
         if backend_name is None:
             leann_meta_path = Path(index_path).parent / f"{Path(index_path).name}.meta.json"
             if not leann_meta_path.exists():
@@ -129,15 +183,6 @@ class LeannChat:
         
         self.searcher = LeannSearcher(index_path, **kwargs)
         self.llm_model = llm_model
-        self.openai_client = None # Lazy load
-
-    def _get_openai_client(self):
-        if self.openai_client is None:
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY environment variable not set.")
-            self.openai_client = openai.OpenAI(api_key=api_key)
-        return self.openai_client
         
     def ask(self, question: str, top_k=5, **kwargs):
         """
@@ -169,15 +214,13 @@ class LeannChat:
         """
 
         results = self.searcher.search(question, top_k=top_k, **kwargs)
-        context = "\n\n".join([r['text'] for r in results])
+        context = "\n\n".join([r.text for r in results])
 
-        # 2. 构建 Prompt
         prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
 
-        # 3. 调用 LLM
         print(f"DEBUG: Calling LLM with prompt: {prompt}...")
         try:
-            client = self._get_openai_client()
+            client = _get_openai_client()
             response = client.chat.completions.create(
                 model=self.llm_model,
                 messages=[

@@ -143,20 +143,16 @@ class DiskannBackend(LeannBackendFactoryInterface):
         path = Path(index_path)
         meta_path = path.parent / f"{path.name}.meta.json"
         if not meta_path.exists():
-             raise FileNotFoundError(f"Leann metadata file not found at {meta_path}. Cannot infer vector dimension for searcher.")
+            raise FileNotFoundError(f"Leann metadata file not found at {meta_path}. Cannot infer vector dimension for searcher.")
+        
         with open(meta_path, 'r') as f:
             meta = json.load(f)
 
-        try:
-            from sentence_transformers import SentenceTransformer
-            model = SentenceTransformer(meta.get("embedding_model"))
-            dimensions = model.get_sentence_embedding_dimension()
-            kwargs['dimensions'] = dimensions
-        except ImportError:
-            raise ImportError("sentence-transformers is required to infer embedding dimensions. Please install it.")
-        except Exception as e:
-            raise RuntimeError(f"Could not load SentenceTransformer model to get dimension: {e}")
-
+        dimensions = meta.get("dimensions")
+        if not dimensions:
+            raise ValueError("Dimensions not found in Leann metadata. Please rebuild the index with a newer version of Leann.")
+        
+        kwargs['dimensions'] = dimensions
         return DiskannSearcher(index_path, **kwargs)
 
 class DiskannBuilder(LeannBackendBuilderInterface):

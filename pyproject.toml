@@ -30,7 +30,8 @@ dependencies = [
     "llama-index>=0.12.44",
     "llama-index-readers-docling",
     "llama-index-node-parser-docling",
-    "ipykernel==6.29.5"
+    "ipykernel==6.29.5",
+    "msgpack>=1.1.1",
 ]
 
 [project.optional-dependencies]
