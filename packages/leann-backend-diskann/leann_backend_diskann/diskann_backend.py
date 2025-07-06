@@ -3,7 +3,7 @@ import os
 import json
 import struct
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Any
 import contextlib
 import threading
 import time
@@ -36,7 +36,7 @@ def chdir(path):
     finally:
         os.chdir(original_dir)
 
-def _write_vectors_to_bin(data: np.ndarray, file_path: str):
+def _write_vectors_to_bin(data: np.ndarray, file_path: Path):
     num_vectors, dim = data.shape
     with open(file_path, 'wb') as f:
         f.write(struct.pack('I', num_vectors))
@@ -67,6 +67,26 @@ class DiskannBuilder(LeannBackendBuilderInterface):
     def __init__(self, **kwargs):
         self.build_params = kwargs
 
+    def _generate_passages_file(self, index_dir: Path, index_prefix: str, **kwargs):
+        """Generate passages file for recompute mode, mirroring HNSW backend."""
+        try:
+            chunks = kwargs.get('chunks', [])
+            if not chunks:
+                print("INFO: No chunks data provided, skipping passages file generation for DiskANN.")
+                return
+            
+            passages_data = {str(node_id): chunk["text"] for node_id, chunk in enumerate(chunks)}
+            
+            passages_file = index_dir / f"{index_prefix}.passages.json"
+            with open(passages_file, 'w', encoding='utf-8') as f:
+                json.dump(passages_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"✅ Generated passages file for recompute mode at '{passages_file}' ({len(passages_data)} passages)")
+            
+        except Exception as e:
+            print(f"💥 ERROR: Failed to generate passages file for DiskANN. Exception: {e}")
+            pass
+
     def build(self, data: np.ndarray, index_path: str, **kwargs):
         path = Path(index_path)
         index_dir = path.parent
@@ -95,6 +115,7 @@ class DiskannBuilder(LeannBackendBuilderInterface):
         num_threads = build_kwargs.get("num_threads", 8)
         pq_disk_bytes = build_kwargs.get("pq_disk_bytes", 0)
         codebook_prefix = ""
+        is_recompute = build_kwargs.get("is_recompute", False)
 
         print(f"INFO: Building DiskANN index for {data.shape[0]} vectors with metric {metric_enum}...")
         
@@ -113,6 +134,8 @@ class DiskannBuilder(LeannBackendBuilderInterface):
                     codebook_prefix
                 )
             print(f"✅ DiskANN index built successfully at '{index_dir / index_prefix}'")
+            if is_recompute:
+                self._generate_passages_file(index_dir, index_prefix, **build_kwargs)
         except Exception as e:
             print(f"💥 ERROR: DiskANN index build failed. Exception: {e}")
             raise
@@ -141,16 +164,17 @@ class DiskannSearcher(LeannBackendSearcherInterface):
             print("WARNING: embedding_model not found in meta.json. Recompute will fail if attempted.")
 
         path = Path(index_path)
-        index_dir = path.parent
-        index_prefix = path.stem
+        self.index_dir = path.parent
+        self.index_prefix = path.stem
         
         num_threads = kwargs.get("num_threads", 8)
         num_nodes_to_cache = kwargs.get("num_nodes_to_cache", 0)
+        self.zmq_port = kwargs.get("zmq_port", 6666)
         
         try:
-            full_index_prefix = str(index_dir / index_prefix)
+            full_index_prefix = str(self.index_dir / self.index_prefix)
             self._index = diskannpy.StaticDiskFloatIndex(
-                metric_enum, full_index_prefix, num_threads, num_nodes_to_cache, 1, "", ""
+                metric_enum, full_index_prefix, num_threads, num_nodes_to_cache, 1, self.zmq_port, "", ""
             )
             self.num_threads = num_threads
             self.embedding_server_manager = EmbeddingServerManager(
@@ -161,7 +185,7 @@ class DiskannSearcher(LeannBackendSearcherInterface):
             print(f"💥 ERROR: Failed to load DiskANN index. Exception: {e}")
             raise
 
-    def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, any]:
+    def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, Any]:
         complexity = kwargs.get("complexity", 256)
         beam_width = kwargs.get("beam_width", 4)
         
@@ -172,23 +196,36 @@ class DiskannSearcher(LeannBackendSearcherInterface):
         prune_ratio = kwargs.get("prune_ratio", 0.0)
         batch_recompute = kwargs.get("batch_recompute", False)
         global_pruning = kwargs.get("global_pruning", False)
+        port = kwargs.get("zmq_port", self.zmq_port)
         
         if recompute_beighbor_embeddings:
             print(f"INFO: DiskANN ZMQ mode enabled - ensuring embedding server is running")
             if not self.embedding_model:
                 raise ValueError("Cannot use recompute_beighbor_embeddings without 'embedding_model' in meta.json.")
-            
-            zmq_port = kwargs.get("zmq_port", 6666)
-            
+
+            passages_file = kwargs.get("passages_file")
+            if not passages_file:
+                potential_passages_file = self.index_dir / f"{self.index_prefix}.passages.json"
+                if potential_passages_file.exists():
+                    passages_file = str(potential_passages_file)
+                    print(f"INFO: Automatically found passages file: {passages_file}")
+
+            if not passages_file:
+                raise RuntimeError(
+                    f"Recompute mode is enabled, but no passages file was found. "
+                    f"A '{self.index_prefix}.passages.json' file should exist in the index directory "
+                    f"'{self.index_dir}'. Ensure you build the index with 'recompute=True'."
+                )
+
             server_started = self.embedding_server_manager.start_server(
-                port=zmq_port,
+                port=self.zmq_port,
                 model_name=self.embedding_model,
-                distance_metric=self.distance_metric
+                distance_metric=self.distance_metric,
+                passages_file=passages_file
             )
             
             if not server_started:
-                print(f"WARNING: Failed to start embedding server, falling back to PQ computation")
-                recompute_beighbor_embeddings = False
+                raise RuntimeError(f"Failed to start DiskANN embedding server on port {self.zmq_port}")
         
         if query.dtype != np.float32:
             query = query.astype(np.float32)
