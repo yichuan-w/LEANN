@@ -3,11 +3,17 @@ Simple demo showing basic leann usage
 Run: uv run python examples/simple_demo.py
 """
 
+import argparse
 from leann import LeannBuilder, LeannSearcher, LeannChat
 
 
 def main():
-    print("=== Leann Simple Demo ===")
+    parser = argparse.ArgumentParser(description="Simple demo of Leann with selectable embedding models.")
+    parser.add_argument("--embedding_model", type=str, default="sentence-transformers/all-mpnet-base-v2",
+                        help="The embedding model to use, e.g., 'sentence-transformers/all-mpnet-base-v2' or 'text-embedding-ada-002'.")
+    args = parser.parse_args()
+
+    print(f"=== Leann Simple Demo with {args.embedding_model} ===")
     print()
     
     # Sample knowledge base
@@ -24,10 +30,11 @@ def main():
     
     print("1. Building index (no embeddings stored)...")
     builder = LeannBuilder(
-        embedding_model="sentence-transformers/all-mpnet-base-v2",
-        prune_ratio=0.7,  # Keep 30% of connections
+        embedding_model=args.embedding_model,
+        backend_name="hnsw",
     )
-    builder.add_chunks(chunks)
+    for chunk in chunks:
+        builder.add_text(chunk)
     builder.build_index("demo_knowledge.leann")
     print()
     
@@ -49,14 +56,7 @@ def main():
             print(f"     Text: {result.text[:100]}...")
         print()
     
-    print("3. Memory stats:")
-    stats = searcher.get_memory_stats()
-    print(f"   Cache size: {stats.embedding_cache_size}")
-    print(f"   Cache memory: {stats.embedding_cache_memory_mb:.1f} MB") 
-    print(f"   Total chunks: {stats.total_chunks}")
-    print()
-    
-    print("4. Interactive chat demo:")
+    print("3. Interactive chat demo:")
     print("   (Note: Requires OpenAI API key for real responses)")
     
     chat = LeannChat("demo_knowledge.leann")
