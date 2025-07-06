@@ -74,8 +74,7 @@ async def main():
     
     query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
     print(f"You: {query}")
-
-    chat_response = chat.ask(query, top_k=20)
+    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True,embedding_model="facebook/contriever")
     print(f"Leann: {chat_response}")
 
 if __name__ == "__main__":

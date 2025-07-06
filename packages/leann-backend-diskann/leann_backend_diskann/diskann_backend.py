@@ -76,8 +76,8 @@ class EmbeddingServerManager:
             self.server_process = subprocess.Popen(
                 command,
                 cwd=project_root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                # stdout=subprocess.PIPE,
+                # stderr=subprocess.PIPE,
                 text=True,
                 encoding='utf-8'
             )
@@ -242,7 +242,7 @@ class DiskannSearcher(LeannBackendSearcherInterface):
             raise
 
     def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, any]:
-        complexity = kwargs.get("complexity", 32)
+        complexity = kwargs.get("complexity", 256)
         beam_width = kwargs.get("beam_width", 4)
         
         USE_DEFERRED_FETCH = kwargs.get("USE_DEFERRED_FETCH", False)
@@ -255,7 +255,7 @@ class DiskannSearcher(LeannBackendSearcherInterface):
         
         if recompute_beighbor_embeddings:
             print(f"INFO: DiskANN ZMQ mode enabled - ensuring embedding server is running")
-            zmq_port = kwargs.get("zmq_port", 5555)
+            zmq_port = kwargs.get("zmq_port", 6666)
             embedding_model = kwargs.get("embedding_model", "sentence-transformers/all-mpnet-base-v2")
             
             if not self.embedding_server_manager.start_server(zmq_port, embedding_model):
