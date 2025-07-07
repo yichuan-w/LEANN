@@ -217,7 +217,12 @@ class LeannChat:
         results = self.searcher.search(question, top_k=top_k, **kwargs)
         context = "\n\n".join([r.text for r in results])
 
-        prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
+        prompt = (
+            "Here is some retrieved context that might help answer your question:\n\n"
+            f"{context}\n\n"
+            f"Question: {question}\n\n"
+            "Please provide the best answer you can based on this context and your knowledge."
+        )
 
         print(f"DEBUG: Calling LLM with prompt: {prompt}...")
         try:

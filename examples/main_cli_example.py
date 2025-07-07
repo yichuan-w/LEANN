@@ -72,6 +72,7 @@ async def main():
     chat = LeannChat(index_path=INDEX_PATH)
     
     query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
+    query = "What is the main idea of RL and give me 5 exapmle of classic RL algorithms?"
     print(f"You: {query}")
     chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True)
     print(f"Leann: {chat_response}")
