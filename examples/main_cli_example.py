@@ -21,17 +21,19 @@ file_extractor: dict[str, BaseReader] = {
     ".pptx": reader, 
     ".pdf": reader,
     ".xlsx": reader,
+    ".txt": reader,
+    ".md": reader,
 }
 node_parser = DoclingNodeParser(
     chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=128)
 )
 print("Loading documents...")
 documents = SimpleDirectoryReader(
-    "examples/data", 
+    "examples/pangu", 
     recursive=True, 
     file_extractor=file_extractor,
     encoding="utf-8",
-    required_exts=[".pdf", ".docx", ".pptx", ".xlsx"]
+    required_exts=[".pdf", ".docx", ".pptx", ".xlsx", ".txt", ".md"]
 ).load_data(show_progress=True)
 print("Documents loaded.")
 all_texts = []
@@ -40,7 +42,7 @@ for doc in documents:
     for node in nodes:
         all_texts.append(node.get_content())
 
-INDEX_DIR = Path("./test_pdf_index")
+INDEX_DIR = Path("./test_pdf_index_pangu")
 INDEX_PATH = str(INDEX_DIR / "pdf_documents.leann")
 
 if not INDEX_DIR.exists():
@@ -50,7 +52,7 @@ if not INDEX_DIR.exists():
 
     # CSR compact mode with recompute
     builder = LeannBuilder(
-        backend_name="diskann",
+        backend_name="hnsw",
         embedding_model="facebook/contriever",
         graph_degree=32, 
         complexity=64,
@@ -73,8 +75,10 @@ async def main():
     
     query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
     query = "What is the main idea of RL and give me 5 exapmle of classic RL algorithms?"
+    query = "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发"
+
     print(f"You: {query}")
-    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True)
+    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True,complexity=32,beam_width=1)
     print(f"Leann: {chat_response}")
 
 if __name__ == "__main__":

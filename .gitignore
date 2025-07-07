@@ -42,6 +42,7 @@ embedding_comparison_results/
 *.ivecs
 *.index
 *.bin
+*.old
 
 read_graph
 analyze_diskann_graph
