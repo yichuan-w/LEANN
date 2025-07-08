@@ -60,6 +60,7 @@ uv sync
 
 **Linux (Ubuntu/Debian):**
 ```bash
+sudo apt-get install libomp-dev
 uv sync
 ```
 
