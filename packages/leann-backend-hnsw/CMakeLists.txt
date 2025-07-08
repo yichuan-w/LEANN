@@ -24,7 +24,8 @@ add_subdirectory(third_party/libzmq)
 # Add cppzmq headers
 include_directories(third_party/cppzmq)
 
-# Configure msgpack-c - disable boost dependency manually
+# Configure msgpack-c - disable boost dependency
+set(MSGPACK_USE_BOOST OFF CACHE BOOL "" FORCE)
 add_compile_definitions(MSGPACK_NO_BOOST)
 include_directories(third_party/msgpack-c/include)
 
