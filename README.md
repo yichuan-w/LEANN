@@ -28,13 +28,15 @@
 ### 🎯 Why Leann?
 
 Traditional RAG systems face a fundamental trade-off:
+
 - **💾 Storage**: Storing embeddings for millions of documents requires massive disk space
 - **🔄 Freshness**: Pre-computed embeddings become stale when documents change
 - **💰 Cost**: Vector databases are expensive to scale
 
 **Leann solves this by:**
+
 - ✅ **Zero embedding storage** - Only graph structure is persisted
-- ✅ **Real-time computation** - Embeddings computed on-demand with ms latency  
+- ✅ **Real-time computation** - Embeddings computed on-demand with ms latency
 - ✅ **Memory efficient** - Runs on consumer hardware (8GB RAM)
 - ✅ **Always fresh** - No stale embeddings, ever
 
@@ -46,6 +48,18 @@ Traditional RAG systems face a fundamental trade-off:
 git clone git@github.com:yichuan520030910320/LEANN-RAG.git leann
 cd leann
 git submodule update --init --recursive
+```
+
+**macOS:**
+```bash
+brew install llvm libomp
+export CC=$(brew --prefix llvm)/bin/clang
+export CXX=$(brew --prefix llvm)/bin/clang++
+uv sync
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
 uv sync
 ```
 
@@ -78,28 +92,20 @@ uv run examples/document_search.py
 **PDF RAG Demo (using LlamaIndex for document parsing and Leann for indexing/search)**
 
 This demo showcases how to build a RAG system for PDF documents using Leann.
-1.  Place your PDF files (and other supported formats like .docx, .pptx, .xlsx) into the `examples/data/` directory.
-2.  Ensure you have an `OPENAI_API_KEY` set in your environment variables or in a `.env` file for the LLM to function.
+
+1. Place your PDF files (and other supported formats like .docx, .pptx, .xlsx) into the `examples/data/` directory.
+2. Ensure you have an `OPENAI_API_KEY` set in your environment variables or in a `.env` file for the LLM to function.
 
 ```bash
 uv run examples/main_cli_example.py
 ```
 
-## ⚙️ Developer Build Instructions (macOS/Linux)
-
-If you are building or modifying the C++ backends (e.g., DiskANN, HNSW), please ensure the following dependencies are installed:
-
-```bash
-brew install boost protobuf zeromq
-```
-
-> On Linux, use your package manager (e.g., `apt install libboost-all-dev protobuf-compiler libprotobuf-dev libzmq3-dev`).
-
 ### Regenerating Protobuf Files
+
 If you modify any `.proto` files (such as `embedding.proto`), or if you see errors about protobuf version mismatch, **regenerate the C++ protobuf files** to match your installed version:
 
 ```bash
-# From the leann/packages/leann-backend-diskann directory:
+cd packages/leann-backend-diskann
 protoc --cpp_out=third_party/DiskANN/include --proto_path=third_party embedding.proto
 protoc --cpp_out=third_party/DiskANN/src --proto_path=third_party embedding.proto
 ```
@@ -109,6 +115,7 @@ This ensures the generated files are compatible with your system's protobuf libr
 ## ✨ Features
 
 ### 🔥 Core Features
+
 - **📊 Multiple Distance Functions**: L2, Cosine, MIPS (Maximum Inner Product Search)
 - **🏗️ Pluggable Backends**: DiskANN, HNSW/FAISS with unified API
 - **🔄 Real-time Embeddings**: Dynamic computation using optimized ZMQ servers
@@ -116,6 +123,7 @@ This ensures the generated files are compatible with your system's protobuf libr
 - **🎯 Graph Pruning**: Advanced techniques for memory-efficient search
 
 ### 🛠️ Technical Highlights
+
 - **Zero-copy operations** for maximum performance
 - **SIMD-optimized** distance computations (AVX2/AVX512)
 - **Async embedding pipeline** with batched processing
@@ -123,6 +131,7 @@ This ensures the generated files are compatible with your system's protobuf libr
 - **Recompute mode** for highest accuracy scenarios
 
 ### 🎨 Developer Experience
+
 - **Simple Python API** - Get started in minutes
 - **Extensible backend system** - Easy to add new algorithms
 - **Comprehensive examples** - From basic usage to production deployment
@@ -132,19 +141,19 @@ This ensures the generated files are compatible with your system's protobuf libr
 
 ### Memory Usage Comparison
 
-| System | 1M Documents | 10M Documents | 100M Documents |
-|--------|-------------|---------------|----------------|
-| Traditional Vector DB | 3.1 GB | 31 GB | 310 GB |
-| **Leann** | **180 MB** | **1.2 GB** | **8.4 GB** |
-| **Reduction** | **94.2%** | **96.1%** | **97.3%** |
+| System                | 1M Documents     | 10M Documents    | 100M Documents   |
+| --------------------- | ---------------- | ---------------- | ---------------- |
+| Traditional Vector DB | 3.1 GB           | 31 GB            | 310 GB           |
+| **Leann**       | **180 MB** | **1.2 GB** | **8.4 GB** |
+| **Reduction**   | **94.2%**  | **96.1%**  | **97.3%**  |
 
 ### Query Performance
 
-| Backend | Index Size | Query Time | Recall@10 |
-|---------|------------|------------|-----------|
-| DiskANN | 1M docs | 12ms | 0.95 |
-| DiskANN + Recompute | 1M docs | 145ms | 0.98 |
-| HNSW | 1M docs | 8ms | 0.93 |
+| Backend             | Index Size | Query Time | Recall@10 |
+| ------------------- | ---------- | ---------- | --------- |
+| DiskANN             | 1M docs    | 12ms       | 0.95      |
+| DiskANN + Recompute | 1M docs    | 145ms      | 0.98      |
+| HNSW                | 1M docs    | 8ms        | 0.93      |
 
 *Benchmarks run on AMD Ryzen 7 with 32GB RAM*
 
@@ -166,26 +175,29 @@ This ensures the generated files are compatible with your system's protobuf libr
 ### Key Components
 
 1. **🧠 Embedding Engine**: Real-time transformer inference with caching
-2. **📊 Graph Index**: Memory-efficient navigation structures  
+2. **📊 Graph Index**: Memory-efficient navigation structures
 3. **🔄 Search Coordinator**: Orchestrates embedding + graph search
 4. **⚡ Backend Adapters**: Pluggable algorithm implementations
 
 ## 🎓 Supported Models & Backends
 
 ### 🤖 Embedding Models
+
 - **sentence-transformers/all-mpnet-base-v2** (default)
 - **sentence-transformers/all-MiniLM-L6-v2** (lightweight)
 - Any HuggingFace sentence-transformer model
 - Custom model support via API
 
-### 🔧 Search Backends  
+### 🔧 Search Backends
+
 - **DiskANN**: Microsoft's billion-scale ANN algorithm
 - **HNSW**: Hierarchical Navigable Small World graphs
 - **Coming soon**: ScaNN, Faiss-IVF, NGT
 
 ### 📏 Distance Functions
+
 - **L2**: Euclidean distance for precise similarity
-- **Cosine**: Angular similarity for normalized vectors  
+- **Cosine**: Angular similarity for normalized vectors
 - **MIPS**: Maximum Inner Product Search for recommendation systems
 
 ## 🔬 Paper
@@ -209,6 +221,7 @@ If you find Leann useful, please cite:
 ## 🌍 Use Cases
 
 ### 💼 Enterprise RAG
+
 ```python
 # Handle millions of documents with limited resources
 builder = LeannBuilder(
@@ -219,7 +232,8 @@ builder = LeannBuilder(
 )
 ```
 
-### 🔬 Research & Experimentation  
+### 🔬 Research & Experimentation
+
 ```python
 # Quick prototyping with different algorithms
 for backend in ["diskann", "hnsw"]:
@@ -228,6 +242,7 @@ for backend in ["diskann", "hnsw"]:
 ```
 
 ### 🚀 Real-time Applications
+
 ```python
 # Sub-second response times
 chat = LeannChat("knowledge.leann")
@@ -240,6 +255,7 @@ response = chat.ask("What is quantum computing?")
 We welcome contributions! Leann is built by the community, for the community.
 
 ### Ways to Contribute
+
 - 🐛 **Bug Reports**: Found an issue? Let us know!
 - 💡 **Feature Requests**: Have an idea? We'd love to hear it!
 - 🔧 **Code Contributions**: PRs welcome for all skill levels
@@ -247,14 +263,17 @@ We welcome contributions! Leann is built by the community, for the community.
 - 🧪 **Benchmarks**: Share your performance results
 
 ### Development Setup
+
 ```bash
-git clone https://github.com/yourname/leann
+git clone git@github.com:yichuan520030910320/LEANN-RAG.git leann
 cd leann
+git submodule update --init --recursive
 uv sync --dev
 uv run pytest tests/
 ```
 
 ### Quick Tests
+
 ```bash
 # Sanity check all distance functions
 uv run python tests/sanity_checks/test_distance_functions.py
@@ -262,17 +281,21 @@ uv run python tests/sanity_checks/test_distance_functions.py
 # Verify L2 implementation
 uv run python tests/sanity_checks/test_l2_verification.py
 ```
+
 ## ❓ FAQ
 
 ### Common Issues
 
 #### NCCL Topology Error
+
 **Problem**: You encounter `ncclTopoComputePaths` error during document processing:
+
 ```
 ncclTopoComputePaths (system=<optimized out>, comm=comm@entry=0x5555a82fa3c0) at graph/paths.cc:688
 ```
 
 **Solution**: Set these environment variables before running your script:
+
 ```bash
 export NCCL_TOPO_DUMP_FILE=/tmp/nccl_topo.xml
 export NCCL_DEBUG=INFO
@@ -285,18 +308,21 @@ export NCCL_SOCKET_IFNAME=ens5
 ## 📈 Roadmap
 
 ### 🎯 Q1 2024
-- [x] DiskANN backend with MIPS/L2/Cosine support
-- [x] HNSW backend integration  
-- [x] Real-time embedding pipeline
-- [x] Memory-efficient graph pruning
+
+- [X] DiskANN backend with MIPS/L2/Cosine support
+- [X] HNSW backend integration
+- [X] Real-time embedding pipeline
+- [X] Memory-efficient graph pruning
 
 ### 🚀 Q2 2024
+
 - [ ] Distributed search across multiple nodes
 - [ ] ScaNN backend support
 - [ ] Advanced caching strategies
 - [ ] Kubernetes deployment guides
 
 ### 🌟 Q3 2024
+
 - [ ] GPU-accelerated embedding computation
 - [ ] Approximate distance functions
 - [ ] Integration with LangChain/LlamaIndex
@@ -318,7 +344,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## 🙏 Acknowledgments
 
 - **Microsoft Research** for the DiskANN algorithm
-- **Meta AI** for FAISS and optimization insights  
+- **Meta AI** for FAISS and optimization insights
 - **HuggingFace** for the transformer ecosystem
 - **Our amazing contributors** who make this possible
 
@@ -331,3 +357,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 <p align="center">
   Made with ❤️ by the Leann team
 </p>
+
