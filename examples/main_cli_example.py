@@ -25,7 +25,7 @@ file_extractor: dict[str, BaseReader] = {
     ".md": reader,
 }
 node_parser = DoclingNodeParser(
-    chunker=HybridChunker(tokenizer="Qwen/Qwen3-Embedding-4B", max_tokens=128)
+    chunker=HybridChunker(tokenizer="facebook/contriever", max_tokens=128)
 )
 print("Loading documents...")
 documents = SimpleDirectoryReader(

@@ -8,6 +8,7 @@ demo/indices/
 *pycache*
 outputs/
 *.pkl
+*.pdf
 .history/
 scripts/
 lm_eval.egg-info/

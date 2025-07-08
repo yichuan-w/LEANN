@@ -85,6 +85,27 @@ This demo showcases how to build a RAG system for PDF documents using Leann.
 uv run examples/main_cli_example.py
 ```
 
+## ⚙️ Developer Build Instructions (macOS/Linux)
+
+If you are building or modifying the C++ backends (e.g., DiskANN, HNSW), please ensure the following dependencies are installed:
+
+```bash
+brew install boost protobuf zeromq
+```
+
+> On Linux, use your package manager (e.g., `apt install libboost-all-dev protobuf-compiler libprotobuf-dev libzmq3-dev`).
+
+### Regenerating Protobuf Files
+If you modify any `.proto` files (such as `embedding.proto`), or if you see errors about protobuf version mismatch, **regenerate the C++ protobuf files** to match your installed version:
+
+```bash
+# From the leann/packages/leann-backend-diskann directory:
+protoc --cpp_out=third_party/DiskANN/include --proto_path=third_party embedding.proto
+protoc --cpp_out=third_party/DiskANN/src --proto_path=third_party embedding.proto
+```
+
+This ensures the generated files are compatible with your system's protobuf library.
+
 ## ✨ Features
 
 ### 🔥 Core Features
@@ -259,7 +280,7 @@ export NCCL_DEBUG_SUBSYS=INIT,GRAPH
 export NCCL_IB_DISABLE=1
 export NCCL_NET_PLUGIN=none
 export NCCL_SOCKET_IFNAME=ens5
-
+```
 
 ## 📈 Roadmap
 
