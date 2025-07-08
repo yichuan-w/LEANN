@@ -52,7 +52,7 @@ git submodule update --init --recursive
 
 **macOS:**
 ```bash
-brew install llvm libomp
+brew install llvm libomp boost protobuf
 export CC=$(brew --prefix llvm)/bin/clang
 export CXX=$(brew --prefix llvm)/bin/clang++
 uv sync
@@ -60,7 +60,7 @@ uv sync
 
 **Linux (Ubuntu/Debian):**
 ```bash
-sudo apt-get install libomp-dev
+sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev libmkl-full-dev libaio-dev
 uv sync
 ```
 
