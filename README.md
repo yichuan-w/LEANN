@@ -90,6 +90,12 @@ for result in results:
 uv run examples/document_search.py
 ```
 
+or you want to use python 
+
+```bash
+source .venv/bin/activate
+python ./examples/main_cli_example.py
+```
 **PDF RAG Demo (using LlamaIndex for document parsing and Leann for indexing/search)**
 
 This demo showcases how to build a RAG system for PDF documents using Leann.

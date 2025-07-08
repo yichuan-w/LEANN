@@ -7,7 +7,6 @@ from llama_index.node_parser.docling import DoclingNodeParser
 from llama_index.readers.docling import DoclingReader
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 import asyncio
-import os
 import dotenv
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
 import shutil
@@ -42,7 +41,7 @@ for doc in documents:
     for node in nodes:
         all_texts.append(node.get_content())
 
-INDEX_DIR = Path("./test_pdf_index_pangu_hnsw")
+INDEX_DIR = Path("./test_pdf_index_pangu_test")
 INDEX_PATH = str(INDEX_DIR / "pdf_documents.leann")
 
 if not INDEX_DIR.exists():
@@ -50,14 +49,15 @@ if not INDEX_DIR.exists():
     
     print(f"\n[PHASE 1] Building Leann index...")
 
-    # CSR compact mode with recompute
+    # Use HNSW backend for better macOS compatibility
     builder = LeannBuilder(
-        backend_name="diskann",
+        backend_name="hnsw",
         embedding_model="facebook/contriever",
         graph_degree=32, 
         complexity=64,
         is_compact=True,
-        is_recompute=True
+        is_recompute=True,
+        num_threads=1  # Force single-threaded mode
     )
 
     print(f"Loaded {len(all_texts)} text chunks from documents.")
