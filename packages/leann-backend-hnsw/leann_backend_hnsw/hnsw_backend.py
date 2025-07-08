@@ -330,7 +330,7 @@ class HNSWSearcher(LeannBackendSearcherInterface):
         """Search using HNSW index with optional recompute functionality"""
         from . import faiss
         
-        ef = kwargs.get("ef", 200)
+        ef = kwargs.get("complexity", 200)
         
         if self.is_pruned:
             print(f"INFO: Index is pruned - ensuring embedding server is running for recompute.")

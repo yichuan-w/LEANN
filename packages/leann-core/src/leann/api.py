@@ -1,3 +1,4 @@
+import torch
 from .registry import BACKEND_REGISTRY
 from .interface import LeannBackendFactoryInterface
 from typing import List, Dict, Any, Optional
@@ -34,6 +35,12 @@ def _compute_embeddings(chunks: List[str], model_name: str) -> np.ndarray:
         model = SentenceTransformer(model_name)
         model = model.half()
         print(f"INFO: Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}'...")
+        # use acclerater GPU or MAC GPU
+        import torch
+        if torch.cuda.is_available():
+            model = model.to("cuda")
+        elif torch.backends.mps.is_available():
+            model = model.to("mps")
         embeddings = model.encode(chunks, show_progress_bar=True)
     
     return np.asarray(embeddings, dtype=np.float32)

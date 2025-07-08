@@ -29,7 +29,7 @@ node_parser = DoclingNodeParser(
 )
 print("Loading documents...")
 documents = SimpleDirectoryReader(
-    "examples/pangu", 
+    "examples/data", 
     recursive=True, 
     file_extractor=file_extractor,
     encoding="utf-8",
@@ -42,7 +42,7 @@ for doc in documents:
     for node in nodes:
         all_texts.append(node.get_content())
 
-INDEX_DIR = Path("./test_pdf_index_pangu")
+INDEX_DIR = Path("./test_pdf_index_pangu_hnsw")
 INDEX_PATH = str(INDEX_DIR / "pdf_documents.leann")
 
 if not INDEX_DIR.exists():
@@ -52,7 +52,7 @@ if not INDEX_DIR.exists():
 
     # CSR compact mode with recompute
     builder = LeannBuilder(
-        backend_name="hnsw",
+        backend_name="diskann",
         embedding_model="facebook/contriever",
         graph_degree=32, 
         complexity=64,
