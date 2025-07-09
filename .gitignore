@@ -14,6 +14,9 @@ scripts/
 lm_eval.egg-info/
 demo/experiment_results/**/*.json
 *.jsonl
+*.eml
+*.emlx
+*.json
 *.sh
 *.txt
 !CMakeLists.txt
