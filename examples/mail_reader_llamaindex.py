@@ -122,10 +122,15 @@ def create_and_save_index(mail_path: str, save_dir: str = "mail_index_embedded",
     # Create text splitter with small chunk size (no metadata constraints)
     text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=25)
     
-    # Create index
+    # Create index with Facebook Contriever embedding model
+    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+    
+    embed_model = HuggingFaceEmbedding(model_name="facebook/contriever")
+    
     index = VectorStoreIndex.from_documents(
         documents,
-        transformations=[text_splitter]
+        transformations=[text_splitter],
+        embed_model=embed_model
     )
     
     # Save the index
