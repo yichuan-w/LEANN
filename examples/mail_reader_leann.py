@@ -100,7 +100,7 @@ async def query_leann_index(index_path: str, query: str):
 async def main():
     mail_path = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data/9/Messages"
     
-    INDEX_DIR = Path("./mail_index_leann")
+    INDEX_DIR = Path("./mail_index_leann_raw_text")
     INDEX_PATH = str(INDEX_DIR / "mail_documents.leann")
     
     # Create or load the LEANN index
@@ -110,7 +110,9 @@ async def main():
         # Example queries
         queries = [
             "Hows Berkeley Graduate Student Instructor",
-            "how's the icloud related advertisement saying"
+            "how's the icloud related advertisement saying",
+            "Whats the number of class recommend to take per semester for incoming EECS students"
+
         ]
         
         for query in queries:
