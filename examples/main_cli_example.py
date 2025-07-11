@@ -1,6 +1,7 @@
 import faulthandler
 faulthandler.enable()
 
+import argparse
 from llama_index.core import SimpleDirectoryReader, Settings
 from llama_index.core.readers.base import BaseReader
 from llama_index.node_parser.docling import DoclingNodeParser
@@ -50,7 +51,7 @@ if not INDEX_DIR.exists():
 
     # CSR compact mode with recompute
     builder = LeannBuilder(
-        backend_name="diskann",
+        backend_name="hnsw",
         embedding_model="facebook/contriever",
         graph_degree=32, 
         complexity=64,
@@ -67,14 +68,27 @@ if not INDEX_DIR.exists():
 else:
     print(f"--- Using existing index at {INDEX_DIR} ---")
 
-async def main():
+async def main(args):
     print(f"\n[PHASE 2] Starting Leann chat session...")
-    chat = LeannChat(index_path=INDEX_PATH)
+    
+    llm_config = {
+        "type": args.llm,
+        "model": args.model,
+        "host": args.host
+    }
+
+    chat = LeannChat(index_path=INDEX_PATH, llm_config=llm_config)
     
     query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
     print(f"You: {query}")
-    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True)
+    chat_response = chat.ask(query, top_k=3, recompute_beighbor_embeddings=True)
     print(f"Leann: {chat_response}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Run Leann Chat with various LLM backends.")
+    parser.add_argument("--llm", type=str, default="hf", choices=["simulated", "ollama", "hf"], help="The LLM backend to use.")
+    parser.add_argument("--model", type=str, default='meta-llama/Llama-3.2-3B-Instruct', help="The model name to use (e.g., 'llama3:8b' for ollama, 'deepseek-ai/deepseek-llm-7b-chat' for hf).")
+    parser.add_argument("--host", type=str, default="http://localhost:11434", help="The host for the Ollama API.")
+    args = parser.parse_args()
+
+    asyncio.run(main(args))
