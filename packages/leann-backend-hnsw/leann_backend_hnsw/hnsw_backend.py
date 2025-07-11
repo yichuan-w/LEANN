@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import json
-import struct
 from pathlib import Path
 from typing import Dict, Any, List
 import contextlib
@@ -161,83 +160,19 @@ class HNSWBuilder(LeannBackendBuilderInterface):
 
 
 class HNSWSearcher(LeannBackendSearcherInterface):
-    def _get_index_storage_status(self, index_file: Path) -> tuple[bool, bool]:
+    def _get_index_storage_status_from_meta(self) -> tuple[bool, bool]:
         """
-        Robustly determines the index's storage status by parsing the file.
+        Get storage status from metadata with sensible defaults.
         
         Returns:
             A tuple (is_compact, is_pruned).
         """
-        if not index_file.exists():
-            return False, False
+        # Check if metadata has these flags
+        is_compact = self.meta.get('is_compact', True)  # Default to compact (CSR format)
+        is_pruned = self.meta.get('is_pruned', True)    # Default to pruned (embeddings removed)
         
-        with open(index_file, 'rb') as f:
-            try:
-                def read_struct(fmt):
-                    size = struct.calcsize(fmt)
-                    data = f.read(size)
-                    if len(data) != size:
-                        raise EOFError(f"File ended unexpectedly reading struct fmt '{fmt}'.")
-                    return struct.unpack(fmt, data)[0]
-
-                def skip_vector(element_size):
-                    count = read_struct('<Q')
-                    f.seek(count * element_size, 1)
-
-                # 1. Read up to the compact flag
-                read_struct('<I'); read_struct('<i'); read_struct('<q'); 
-                read_struct('<q'); read_struct('<q'); read_struct('<?')
-                metric_type = read_struct('<i')
-                if metric_type > 1: read_struct('<f')
-                skip_vector(8); skip_vector(4); skip_vector(4)
-                
-                # 2. Check if there's a compact flag byte
-                # Try to read the compact flag, but handle both old and new formats
-                pos_before_compact = f.tell()
-                try:
-                    is_compact = read_struct('<?')
-                    print(f"INFO: Detected is_compact flag as: {is_compact}")
-                except (EOFError, struct.error):
-                    # Old format without compact flag - assume non-compact
-                    f.seek(pos_before_compact)
-                    is_compact = False
-                    print(f"INFO: No compact flag found, assuming is_compact=False")
-
-                # 3. Read storage FourCC to determine if pruned
-                is_pruned = False
-                try:
-                    if is_compact:
-                        # For compact, we need to skip pointers and scalars to get to the storage FourCC
-                        skip_vector(8) # level_ptr
-                        skip_vector(8) # node_offsets
-                        read_struct('<i'); read_struct('<i'); read_struct('<i');
-                        read_struct('<i'); read_struct('<i')
-                        storage_fourcc = read_struct('<I')
-                    else:
-                        # For non-compact, we need to read the flag probe, then skip offsets and neighbors
-                        pos_before_probe = f.tell()
-                        flag_byte = f.read(1)
-                        if not (flag_byte and flag_byte == b'\x00'):
-                            f.seek(pos_before_probe)
-                        skip_vector(8); skip_vector(4) # offsets, neighbors
-                        read_struct('<i'); read_struct('<i'); read_struct('<i');
-                        read_struct('<i'); read_struct('<i')
-                        # Now we are at the storage. The entire rest is storage blob.
-                        storage_fourcc = struct.unpack('<I', f.read(4))[0]
-                        
-                    NULL_INDEX_FOURCC = int.from_bytes(b'null', 'little')
-                    if storage_fourcc == NULL_INDEX_FOURCC:
-                        is_pruned = True
-                except (EOFError, struct.error):
-                    # Cannot determine pruning status, assume not pruned
-                    pass
-                
-                print(f"INFO: Detected is_pruned as: {is_pruned}")
-                return is_compact, is_pruned
-
-            except (EOFError, struct.error) as e:
-                print(f"WARNING: Could not parse index file to detect format: {e}. Assuming standard, not pruned.")
-                return False, False
+        print(f"INFO: Storage status from metadata: is_compact={is_compact}, is_pruned={is_pruned}")
+        return is_compact, is_pruned
 
     def __init__(self, index_path: str, **kwargs):
         from . import faiss
@@ -258,6 +193,10 @@ class HNSWSearcher(LeannBackendSearcherInterface):
         if not self.embedding_model:
             print("WARNING: embedding_model not found in meta.json. Recompute will fail if attempted.")
 
+        # Check for embedding model override (not allowed)
+        if 'embedding_model' in kwargs and kwargs['embedding_model'] != self.embedding_model:
+            raise ValueError(f"Embedding model override not allowed. Index uses '{self.embedding_model}', but got '{kwargs['embedding_model']}'")
+
         path = Path(index_path)
         self.index_dir = path.parent
         self.index_prefix = path.stem
@@ -274,7 +213,14 @@ class HNSWSearcher(LeannBackendSearcherInterface):
         if not index_file.exists():
             raise FileNotFoundError(f"HNSW index file not found at {index_file}")
 
-        self.is_compact, self.is_pruned = self._get_index_storage_status(index_file)
+        # Get storage status from metadata with user overrides
+        self.is_compact, self.is_pruned = self._get_index_storage_status_from_meta()
+        
+        # Allow override of storage parameters via kwargs
+        if 'is_compact' in kwargs:
+            self.is_compact = kwargs['is_compact']
+        if 'is_pruned' in kwargs:
+            self.is_pruned = kwargs['is_pruned']
         
         # Validate configuration constraints
         if not self.is_compact and kwargs.get("is_skip_neighbors", False):
@@ -315,7 +261,7 @@ class HNSWSearcher(LeannBackendSearcherInterface):
         """Search using HNSW index with optional recompute functionality"""
         from . import faiss
         
-        ef = kwargs.get("ef", 200)
+        ef = kwargs.get("ef", 128)
         
         if self.is_pruned:
             print(f"INFO: Index is pruned - ensuring embedding server is running for recompute.")
@@ -324,13 +270,13 @@ class HNSWSearcher(LeannBackendSearcherInterface):
 
             passages_file = kwargs.get("passages_file")
             if not passages_file:
-                # Get the passages file path from meta.json
-                if 'passage_sources' in self.meta and self.meta['passage_sources']:
-                    passage_source = self.meta['passage_sources'][0]
-                    passages_file = passage_source['path']
-                    print(f"INFO: Found passages file from metadata: {passages_file}")
+                # Pass the metadata file instead of a single passage file
+                meta_file_path = self.index_dir / f"{self.index_prefix}.index.meta.json"
+                if meta_file_path.exists():
+                    passages_file = str(meta_file_path)
+                    print(f"INFO: Using metadata file for lazy loading: {passages_file}")
                 else:
-                    raise RuntimeError(f"FATAL: Index is pruned but no passage_sources found in metadata.")
+                    raise RuntimeError(f"FATAL: Index is pruned but metadata file not found: {meta_file_path}")
 
             zmq_port = kwargs.get("zmq_port", 5557)
             server_started = self.embedding_server_manager.start_server(
@@ -351,9 +297,11 @@ class HNSWSearcher(LeannBackendSearcherInterface):
             faiss.normalize_L2(query)
         
         try:
+            self._index.hnsw.efSearch = ef
             params = faiss.SearchParametersHNSW()
-            params.efSearch = ef
             params.zmq_port = kwargs.get("zmq_port", self.zmq_port)
+            params.efSearch = ef
+            params.beam_size = 2  # Match research system beam_size
             
             batch_size = query.shape[0]
             distances = np.empty((batch_size, top_k), dtype=np.float32)
@@ -361,15 +309,27 @@ class HNSWSearcher(LeannBackendSearcherInterface):
             
             self._index.search(query.shape[0], faiss.swig_ptr(query), top_k, faiss.swig_ptr(distances), faiss.swig_ptr(labels), params)
             
+            # 🐛 DEBUG: Print raw faiss results before conversion
+            print(f"🔍 DEBUG HNSW Search Results:")
+            print(f"  Query shape: {query.shape}")
+            print(f"  Top_k: {top_k}")
+            print(f"  Raw faiss indices: {labels[0] if len(labels) > 0 else 'No results'}")
+            print(f"  Raw faiss distances: {distances[0] if len(distances) > 0 else 'No results'}")
+            
             # Convert integer labels to string IDs
             string_labels = []
-            for batch_labels in labels:
+            for batch_idx, batch_labels in enumerate(labels):
                 batch_string_labels = []
-                for int_label in batch_labels:
+                print(f"  Batch {batch_idx} conversion:")
+                for i, int_label in enumerate(batch_labels):
                     if int_label in self.label_map:
-                        batch_string_labels.append(self.label_map[int_label])
+                        string_id = self.label_map[int_label]
+                        batch_string_labels.append(string_id)
+                        print(f"    faiss[{int_label}] -> passage_id '{string_id}' (distance: {distances[batch_idx][i]:.4f})")
                     else:
-                        batch_string_labels.append(f"unknown_{int_label}")
+                        unknown_id = f"unknown_{int_label}"
+                        batch_string_labels.append(unknown_id)
+                        print(f"    faiss[{int_label}] -> {unknown_id} (NOT FOUND in label_map!)")
                 string_labels.append(batch_string_labels)
             
             return {"labels": string_labels, "distances": distances}

@@ -73,15 +73,17 @@ class EmbeddingServerManager:
             self.server_process = subprocess.Popen(
                 command,
                 cwd=project_root,
-                # stdout=subprocess.PIPE,
-                # stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Merge stderr into stdout for easier monitoring
                 text=True,
-                encoding='utf-8'
+                encoding='utf-8',
+                bufsize=1,  # Line buffered
+                universal_newlines=True
             )
             self.server_port = port
             print(f"INFO: Server process started with PID: {self.server_process.pid}")
 
-            max_wait, wait_interval = 30, 0.5
+            max_wait, wait_interval = 120, 0.5
             for _ in range(int(max_wait / wait_interval)):
                 if _check_port(port):
                     print(f"✅ Embedding server is up and ready for this session.")
@@ -90,7 +92,7 @@ class EmbeddingServerManager:
                     return True
                 if self.server_process.poll() is not None:
                     print("❌ ERROR: Server process terminated unexpectedly during startup.")
-                    self._log_monitor()
+                    self._print_recent_output()
                     return False
                 time.sleep(wait_interval)
 
@@ -102,19 +104,32 @@ class EmbeddingServerManager:
             print(f"❌ ERROR: Failed to start embedding server process: {e}")
             return False
 
+    def _print_recent_output(self):
+        """Print any recent output from the server process."""
+        if not self.server_process or not self.server_process.stdout:
+            return
+        try:
+            # Read any available output
+            import select
+            import sys
+            if select.select([self.server_process.stdout], [], [], 0)[0]:
+                output = self.server_process.stdout.read()
+                if output:
+                    print(f"[{self.backend_module_name} OUTPUT]: {output}")
+        except Exception as e:
+            print(f"Error reading server output: {e}")
+
     def _log_monitor(self):
         """Monitors and prints the server's stdout and stderr."""
         if not self.server_process:
             return
         try:
             if self.server_process.stdout:
-                for line in iter(self.server_process.stdout.readline, ''):
-                    print(f"[{self.backend_module_name} LOG]: {line.strip()}")
-                self.server_process.stdout.close()
-            if self.server_process.stderr:
-                for line in iter(self.server_process.stderr.readline, ''):
-                    print(f"[{self.backend_module_name} ERROR]: {line.strip()}")
-                self.server_process.stderr.close()
+                while True:
+                    line = self.server_process.stdout.readline()
+                    if not line:
+                        break
+                    print(f"[{self.backend_module_name} LOG]: {line.strip()}", flush=True)
         except Exception as e:
             print(f"Log monitor error: {e}")
 

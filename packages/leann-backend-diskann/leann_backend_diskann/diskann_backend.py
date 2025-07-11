@@ -141,9 +141,9 @@ class DiskannSearcher(LeannBackendSearcherInterface):
         if not self.embedding_model:
             print("WARNING: embedding_model not found in meta.json. Recompute will fail if attempted.")
 
-        path = Path(index_path)
-        self.index_dir = path.parent
-        self.index_prefix = path.stem
+        self.index_path = Path(index_path)
+        self.index_dir = self.index_path.parent
+        self.index_prefix = self.index_path.stem
         
         # Load the label map
         label_map_file = self.index_dir / "leann.labels.map"
@@ -199,13 +199,13 @@ class DiskannSearcher(LeannBackendSearcherInterface):
 
             passages_file = kwargs.get("passages_file")
             if not passages_file:
-                # Get the passages file path from meta.json
-                if 'passage_sources' in self.meta and self.meta['passage_sources']:
-                    passage_source = self.meta['passage_sources'][0]
-                    passages_file = passage_source['path']
-                    print(f"INFO: Found passages file from metadata: {passages_file}")
+                # Pass the metadata file instead of a single passage file
+                meta_file_path = self.index_path.parent / f"{self.index_path.name}.meta.json"
+                if meta_file_path.exists():
+                    passages_file = str(meta_file_path)
+                    print(f"INFO: Using metadata file for lazy loading: {passages_file}")
                 else:
-                    raise RuntimeError(f"FATAL: Recompute mode enabled but no passage_sources found in metadata.")
+                    raise RuntimeError(f"FATAL: Recompute mode enabled but metadata file not found: {meta_file_path}")
 
             server_started = self.embedding_server_manager.start_server(
                 port=self.zmq_port,

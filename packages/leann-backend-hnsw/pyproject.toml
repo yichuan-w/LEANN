@@ -1,4 +1,4 @@
-# 文件: packages/leann-backend-hnsw/pyproject.toml
+# packages/leann-backend-hnsw/pyproject.toml
 
 [build-system]
 requires = ["scikit-build-core>=0.10", "numpy", "swig"]
@@ -10,7 +10,6 @@ version = "0.1.0"
 description = "Custom-built HNSW (Faiss) backend for the Leann toolkit."
 dependencies = ["leann-core==0.1.0", "numpy"]
 
-# 回归到最标准的 scikit-build-core 配置
 [tool.scikit-build]
 wheel.packages = ["leann_backend_hnsw"]
 editable.mode = "redirect"

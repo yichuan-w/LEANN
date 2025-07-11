@@ -39,6 +39,71 @@ class SimplePassageLoader:
     def __len__(self) -> int:
         return len(self.passages_data)
 
+def load_passages_from_metadata(meta_file: str) -> SimplePassageLoader:
+    """
+    Load passages using metadata file with PassageManager for lazy loading
+    """
+    # Load metadata to get passage sources
+    with open(meta_file, 'r') as f:
+        meta = json.load(f)
+    
+    # Import PassageManager dynamically to avoid circular imports
+    import sys
+    from pathlib import Path
+    
+    # Find the leann package directory relative to this file
+    current_dir = Path(__file__).parent
+    leann_core_path = current_dir.parent.parent / "leann-core" / "src"
+    sys.path.insert(0, str(leann_core_path))
+    
+    try:
+        from leann.api import PassageManager
+        passage_manager = PassageManager(meta['passage_sources'])
+    finally:
+        sys.path.pop(0)
+    
+    # Load label map 
+    passages_dir = Path(meta_file).parent
+    label_map_file = passages_dir / "leann.labels.map"
+    
+    if label_map_file.exists():
+        import pickle
+        with open(label_map_file, 'rb') as f:
+            label_map = pickle.load(f)
+        print(f"Loaded label map with {len(label_map)} entries")
+    else:
+        raise FileNotFoundError(f"Label map file not found: {label_map_file}")
+    
+    print(f"Initialized lazy passage loading for {len(label_map)} passages")
+    
+    class LazyPassageLoader(SimplePassageLoader):
+        def __init__(self, passage_manager, label_map):
+            self.passage_manager = passage_manager
+            self.label_map = label_map
+            # Initialize parent with empty data
+            super().__init__({})
+        
+        def __getitem__(self, passage_id: Union[str, int]) -> Dict[str, str]:
+            """Get passage by ID with lazy loading"""
+            try:
+                int_id = int(passage_id)
+                if int_id in self.label_map:
+                    string_id = self.label_map[int_id]
+                    passage_data = self.passage_manager.get_passage(string_id)
+                    if passage_data and passage_data.get("text"):
+                        return {"text": passage_data["text"]}
+                    else:
+                        raise RuntimeError(f"FATAL: Empty text for ID {int_id} -> {string_id}")
+                else:
+                    raise RuntimeError(f"FATAL: ID {int_id} not found in label_map")
+            except Exception as e:
+                raise RuntimeError(f"FATAL: Exception getting passage {passage_id}: {e}")
+        
+        def __len__(self) -> int:
+            return len(self.label_map)
+    
+    return LazyPassageLoader(passage_manager, label_map)
+
 def load_passages_from_file(passages_file: str) -> SimplePassageLoader:
     """
     Load passages from a JSONL file with label map support
@@ -140,7 +205,21 @@ def create_embedding_server_thread(
 
         # Load passages from file if provided
         if passages_file and os.path.exists(passages_file):
-            passages = load_passages_from_file(passages_file)
+            # Check if it's a metadata file or a single passages file
+            if passages_file.endswith('.meta.json'):
+                passages = load_passages_from_metadata(passages_file)
+            else:
+                # Try to find metadata file in same directory
+                from pathlib import Path
+                passages_dir = Path(passages_file).parent
+                meta_files = list(passages_dir.glob("*.meta.json"))
+                if meta_files:
+                    print(f"Found metadata file: {meta_files[0]}, using lazy loading")
+                    passages = load_passages_from_metadata(str(meta_files[0]))
+                else:
+                    # Fallback to original single file loading (will cause warnings)
+                    print("WARNING: No metadata file found, using single file loading (may cause missing passage warnings)")
+                    passages = load_passages_from_file(passages_file)
         else:
             print("WARNING: No passages file provided or file not found. Using an empty passage loader.")
             passages = SimplePassageLoader()
