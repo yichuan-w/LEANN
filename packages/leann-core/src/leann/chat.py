@@ -128,6 +128,19 @@ class HFChat(LLMInterface):
         self.pipeline = pipeline("text-generation", model=model_name, device=device)
 
     def ask(self, prompt: str, **kwargs) -> str:
+        # Map OpenAI-style arguments to Hugging Face equivalents
+        if "max_tokens" in kwargs:
+            # Prefer user-provided max_new_tokens if both are present
+            kwargs.setdefault("max_new_tokens", kwargs["max_tokens"])
+            # Remove the unsupported key to avoid errors in Transformers
+            kwargs.pop("max_tokens")
+
+        # Handle temperature=0 edge-case for greedy decoding
+        if "temperature" in kwargs and kwargs["temperature"] == 0.0:
+            # Remove unsupported zero temperature and use deterministic generation
+            kwargs.pop("temperature")
+            kwargs.setdefault("do_sample", False)
+        
         # Sensible defaults for text generation
         params = {
             "max_length": 500,

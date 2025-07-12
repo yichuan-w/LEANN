@@ -1,12 +1,17 @@
 import os
 import asyncio
-import dotenv
+try:
+    import dotenv
+    dotenv.load_dotenv()
+except ModuleNotFoundError:
+    # python-dotenv is not installed; skip loading environment variables
+    dotenv = None
 from pathlib import Path
 from typing import List, Any
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
 from llama_index.core.node_parser import SentenceSplitter
 
-dotenv.load_dotenv()
+# dotenv.load_dotenv()  # handled above if python-dotenv is available
 
 def create_leann_index_from_multiple_chrome_profiles(profile_dirs: List[Path], index_path: str = "chrome_history_index.leann", max_count: int = -1):
     """
@@ -190,7 +195,7 @@ async def query_leann_index(index_path: str, query: str):
         query: The query string
     """
     print(f"\n[PHASE 2] Starting Leann chat session...")
-    chat = LeannChat(index_path=index_path)
+    chat = LeannChat(index_path=index_path, llm_config={"type": "hf", "model": "Qwen/Qwen3-0.6B"})
     
     print(f"You: {query}")
     chat_response = chat.ask(
@@ -227,7 +232,7 @@ async def main():
         return
     
     # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_chrome_profiles(profile_dirs, INDEX_PATH)
+    index_path = create_leann_index_from_multiple_chrome_profiles(profile_dirs, INDEX_PATH,1000)
     
     if index_path:
         # Example queries
