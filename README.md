@@ -199,7 +199,7 @@ This ensures the generated files are compatible with your system's protobuf libr
 
 - **DiskANN**: Microsoft's billion-scale ANN algorithm
 - **HNSW**: Hierarchical Navigable Small World graphs
-- **Coming soon**: ScaNN, Faiss-IVF, NGT
+- **Coming soon**: ScaNN, Faiss-IVF, NSG
 
 ### 📏 Distance Functions
 
@@ -314,24 +314,22 @@ export NCCL_SOCKET_IFNAME=ens5
 
 ## 📈 Roadmap
 
-### 🎯 Q1 2024
+### 🎯 Q2 2025
 
 - [X] DiskANN backend with MIPS/L2/Cosine support
 - [X] HNSW backend integration
 - [X] Real-time embedding pipeline
 - [X] Memory-efficient graph pruning
 
-### 🚀 Q2 2024
+### 🚀 Q3 2025
 
-- [ ] Distributed search across multiple nodes
-- [ ] ScaNN backend support
+
 - [ ] Advanced caching strategies
-- [ ] Kubernetes deployment guides
-
-### 🌟 Q3 2024
-
 - [ ] GPU-accelerated embedding computation
-- [ ] Approximate distance functions
+
+
+### 🌟 Q4 2025
+
 - [ ] Integration with LangChain/LlamaIndex
 - [ ] Visual similarity search
 
