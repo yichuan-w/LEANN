@@ -8,23 +8,21 @@ from llama_index.core.node_parser import SentenceSplitter
 
 dotenv.load_dotenv()
 
-def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_path: str = "mail_index.leann", max_count: int = -1):
+def create_leann_index_from_multiple_chrome_profiles(profile_dirs: List[Path], index_path: str = "chrome_history_index.leann", max_count: int = -1):
     """
-    Create LEANN index from multiple mail data sources.
+    Create LEANN index from multiple Chrome profile data sources.
     
     Args:
-        messages_dirs: List of Path objects pointing to Messages directories
+        profile_dirs: List of Path objects pointing to Chrome profile directories
         index_path: Path to save the LEANN index
-        max_count: Maximum number of emails to process per directory
+        max_count: Maximum number of history entries to process per profile
     """
-    print("Creating LEANN index from multiple mail data sources...")
+    print("Creating LEANN index from multiple Chrome profile data sources...")
     
-    # Load documents using EmlxReader from LEANN_email_reader
-    from LEANN_email_reader import EmlxReader
-    reader = EmlxReader()
-    # from email_data.email import EmlxMboxReader
-    # from pathlib import Path
-    # reader = EmlxMboxReader()
+    # Load documents using ChromeHistoryReader from history_data
+    from history_data.history import ChromeHistoryReader
+    reader = ChromeHistoryReader()
+    
     INDEX_DIR = Path(index_path).parent
     
     if not INDEX_DIR.exists():
@@ -32,14 +30,17 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
         all_documents = []
         total_processed = 0
         
-        # Process each Messages directory
-        for i, messages_dir in enumerate(messages_dirs):
-            print(f"\nProcessing Messages directory {i+1}/{len(messages_dirs)}: {messages_dir}")
+        # Process each Chrome profile directory
+        for i, profile_dir in enumerate(profile_dirs):
+            print(f"\nProcessing Chrome profile {i+1}/{len(profile_dirs)}: {profile_dir}")
             
             try:
-                documents = reader.load_data(messages_dir)
+                documents = reader.load_data(
+                    chrome_profile_path=str(profile_dir),
+                    max_count=max_count
+                )
                 if documents:
-                    print(f"Loaded {len(documents)} email documents from {messages_dir}")
+                    print(f"Loaded {len(documents)} history documents from {profile_dir}")
                     all_documents.extend(documents)
                     total_processed += len(documents)
                     
@@ -48,16 +49,16 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
                         print(f"Reached max count of {max_count} documents")
                         break
                 else:
-                    print(f"No documents loaded from {messages_dir}")
+                    print(f"No documents loaded from {profile_dir}")
             except Exception as e:
-                print(f"Error processing {messages_dir}: {e}")
+                print(f"Error processing {profile_dir}: {e}")
                 continue
         
         if not all_documents:
             print("No documents loaded from any source. Exiting.")
             return None
         
-        print(f"\nTotal loaded {len(all_documents)} email documents from {len(messages_dirs)} directories")
+        print(f"\nTotal loaded {len(all_documents)} history documents from {len(profile_dirs)} profiles")
         
         # Create text splitter with 256 chunk size
         text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=25)
@@ -73,7 +74,6 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
         print(f"Created {len(all_texts)} text chunks from {len(all_documents)} documents")
         
         # Create LEANN index directory
-
         print(f"--- Index directory not found, building new index ---")
         INDEX_DIR.mkdir(exist_ok=True)
 
@@ -92,7 +92,7 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
             num_threads=1  # Force single-threaded mode
         )
 
-        print(f"Adding {len(all_texts)} email chunks to index...")
+        print(f"Adding {len(all_texts)} history chunks to index...")
         for chunk_text in all_texts:
             builder.add_text(chunk_text)
             
@@ -103,16 +103,16 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
     
     return index_path
 
-def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max_count: int = 1000):
+def create_leann_index(profile_path: str = None, index_path: str = "chrome_history_index.leann", max_count: int = 1000):
     """
-    Create LEANN index from mail data.
+    Create LEANN index from Chrome history data.
     
     Args:
-        mail_path: Path to the mail directory
+        profile_path: Path to the Chrome profile directory (optional, uses default if None)
         index_path: Path to save the LEANN index
-        max_count: Maximum number of emails to process
+        max_count: Maximum number of history entries to process
     """
-    print("Creating LEANN index from mail data...")
+    print("Creating LEANN index from Chrome history data...")
     INDEX_DIR = Path(index_path).parent
     
     if not INDEX_DIR.exists():
@@ -123,19 +123,20 @@ def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max
         
         print(f"\n[PHASE 1] Building Leann index...")
 
-        # Load documents using EmlxReader from LEANN_email_reader
-        from LEANN_email_reader import EmlxReader
-        reader = EmlxReader()
-        # from email_data.email import EmlxMboxReader
-        # from pathlib import Path
-        # reader = EmlxMboxReader()
-        documents = reader.load_data(Path(mail_path))
+        # Load documents using ChromeHistoryReader from history_data
+        from history_data.history import ChromeHistoryReader
+        reader = ChromeHistoryReader()
+        
+        documents = reader.load_data(
+            chrome_profile_path=profile_path,
+            max_count=max_count
+        )
         
         if not documents:
             print("No documents loaded. Exiting.")
             return None
         
-        print(f"Loaded {len(documents)} email documents")
+        print(f"Loaded {len(documents)} history documents")
         
         # Create text splitter with 256 chunk size
         text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=25)
@@ -151,7 +152,6 @@ def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max
         print(f"Created {len(all_texts)} text chunks from {len(documents)} documents")
         
         # Create LEANN index directory
-
         print(f"--- Index directory not found, building new index ---")
         INDEX_DIR.mkdir(exist_ok=True)
 
@@ -170,7 +170,7 @@ def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max
             num_threads=1  # Force single-threaded mode
         )
 
-        print(f"Adding {len(all_texts)} email chunks to index...")
+        print(f"Adding {len(all_texts)} history chunks to index...")
         for chunk_text in all_texts:
             builder.add_text(chunk_text)
             
@@ -203,30 +203,27 @@ async def query_leann_index(index_path: str, query: str):
     print(f"Leann: {chat_response}")
 
 async def main():
-    # Base path to the mail data directory
-    base_mail_path = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
+    # Default Chrome profile path
+    default_chrome_profile = os.path.expanduser("~/Library/Application Support/Google/Chrome/Default")
     
-    INDEX_DIR = Path("./mail_index_leann_raw_text_all_dicts")
-    INDEX_PATH = str(INDEX_DIR / "mail_documents.leann")
+    INDEX_DIR = Path("./chrome_history_index_leann")
+    INDEX_PATH = str(INDEX_DIR / "chrome_history.leann")
     
-    # Find all Messages directories
-    from LEANN_email_reader import EmlxReader
-    messages_dirs = EmlxReader.find_all_messages_directories(base_mail_path)
+    # Find all Chrome profile directories
+    from history_data.history import ChromeHistoryReader
+    profile_dirs = ChromeHistoryReader.find_chrome_profiles()
     
-    if not messages_dirs:
-        print("No Messages directories found. Exiting.")
+    if not profile_dirs:
+        print("No Chrome profiles found. Exiting.")
         return
     
     # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_sources(messages_dirs, INDEX_PATH)
+    index_path = create_leann_index_from_multiple_chrome_profiles(profile_dirs, INDEX_PATH)
     
     if index_path:
         # Example queries
         queries = [
-            "Hows Berkeley Graduate Student Instructor",
-            "how's the icloud related advertisement saying",
-            "Whats the number of class recommend to take per semester for incoming EECS students"
-
+            "What websites did I visit about machine learning?",
         ]
         
         for query in queries:
