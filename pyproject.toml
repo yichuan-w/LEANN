@@ -41,6 +41,7 @@ dev = [
     "black>=23.0",
     "ruff>=0.1.0",
     "matplotlib",
+    "huggingface-hub>=0.20.0",
 ]
 
 [tool.setuptools]

@@ -146,6 +146,37 @@ This ensures the generated files are compatible with your system's protobuf libr
 
 ## 📊 Benchmarks
 
+### How to Reproduce Evaluation Results
+
+Reproducing our benchmarks is straightforward. The evaluation script is designed to be self-contained, automatically downloading all necessary data on its first run.
+
+#### 1. Environment Setup
+
+First, ensure you have followed the installation instructions in the [Quick Start](#-quick-start) section. This will install all core dependencies.
+
+Next, install the optional development dependencies, which include the `huggingface-hub` library required for automatic data download:
+
+```bash
+# This command installs all development dependencies
+uv pip install -e ".[dev]"
+```
+
+#### 2. Run the Evaluation
+
+Simply run the evaluation script. The first time you run it, it will detect that the data is missing, download it from Hugging Face Hub, and then proceed with the evaluation.
+
+**To evaluate the DPR dataset:**
+```bash
+python examples/run_evaluation.py data/indices/dpr/dpr_diskann
+```
+
+**To evaluate the RPJ-Wiki dataset:**
+```bash
+python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index
+```
+
+The script will print the recall and search time for each query, followed by the average results.
+
 ### Memory Usage Comparison
 
 | System                | 1M Documents     | 10M Documents    | 100M Documents   |
