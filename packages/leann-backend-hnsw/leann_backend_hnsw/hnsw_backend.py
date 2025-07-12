@@ -147,8 +147,8 @@ class HNSWSearcher(BaseSearcher):
 
         params = faiss.SearchParametersHNSW()
         params.zmq_port = kwargs.get("zmq_port", 5557)
-        params.efSearch = kwargs.get("ef", 128)
-        params.beam_size = 2
+        params.efSearch = kwargs.get("complexity", 32)
+        params.beam_size = kwargs.get("beam_width", 1)
 
         batch_size = query.shape[0]
         distances = np.empty((batch_size, top_k), dtype=np.float32)

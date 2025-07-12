@@ -86,7 +86,7 @@ async def main(args):
     query = "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发"
 
     print(f"You: {query}")
-    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True, complexity=32, beam_width=1)
+    chat_response = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True, complexity=32)
     print(f"Leann: {chat_response}")
 
 if __name__ == "__main__":
