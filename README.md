@@ -335,15 +335,6 @@ export NCCL_SOCKET_IFNAME=ens5
 - [ ] Integration with LangChain/LlamaIndex
 - [ ] Visual similarity search
 
-## 💬 Community
-
-Join our growing community of researchers and engineers!
-
-- 🐦 **Twitter**: [@LeannAI](https://twitter.com/LeannAI)
-- 💬 **Discord**: [Join our server](https://discord.gg/leann)
-- 📧 **Email**: leann@yourcompany.com
-- 🐙 **GitHub Discussions**: [Ask questions here](https://github.com/yourname/leann/discussions)
-
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
