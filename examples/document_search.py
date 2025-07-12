@@ -74,7 +74,7 @@ def main():
     print(f"⏱️  Basic search time: {basic_time:.3f} seconds")
     print(">>> Basic search results <<<")
     for i, res in enumerate(results, 1):
-        print(f"  {i}. ID: {res['id']}, Score: {res['score']:.4f}, Text: '{res['text']}', Metadata: {res['metadata']}")
+        print(f"  {i}. ID: {res.id}, Score: {res.score:.4f}, Text: '{res.text}', Metadata: {res.metadata}")
 
     # --- 3. Recompute search demo ---
     print(f"\n[PHASE 3] Recompute search using embedding server...")
@@ -107,7 +107,7 @@ def main():
         print(f"⏱️  Recompute search time: {recompute_time:.3f} seconds")
         print(">>> Recompute search results <<<")
         for i, res in enumerate(recompute_results, 1):
-            print(f"  {i}. ID: {res['id']}, Score: {res['score']:.4f}, Text: '{res['text']}', Metadata: {res['metadata']}")
+            print(f"  {i}. ID: {res.id}, Score: {res.score:.4f}, Text: '{res.text}', Metadata: {res.metadata}")
         
         # Compare results
         print(f"\n--- Result comparison ---")
@@ -116,8 +116,8 @@ def main():
         
         print("\nBasic search vs Recompute results:")
         for i in range(min(len(results), len(recompute_results))):
-            basic_score = results[i]['score']
-            recompute_score = recompute_results[i]['score']
+            basic_score = results[i].score
+            recompute_score = recompute_results[i].score
             score_diff = abs(basic_score - recompute_score)
             print(f"  Position {i+1}: PQ={basic_score:.4f}, Recompute={recompute_score:.4f}, Difference={score_diff:.4f}")
         

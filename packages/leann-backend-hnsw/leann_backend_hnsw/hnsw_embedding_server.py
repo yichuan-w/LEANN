@@ -56,23 +56,73 @@ class SimplePassageLoader:
     def __len__(self) -> int:
         return len(self.passages_data)
 
-def load_passages_from_file(passages_file: str) -> SimplePassageLoader:
+def load_passages_from_metadata(meta_file: str) -> SimplePassageLoader:
     """
-    Load passages from a JSON file
-    Expected format: {"passage_id": "passage_text", ...}
+    Load passages using metadata file with PassageManager for lazy loading
     """
-    if not os.path.exists(passages_file):
-        print(f"Warning: Passages file {passages_file} not found. Using empty loader.")
-        return SimplePassageLoader()
+    # Load metadata to get passage sources
+    with open(meta_file, 'r') as f:
+        meta = json.load(f)
+    
+    # Import PassageManager dynamically to avoid circular imports
+    import sys
+    import importlib.util
+    
+    # Find the leann package directory relative to this file
+    current_dir = Path(__file__).parent
+    leann_core_path = current_dir.parent.parent / "leann-core" / "src"
+    sys.path.insert(0, str(leann_core_path))
     
     try:
-        with open(passages_file, 'r', encoding='utf-8') as f:
-            passages_data = json.load(f)
-        print(f"Loaded {len(passages_data)} passages from {passages_file}")
-        return SimplePassageLoader(passages_data)
-    except Exception as e:
-        print(f"Error loading passages from {passages_file}: {e}")
-        return SimplePassageLoader()
+        from leann.api import PassageManager
+        passage_manager = PassageManager(meta['passage_sources'])
+    finally:
+        sys.path.pop(0)
+    
+    # Load label map 
+    passages_dir = Path(meta_file).parent
+    label_map_file = passages_dir / "leann.labels.map"
+    
+    if label_map_file.exists():
+        import pickle
+        with open(label_map_file, 'rb') as f:
+            label_map = pickle.load(f)
+        print(f"Loaded label map with {len(label_map)} entries")
+    else:
+        raise FileNotFoundError(f"Label map file not found: {label_map_file}")
+    
+    print(f"Initialized lazy passage loading for {len(label_map)} passages")
+    
+    class LazyPassageLoader(SimplePassageLoader):
+        def __init__(self, passage_manager, label_map):
+            self.passage_manager = passage_manager
+            self.label_map = label_map
+            # Initialize parent with empty data
+            super().__init__({})
+        
+        def __getitem__(self, passage_id: Union[str, int]) -> Dict[str, str]:
+            """Get passage by ID with lazy loading"""
+            try:
+                int_id = int(passage_id)
+                if int_id in self.label_map:
+                    string_id = self.label_map[int_id]
+                    passage_data = self.passage_manager.get_passage(string_id)
+                    if passage_data and passage_data.get("text"):
+                        return {"text": passage_data["text"]}
+                    else:
+                        print(f"DEBUG: Empty text for ID {int_id} -> {string_id}")
+                        return {"text": ""}
+                else:
+                    print(f"DEBUG: ID {int_id} not found in label_map")
+                    return {"text": ""}
+            except Exception as e:
+                print(f"DEBUG: Exception getting passage {passage_id}: {e}")
+                return {"text": ""}
+        
+        def __len__(self) -> int:
+            return len(self.label_map)
+    
+    return LazyPassageLoader(passage_manager, label_map)
 
 def create_hnsw_embedding_server(
     passages_file: Optional[str] = None,
@@ -158,7 +208,20 @@ def create_hnsw_embedding_server(
         passages = SimplePassageLoader(passages_data)
         print(f"Using provided passages data: {len(passages)} passages")
     elif passages_file:
-        passages = load_passages_from_file(passages_file)
+        # Check if it's a metadata file or a single passages file
+        if passages_file.endswith('.meta.json'):
+            passages = load_passages_from_metadata(passages_file)
+        else:
+            # Try to find metadata file in same directory
+            passages_dir = Path(passages_file).parent
+            meta_files = list(passages_dir.glob("*.meta.json"))
+            if meta_files:
+                print(f"Found metadata file: {meta_files[0]}, using lazy loading")
+                passages = load_passages_from_metadata(str(meta_files[0]))
+            else:
+                # Fallback to original single file loading (will cause warnings)
+                print("WARNING: No metadata file found, using single file loading (may cause missing passage warnings)")
+                passages = SimplePassageLoader()  # Use empty loader to avoid massive warnings
     else:
         passages = SimplePassageLoader()
         print("No passages provided, using empty loader")
@@ -226,6 +289,11 @@ def create_hnsw_embedding_server(
         _is_e5_model = "e5" in model_name.lower()
         _is_bge_model = "bge" in model_name.lower()
         batch_size = len(texts_batch)
+        
+        # Validate no empty texts
+        for i, text in enumerate(texts_batch):
+            if not text or text.strip() == "":
+                raise RuntimeError(f"FATAL: Empty text at batch index {i}, ID: {ids_batch[i] if i < len(ids_batch) else 'unknown'}")
         
         # E5 model preprocessing
         if _is_e5_model:
@@ -373,14 +441,12 @@ def create_hnsw_embedding_server(
                         missing_ids = []
                         with lookup_timer.timing():
                             for nid in node_ids:
-                                try:
-                                    txtinfo = passages[nid]
-                                    if txtinfo is None or txtinfo["text"] == "":
-                                        raise RuntimeError(f"FATAL: Passage with ID {nid} not found - failing fast")
-                                    else:
-                                        txt = txtinfo["text"]
-                                except (KeyError, IndexError):
-                                    raise RuntimeError(f"FATAL: Passage with ID {nid} not found - failing fast")
+                                print(f"DEBUG: Looking up passage ID {nid}")
+                                txtinfo = passages[nid]
+                                if txtinfo is None or txtinfo["text"] == "":
+                                    raise RuntimeError(f"FATAL: Passage with ID {nid} returned empty text")
+                                txt = txtinfo["text"]
+                                print(f"DEBUG: Found text for ID {nid}, length: {len(txt)}")
                                 texts.append(txt)
                         lookup_timer.print_elapsed()
                         

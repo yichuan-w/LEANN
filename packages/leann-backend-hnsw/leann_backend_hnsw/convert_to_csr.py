@@ -468,16 +468,27 @@ def convert_hnsw_graph_to_csr(input_filename, output_filename, prune_embeddings=
             # --- Write CSR HNSW graph data using unified function ---
             print(f"[{time.time() - start_time:.2f}s] Writing CSR HNSW graph data in FAISS-compatible order...")
             
-            # Determine storage fourcc based on prune_embeddings
-            output_storage_fourcc = NULL_INDEX_FOURCC if prune_embeddings else (storage_fourcc if 'storage_fourcc' in locals() else NULL_INDEX_FOURCC)
+            # Determine storage fourcc and data based on prune_embeddings
             if prune_embeddings:
                 print(f"   Pruning embeddings: Writing NULL storage marker.")
-            storage_data = b''
+                output_storage_fourcc = NULL_INDEX_FOURCC
+                storage_data = b''
+            else:
+                # Keep embeddings - read and preserve original storage data
+                if storage_fourcc and storage_fourcc != NULL_INDEX_FOURCC:
+                    print(f"   Preserving embeddings: Reading original storage data...")
+                    storage_data = f_in.read()  # Read remaining storage data
+                    output_storage_fourcc = storage_fourcc
+                    print(f"   Read {len(storage_data)} bytes of storage data")
+                else:
+                    print(f"   No embeddings found in original file (NULL storage)")
+                    output_storage_fourcc = NULL_INDEX_FOURCC
+                    storage_data = b''
             
             # Use the unified write function
             write_compact_format(f_out, original_hnsw_data, assign_probas_np, cum_nneighbor_per_level_np, 
                                levels_np, compact_level_ptr, compact_node_offsets_np, 
-                               compact_neighbors_data, output_storage_fourcc, storage_data if not prune_embeddings else b'')
+                               compact_neighbors_data, output_storage_fourcc, storage_data)
             
             # Clean up memory
             del assign_probas_np, cum_nneighbor_per_level_np, levels_np
