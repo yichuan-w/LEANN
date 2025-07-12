@@ -209,10 +209,13 @@ def get_llm(llm_config: Optional[Dict[str, Any]] = None) -> LLMInterface:
         An instance of an LLMInterface subclass.
     """
     if llm_config is None:
-        logger.info("No LLM config provided, defaulting to simulated chat.")
-        return SimulatedChat()
+        llm_config = {
+            "type": "openai",
+            "model": "gpt-4o",
+            "api_key": os.getenv("OPENAI_API_KEY")
+        }
 
-    llm_type = llm_config.get("type", "simulated")
+    llm_type = llm_config.get("type", "openai")
     model = llm_config.get("model")
     
     logger.info(f"Attempting to create LLM of type='{llm_type}' with model='{model}'")

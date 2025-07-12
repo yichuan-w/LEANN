@@ -39,7 +39,8 @@ def compute_embeddings(chunks: List[str], model_name: str) -> np.ndarray:
         model = model.to("mps")
 
     # Generate embeddings
-    embeddings = model.encode(chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=64)
+    # give use an warning if OOM here means we need to turn down the batch size
+    embeddings = model.encode(chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=256)
 
     return embeddings
 

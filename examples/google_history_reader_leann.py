@@ -198,7 +198,16 @@ async def query_leann_index(index_path: str, query: str):
         top_k=5, 
         recompute_beighbor_embeddings=True,
         complexity=128,
-        beam_width=1
+        beam_width=1,
+        llm_config={
+            "type": "openai",
+            "model": "gpt-4o",
+            "api_key": os.getenv("OPENAI_API_KEY"),
+        },
+        llm_kwargs={
+            "temperature": 0.0,
+            "max_tokens": 1000
+        }
     )
     print(f"Leann: {chat_response}")
 
@@ -206,7 +215,7 @@ async def main():
     # Default Chrome profile path
     default_chrome_profile = os.path.expanduser("~/Library/Application Support/Google/Chrome/Default")
     
-    INDEX_DIR = Path("./chrome_history_index_leann")
+    INDEX_DIR = Path("./chrome_history_index_leann_test")
     INDEX_PATH = str(INDEX_DIR / "chrome_history.leann")
     
     # Find all Chrome profile directories
