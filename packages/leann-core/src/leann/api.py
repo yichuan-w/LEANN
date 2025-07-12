@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 This file contains the core API for the LEANN project, now definitively updated
 with the correct, original embedding logic from the user's reference code.
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 import uuid
+import torch
 
 from .registry import BACKEND_REGISTRY
 from .interface import LeannBackendFactoryInterface
@@ -25,13 +25,22 @@ def compute_embeddings(chunks: List[str], model_name: str) -> np.ndarray:
         raise RuntimeError(
             f"sentence-transformers not available. Install with: pip install sentence-transformers"
         ) from e
-    
+
     # Load model using sentence-transformers
     model = SentenceTransformer(model_name)
-    
+
+    model = model.half()
+    print(f"INFO: Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}'...")
+    # use acclerater GPU or MAC GPU
+
+    if torch.cuda.is_available():
+        model = model.to("cuda")
+    elif torch.backends.mps.is_available():
+        model = model.to("mps")
+
     # Generate embeddings
     embeddings = model.encode(chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=64)
-    
+
     return embeddings
 
 # --- Core API Classes (Restored and Unchanged) ---
@@ -181,5 +190,25 @@ class LeannChat:
     def ask(self, question: str, top_k=5, **kwargs):
         results = self.searcher.search(question, top_k=top_k, **kwargs)
         context = "\n\n".join([r.text for r in results])
-        prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
+        prompt = (
+            "Here is some retrieved context that might help answer your question:\n\n"
+            f"{context}\n\n"
+            f"Question: {question}\n\n"
+            "Please provide the best answer you can based on this context and your knowledge."
+        )
         return self.llm.ask(prompt, **kwargs.get("llm_kwargs", {}))
+
+    def start_interactive(self):
+        print("\nLeann Chat started (type 'quit' to exit)")
+        while True:
+            try:
+                user_input = input("You: ").strip()
+                if user_input.lower() in ['quit', 'exit']:
+                    break
+                if not user_input:
+                    continue
+                response = self.ask(user_input)
+                print(f"Leann: {response}")
+            except (KeyboardInterrupt, EOFError):
+                print("\nGoodbye!")
+                break

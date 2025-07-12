@@ -8,11 +8,15 @@ demo/indices/
 *pycache*
 outputs/
 *.pkl
+*.pdf
 .history/
 scripts/
 lm_eval.egg-info/
 demo/experiment_results/**/*.json
 *.jsonl
+*.eml
+*.emlx
+*.json
 *.sh
 *.txt
 !CMakeLists.txt
@@ -42,6 +46,7 @@ embedding_comparison_results/
 *.ivecs
 *.index
 *.bin
+*.old
 
 read_graph
 analyze_diskann_graph

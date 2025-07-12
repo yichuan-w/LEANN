@@ -4,3 +4,13 @@
 [submodule "packages/leann-backend-hnsw/third_party/faiss"]
 	path = packages/leann-backend-hnsw/third_party/faiss
 	url = https://github.com/yichuan520030910320/faiss.git
+[submodule "packages/leann-backend-hnsw/third_party/msgpack-c"]
+	path = packages/leann-backend-hnsw/third_party/msgpack-c
+	url = https://github.com/msgpack/msgpack-c.git
+	branch = cpp_master
+[submodule "packages/leann-backend-hnsw/third_party/cppzmq"]
+	path = packages/leann-backend-hnsw/third_party/cppzmq
+	url = https://github.com/zeromq/cppzmq.git
+[submodule "packages/leann-backend-hnsw/third_party/libzmq"]
+	path = packages/leann-backend-hnsw/third_party/libzmq
+	url = https://github.com/zeromq/libzmq.git

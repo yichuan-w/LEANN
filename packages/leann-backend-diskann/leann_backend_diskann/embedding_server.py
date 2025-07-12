@@ -15,6 +15,8 @@ import os
 from contextlib import contextmanager
 import zmq
 import numpy as np
+from pathlib import Path
+import pickle
 
 RED = "\033[91m"
 RESET = "\033[0m"
@@ -109,8 +111,6 @@ def load_passages_from_file(passages_file: str) -> SimplePassageLoader:
     Load passages from a JSONL file with label map support
     Expected format: {"id": "passage_id", "text": "passage_text", "metadata": {...}} (one per line)
     """
-    from pathlib import Path
-    import pickle
     
     if not os.path.exists(passages_file):
         raise FileNotFoundError(f"Passages file {passages_file} not found.")
@@ -210,7 +210,6 @@ def create_embedding_server_thread(
                 passages = load_passages_from_metadata(passages_file)
             else:
                 # Try to find metadata file in same directory
-                from pathlib import Path
                 passages_dir = Path(passages_file).parent
                 meta_files = list(passages_dir.glob("*.meta.json"))
                 if meta_files:

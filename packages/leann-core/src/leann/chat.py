@@ -7,6 +7,7 @@ supporting different backends like Ollama, Hugging Face Transformers, and a simu
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -95,7 +96,57 @@ class HFChat(LLMInterface):
         }
         logger.info(f"Generating text with Hugging Face model with params: {params}")
         results = self.pipeline(prompt, **params)
-        return results[0]['generated_text']
+        
+        # Handle different response formats from transformers
+        if isinstance(results, list) and len(results) > 0:
+            generated_text = results[0].get('generated_text', '') if isinstance(results[0], dict) else str(results[0])
+        else:
+            generated_text = str(results)
+        
+        # Extract only the newly generated portion by removing the original prompt
+        if isinstance(generated_text, str) and generated_text.startswith(prompt):
+            response = generated_text[len(prompt):].strip()
+        else:
+            # Fallback: return the full response if prompt removal fails
+            response = str(generated_text)
+            
+        return response
+
+class OpenAIChat(LLMInterface):
+    """LLM interface for OpenAI models."""
+    def __init__(self, model: str = "gpt-4o", api_key: Optional[str] = None):
+        self.model = model
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        
+        if not self.api_key:
+            raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
+        
+        logger.info(f"Initializing OpenAI Chat with model='{model}'")
+        
+        try:
+            import openai
+            self.client = openai.OpenAI(api_key=self.api_key)
+        except ImportError:
+            raise ImportError("The 'openai' library is required for OpenAI models. Please install it with 'pip install openai'.")
+
+    def ask(self, prompt: str, **kwargs) -> str:
+        # Default parameters for OpenAI
+        params = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": kwargs.get("max_tokens", 1000),
+            "temperature": kwargs.get("temperature", 0.7),
+            **{k: v for k, v in kwargs.items() if k not in ["max_tokens", "temperature"]}
+        }
+        
+        logger.info(f"Sending request to OpenAI with model {self.model}")
+        
+        try:
+            response = self.client.chat.completions.create(**params)
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Error communicating with OpenAI: {e}")
+            return f"Error: Could not get a response from OpenAI. Details: {e}"
 
 class SimulatedChat(LLMInterface):
     """A simple simulated chat for testing and development."""
@@ -127,9 +178,11 @@ def get_llm(llm_config: Optional[Dict[str, Any]] = None) -> LLMInterface:
     logger.info(f"Attempting to create LLM of type='{llm_type}' with model='{model}'")
 
     if llm_type == "ollama":
-        return OllamaChat(model=model, host=llm_config.get("host"))
+        return OllamaChat(model=model or "llama3:8b", host=llm_config.get("host", "http://localhost:11434"))
     elif llm_type == "hf":
-        return HFChat(model_name=model)
+        return HFChat(model_name=model or "deepseek-ai/deepseek-llm-7b-chat")
+    elif llm_type == "openai":
+        return OpenAIChat(model=model or "gpt-4o", api_key=llm_config.get("api_key"))
     elif llm_type == "simulated":
         return SimulatedChat()
     else:

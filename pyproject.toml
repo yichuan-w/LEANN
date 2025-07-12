@@ -21,7 +21,7 @@ dependencies = [
     "colorama",
     "boto3",
     "protobuf==4.25.3",
-    "sglang[all]",
+    "sglang",
     "ollama",
     "requests>=2.25.0",
     "sentence-transformers>=2.2.0",

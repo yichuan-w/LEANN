@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Dict, Any, List
 import pickle
+import shutil
 
 from leann.searcher_base import BaseSearcher
 from .convert_to_csr import convert_hnsw_graph_to_csr
@@ -77,17 +78,29 @@ class HNSWBuilder(LeannBackendBuilderInterface):
             self._convert_to_csr(index_file)
 
     def _convert_to_csr(self, index_file: Path):
+        """Convert built index to CSR format"""
+        mode_str = "CSR-pruned" if self.is_recompute else "CSR-standard"
+        print(f"INFO: Converting HNSW index to {mode_str} format...")
+
         csr_temp_file = index_file.with_suffix(".csr.tmp")
+
         success = convert_hnsw_graph_to_csr(
-            str(index_file), str(csr_temp_file), prune_embeddings=self.is_recompute
+            str(index_file), 
+            str(csr_temp_file),
+            prune_embeddings=self.is_recompute
         )
+
         if success:
-            import shutil
+            print("✅ CSR conversion successful.")
+            index_file_old = index_file.with_suffix(".old")
+            shutil.move(str(index_file), str(index_file_old))
             shutil.move(str(csr_temp_file), str(index_file))
+            print(f"INFO: Replaced original index with {mode_str} version at '{index_file}'")
         else:
+            # Clean up and fail fast
             if csr_temp_file.exists():
                 os.remove(csr_temp_file)
-            raise RuntimeError("CSR conversion failed")
+            raise RuntimeError("CSR conversion failed - cannot proceed with compact format")
 
 class HNSWSearcher(BaseSearcher):
     def __init__(self, index_path: str, **kwargs):
@@ -99,7 +112,10 @@ class HNSWSearcher(BaseSearcher):
         if metric_enum is None:
             raise ValueError(f"Unsupported distance_metric '{self.distance_metric}'.")
 
-        self.is_compact, self.is_pruned = self._get_index_storage_status_from_meta()
+        self.is_compact, self.is_pruned = (
+            self.meta.get('is_compact', True),
+            self.meta.get('is_pruned', True)
+        )
 
         index_file = self.index_dir / f"{self.index_path.stem}.index"
         if not index_file.exists():
@@ -113,11 +129,6 @@ class HNSWSearcher(BaseSearcher):
             raise RuntimeError("Index is pruned but recompute is disabled.")
 
         self._index = faiss.read_index(str(index_file), faiss.IO_FLAG_MMAP, hnsw_config)
-
-    def _get_index_storage_status_from_meta(self) -> tuple[bool, bool]:
-        is_compact = self.meta.get('is_compact', True)
-        is_pruned = self.meta.get('is_pruned', True)
-        return is_compact, is_pruned
 
     def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, Any]:
         from . import faiss
