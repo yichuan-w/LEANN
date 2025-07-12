@@ -326,12 +326,14 @@ export NCCL_SOCKET_IFNAME=ens5
 
 - [ ] Advanced caching strategies
 - [ ] GPU-accelerated embedding computation
+- [ ] Add sleep-time-compute and summarize agent! to summarilze the file on computer!
 
 
 ### 🌟 Q4 2025
 
 - [ ] Integration with LangChain/LlamaIndex
 - [ ] Visual similarity search
+- [ ] Query rewrtiting, rerank and expansion
 
 ## 📄 License
 
