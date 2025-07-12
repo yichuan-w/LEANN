@@ -8,14 +8,13 @@
 </p>
 
 <p align="center">
-  <strong>⚡ Real-time embedding computation for large-scale RAG on consumer hardware</strong>
+  <strong>⚡ Storage Saving RAG sytem on Consumer Device</strong>
 </p>
 
 <p align="center">
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-features">Features</a> •
   <a href="#-benchmarks">Benchmarks</a> •
-  <a href="#-documentation">Documentation</a> •
   <a href="#-paper">Paper</a>
 </p>
 
@@ -23,22 +22,23 @@
 
 ## 🌟 What is Leann?
 
-**Leann** revolutionizes Retrieval-Augmented Generation (RAG) by eliminating the storage bottleneck of traditional vector databases. Instead of pre-computing and storing billions of embeddings, Leann dynamically computes embeddings at query time using highly optimized graph-based search algorithms.
+**Leann** revolutionizes Retrieval-Augmented Generation (RAG) by eliminating the storage bottleneck of traditional vector databases. Instead of pre-computing and storing billions of embeddings, Leann dynamically computes embeddings at query time using optimized graph-based search algorithms.
 
 ### 🎯 Why Leann?
 
 Traditional RAG systems face a fundamental trade-off:
 
 - **💾 Storage**: Storing embeddings for millions of documents requires massive disk space
-- **🔄 Freshness**: Pre-computed embeddings become stale when documents change
+- **🔄 Memory overhead**: The indexes LlamaIndex uses usually face high memory overhead (e.g., in-memory vector databases)
 - **💰 Cost**: Vector databases are expensive to scale
 
-**Leann solves this by:**
+**Leann revolutionizes this with Graph-based recomputation and cutting-edge system optimizations:**
 
-- ✅ **Zero embedding storage** - Only graph structure is persisted
-- ✅ **Real-time computation** - Embeddings computed on-demand with ms latency
-- ✅ **Memory efficient** - Runs on consumer hardware (8GB RAM)
-- ✅ **Always fresh** - No stale embeddings, ever
+- ✅ **Zero embedding storage** - Only graph structure is persisted, reducing storage by 94-97%
+- ✅ **Real-time computation** - Embeddings computed on-demand with low latency
+- ✅ **Memory efficient** - Runs on consumer hardware with theoretical zero memory overhead
+- ✅ **Graph-based optimization** - Advanced pruning techniques for efficient search while keeping low storage cost, with batching and overlapping strategies using low-precision search to optimize latency
+- ✅ **Pluggable backends** - Support for DiskANN, HNSW, and other ANN algorithms (welcome contributions!)
 
 ## 🚀 Quick Start
 
