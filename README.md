@@ -327,7 +327,7 @@ export NCCL_SOCKET_IFNAME=ens5
 - [ ] Advanced caching strategies
 - [ ] GPU-accelerated embedding computation
 - [ ] Add sleep-time-compute and summarize agent! to summarilze the file on computer!
-
+- [ ] Add OpenAI recompute API
 
 ### 🌟 Q4 2025
 
