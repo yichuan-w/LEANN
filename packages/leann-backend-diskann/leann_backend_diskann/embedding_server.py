@@ -5,7 +5,6 @@ Embedding server for leann-backend-diskann - Fixed ZMQ REQ-REP pattern
 
 import pickle
 import argparse
-import threading
 import time
 import json
 from typing import Dict, Any, Optional, Union
@@ -16,7 +15,6 @@ from contextlib import contextmanager
 import zmq
 import numpy as np
 from pathlib import Path
-import pickle
 
 RED = "\033[91m"
 RESET = "\033[0m"
@@ -154,6 +152,7 @@ def create_embedding_server_thread(
     model_name="sentence-transformers/all-mpnet-base-v2",
     max_batch_size=128,
     passages_file: Optional[str] = None,
+    use_mlx: bool = False,
 ):
     """
     在当前线程中创建并运行 embedding server
@@ -172,36 +171,40 @@ def create_embedding_server_thread(
             print(f"{RED}Port {zmq_port} is already in use{RESET}")
             return
 
-        # 初始化模型
-        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-        import torch
-
-        # 选择设备
-        mps_available = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
-        cuda_available = torch.cuda.is_available()
-        
-        if cuda_available:
-            device = torch.device("cuda")
-            print("INFO: Using CUDA device")
-        elif mps_available:
-            device = torch.device("mps")
-            print("INFO: Using MPS device (Apple Silicon)")
+        if use_mlx:
+            from leann.api import compute_embeddings_mlx
+            print("INFO: Using MLX for embeddings")
         else:
-            device = torch.device("cpu")
-            print("INFO: Using CPU device")
-        
-        # 加载模型
-        print(f"INFO: Loading model {model_name}")
-        model = AutoModel.from_pretrained(model_name).to(device).eval()
+            # 初始化模型
+            tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+            import torch
 
-        # 优化模型
-        if cuda_available or mps_available:
-            try:
-                model = model.half()
-                model = torch.compile(model)
-                print(f"INFO: Using FP16 precision with model: {model_name}")
-            except Exception as e:
-                print(f"WARNING: Model optimization failed: {e}")
+            # 选择设备
+            mps_available = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+            cuda_available = torch.cuda.is_available()
+            
+            if cuda_available:
+                device = torch.device("cuda")
+                print("INFO: Using CUDA device")
+            elif mps_available:
+                device = torch.device("mps")
+                print("INFO: Using MPS device (Apple Silicon)")
+            else:
+                device = torch.device("cpu")
+                print("INFO: Using CPU device")
+            
+            # 加载模型
+            print(f"INFO: Loading model {model_name}")
+            model = AutoModel.from_pretrained(model_name).to(device).eval()
+
+            # 优化模型
+            if cuda_available or mps_available:
+                try:
+                    model = model.half()
+                    model = torch.compile(model)
+                    print(f"INFO: Using FP16 precision with model: {model_name}")
+                except Exception as e:
+                    print(f"WARNING: Model optimization failed: {e}")
 
         # Load passages from file if provided
         if passages_file and os.path.exists(passages_file):
@@ -233,7 +236,7 @@ def create_embedding_server_thread(
                 self.start_time = 0
                 self.end_time = 0
                 
-                if cuda_available:
+                if not use_mlx and torch.cuda.is_available():
                     self.start_event = torch.cuda.Event(enable_timing=True)
                     self.end_event = torch.cuda.Event(enable_timing=True)
                 else:
@@ -247,25 +250,25 @@ def create_embedding_server_thread(
                 self.end()
 
             def start(self):
-                if cuda_available:
+                if not use_mlx and torch.cuda.is_available():
                     torch.cuda.synchronize()
                     self.start_event.record()
                 else:
-                    if self.device.type == "mps":
+                    if not use_mlx and self.device.type == "mps":
                         torch.mps.synchronize()
                     self.start_time = time.time()
 
             def end(self):
-                if cuda_available:
+                if not use_mlx and torch.cuda.is_available():
                     self.end_event.record()
                     torch.cuda.synchronize()
                 else:
-                    if self.device.type == "mps":
+                    if not use_mlx and self.device.type == "mps":
                         torch.mps.synchronize()
                     self.end_time = time.time()
 
             def elapsed_time(self):
-                if cuda_available:
+                if not use_mlx and torch.cuda.is_available():
                     return self.start_event.elapsed_time(self.end_event) / 1000.0
                 else:
                     return self.end_time - self.start_time
@@ -273,7 +276,7 @@ def create_embedding_server_thread(
             def print_elapsed(self):
                 print(f"Time taken for {self.name}: {self.elapsed_time():.6f} seconds")
 
-        def process_batch(texts_batch, ids_batch, missing_ids):
+        def process_batch_pytorch(texts_batch, ids_batch, missing_ids):
             """处理文本批次"""
             batch_size = len(texts_batch)
             print(f"INFO: Processing batch of size {batch_size}")
@@ -351,7 +354,7 @@ def create_embedding_server_thread(
                 print(f"INFO: Received ZMQ request from client {identity.hex()[:8]}, size {len(message)} bytes")
 
                 e2e_start = time.time()
-                lookup_timer = DeviceTimer("text lookup", device)
+                lookup_timer = DeviceTimer("text lookup")
 
                 # 解析请求
                 req_proto = embedding_pb2.NodeEmbeddingRequest()
@@ -397,18 +400,25 @@ def create_embedding_server_thread(
                         chunk_texts = texts[i:end_idx]
                         chunk_ids = node_ids[i:end_idx]
                         
-                        embeddings_chunk = process_batch(chunk_texts, chunk_ids, missing_ids)
+                        if use_mlx:
+                            embeddings_chunk = compute_embeddings_mlx(chunk_texts, model_name)
+                        else:
+                            embeddings_chunk = process_batch_pytorch(chunk_texts, chunk_ids, missing_ids)
                         all_embeddings.append(embeddings_chunk)
                         
-                        if cuda_available:
-                            torch.cuda.empty_cache()
-                        elif device.type == "mps":
-                            torch.mps.empty_cache()
+                        if not use_mlx:
+                            if cuda_available:
+                                torch.cuda.empty_cache()
+                            elif device.type == "mps":
+                                torch.mps.empty_cache()
                             
                     hidden = np.vstack(all_embeddings)
                     print(f"INFO: Combined embeddings shape: {hidden.shape}")
                 else:
-                    hidden = process_batch(texts, node_ids, missing_ids)
+                    if use_mlx:
+                        hidden = compute_embeddings_mlx(texts, model_name)
+                    else:
+                        hidden = process_batch_pytorch(texts, node_ids, missing_ids)
 
                 # 序列化响应
                 ser_start = time.time()
@@ -429,16 +439,16 @@ def create_embedding_server_thread(
 
                 print(f"INFO: Serialize time: {ser_end - ser_start:.6f} seconds")
 
-                if device.type == "cuda":
-                    torch.cuda.synchronize()
-                elif device.type == "mps":
-                    torch.mps.synchronize()
+                if not use_mlx:
+                    if device.type == "cuda":
+                        torch.cuda.synchronize()
+                    elif device.type == "mps":
+                        torch.mps.synchronize()
                 e2e_end = time.time()
                 print(f"INFO: ZMQ E2E time: {e2e_end - e2e_start:.6f} seconds")
 
             except zmq.Again:
                 print("INFO: ZMQ socket timeout, continuing to listen")
-                # REP套接字不需要重新创建，只需要继续监听
                 continue
             except Exception as e:
                 print(f"ERROR: Error in ZMQ server: {e}")
@@ -460,7 +470,6 @@ def create_embedding_server_thread(
         raise
 
 
-# 保持原有的 create_embedding_server 函数不变，只添加线程化版本
 def create_embedding_server(
     domain="demo",
     load_passages=True,
@@ -473,12 +482,13 @@ def create_embedding_server(
     lazy_load_passages=False,
     model_name="sentence-transformers/all-mpnet-base-v2",
     passages_file: Optional[str] = None,
+    use_mlx: bool = False,
 ):
     """
     原有的 create_embedding_server 函数保持不变
     这个是阻塞版本，用于直接运行
     """
-    create_embedding_server_thread(zmq_port, model_name, max_batch_size, passages_file)
+    create_embedding_server_thread(zmq_port, model_name, max_batch_size, passages_file, use_mlx)
 
 
 if __name__ == "__main__":
@@ -495,6 +505,7 @@ if __name__ == "__main__":
     parser.add_argument("--lazy-load-passages", action="store_true", default=True)
     parser.add_argument("--model-name", type=str, default="sentence-transformers/all-mpnet-base-v2", 
                         help="Embedding model name")
+    parser.add_argument("--use-mlx", action="store_true", default=False, help="Use MLX backend for embeddings")
     args = parser.parse_args()
 
     create_embedding_server(
@@ -509,4 +520,5 @@ if __name__ == "__main__":
         lazy_load_passages=args.lazy_load_passages,
         model_name=args.model_name,
         passages_file=args.passages_file,
+        use_mlx=args.use_mlx,
     )
