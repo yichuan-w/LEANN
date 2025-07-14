@@ -372,23 +372,31 @@ python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index
 
 The script will print the recall and search time for each query, followed by the average results.
 
+### Storge Usage Comparison
+
+| System                | DPR(2M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
+| --------------------- | ---------------- | ---------------- | ---------------- |
+| Traditional Vector DB(LLamaindex faiss) | x GB           | x GB            | x GB           |
+| **Leann**       | **xx MB** | **x GB** | **x GB** |
+| **Reduction**   | **x%**  | **x%**  | **x%**  |
+
 ### Memory Usage Comparison
 
-| System                | 1M Documents     | 10M Documents    | 100M Documents   |
+| System                | DPR(2M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
 | --------------------- | ---------------- | ---------------- | ---------------- |
-| Traditional Vector DB | 3.1 GB           | 31 GB            | 310 GB           |
-| **Leann**       | **180 MB** | **1.2 GB** | **8.4 GB** |
-| **Reduction**   | **94.2%**  | **96.1%**  | **97.3%**  |
+| Traditional Vector DB(LLamaindex faiss) | x GB           | x GB            | x GB           |
+| **Leann**       | **xx MB** | **x GB** | **x GB** |
+| **Reduction**   | **x%**  | **x%**  | **x%**  |
 
-### Query Performance
+### Query Performance of LEANN
 
-| Backend             | Index Size | Query Time | Recall@10 |
+| Backend             | Index Size | Query Time | Recall@3 |
 | ------------------- | ---------- | ---------- | --------- |
-| DiskANN             | 1M docs    | 12ms       | 0.95      |
-| DiskANN + Recompute | 1M docs    | 145ms      | 0.98      |
-| HNSW                | 1M docs    | 8ms        | 0.93      |
+| DiskANN             | 1M docs    | xms       | 0.95      |
+| HNSW                | 1M docs    | xms        | 0.95      |
 
-*Benchmarks run on AMD Ryzen 7 with 32GB RAM*
+*Benchmarks run on Apple M3 Pro 36 GB*
+
 
 ## 🏗️ Architecture
 
