@@ -451,37 +451,6 @@ If you find Leann useful, please cite:
 }
 ```
 
-## 🌍 Use Cases
-
-### 💼 Enterprise RAG
-
-```python
-# Handle millions of documents with limited resources
-builder = LeannBuilder(
-    backend_name="diskann",
-    distance_metric="cosine",
-    graph_degree=64,
-    memory_budget="4GB"
-)
-```
-
-### 🔬 Research & Experimentation
-
-```python
-# Quick prototyping with different algorithms
-for backend in ["diskann", "hnsw"]:
-    searcher = LeannSearcher(index_path, backend=backend)
-    evaluate_recall(searcher, queries, ground_truth)
-```
-
-### 🚀 Real-time Applications
-
-```python
-# Sub-second response times
-chat = LeannChat("knowledge.leann")
-response = chat.ask("What is quantum computing?")
-# Returns in <100ms with recompute mode
-```
 
 ## 🤝 Contributing
 
