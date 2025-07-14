@@ -198,6 +198,68 @@ Once the index is built, you can ask questions like:
 
 </details>
 
+### 🌐 Lightweight RAG on your Google Chrome History
+
+LEANN can create a searchable index of your Chrome browser history, allowing you to query your browsing history using natural language.
+
+#### Quick Start
+
+<details>
+<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+
+```bash
+# Use default Chrome profile (auto-finds all profiles) and recommand method to run this because usually default file is enough
+python examples/google_history_reader_leann.py
+
+
+# Run with custom index directory
+python examples/google_history_reader_leann.py --index-dir "./my_chrome_index"
+
+# Limit number of history entries processed (useful for testing)
+python examples/google_history_reader_leann.py --max-entries 500
+
+# Run a single query
+python examples/google_history_reader_leann.py --query "What websites did I visit about machine learning?"
+
+# Use only a specific profile (disable auto-find)
+python examples/google_history_reader_leann.py --chrome-profile "~/Library/Application Support/Google/Chrome/Default" --no-auto-find-profiles
+```
+
+</details>
+
+#### Finding Your Chrome Profile
+
+<details>
+<summary><strong>🔍 Click to expand: How to find your Chrome profile</strong></summary>
+
+The default Chrome profile path is configured for a typical macOS setup. If you need to find your specific Chrome profile:
+
+1. Open Terminal
+2. Run: `ls ~/Library/Application\ Support/Google/Chrome/`
+3. Look for folders like "Default", "Profile 1", "Profile 2", etc.
+4. Use the full path as your `--chrome-profile` argument
+
+**Common Chrome profile locations:**
+- macOS: `~/Library/Application Support/Google/Chrome/Default`
+- Linux: `~/.config/google-chrome/Default`
+
+</details>
+
+#### Example Queries
+
+<details>
+<summary><strong>💬 Click to expand: Example queries you can try</strong></summary>
+
+Once the index is built, you can ask questions like:
+- "What websites did I visit about machine learning?"
+- "Find my search history about programming"
+- "What YouTube videos did I watch recently?"
+- "Show me websites I visited about travel planning"
+
+</details>
+
+
+
 
 ## 📊 Benchmarks
 

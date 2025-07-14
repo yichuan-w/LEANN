@@ -1,5 +1,6 @@
 import os
 import asyncio
+import argparse
 try:
     import dotenv
     dotenv.load_dotenv()
@@ -12,6 +13,9 @@ from leann.api import LeannBuilder, LeannSearcher, LeannChat
 from llama_index.core.node_parser import SentenceSplitter
 
 # dotenv.load_dotenv()  # handled above if python-dotenv is available
+
+# Default Chrome profile path
+DEFAULT_CHROME_PROFILE = os.path.expanduser("~/Library/Application Support/Google/Chrome/Default")
 
 def create_leann_index_from_multiple_chrome_profiles(profile_dirs: List[Path], index_path: str = "chrome_history_index.leann", max_count: int = -1):
     """
@@ -217,32 +221,63 @@ async def query_leann_index(index_path: str, query: str):
     print(f"Leann: {chat_response}")
 
 async def main():
-    # Default Chrome profile path
-    default_chrome_profile = os.path.expanduser("~/Library/Application Support/Google/Chrome/Default")
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='LEANN Chrome History Reader - Create and query browser history index')
+    parser.add_argument('--chrome-profile', type=str, default=DEFAULT_CHROME_PROFILE,
+                       help=f'Path to Chrome profile directory (default: {DEFAULT_CHROME_PROFILE}), usually you dont need to change this')
+    parser.add_argument('--index-dir', type=str, default="./chrome_history_index_leann_test",
+                       help='Directory to store the LEANN index (default: ./chrome_history_index_leann_test)')
+    parser.add_argument('--max-entries', type=int, default=1000,
+                       help='Maximum number of history entries to process (default: 1000)')
+    parser.add_argument('--query', type=str, default=None,
+                       help='Single query to run (default: runs example queries)')
+    parser.add_argument('--auto-find-profiles', action='store_true', default=True,
+                       help='Automatically find all Chrome profiles (default: True)')
     
-    INDEX_DIR = Path("./chrome_history_index_leann_test")
+    args = parser.parse_args()
+    
+    INDEX_DIR = Path(args.index_dir)
     INDEX_PATH = str(INDEX_DIR / "chrome_history.leann")
     
-    # Find all Chrome profile directories
-    from history_data.history import ChromeHistoryReader
-    profile_dirs = ChromeHistoryReader.find_chrome_profiles()
+    print(f"Using Chrome profile: {args.chrome_profile}")
+    print(f"Index directory: {INDEX_DIR}")
+    print(f"Max entries: {args.max_entries}")
     
-    if not profile_dirs:
-        print("No Chrome profiles found. Exiting.")
-        return
+    # Find Chrome profile directories
+    from history_data.history import ChromeHistoryReader
+    
+    if args.auto_find_profiles:
+        profile_dirs = ChromeHistoryReader.find_chrome_profiles()
+        if not profile_dirs:
+            print("No Chrome profiles found automatically. Exiting.")
+            return
+    else:
+        # Use single specified profile
+        profile_path = Path(args.chrome_profile)
+        if not profile_path.exists():
+            print(f"Chrome profile not found: {profile_path}")
+            return
+        profile_dirs = [profile_path]
     
     # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_chrome_profiles(profile_dirs, INDEX_PATH,1000)
+    index_path = create_leann_index_from_multiple_chrome_profiles(profile_dirs, INDEX_PATH, args.max_entries)
     
     if index_path:
-        # Example queries
-        queries = [
-            "What websites did I visit about machine learning?",
-        ]
-        
-        for query in queries:
-            print("\n" + "="*60)
-            await query_leann_index(index_path, query)
+        if args.query:
+            # Run single query
+            await query_leann_index(index_path, args.query)
+        else:
+            # Example queries
+            queries = [
+                "What websites did I visit about machine learning?",
+                "Show me my recent shopping history",
+                "What news sites did I visit this week?",
+                "Find my search history about programming"
+            ]
+            
+            for query in queries:
+                print("\n" + "="*60)
+                await query_leann_index(index_path, query)
 
 if __name__ == "__main__":
     asyncio.run(main()) 
