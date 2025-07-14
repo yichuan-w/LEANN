@@ -1,5 +1,5 @@
-from leann.api import LeannBuilder
 import os
+from leann.api import LeannBuilder, LeannSearcher, LeannChat
 
 # Define the path for our new MLX-based index
 INDEX_PATH = "./mlx_diskann_index/leann"
@@ -10,7 +10,7 @@ else:
     print("Initializing LeannBuilder with MLX support...")
     # 1. Configure LeannBuilder to use MLX
     builder = LeannBuilder(
-        backend_name="diskann",
+        backend_name="hnsw",
         embedding_model="mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ",
         use_mlx=True
     )
@@ -32,3 +32,11 @@ else:
     builder.build_index(INDEX_PATH)
     print("\nSuccessfully built the index with MLX embeddings!")
     print(f"Check the metadata file: {INDEX_PATH}.meta.json")
+
+
+    chat = LeannChat(index_path=INDEX_PATH)
+    # add query
+    query = "MLX is an array framework for machine learning on Apple silicon."
+    print(f"Query: {query}")
+    response = chat.ask(query, top_k=3, recompute_beighbor_embeddings=True, complexity=3, beam_width=1)
+    print(f"Response: {response}")
