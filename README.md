@@ -412,27 +412,6 @@ The script will print the recall and search time for each query, followed by the
 3. **🔄 Search Coordinator**: Orchestrates embedding + graph search
 4. **⚡ Backend Adapters**: Pluggable algorithm implementations
 
-## 🎓 Supported Models & Backends
-
-### 🤖 Embedding Models
-
-- **sentence-transformers/all-mpnet-base-v2** (default)
-- **sentence-transformers/all-MiniLM-L6-v2** (lightweight)
-- Any HuggingFace sentence-transformer model
-- Custom model support via API
-
-### 🔧 Search Backends
-
-- **DiskANN**: Microsoft's billion-scale ANN algorithm
-- **HNSW**: Hierarchical Navigable Small World graphs
-- **Coming soon**: ScaNN, Faiss-IVF, NSG
-
-### 📏 Distance Functions
-
-- **L2**: Euclidean distance for precise similarity
-- **Cosine**: Angular similarity for normalized vectors
-- **MIPS**: Maximum Inner Product Search for recommendation systems
-
 ## 🔬 Paper
 
 If you find Leann useful, please cite:
