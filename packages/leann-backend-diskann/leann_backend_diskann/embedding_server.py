@@ -14,6 +14,7 @@ import os
 from contextlib import contextmanager
 import zmq
 import numpy as np
+import msgpack
 from pathlib import Path
 
 RED = "\033[91m"
@@ -26,6 +27,7 @@ class SimplePassageLoader:
     """
     def __init__(self, passages_data: Optional[Dict[str, Any]] = None):
         self.passages_data = passages_data or {}
+        self._meta_path = ''
     
     def __getitem__(self, passage_id: Union[str, int]) -> Dict[str, str]:
         """Get passage by ID"""
@@ -38,6 +40,9 @@ class SimplePassageLoader:
     
     def __len__(self) -> int:
         return len(self.passages_data)
+    
+    def keys(self):
+        return self.passages_data.keys()
 
 def load_passages_from_metadata(meta_file: str) -> SimplePassageLoader:
     """
@@ -101,8 +106,13 @@ def load_passages_from_metadata(meta_file: str) -> SimplePassageLoader:
         
         def __len__(self) -> int:
             return len(self.label_map)
+        
+        def keys(self):
+            return self.label_map.keys()
     
-    return LazyPassageLoader(passage_manager, label_map)
+    loader = LazyPassageLoader(passage_manager, label_map)
+    loader._meta_path = meta_file
+    return loader
 
 def load_passages_from_file(passages_file: str) -> SimplePassageLoader:
     """
@@ -352,6 +362,100 @@ def create_embedding_server_thread(
                     print(f"WARNING: Received unexpected message format with {len(parts)} parts. Ignoring.")
                     continue
                 print(f"INFO: Received ZMQ request from client {identity.hex()[:8]}, size {len(message)} bytes")
+
+                # Handle control messages (MessagePack format)
+                try:
+                    request_payload = msgpack.unpackb(message)
+                    if isinstance(request_payload, list) and len(request_payload) >= 1:
+                        if request_payload[0] == "__QUERY_META_PATH__":
+                            # Return the current meta path being used by the server
+                            current_meta_path = getattr(passages, '_meta_path', '') if hasattr(passages, '_meta_path') else ''
+                            response = [current_meta_path]
+                            socket.send_multipart([identity, b'', msgpack.packb(response)])
+                            continue
+                            
+                        elif request_payload[0] == "__UPDATE_META_PATH__" and len(request_payload) >= 2:
+                            # Update the server's meta path and reload passages
+                            new_meta_path = request_payload[1]
+                            try:
+                                print(f"INFO: Updating server meta path to: {new_meta_path}")
+                                # Reload passages from the new meta file
+                                passages = load_passages_from_metadata(new_meta_path)
+                                # Store the meta path for future queries
+                                passages._meta_path = new_meta_path
+                                response = ["SUCCESS"]
+                                print(f"INFO: Successfully updated meta path and reloaded {len(passages)} passages")
+                            except Exception as e:
+                                print(f"ERROR: Failed to update meta path: {e}")
+                                response = ["FAILED", str(e)]
+                            socket.send_multipart([identity, b'', msgpack.packb(response)])
+                            continue
+                            
+                        elif request_payload[0] == "__QUERY_MODEL__":
+                            # Return the current model being used by the server
+                            response = [model_name]
+                            socket.send_multipart([identity, b'', msgpack.packb(response)])
+                            continue
+                            
+                        elif request_payload[0] == "__UPDATE_MODEL__" and len(request_payload) >= 2:
+                            # Update the server's embedding model
+                            new_model_name = request_payload[1]
+                            try:
+                                print(f"INFO: Updating server model from {model_name} to: {new_model_name}")
+                                
+                                # Clean up old model to free memory
+                                if not use_mlx:
+                                    print("INFO: Releasing old model from memory...")
+                                    old_model = model
+                                    old_tokenizer = tokenizer
+                                    
+                                    # Load new tokenizer first
+                                    print(f"Loading new tokenizer for {new_model_name}...")
+                                    tokenizer = AutoTokenizer.from_pretrained(new_model_name, use_fast=True)
+                                    
+                                    # Load new model
+                                    print(f"Loading new model {new_model_name}...")
+                                    model = AutoModel.from_pretrained(new_model_name).to(device).eval()
+                                    
+                                    # Optimize new model
+                                    if cuda_available or mps_available:
+                                        try:
+                                            model = model.half()
+                                            model = torch.compile(model)
+                                            print(f"INFO: Using FP16 precision with model: {new_model_name}")
+                                        except Exception as e:
+                                            print(f"WARNING: Model optimization failed: {e}")
+                                    
+                                    # Now safely delete old model after new one is loaded
+                                    del old_model
+                                    del old_tokenizer
+                                    
+                                    # Clear GPU cache if available
+                                    if device.type == "cuda":
+                                        torch.cuda.empty_cache()
+                                        print("INFO: Cleared CUDA cache")
+                                    elif device.type == "mps":
+                                        torch.mps.empty_cache()
+                                        print("INFO: Cleared MPS cache")
+                                    
+                                    # Force garbage collection
+                                    import gc
+                                    gc.collect()
+                                    print("INFO: Memory cleanup completed")
+                                
+                                # Update model name
+                                model_name = new_model_name
+                                
+                                response = ["SUCCESS"]
+                                print(f"INFO: Successfully updated model to: {new_model_name}")
+                            except Exception as e:
+                                print(f"ERROR: Failed to update model: {e}")
+                                response = ["FAILED", str(e)]
+                            socket.send_multipart([identity, b'', msgpack.packb(response)])
+                            continue
+                except:
+                    # Not a control message, continue with normal protobuf processing
+                    pass
 
                 e2e_start = time.time()
                 lookup_timer = DeviceTimer("text lookup")
