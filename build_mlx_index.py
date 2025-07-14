@@ -1,0 +1,34 @@
+from leann.api import LeannBuilder
+import os
+
+# Define the path for our new MLX-based index
+INDEX_PATH = "./mlx_diskann_index/leann"
+
+if os.path.exists(INDEX_PATH + ".meta.json"):
+    print(f"Index already exists at {INDEX_PATH}. Skipping build.")
+else:
+    print("Initializing LeannBuilder with MLX support...")
+    # 1. Configure LeannBuilder to use MLX
+    builder = LeannBuilder(
+        backend_name="diskann",
+        embedding_model="mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ",
+        use_mlx=True
+    )
+
+    # 2. Add documents
+    print("Adding documents...")
+    docs = [
+        "MLX is an array framework for machine learning on Apple silicon.",
+        "It was designed by Apple's machine learning research team.",
+        "The mlx-community organization provides pre-trained models in MLX format.",
+        "It supports operations on multi-dimensional arrays.",
+        "Leann can now use MLX for its embedding models."
+    ]
+    for doc in docs:
+        builder.add_text(doc)
+
+    # 3. Build the index
+    print(f"Building the MLX-based index at: {INDEX_PATH}")
+    builder.build_index(INDEX_PATH)
+    print("\nSuccessfully built the index with MLX embeddings!")
+    print(f"Check the metadata file: {INDEX_PATH}.meta.json")
