@@ -303,6 +303,41 @@ Once the index is built, you can ask questions like:
 </details>
 
 
+## ⚡ Performance Comparison
+
+### LEANN vs Faiss HNSW
+
+We benchmarked LEANN against the popular Faiss HNSW implementation to demonstrate the significant memory and storage savings our approach provides:
+
+```bash
+# Run the comparison benchmark
+python examples/compare_faiss_vs_leann.py
+```
+
+#### 🎯 Results Summary
+
+| Metric | Faiss HNSW | LEANN HNSW | **Improvement** |
+|--------|------------|-------------|-----------------|
+| **Peak Memory** | 887.0 MB | 618.2 MB | **1.4x less** (268.8 MB saved) |
+| **Storage Size** | 5.5 MB | 0.5 MB | **11.4x smaller** (5.0 MB saved) |
+
+#### 📈 Key Takeaways
+
+- **🧠 Memory Efficiency**: LEANN uses **30% less memory** during index building and querying
+- **💾 Storage Optimization**: LEANN requires **91% less storage** for the same dataset  
+- **🔄 On-demand Computing**: Storage savings come from computing embeddings at query time instead of pre-storing them
+- **⚖️ Fair Comparison**: Both systems tested on identical hardware with the same 2,573 document dataset
+
+> **Note**: Results may vary based on dataset size, hardware configuration, and query patterns. The comparison excludes text storage to focus purely on index structures.
+
+
+### Run the comparison
+
+```bash
+python examples/compare_faiss_vs_leann.py
+```
+
+*Benchmark results obtained on Apple Silicon with consistent environmental conditions*
 
 ## 📊 Benchmarks
 

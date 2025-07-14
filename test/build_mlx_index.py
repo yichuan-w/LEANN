@@ -12,7 +12,7 @@ else:
     builder = LeannBuilder(
         backend_name="hnsw",
         embedding_model="mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ",
-        use_mlx=True
+        use_mlx=True,
     )
 
     # 2. Add documents
@@ -22,7 +22,7 @@ else:
         "It was designed by Apple's machine learning research team.",
         "The mlx-community organization provides pre-trained models in MLX format.",
         "It supports operations on multi-dimensional arrays.",
-        "Leann can now use MLX for its embedding models."
+        "Leann can now use MLX for its embedding models.",
     ]
     for doc in docs:
         builder.add_text(doc)
@@ -34,9 +34,11 @@ else:
     print(f"Check the metadata file: {INDEX_PATH}.meta.json")
 
 
-    chat = LeannChat(index_path=INDEX_PATH)
-    # add query
-    query = "MLX is an array framework for machine learning on Apple silicon."
-    print(f"Query: {query}")
-    response = chat.ask(query, top_k=3, recompute_beighbor_embeddings=True, complexity=3, beam_width=1)
-    print(f"Response: {response}")
+chat = LeannChat(index_path=INDEX_PATH)
+# add query
+query = "MLX is an array framework for machine learning on Apple silicon."
+print(f"Query: {query}")
+response = chat.ask(
+    query, top_k=3, recompute_beighbor_embeddings=True, complexity=3, beam_width=1
+)
+print(f"Response: {response}")

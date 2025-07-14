@@ -78,9 +78,10 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             model_name=self.embedding_model,
             passages_file=passages_source_file,
             distance_metric=kwargs.get("distance_metric"),
+            use_mlx=kwargs.get("use_mlx", False),
         )
         if not server_started:
-            raise RuntimeError(f"Failed to start embedding server on port {kwargs.get('zmq_port')}")
+            raise RuntimeError(f"Failed to start embedding server on port {port}")
 
     @abstractmethod
     def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, Any]:

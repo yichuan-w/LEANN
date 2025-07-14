@@ -310,9 +310,12 @@ class EmbeddingServerManager:
                 command.extend(["--passages-file", str(kwargs["passages_file"])])
             # if "distance_metric" in kwargs and kwargs["distance_metric"]:
             #     command.extend(["--distance-metric", kwargs["distance_metric"]])
+            if "use_mlx" in kwargs and kwargs["use_mlx"]:
+                command.extend(["--use-mlx"])
 
             project_root = Path(__file__).parent.parent.parent.parent.parent
             print(f"INFO: Running command from project root: {project_root}")
+            print(f"INFO: Command: {' '.join(command)}")  # Debug: show actual command
 
             self.server_process = subprocess.Popen(
                 command,
