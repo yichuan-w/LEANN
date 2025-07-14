@@ -107,17 +107,6 @@ This demo showcases how to build a RAG system for PDF documents using Leann.
 uv run examples/main_cli_example.py
 ```
 
-### Regenerating Protobuf Files
-
-If you modify any `.proto` files (such as `embedding.proto`), or if you see errors about protobuf version mismatch, **regenerate the C++ protobuf files** to match your installed version:
-
-```bash
-cd packages/leann-backend-diskann
-protoc --cpp_out=third_party/DiskANN/include --proto_path=third_party embedding.proto
-protoc --cpp_out=third_party/DiskANN/src --proto_path=third_party embedding.proto
-```
-
-This ensures the generated files are compatible with your system's protobuf library.
 
 ## ✨ Features
 
@@ -368,18 +357,10 @@ The script will print the recall and search time for each query, followed by the
 
 ## 🏗️ Architecture
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Query Text    │───▶│  Embedding       │───▶│   Graph-based   │
-│                 │    │  Computation     │    │     Search      │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                              │                         │
-                              ▼                         ▼
-                       ┌──────────────┐         ┌──────────────┐
-                       │ ZMQ Server   │         │ Pruned Graph │
-                       │ (Cached)     │         │ Index        │
-                       └──────────────┘         └──────────────┘
-```
+<p align="center">
+  <img src="asset/arch.png" alt="LEANN Architecture" width="800">
+</p>
+
 
 ### Key Components
 
