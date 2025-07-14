@@ -249,7 +249,7 @@ async def main():
     reader = WeChatHistoryReader()
     
     # Find existing exports or create new ones using the centralized method
-    export_dirs = reader.find_or_export_wechat_data(args.export_dir, force_export=args.force_export)
+    export_dirs = reader.find_or_export_wechat_data(args.export_dir)
     
     if not export_dirs:
         print("Failed to find or export WeChat data. Exiting.")
