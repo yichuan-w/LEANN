@@ -123,26 +123,81 @@ This ensures the generated files are compatible with your system's protobuf libr
 
 ### 🔥 Core Features
 
-- **📊 Multiple Distance Functions**: L2, Cosine, MIPS (Maximum Inner Product Search)
-- **🏗️ Pluggable Backends**: DiskANN, HNSW/FAISS with unified API
-- **🔄 Real-time Embeddings**: Dynamic computation using optimized ZMQ servers
-- **📈 Scalable Architecture**: Handles millions of documents on consumer hardware
-- **🎯 Graph Pruning**: Advanced techniques for memory-efficient search
+- **🔄 Real-time Embeddings** - Eliminate heavy embedding storage with dynamic computation using optimized ZMQ servers and highly optimized search paradigm (overlapping and batching) with highly optimized embedding engine
+- **📈 Scalable Architecture** - Handles millions of documents on consumer hardware; the larger your dataset, the more LEANN can save
+- **🎯 Graph Pruning** - Advanced techniques to minimize the storage overhead of vector search to a limited footprint
+- **🏗️ Pluggable Backends** - DiskANN, HNSW/FAISS with unified API
 
 ### 🛠️ Technical Highlights
-
-- **Zero-copy operations** for maximum performance
-- **SIMD-optimized** distance computations (AVX2/AVX512)
-- **Async embedding pipeline** with batched processing
-- **Memory-mapped indices** for fast startup
-- **Recompute mode** for highest accuracy scenarios
+- **🔄 Recompute Mode** - Highest accuracy scenarios while eliminating vector storage overhead
+- **⚡ Zero-copy Operations** - Minimize IPC overhead by transferring distances instead of embeddings
+- **🚀 High-throughput Embedding Pipeline** - Optimized batched processing for maximum efficiency
+- **🎯 Two-level Search** - Novel coarse-to-fine search overlap for accelerated query processing (optional)
+- **💾 Memory-mapped Indices** - Fast startup with raw text mapping to reduce memory overhead
+- **🚀 MLX Support** - Ultra-fast recompute with quantized embedding models, accelerating building and search by 10-100x 
 
 ### 🎨 Developer Experience
 
 - **Simple Python API** - Get started in minutes
 - **Extensible backend system** - Easy to add new algorithms
 - **Comprehensive examples** - From basic usage to production deployment
-- **Rich debugging tools** - Built-in performance profiling
+
+## Applications on your MacBook
+
+### light weight RAG on your apple email
+
+LEANN can create a searchable index of your Apple Mail emails, allowing you to query your email history using natural language.
+
+#### Quick Start
+
+<details>
+<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+
+```bash
+# Use default mail path (works for most macOS setups)
+python examples/mail_reader_leann.py
+
+# Specify your own mail path
+python examples/mail_reader_leann.py --mail-path "/Users/yourname/Library/Mail/V10/..."
+
+# Run with custom index directory
+python examples/mail_reader_leann.py --index-dir "./my_mail_index"
+
+# Limit number of emails processed (useful for testing)
+python examples/mail_reader_leann.py --max-emails 1000
+
+# Run a single query
+python examples/mail_reader_leann.py --query "Find emails about project deadlines"
+```
+
+</details>
+
+#### Finding Your Mail Path
+
+<details>
+<summary><strong>🔍 Click to expand: How to find your mail path</strong></summary>
+
+The default mail path is configured for a typical macOS setup. If you need to find your specific mail path:
+
+1. Open Terminal
+2. Run: `find ~/Library/Mail -name "Messages" -type d | head -5`
+3. Use the parent directory(ended with Data) of the Messages folder as your `--mail-path`
+
+</details>
+
+#### Example Queries
+
+<details>
+<summary><strong>💬 Click to expand: Example queries you can try</strong></summary>
+
+Once the index is built, you can ask questions like:
+- "Show me emails about meeting schedules"
+- "Find emails from my boss about deadlines"
+- "What did John say about the project timeline?"
+- "Show me emails about travel expenses"
+
+</details>
+
 
 ## 📊 Benchmarks
 

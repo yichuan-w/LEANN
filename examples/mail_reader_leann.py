@@ -1,12 +1,16 @@
 import os
 import asyncio
 import dotenv
+import argparse
 from pathlib import Path
 from typing import List, Any
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
 from llama_index.core.node_parser import SentenceSplitter
 
 dotenv.load_dotenv()
+
+# Default mail path for macOS
+DEFAULT_MAIL_PATH = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
 
 def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_path: str = "mail_index.leann", max_count: int = -1):
     """
@@ -203,11 +207,29 @@ async def query_leann_index(index_path: str, query: str):
     print(f"Leann: {chat_response}")
 
 async def main():
-    # Base path to the mail data directory
-    base_mail_path = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='LEANN Mail Reader - Create and query email index')
+    parser.add_argument('--mail-path', type=str, default=DEFAULT_MAIL_PATH,
+                       help=f'Path to mail data directory (default: {DEFAULT_MAIL_PATH})')
+    parser.add_argument('--index-dir', type=str, default="./mail_index_leann_raw_text_all_dicts",
+                       help='Directory to store the LEANN index (default: ./mail_index_leann_raw_text_all_dicts)')
+    parser.add_argument('--max-emails', type=int, default=1000,
+                       help='Maximum number of emails to process (-1 means all)')
+    parser.add_argument('--query', type=str, default="Give me some funny advertisement about apple or other companies",
+                       help='Single query to run (default: runs example queries)')
     
-    INDEX_DIR = Path("./mail_index_leann_raw_text_all_dicts")
+    args = parser.parse_args()
+
+    print(f"args: {args}")
+    
+    # Base path to the mail data directory
+    base_mail_path = args.mail_path
+    
+    INDEX_DIR = Path(args.index_dir)
     INDEX_PATH = str(INDEX_DIR / "mail_documents.leann")
+    
+    print(f"Using mail path: {base_mail_path}")
+    print(f"Index directory: {INDEX_DIR}")
     
     # Find all Messages directories
     from LEANN_email_reader import EmlxReader
@@ -218,20 +240,23 @@ async def main():
         return
     
     # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_sources(messages_dirs, INDEX_PATH)
+    index_path = create_leann_index_from_multiple_sources(messages_dirs, INDEX_PATH, args.max_emails)
     
     if index_path:
-        # Example queries
-        queries = [
-            "Hows Berkeley Graduate Student Instructor",
-            "how's the icloud related advertisement saying",
-            "Whats the number of class recommend to take per semester for incoming EECS students"
-
-        ]
-        
-        for query in queries:
-            print("\n" + "="*60)
-            await query_leann_index(index_path, query)
+        if args.query:
+            # Run single query
+            await query_leann_index(index_path, args.query)
+        else:
+            # Example queries
+            queries = [
+                "Hows Berkeley Graduate Student Instructor",
+                "how's the icloud related advertisement saying",
+                "Whats the number of class recommend to take per semester for incoming EECS students"
+            ]
+            
+            for query in queries:
+                print("\n" + "="*60)
+                await query_leann_index(index_path, query)
 
 if __name__ == "__main__":
     asyncio.run(main()) 
