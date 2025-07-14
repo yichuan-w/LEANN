@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Test only Faiss HNSW"""
+
 import sys
 import time
 import psutil
 import gc
 
+
 def get_memory_usage():
     process = psutil.Process()
     return process.memory_info().rss / 1024 / 1024
+
 
 class MemoryTracker:
     def __init__(self, name: str):
@@ -27,9 +30,21 @@ class MemoryTracker:
         print(f"Peak Memory: {peak_mem:.1f} MB")
         return peak_mem
 
+
 def main():
-    import faiss
-    from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext, Settings
+    try:
+        import faiss
+    except ImportError:
+        print("Faiss is not installed.")
+        print("Please install it with `uv pip install faiss-cpu`")
+        sys.exit(1)
+
+    from llama_index.core import (
+        SimpleDirectoryReader,
+        VectorStoreIndex,
+        StorageContext,
+        Settings,
+    )
     from llama_index.vector_stores.faiss import FaissVectorStore
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
@@ -45,7 +60,12 @@ def main():
     faiss_index.hnsw.efConstruction = 64
     tracker.checkpoint("After Faiss index creation")
 
-    documents = SimpleDirectoryReader("examples/data", recursive=True, encoding="utf-8", required_exts=[".pdf", ".txt", ".md"]).load_data()
+    documents = SimpleDirectoryReader(
+        "examples/data",
+        recursive=True,
+        encoding="utf-8",
+        required_exts=[".pdf", ".txt", ".md"],
+    ).load_data()
     tracker.checkpoint("After document loading")
 
     print("Building Faiss HNSW index...")
@@ -73,6 +93,7 @@ def main():
 
     peak_memory = tracker.summary()
     print(f"Peak Memory: {peak_memory:.1f} MB")
+
 
 if __name__ == "__main__":
     main()

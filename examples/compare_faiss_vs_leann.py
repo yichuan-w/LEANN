@@ -10,6 +10,7 @@ import time
 import psutil
 import gc
 import subprocess
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -95,124 +96,39 @@ def test_faiss_hnsw():
 
 
 def test_leann_hnsw():
-    """Test LEANN HNSW Backend"""
+    """Test LEANN HNSW Search Memory (load existing index)"""
     print("\n" + "=" * 50)
-    print("TESTING LEANN HNSW BACKEND")
+    print("TESTING LEANN HNSW SEARCH MEMORY")
     print("=" * 50)
 
-    tracker = MemoryTracker("LEANN HNSW")
+    tracker = MemoryTracker("LEANN HNSW Search")
 
     # Import and setup
     tracker.checkpoint("Initial")
 
-    from llama_index.core import SimpleDirectoryReader
-    from llama_index.core.node_parser import SentenceSplitter
-    from leann.api import LeannBuilder, LeannChat
-    from pathlib import Path
+    from leann.api import LeannSearcher
 
     tracker.checkpoint("After imports")
 
-    # Load and parse documents
-    documents = SimpleDirectoryReader(
-        "examples/data",
-        recursive=True,
-        encoding="utf-8",
-        required_exts=[".pdf", ".txt", ".md"],
-    ).load_data()
+    # Find existing LEANN index
+    index_paths = [
+        "./test_leann_comparison/comparison.leann",
+    ]
+    index_path = None
+    for path in index_paths:
+        if os.path.exists(path + ".meta.json"):
+            index_path = path
+            break
 
-    tracker.checkpoint("After document loading")
+    if not index_path:
+        print("❌ LEANN index not found. Please build it first")
+        return {"peak_memory": float("inf"), "error": "Index not found"}
 
-    # Parse into chunks
-    node_parser = SentenceSplitter(
-        chunk_size=256, chunk_overlap=20, separator=" ", paragraph_separator="\n\n"
-    )
+    # Load searcher
+    searcher = LeannSearcher(index_path)
+    tracker.checkpoint("After searcher loading")
 
-    all_texts = []
-    for doc in documents:
-        nodes = node_parser.get_nodes_from_documents([doc])
-        for node in nodes:
-            all_texts.append(node.get_content())
-
-    tracker.checkpoint("After text chunking")
-
-    # Build LEANN index
-    INDEX_DIR = Path("./test_leann_comparison")
-    INDEX_PATH = str(INDEX_DIR / "comparison.leann")
-
-    # Clean up previous index
-    import shutil
-
-    if INDEX_DIR.exists():
-        shutil.rmtree(INDEX_DIR)
-
-    builder = LeannBuilder(
-        backend_name="hnsw",
-        embedding_model="facebook/contriever",
-        graph_degree=32,
-        complexity=64,
-        is_compact=True,
-        is_recompute=True,
-        num_threads=1,
-    )
-
-    tracker.checkpoint("After builder setup")
-
-    print("Building LEANN HNSW index...")
-
-    for chunk_text in all_texts:
-        builder.add_text(chunk_text)
-
-    builder.build_index(INDEX_PATH)
-
-    tracker.checkpoint("After index building")
-
-    # Ensure any existing embedding server is updated with new data
-    print("Ensuring embedding server data synchronization...")
-    meta_file = INDEX_DIR / "comparison.leann.meta.json"
-    if meta_file.exists():
-        from leann.embedding_server_manager import (
-            _check_port,
-            _update_server_meta_path,
-            _check_server_meta_path,
-        )
-
-        port = 5557  # Default port for HNSW backend
-        if _check_port(port):
-            print(f"Updating server meta path to: {meta_file}")
-            success = _update_server_meta_path(port, str(meta_file))
-            if success:
-                print("✅ Server meta path updated successfully")
-            else:
-                print("❌ Failed to update server meta path")
-
-            # Verify the update and ensure server is ready
-            time.sleep(2)  # Give server time to reload data
-            max_retries = 5
-            for retry in range(max_retries):
-                if _check_server_meta_path(port, str(meta_file)):
-                    print("✅ Server meta path verification successful")
-                    break
-                else:
-                    print(
-                        f"⏳ Server meta path verification failed (attempt {retry + 1}/{max_retries})"
-                    )
-                    if retry < max_retries - 1:
-                        time.sleep(1)
-                    else:
-                        print(
-                            "❌ Server meta path verification failed after all retries - may cause query issues"
-                        )
-        else:
-            print("No existing server found on port 5557")
-
-    # Test queries
-    chat = LeannChat(
-        index_path=INDEX_PATH, llm_config={"type": "simulated", "model": "test"}
-    )
-
-    tracker.checkpoint("After chat setup")
-
-    print("Running queries...")
+    print("Running search queries...")
     queries = [
         "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发",
         "What is LEANN and how does it work?",
@@ -221,18 +137,20 @@ def test_leann_hnsw():
 
     for i, query in enumerate(queries):
         start_time = time.time()
-        _ = chat.ask(query, top_k=20, recompute_beighbor_embeddings=True, complexity=32)
+        # Use same parameters as Faiss: top_k=20, ef=120 (complexity parameter)
+        _ = searcher.search(query, top_k=20, ef=120)
         query_time = time.time() - start_time
         print(f"Query {i + 1} time: {query_time:.3f}s")
         tracker.checkpoint(f"After query {i + 1}")
 
     peak_memory = tracker.summary()
 
-    # Get storage size before cleanup - only index files (exclude text data)
+    # Get storage size before cleanup
     storage_size = 0
+    INDEX_DIR = Path(index_path).parent
     if INDEX_DIR.exists():
         total_size = 0
-        for dirpath, dirnames, filenames in os.walk(str(INDEX_DIR)):
+        for dirpath, _, filenames in os.walk(str(INDEX_DIR)):
             for filename in filenames:
                 # Only count actual index files, skip text data and backups
                 if filename.endswith((".old", ".tmp", ".bak", ".jsonl", ".json")):
@@ -243,20 +161,19 @@ def test_leann_hnsw():
                     total_size += os.path.getsize(filepath)
         storage_size = total_size / (1024 * 1024)  # Convert to MB
 
-    # Clean up (but keep directory for storage size comparison)
-    del chat, builder
+    # Clean up
+    del searcher
     gc.collect()
 
     return {
         "peak_memory": peak_memory,
         "storage_size": storage_size,
-        "tracker": tracker,
     }
 
 
 def main():
     """Run comparison tests"""
-    print("Memory Usage Comparison: Faiss HNSW vs LEANN HNSW")
+    print("Storage + Search Memory Comparison: Faiss HNSW vs LEANN HNSW")
     print("=" * 60)
 
     # Test Faiss HNSW
@@ -271,7 +188,7 @@ def main():
 
     # Final comparison
     print("\n" + "=" * 60)
-    print("FINAL COMPARISON")
+    print("STORAGE + SEARCH MEMORY COMPARISON")
     print("=" * 60)
 
     # Get storage sizes
@@ -281,33 +198,37 @@ def main():
     # Get Faiss storage size using Python
     if os.path.exists("./storage_faiss"):
         total_size = 0
-        for dirpath, dirnames, filenames in os.walk("./storage_faiss"):
+        for dirpath, _, filenames in os.walk("./storage_faiss"):
             for filename in filenames:
                 filepath = os.path.join(dirpath, filename)
                 total_size += os.path.getsize(filepath)
         faiss_storage_size = total_size / (1024 * 1024)  # Convert to MB
 
-    # LEANN storage size is already captured in leann_results
-
-    print(f"Faiss HNSW:")
+    print("Faiss HNSW:")
     if "error" in faiss_results:
         print(f"  ❌ Failed: {faiss_results['error']}")
     else:
-        print(f"  Peak Memory: {faiss_results['peak_memory']:.1f} MB")
+        print(f"  Search Memory: {faiss_results['peak_memory']:.1f} MB")
         print(f"  Storage Size: {faiss_storage_size:.1f} MB")
 
-    print(f"\nLEANN HNSW:")
-    print(f"  Peak Memory: {leann_results['peak_memory']:.1f} MB")
-    print(f"  Storage Size: {leann_storage_size:.1f} MB")
+    print("\nLEANN HNSW:")
+    if "error" in leann_results:
+        print(f"  ❌ Failed: {leann_results['error']}")
+    else:
+        print(f"  Search Memory: {leann_results['peak_memory']:.1f} MB")
+        print(f"  Storage Size: {leann_storage_size:.1f} MB")
 
-    # Calculate improvements only if Faiss test succeeded
-    if "error" not in faiss_results:
+    # Calculate improvements only if both tests succeeded
+    if "error" not in faiss_results and "error" not in leann_results:
         memory_ratio = faiss_results["peak_memory"] / leann_results["peak_memory"]
 
-        print(f"\nLEANN vs Faiss:")
-        print(f"  Memory Usage: {memory_ratio:.1f}x less")
+        print("\nLEANN vs Faiss Performance:")
+        memory_saving = faiss_results["peak_memory"] - leann_results["peak_memory"]
+        print(
+            f"  Search Memory: {memory_ratio:.1f}x less ({memory_saving:.1f} MB saved)"
+        )
 
-        # Storage comparison - be clear about which is larger
+        # Storage comparison
         if leann_storage_size > faiss_storage_size:
             storage_ratio = leann_storage_size / faiss_storage_size
             print(
@@ -319,20 +240,16 @@ def main():
                 f"  Storage Size: {storage_ratio:.1f}x smaller (LEANN uses less storage)"
             )
         else:
-            print(f"  Storage Size: similar")
-
-        print(f"\nSavings:")
-        memory_saving = faiss_results["peak_memory"] - leann_results["peak_memory"]
-        storage_diff = faiss_storage_size - leann_storage_size
-        print(f"  Memory: {memory_saving:.1f} MB")
-        if storage_diff >= 0:
-            print(f"  Storage: {storage_diff:.1f} MB saved")
-        else:
-            print(f"  Storage: {abs(storage_diff):.1f} MB additional used")
+            print("  Storage Size: similar")
     else:
-        print(f"\n✅ LEANN HNSW ran successfully!")
-        print(f"📊 LEANN Memory Usage: {leann_results['peak_memory']:.1f} MB")
-        print(f"📊 LEANN Storage Size: {leann_storage_size:.1f} MB")
+        if "error" not in leann_results:
+            print("\n✅ LEANN HNSW completed successfully!")
+            print(f"📊 Search Memory: {leann_results['peak_memory']:.1f} MB")
+            print(f"📊 Storage Size: {leann_storage_size:.1f} MB")
+        if "error" not in faiss_results:
+            print("\n✅ Faiss HNSW completed successfully!")
+            print(f"📊 Search Memory: {faiss_results['peak_memory']:.1f} MB")
+            print(f"📊 Storage Size: {faiss_storage_size:.1f} MB")
 
 
 if __name__ == "__main__":
