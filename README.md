@@ -123,7 +123,7 @@ uv run examples/main_cli_example.py
 - **🚀 High-throughput Embedding Pipeline** - Optimized batched processing for maximum efficiency
 - **🎯 Two-level Search** - Novel coarse-to-fine search overlap for accelerated query processing (optional)
 - **💾 Memory-mapped Indices** - Fast startup with raw text mapping to reduce memory overhead
-- **🚀 MLX Support** - Ultra-fast recompute with quantized embedding models, accelerating building and search by 10-100x 
+- **🚀 MLX Support** - Ultra-fast recompute with quantized embedding models, accelerating building and search by 10-100x ([minimal example](test/build_mlx_index.py))
 
 ### 🎨 Developer Experience
 
