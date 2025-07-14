@@ -1,4 +1,4 @@
-# 🚀 LEANN: A Low-Storage Vector Index
+<h1 align="center">🚀 LEANN: A Low-Storage Vector Index</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue.svg" alt="Python 3.9+">
