@@ -58,28 +58,35 @@ def test_faiss_hnsw():
     print("=" * 50)
 
     try:
-        result = subprocess.run([sys.executable, "examples/test_faiss_only.py"], capture_output=True, text=True, timeout=300)
-        
+        result = subprocess.run(
+            [sys.executable, "examples/faiss_only.py"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
         print(result.stdout)
         if result.stderr:
             print("Stderr:", result.stderr)
-            
+
         if result.returncode != 0:
             return {
                 "peak_memory": float("inf"),
                 "error": f"Process failed with code {result.returncode}",
             }
-            
+
         # Parse peak memory from output
-        lines = result.stdout.split('\n')
+        lines = result.stdout.split("\n")
         peak_memory = 0.0
-        
+
         for line in lines:
             if "Peak Memory:" in line:
-                peak_memory = float(line.split("Peak Memory:")[1].split("MB")[0].strip())
-                
+                peak_memory = float(
+                    line.split("Peak Memory:")[1].split("MB")[0].strip()
+                )
+
         return {"peak_memory": peak_memory}
-        
+
     except Exception as e:
         return {
             "peak_memory": float("inf"),
@@ -228,10 +235,10 @@ def test_leann_hnsw():
         for dirpath, dirnames, filenames in os.walk(str(INDEX_DIR)):
             for filename in filenames:
                 # Only count actual index files, skip text data and backups
-                if filename.endswith(('.old', '.tmp', '.bak', '.jsonl', '.json')):
+                if filename.endswith((".old", ".tmp", ".bak", ".jsonl", ".json")):
                     continue
                 # Count .index, .idx, .map files (actual index structures)
-                if filename.endswith(('.index', '.idx', '.map')):
+                if filename.endswith((".index", ".idx", ".map")):
                     filepath = os.path.join(dirpath, filename)
                     total_size += os.path.getsize(filepath)
         storage_size = total_size / (1024 * 1024)  # Convert to MB
@@ -296,22 +303,26 @@ def main():
     # Calculate improvements only if Faiss test succeeded
     if "error" not in faiss_results:
         memory_ratio = faiss_results["peak_memory"] / leann_results["peak_memory"]
-        
+
         print(f"\nLEANN vs Faiss:")
         print(f"  Memory Usage: {memory_ratio:.1f}x less")
-        
+
         # Storage comparison - be clear about which is larger
         if leann_storage_size > faiss_storage_size:
             storage_ratio = leann_storage_size / faiss_storage_size
-            print(f"  Storage Size: {storage_ratio:.1f}x larger (LEANN uses more storage)")
+            print(
+                f"  Storage Size: {storage_ratio:.1f}x larger (LEANN uses more storage)"
+            )
         elif faiss_storage_size > leann_storage_size:
             storage_ratio = faiss_storage_size / leann_storage_size
-            print(f"  Storage Size: {storage_ratio:.1f}x smaller (LEANN uses less storage)")
+            print(
+                f"  Storage Size: {storage_ratio:.1f}x smaller (LEANN uses less storage)"
+            )
         else:
             print(f"  Storage Size: similar")
 
         print(f"\nSavings:")
-        memory_saving = faiss_results['peak_memory'] - leann_results['peak_memory']
+        memory_saving = faiss_results["peak_memory"] - leann_results["peak_memory"]
         storage_diff = faiss_storage_size - leann_storage_size
         print(f"  Memory: {memory_saving:.1f} MB")
         if storage_diff >= 0:
