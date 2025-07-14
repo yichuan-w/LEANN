@@ -465,7 +465,7 @@ def create_hnsw_embedding_server(
         """Perform client-side warmup"""
         time.sleep(2)
         print(f"Performing client-side warmup with model {model_name}...")
-        sample_ids = ["1", "2", "3", "4", "5"]
+        sample_ids = ["0", "1", "2", "3", "4"]
 
         try:
             context = zmq.Context()
