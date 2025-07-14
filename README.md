@@ -144,7 +144,7 @@ This ensures the generated files are compatible with your system's protobuf libr
 
 ## Applications on your MacBook
 
-### light weight RAG on your apple email
+### 📧 Lightweight RAG on your Apple Mail
 
 LEANN can create a searchable index of your Apple Mail emails, allowing you to query your email history using natural language.
 
@@ -258,6 +258,60 @@ Once the index is built, you can ask questions like:
 
 </details>
 
+
+### 💬 Lightweight RAG on your WeChat History
+
+LEANN can create a searchable index of your WeChat chat history, allowing you to query your conversations using natural language.
+
+#### Prerequisites
+
+<details>
+<summary><strong>🔧 Click to expand: Installation Requirements</strong></summary>
+
+First, you need to install the WeChat exporter:
+
+```bash
+sudo packages/wechat-exporter/wechattweak-cli install
+```
+
+**Troubleshooting**: If you encounter installation issues, check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41).
+
+</details>
+
+#### Quick Start
+
+<details>
+<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+
+```bash
+# Use default settings (recommended for first run)
+python examples/wechat_history_reader_leann.py
+
+# Run with custom export directory and wehn we run the first time, LEANN will export all chat history automatically for you
+python examples/wechat_history_reader_leann.py --export-dir "./my_wechat_exports"
+
+# Run with custom index directory
+python examples/wechat_history_reader_leann.py --index-dir "./my_wechat_index"
+
+# Limit number of chat entries processed (useful for testing)
+python examples/wechat_history_reader_leann.py --max-entries 1000
+
+# Run a single query
+python examples/wechat_history_reader_leann.py --query "Show me conversations about travel plans"
+
+```
+
+</details>
+
+#### Example Queries
+
+<details>
+<summary><strong>💬 Click to expand: Example queries you can try</strong></summary>
+
+Once the index is built, you can ask questions like:
+- "我想买魔术师约翰逊的球衣，给我一些对应聊天记录?" (Chinese: Show me chat records about buying Magic Johnson's jersey)
+
+</details>
 
 
 

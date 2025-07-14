@@ -1,6 +1,7 @@
 import os
 import asyncio
 import dotenv
+import argparse
 from pathlib import Path
 from typing import List, Any, Optional
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
@@ -9,6 +10,9 @@ import requests
 import time
 
 dotenv.load_dotenv()
+
+# Default WeChat export directory
+DEFAULT_WECHAT_EXPORT_DIR = "./wechat_export_direct"
 
 def create_leann_index_from_multiple_wechat_exports(export_dirs: List[Path], index_path: str = "wechat_history_index.leann", max_count: int = -1):
     """
@@ -218,32 +222,55 @@ async def query_leann_index(index_path: str, query: str):
 async def main():
     """Main function with integrated WeChat export functionality."""
     
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='LEANN WeChat History Reader - Create and query WeChat chat history index')
+    parser.add_argument('--export-dir', type=str, default=DEFAULT_WECHAT_EXPORT_DIR,
+                       help=f'Directory to store WeChat exports (default: {DEFAULT_WECHAT_EXPORT_DIR})')
+    parser.add_argument('--index-dir', type=str, default="./wechat_history_index_leann_test",
+                       help='Directory to store the LEANN index (default: ./wechat_history_index_leann_test)')
+    parser.add_argument('--max-entries', type=int, default=5000,
+                       help='Maximum number of chat entries to process (default: 5000)')
+    parser.add_argument('--query', type=str, default=None,
+                       help='Single query to run (default: runs example queries)')
+    parser.add_argument('--force-export', action='store_true', default=False,
+                       help='Force re-export of WeChat data even if exports exist')
+    
+    args = parser.parse_args()
+    
+    INDEX_DIR = Path(args.index_dir)
+    INDEX_PATH = str(INDEX_DIR / "wechat_history.leann")
+    
+    print(f"Using WeChat export directory: {args.export_dir}")
+    print(f"Index directory: {INDEX_DIR}")
+    print(f"Max entries: {args.max_entries}")
+    
     # Initialize WeChat reader with export capabilities
     from history_data.wechat_history import WeChatHistoryReader
     reader = WeChatHistoryReader()
     
     # Find existing exports or create new ones using the centralized method
-    export_dirs = reader.find_or_export_wechat_data("./wechat_export_direct")
+    export_dirs = reader.find_or_export_wechat_data(args.export_dir, force_export=args.force_export)
     
     if not export_dirs:
         print("Failed to find or export WeChat data. Exiting.")
         return
     
-    INDEX_DIR = Path("./wechat_history_index_leann_test")
-    INDEX_PATH = str(INDEX_DIR / "wechat_history.leann")
-    
     # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_wechat_exports(export_dirs, INDEX_PATH, max_count=5000)
+    index_path = create_leann_index_from_multiple_wechat_exports(export_dirs, INDEX_PATH, max_count=args.max_entries)
     
     if index_path:
-        # Example queries
-        queries = [
-            "我想买魔术师约翰逊的球衣，给我一些对应聊天记录?",
-        ]
-        
-        for query in queries:
-            print("\n" + "="*60)
-            await query_leann_index(index_path, query)
+        if args.query:
+            # Run single query
+            await query_leann_index(index_path, args.query)
+        else:
+            # Example queries
+            queries = [
+                "我想买魔术师约翰逊的球衣，给我一些对应聊天记录?",
+            ]
+            
+            for query in queries:
+                print("\n" + "="*60)
+                await query_leann_index(index_path, query)
 
 if __name__ == "__main__":
     asyncio.run(main()) 
