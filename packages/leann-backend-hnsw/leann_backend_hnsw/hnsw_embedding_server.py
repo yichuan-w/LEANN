@@ -485,8 +485,6 @@ def create_hnsw_embedding_server(
 
                 try:
                     request_payload = msgpack.unpackb(message_bytes)
-                    print(f"DEBUG: Raw request_payload: {request_payload}")
-                    print(f"DEBUG: request_payload type: {type(request_payload)}")
                     if isinstance(request_payload, list):
                         print(f"DEBUG: request_payload length: {len(request_payload)}")
                         for i, item in enumerate(request_payload):
