@@ -3,10 +3,7 @@ faulthandler.enable()
 
 import argparse
 from llama_index.core import SimpleDirectoryReader, Settings
-from llama_index.core.readers.base import BaseReader
-from llama_index.node_parser.docling import DoclingNodeParser
-from llama_index.readers.docling import DoclingReader
-from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
+from llama_index.core.node_parser import SentenceSplitter
 import asyncio
 import dotenv
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
@@ -15,25 +12,18 @@ from pathlib import Path
 
 dotenv.load_dotenv()
 
-reader = DoclingReader(export_type=DoclingReader.ExportType.JSON)
-file_extractor: dict[str, BaseReader] = {
-    ".docx": reader,
-    ".pptx": reader, 
-    ".pdf": reader,
-    ".xlsx": reader,
-    ".txt": reader,
-    ".md": reader,
-}
-node_parser = DoclingNodeParser(
-    chunker=HybridChunker(tokenizer="facebook/contriever", max_tokens=128)
+node_parser = SentenceSplitter(
+    chunk_size=256,
+    chunk_overlap=20,
+    separator=" ",
+    paragraph_separator="\n\n"
 )
 print("Loading documents...")
 documents = SimpleDirectoryReader(
     "examples/data", 
-    recursive=True, 
-    file_extractor=file_extractor,
+    recursive=True,
     encoding="utf-8",
-    required_exts=[".pdf", ".docx", ".pptx", ".xlsx", ".txt", ".md"]
+    required_exts=[".pdf", ".txt", ".md"]
 ).load_data(show_progress=True)
 print("Documents loaded.")
 all_texts = []
