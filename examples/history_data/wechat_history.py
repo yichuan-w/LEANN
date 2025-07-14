@@ -682,6 +682,7 @@ Message: {readable_text if readable_text else message_text}
             Path("./wechat_database_export"),
             Path("./wechat_export_test"),
             Path("./wechat_export"),
+            Path("./wechat_export_direct"),
             Path("./wechat_chat_history"),
             Path("./chat_export")
         ]
