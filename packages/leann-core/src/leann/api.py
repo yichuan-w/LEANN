@@ -290,7 +290,7 @@ class LeannSearcher:
                         )
                     )
                     print(
-                        f"    {i + 1}. passage_id='{string_id}' -> SUCCESS: {passage_data['text'][:60]}..."
+                        f"    {i + 1}. passage_id='{string_id}' -> SUCCESS: {passage_data['text']}..."
                     )
                 except KeyError:
                     print(

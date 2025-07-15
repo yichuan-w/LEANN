@@ -680,7 +680,7 @@ def create_hnsw_embedding_server(
                                         f"ERROR: Passage ID {nid} not found in passages dict"
                                     )
                                     print(
-                                        f"ERROR: Available passage IDs: {list(passages.keys())[:10]}..."
+                                        f"ERROR: Available passage IDs: {list(passages.keys())}..."
                                     )
                                     raise RuntimeError(
                                         f"FATAL: Passage with ID {nid} not found"

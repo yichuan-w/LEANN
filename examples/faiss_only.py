@@ -5,6 +5,7 @@ import sys
 import time
 import psutil
 import gc
+import os
 
 
 def get_memory_usage():
@@ -44,7 +45,10 @@ def main():
         VectorStoreIndex,
         StorageContext,
         Settings,
+        node_parser,
+        Document,
     )
+    from llama_index.core.node_parser import SentenceSplitter
     from llama_index.vector_stores.faiss import FaissVectorStore
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
@@ -68,15 +72,63 @@ def main():
     ).load_data()
     tracker.checkpoint("After document loading")
 
-    print("Building Faiss HNSW index...")
-    vector_store = FaissVectorStore(faiss_index=faiss_index)
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
-    index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
-    tracker.checkpoint("After index building")
+    # Parse into chunks using the same splitter as LEANN
+    node_parser = SentenceSplitter(
+        chunk_size=256, chunk_overlap=20, separator=" ", paragraph_separator="\n\n"
+    )
 
-    index.storage_context.persist("./storage_faiss")
-    tracker.checkpoint("After index saving")
+    all_texts = []
+    for doc in documents:
+        nodes = node_parser.get_nodes_from_documents([doc])
+        for node in nodes:
+            all_texts.append(node.get_content())
 
+    tracker.checkpoint("After text chunking")
+
+    # Check if index already exists and try to load it
+    index_loaded = False
+    if os.path.exists("./storage_faiss"):
+        print("Loading existing Faiss HNSW index...")
+        try:
+            # Use the correct Faiss loading pattern from the example
+            vector_store = FaissVectorStore.from_persist_dir("./storage_faiss")
+            storage_context = StorageContext.from_defaults(
+                vector_store=vector_store, persist_dir="./storage_faiss"
+            )
+            from llama_index.core import load_index_from_storage
+            index = load_index_from_storage(storage_context=storage_context)
+            print(f"Index loaded from ./storage_faiss")
+            tracker.checkpoint("After loading existing index")
+            index_loaded = True
+        except Exception as e:
+            print(f"Failed to load existing index: {e}")
+            print("Cleaning up corrupted index and building new one...")
+            # Clean up corrupted index
+            import shutil
+            if os.path.exists("./storage_faiss"):
+                shutil.rmtree("./storage_faiss")
+    
+    if not index_loaded:
+        print("Building new Faiss HNSW index...")
+        
+        # Use the correct Faiss building pattern from the example
+        vector_store = FaissVectorStore(faiss_index=faiss_index)
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        index = VectorStoreIndex.from_documents(
+            documents, storage_context=storage_context
+        )
+        tracker.checkpoint("After index building")
+
+        # Save index to disk using the correct pattern
+        index.storage_context.persist(persist_dir="./storage_faiss")
+        tracker.checkpoint("After index saving")
+
+    # Measure runtime memory overhead
+    print("\nMeasuring runtime memory overhead...")
+    runtime_start_mem = get_memory_usage()
+    print(f"Before load memory: {runtime_start_mem:.1f} MB")
+    tracker.checkpoint("Before load memory")
+    
     query_engine = index.as_query_engine(similarity_top_k=20)
     queries = [
         "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发",
@@ -91,8 +143,12 @@ def main():
         print(f"Query {i + 1} time: {query_time:.3f}s")
         tracker.checkpoint(f"After query {i + 1}")
 
+    runtime_end_mem = get_memory_usage()
+    runtime_overhead = runtime_end_mem - runtime_start_mem
+    
     peak_memory = tracker.summary()
     print(f"Peak Memory: {peak_memory:.1f} MB")
+    print(f"Runtime Memory Overhead: {runtime_overhead:.1f} MB")
 
 
 if __name__ == "__main__":

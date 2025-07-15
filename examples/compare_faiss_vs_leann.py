@@ -11,6 +11,7 @@ import psutil
 import gc
 import subprocess
 from pathlib import Path
+from llama_index.core.node_parser import SentenceSplitter
 
 # Setup logging
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -110,6 +111,72 @@ def test_leann_hnsw():
 
     tracker.checkpoint("After imports")
 
+    from llama_index.core import SimpleDirectoryReader
+    from leann.api import LeannBuilder, LeannSearcher
+
+
+    # Load and parse documents
+    documents = SimpleDirectoryReader(
+        "examples/data",
+        recursive=True,
+        encoding="utf-8",
+        required_exts=[".pdf", ".txt", ".md"],
+    ).load_data()
+
+    tracker.checkpoint("After document loading")
+
+    # Parse into chunks
+    node_parser = SentenceSplitter(
+        chunk_size=256, chunk_overlap=20, separator=" ", paragraph_separator="\n\n"
+    )
+
+    all_texts = []
+    for doc in documents:
+        nodes = node_parser.get_nodes_from_documents([doc])
+        for node in nodes:
+            all_texts.append(node.get_content())
+
+    tracker.checkpoint("After text chunking")
+
+    # Build LEANN index
+    INDEX_DIR = Path("./test_leann_comparison")
+    INDEX_PATH = str(INDEX_DIR / "comparison.leann")
+
+    # Check if index already exists
+    if os.path.exists(INDEX_PATH + ".meta.json"):
+        print("Loading existing LEANN HNSW index...")
+        tracker.checkpoint("After loading existing index")
+    else:
+        print("Building new LEANN HNSW index...")
+        # Clean up previous index
+        import shutil
+
+        if INDEX_DIR.exists():
+            shutil.rmtree(INDEX_DIR)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model="facebook/contriever",
+            graph_degree=32,
+            complexity=64,
+            is_compact=True,
+            is_recompute=True,
+            num_threads=1,
+        )
+
+        tracker.checkpoint("After builder setup")
+
+        print("Building LEANN HNSW index...")
+
+        for chunk_text in all_texts:
+            builder.add_text(chunk_text)
+
+        builder.build_index(INDEX_PATH)
+        del builder
+        gc.collect()
+
+        tracker.checkpoint("After index building")
+
     # Find existing LEANN index
     index_paths = [
         "./test_leann_comparison/comparison.leann",
@@ -124,9 +191,17 @@ def test_leann_hnsw():
         print("❌ LEANN index not found. Please build it first")
         return {"peak_memory": float("inf"), "error": "Index not found"}
 
+    # Measure runtime memory overhead
+    print("\nMeasuring runtime memory overhead...")
+    runtime_start_mem = get_memory_usage()
+    print(f"Before load memory: {runtime_start_mem:.1f} MB")
+    tracker.checkpoint("Before load memory")
+    
     # Load searcher
     searcher = LeannSearcher(index_path)
     tracker.checkpoint("After searcher loading")
+
+
 
     print("Running search queries...")
     queries = [
@@ -143,7 +218,11 @@ def test_leann_hnsw():
         print(f"Query {i + 1} time: {query_time:.3f}s")
         tracker.checkpoint(f"After query {i + 1}")
 
+    runtime_end_mem = get_memory_usage()
+    runtime_overhead = runtime_end_mem - runtime_start_mem
+
     peak_memory = tracker.summary()
+    print(f"Runtime Memory Overhead: {runtime_overhead:.1f} MB")
 
     # Get storage size before cleanup
     storage_size = 0

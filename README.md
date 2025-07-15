@@ -196,6 +196,8 @@ LEANN can create a searchable index of your Chrome browser history, allowing you
 <details>
 <summary><strong>📋 Click to expand: Command Examples</strong></summary>
 
+Note you need to quit google right now to successfully run this.
+
 ```bash
 # Use default Chrome profile (auto-finds all profiles) and recommand method to run this because usually default file is enough
 python examples/google_history_reader_leann.py

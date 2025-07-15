@@ -199,7 +199,7 @@ async def query_leann_index(index_path: str, query: str):
         query: The query string
     """
     print(f"\n[PHASE 2] Starting Leann chat session...")
-    chat = LeannChat(index_path=index_path, llm_config={"type": "hf", "model": "Qwen/Qwen3-0.6B"})
+    chat = LeannChat(index_path=index_path)
     
     print(f"You: {query}")
     chat_response = chat.ask(
@@ -270,8 +270,6 @@ async def main():
             # Example queries
             queries = [
                 "What websites did I visit about machine learning?",
-                "Show me my recent shopping history",
-                "What news sites did I visit this week?",
                 "Find my search history about programming"
             ]
             
