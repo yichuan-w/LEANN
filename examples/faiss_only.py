@@ -77,13 +77,7 @@ def main():
         chunk_size=256, chunk_overlap=20, separator=" ", paragraph_separator="\n\n"
     )
 
-    all_texts = []
-    for doc in documents:
-        nodes = node_parser.get_nodes_from_documents([doc])
-        for node in nodes:
-            all_texts.append(node.get_content())
-
-    tracker.checkpoint("After text chunking")
+    tracker.checkpoint("After text splitter setup")
 
     # Check if index already exists and try to load it
     index_loaded = False
@@ -115,7 +109,9 @@ def main():
         vector_store = FaissVectorStore(faiss_index=faiss_index)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
-            documents, storage_context=storage_context
+            documents, 
+            storage_context=storage_context,
+            transformations=[node_parser]
         )
         tracker.checkpoint("After index building")
 
