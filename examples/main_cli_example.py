@@ -65,7 +65,7 @@ async def main(args):
     
 
     llm_config = {
-        "type": "ollama", "model": "Qwen/Qwen3-8B"
+        "type": "ollama", "model": "qwen3:8b"
     }
 
     chat = LeannChat(index_path=INDEX_PATH, llm_config=llm_config)
