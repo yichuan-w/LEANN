@@ -2,7 +2,7 @@ import numpy as np
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Literal
 import pickle
 import shutil
 
@@ -13,16 +13,19 @@ from leann.registry import register_backend
 from leann.interface import (
     LeannBackendFactoryInterface,
     LeannBackendBuilderInterface,
-    LeannBackendSearcherInterface
+    LeannBackendSearcherInterface,
 )
+
 
 def get_metric_map():
     from . import faiss
+
     return {
         "mips": faiss.METRIC_INNER_PRODUCT,
         "l2": faiss.METRIC_L2,
         "cosine": faiss.METRIC_INNER_PRODUCT,
     }
+
 
 @register_backend("hnsw")
 class HNSWBackend(LeannBackendFactoryInterface):
@@ -33,6 +36,7 @@ class HNSWBackend(LeannBackendFactoryInterface):
     @staticmethod
     def searcher(index_path: str, **kwargs) -> LeannBackendSearcherInterface:
         return HNSWSearcher(index_path, **kwargs)
+
 
 class HNSWBuilder(LeannBackendBuilderInterface):
     def __init__(self, **kwargs):
@@ -46,6 +50,7 @@ class HNSWBuilder(LeannBackendBuilderInterface):
 
     def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs):
         from . import faiss
+
         path = Path(index_path)
         index_dir = path.parent
         index_prefix = path.stem
@@ -56,7 +61,7 @@ class HNSWBuilder(LeannBackendBuilderInterface):
 
         label_map = {i: str_id for i, str_id in enumerate(ids)}
         label_map_file = index_dir / "leann.labels.map"
-        with open(label_map_file, 'wb') as f:
+        with open(label_map_file, "wb") as f:
             pickle.dump(label_map, f)
 
         metric_enum = get_metric_map().get(self.distance_metric.lower())
@@ -85,9 +90,7 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         csr_temp_file = index_file.with_suffix(".csr.tmp")
 
         success = convert_hnsw_graph_to_csr(
-            str(index_file), 
-            str(csr_temp_file),
-            prune_embeddings=self.is_recompute
+            str(index_file), str(csr_temp_file), prune_embeddings=self.is_recompute
         )
 
         if success:
@@ -95,16 +98,25 @@ class HNSWBuilder(LeannBackendBuilderInterface):
             index_file_old = index_file.with_suffix(".old")
             shutil.move(str(index_file), str(index_file_old))
             shutil.move(str(csr_temp_file), str(index_file))
-            print(f"INFO: Replaced original index with {mode_str} version at '{index_file}'")
+            print(
+                f"INFO: Replaced original index with {mode_str} version at '{index_file}'"
+            )
         else:
             # Clean up and fail fast
             if csr_temp_file.exists():
                 os.remove(csr_temp_file)
-            raise RuntimeError("CSR conversion failed - cannot proceed with compact format")
+            raise RuntimeError(
+                "CSR conversion failed - cannot proceed with compact format"
+            )
+
 
 class HNSWSearcher(BaseSearcher):
     def __init__(self, index_path: str, **kwargs):
-        super().__init__(index_path, backend_module_name="leann_backend_hnsw.hnsw_embedding_server", **kwargs)
+        super().__init__(
+            index_path,
+            backend_module_name="leann_backend_hnsw.hnsw_embedding_server",
+            **kwargs,
+        )
         from . import faiss
 
         self.distance_metric = self.meta.get("distance_metric", "mips").lower()
@@ -113,8 +125,8 @@ class HNSWSearcher(BaseSearcher):
             raise ValueError(f"Unsupported distance_metric '{self.distance_metric}'.")
 
         self.is_compact, self.is_pruned = (
-            self.meta.get('is_compact', True),
-            self.meta.get('is_pruned', True)
+            self.meta.get("is_compact", True),
+            self.meta.get("is_pruned", True),
         )
 
         index_file = self.index_dir / f"{self.index_path.stem}.index"
@@ -130,14 +142,50 @@ class HNSWSearcher(BaseSearcher):
 
         self._index = faiss.read_index(str(index_file), faiss.IO_FLAG_MMAP, hnsw_config)
 
-    def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, Any]:
-        from . import faiss
+    def search(
+        self,
+        query: np.ndarray,
+        top_k: int,
+        complexity: int = 64,
+        beam_width: int = 1,
+        prune_ratio: float = 0.0,
+        recompute_embeddings: bool = False,
+        pruning_strategy: Literal["global", "local", "proportional"] = "global",
+        zmq_port: int = 5557,
+        batch_size: int = 0,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Search for nearest neighbors using HNSW index.
 
-        if self.is_pruned:
+        Args:
+            query: Query vectors (B, D) where B is batch size, D is dimension
+            top_k: Number of nearest neighbors to return
+            complexity: Search complexity/efSearch, higher = more accurate but slower
+            beam_width: Number of parallel search paths/beam_size
+            prune_ratio: Ratio of neighbors to prune via PQ (0.0-1.0)
+            recompute_embeddings: Whether to fetch fresh embeddings from server
+            pruning_strategy: PQ candidate selection strategy:
+                - "global": Use global PQ queue size for selection (default)
+                - "local": Local pruning, sort and select best candidates
+                - "proportional": Base selection on new neighbor count ratio
+            zmq_port: ZMQ port for embedding server
+            batch_size: Neighbor processing batch size, 0=disabled (HNSW-specific)
+            **kwargs: Additional HNSW-specific parameters (for legacy compatibility)
+
+        Returns:
+            Dict with 'labels' (list of lists) and 'distances' (ndarray)
+        """
+        from . import faiss  # type: ignore
+
+        # Use recompute_embeddings parameter
+        use_recompute = recompute_embeddings or self.is_pruned
+        if use_recompute:
             meta_file_path = self.index_dir / f"{self.index_path.name}.meta.json"
             if not meta_file_path.exists():
-                raise RuntimeError(f"FATAL: Index is pruned but metadata file not found: {meta_file_path}")
-            zmq_port = kwargs.get("zmq_port", 5557)
+                raise RuntimeError(
+                    f"FATAL: Recompute enabled but metadata file not found: {meta_file_path}"
+                )
             self._ensure_server_running(str(meta_file_path), port=zmq_port, **kwargs)
 
         if query.dtype != np.float32:
@@ -146,16 +194,48 @@ class HNSWSearcher(BaseSearcher):
             faiss.normalize_L2(query)
 
         params = faiss.SearchParametersHNSW()
-        params.zmq_port = kwargs.get("zmq_port", 5557)
-        params.efSearch = kwargs.get("complexity", 32)
-        params.beam_size = kwargs.get("beam_width", 1)
+        params.zmq_port = zmq_port
+        params.efSearch = complexity
+        params.beam_size = beam_width
 
-        batch_size = query.shape[0]
-        distances = np.empty((batch_size, top_k), dtype=np.float32)
-        labels = np.empty((batch_size, top_k), dtype=np.int64)
+        # PQ pruning: direct mapping to HNSW's pq_pruning_ratio
+        params.pq_pruning_ratio = prune_ratio
 
-        self._index.search(query.shape[0], faiss.swig_ptr(query), top_k, faiss.swig_ptr(distances), faiss.swig_ptr(labels), params)
+        # Map pruning_strategy to HNSW parameters
+        if pruning_strategy == "local":
+            params.local_prune = True
+            params.send_neigh_times_ratio = 0.0
+        elif pruning_strategy == "proportional":
+            params.local_prune = False
+            params.send_neigh_times_ratio = (
+                1.0  # Any value > 1e-6 triggers proportional mode
+            )
+        else:  # "global"
+            params.local_prune = False
+            params.send_neigh_times_ratio = 0.0
 
-        string_labels = [[self.label_map.get(int_label, f"unknown_{int_label}") for int_label in batch_labels] for batch_labels in labels]
+        # HNSW-specific batch processing parameter
+        params.batch_size = batch_size
+
+        batch_size_query = query.shape[0]
+        distances = np.empty((batch_size_query, top_k), dtype=np.float32)
+        labels = np.empty((batch_size_query, top_k), dtype=np.int64)
+
+        self._index.search(
+            query.shape[0],
+            faiss.swig_ptr(query),
+            top_k,
+            faiss.swig_ptr(distances),
+            faiss.swig_ptr(labels),
+            params,
+        )
+
+        string_labels = [
+            [
+                self.label_map.get(int_label, f"unknown_{int_label}")
+                for int_label in batch_labels
+            ]
+            for batch_labels in labels
+        ]
 
         return {"labels": string_labels, "distances": distances}

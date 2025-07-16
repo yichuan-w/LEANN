@@ -175,7 +175,7 @@ class EmbeddingServerManager:
         self.backend_module_name = backend_module_name
         self.server_process: Optional[subprocess.Popen] = None
         self.server_port: Optional[int] = None
-        atexit.register(self.stop_server)
+        # atexit.register(self.stop_server)
 
     def start_server(self, port: int, model_name: str, **kwargs) -> bool:
         """

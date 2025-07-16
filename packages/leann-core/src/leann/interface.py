@@ -1,42 +1,55 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Literal
 
 class LeannBackendBuilderInterface(ABC):
-    """用于构建索引的后端接口"""
+    """Backend interface for building indexes"""
     
     @abstractmethod 
     def build(self, data: np.ndarray, index_path: str, **kwargs) -> None:
-        """构建索引
+        """Build index
         
         Args:
-            data: 向量数据 (N, D)
-            index_path: 索引保存路径
-            **kwargs: 后端特定的构建参数
+            data: Vector data (N, D)
+            index_path: Path to save index
+            **kwargs: Backend-specific build parameters
         """
         pass
 
 class LeannBackendSearcherInterface(ABC):
-    """用于搜索的后端接口"""
+    """Backend interface for searching"""
     
     @abstractmethod
     def __init__(self, index_path: str, **kwargs):
-        """初始化搜索器
+        """Initialize searcher
         
         Args:
-            index_path: 索引文件路径
-            **kwargs: 后端特定的加载参数
+            index_path: Path to index file
+            **kwargs: Backend-specific loading parameters
         """
         pass
     
     @abstractmethod
-    def search(self, query: np.ndarray, top_k: int, **kwargs) -> Dict[str, Any]:
-        """搜索最近邻
+    def search(self, query: np.ndarray, top_k: int,
+               complexity: int = 64,
+               beam_width: int = 1,
+               prune_ratio: float = 0.0,
+               recompute_embeddings: bool = False,
+               pruning_strategy: Literal["global", "local", "proportional"] = "global",
+               zmq_port: int = 5557,
+               **kwargs) -> Dict[str, Any]:
+        """Search for nearest neighbors
         
         Args:
-            query: 查询向量 (1, D) 或 (B, D)
-            top_k: 返回的最近邻数量
-            **kwargs: 搜索参数
+            query: Query vectors (B, D) where B is batch size, D is dimension
+            top_k: Number of nearest neighbors to return
+            complexity: Search complexity/candidate list size, higher = more accurate but slower
+            beam_width: Number of parallel search paths/IO requests per iteration
+            prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
+            recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored PQ codes
+            pruning_strategy: PQ candidate selection strategy - "global", "local", or "proportional"
+            zmq_port: ZMQ port for embedding server communication
+            **kwargs: Backend-specific parameters
             
         Returns:
             {"labels": [...], "distances": [...]}
@@ -44,16 +57,16 @@ class LeannBackendSearcherInterface(ABC):
         pass
 
 class LeannBackendFactoryInterface(ABC):
-    """后端工厂接口"""
+    """Backend factory interface"""
     
     @staticmethod
     @abstractmethod
     def builder(**kwargs) -> LeannBackendBuilderInterface:
-        """创建 Builder 实例"""
+        """Create Builder instance"""
         pass
     
     @staticmethod
     @abstractmethod  
     def searcher(index_path: str, **kwargs) -> LeannBackendSearcherInterface:
-        """创建 Searcher 实例"""
+        """Create Searcher instance"""
         pass
