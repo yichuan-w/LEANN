@@ -15,7 +15,7 @@
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-features">Features</a> •
   <a href="#-benchmarks">Benchmarks</a> •
-  <a href="#-paper">Paper</a>
+  <a href="https://arxiv.org/abs/2506.08276" target="_blank">Paper</a>
 </p>
 
 ---
