@@ -64,8 +64,40 @@ sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev l
 uv sync
 ```
 
-### 🚀 30-Second Example  
+**Ollama Setup (Optional for Local LLM):**
+
+*macOS:*
+```bash
+# Install Ollama
+brew install ollama
+
+# Pull a lightweight model (recommended for consumer hardware)
+ollama pull llama3.2:1b
+
+# For better performance but higher memory usage
+ollama pull llama3.2:3b
+```
+
+*Linux:*
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Start Ollama service manually
+ollama serve &
+
+# Pull a lightweight model (recommended for consumer hardware)
+ollama pull llama3.2:1b
+
+# For better performance but higher memory usage
+ollama pull llama3.2:3b
+```
+
+**Note:** For Hugging Face models >1B parameters, you may encounter OOM errors on consumer hardware. Consider using smaller models like Qwen3-0.6B or switch to Ollama for better memory management.
+
+### 30-Second Example
 Try it out in [**demo.ipynb**](demo.ipynb)
+
 ```python
 from leann.api import LeannBuilder, LeannSearcher
 # 1. Build index (no embeddings stored!)
