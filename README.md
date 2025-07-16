@@ -374,17 +374,17 @@ python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index
 
 The script will print the recall and search time for each query, followed by the average results.
 
-### Storge Usage Comparison
+### Storage Usage Comparison
 
-| System                | DPR(2M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
+| System                | DPR(2.1M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
 | --------------------- | ---------------- | ---------------- | ---------------- |
-| Traditional Vector DB(LLamaindex faiss) | x GB           | x GB            | x GB           |
-| **Leann**       | **xx MB** | **x GB** | **x GB** |
-| **Reduction**   | **x%**  | **x%**  | **x%**  |
+| Traditional Vector DB | 3.8 GB            | 201 GB            | TBD           |
+| **LEANN**       | **324 MB** | **6 GB** | **TBD** |
+| **Reduction**   | **91% smaller**  | **97% smaller**  | **TBD**  |
 
 ### Memory Usage Comparison
 
-| System                | DPR(2M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
+| System          j      | DPR(2M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
 | --------------------- | ---------------- | ---------------- | ---------------- |
 | Traditional Vector DB(LLamaindex faiss) | x GB           | x GB            | x GB           |
 | **Leann**       | **xx MB** | **x GB** | **x GB** |
