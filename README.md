@@ -68,27 +68,24 @@ uv sync
 
 ```python
 from leann.api import LeannBuilder, LeannSearcher
-
 # 1. Build index (no embeddings stored!)
 builder = LeannBuilder(backend_name="hnsw")
+builder.add_text("C# is a powerful programming language")
 builder.add_text("Python is a powerful programming language")
 builder.add_text("Machine learning transforms industries")  
 builder.add_text("Neural networks process complex data")
 builder.add_text("Leann is a great storage saving engine for RAG on your macbook")
 builder.build_index("knowledge.leann")
-
 # 2. Search with real-time embeddings
 searcher = LeannSearcher("knowledge.leann")
-results = searcher.search("programming languages", top_k=2)
-
-for result in results:
-    print(f"Score: {result['score']:.3f} - {result['text']}")
+results = searcher.search("C++ programming languages", top_k=2, recompute_beighbor_embeddings=True)
+print(results)
 ```
 
-### Run the Demo
+### Run the Demo (support .pdf,.txt,.docx, .pptx, .csv, .md etc)
 
 ```bash
-uv run examples/document_search.py
+uv run ./examples/main_cli_example.py
 ```
 
 or you want to use python 
@@ -99,7 +96,7 @@ python ./examples/main_cli_example.py
 ```
 **PDF RAG Demo (using LlamaIndex for document parsing and Leann for indexing/search)**
 
-This demo showcases how to build a RAG system for PDF documents using Leann.
+This demo showcases how to build a RAG system for PDF/md documents using Leann.
 
 1. Place your PDF files (and other supported formats like .docx, .pptx, .xlsx) into the `examples/data/` directory.
 2. Ensure you have an `OPENAI_API_KEY` set in your environment variables or in a `.env` file for the LLM to function.
