@@ -1,16 +1,17 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Dict, Any, Literal
+from typing import Dict, Any, List, Literal
 
 class LeannBackendBuilderInterface(ABC):
     """Backend interface for building indexes"""
     
     @abstractmethod 
-    def build(self, data: np.ndarray, index_path: str, **kwargs) -> None:
+    def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs) -> None:
         """Build index
         
         Args:
             data: Vector data (N, D)
+            ids: List of string IDs for each vector
             index_path: Path to save index
             **kwargs: Backend-specific build parameters
         """
@@ -47,7 +48,7 @@ class LeannBackendSearcherInterface(ABC):
             beam_width: Number of parallel search paths/IO requests per iteration
             prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
             recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored PQ codes
-            pruning_strategy: PQ candidate selection strategy - "global", "local", or "proportional"
+            pruning_strategy: PQ candidate selection strategy - "global" (default), "local", or "proportional"
             zmq_port: ZMQ port for embedding server communication
             **kwargs: Backend-specific parameters
             

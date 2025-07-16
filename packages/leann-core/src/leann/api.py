@@ -14,8 +14,7 @@ import torch
 
 from .registry import BACKEND_REGISTRY
 from .interface import LeannBackendFactoryInterface
-
-# --- The Correct, Verified Embedding Logic from old_code.py ---
+from .chat import get_llm
 
 
 def compute_embeddings(
@@ -28,7 +27,7 @@ def compute_embeddings(
         from sentence_transformers import SentenceTransformer
     except ImportError as e:
         raise RuntimeError(
-            f"sentence-transformers not available. Install with: pip install sentence-transformers"
+            "sentence-transformers not available. Install with: uv pip install sentence-transformers"
         ) from e
 
     # Load model using sentence-transformers
@@ -61,7 +60,7 @@ def compute_embeddings_mlx(chunks: List[str], model_name: str) -> np.ndarray:
         from mlx_lm.utils import load
     except ImportError as e:
         raise RuntimeError(
-            f"MLX or related libraries not available. Install with: uv pip install mlx mlx-lm"
+            "MLX or related libraries not available. Install with: uv pip install mlx mlx-lm"
         ) from e
 
     print(
@@ -75,7 +74,7 @@ def compute_embeddings_mlx(chunks: List[str], model_name: str) -> np.ndarray:
     all_embeddings = []
     for chunk in chunks:
         # Tokenize
-        token_ids = tokenizer.encode(chunk)
+        token_ids = tokenizer.encode(chunk)  # type: ignore
 
         # Convert to MLX array and add batch dimension
         input_ids = mx.array([token_ids])
@@ -93,9 +92,6 @@ def compute_embeddings_mlx(chunks: List[str], model_name: str) -> np.ndarray:
 
     # Stack numpy arrays
     return np.stack(all_embeddings)
-
-
-# --- Core API Classes (Restored and Unchanged) ---
 
 
 @dataclass
@@ -255,7 +251,7 @@ class LeannSearcher:
         self.backend_impl = backend_factory.searcher(index_path, **final_kwargs)
 
     def search(self, query: str, top_k: int = 5, **search_kwargs) -> List[SearchResult]:
-        print(f"🔍 DEBUG LeannSearcher.search() called:")
+        print("🔍 DEBUG LeannSearcher.search() called:")
         print(f"  Query: '{query}'")
         print(f"  Top_k: {top_k}")
         print(f"  Search kwargs: {search_kwargs}")
@@ -302,12 +298,13 @@ class LeannSearcher:
         return enriched_results
 
 
-from .chat import get_llm
-
-
 class LeannChat:
     def __init__(
-        self, index_path: str, llm_config: Optional[Dict[str, Any]] = None, enable_warmup: bool = False, **kwargs
+        self,
+        index_path: str,
+        llm_config: Optional[Dict[str, Any]] = None,
+        enable_warmup: bool = False,
+        **kwargs,
     ):
         self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
         self.llm = get_llm(llm_config)
