@@ -70,10 +70,11 @@ uv sync
 from leann.api import LeannBuilder, LeannSearcher
 
 # 1. Build index (no embeddings stored!)
-builder = LeannBuilder(backend_name="diskann")
+builder = LeannBuilder(backend_name="hnsw")
 builder.add_text("Python is a powerful programming language")
 builder.add_text("Machine learning transforms industries")  
 builder.add_text("Neural networks process complex data")
+builder.add_text("Leann is a great storage saving engine for RAG on your macbook")
 builder.build_index("knowledge.leann")
 
 # 2. Search with real-time embeddings
@@ -320,24 +321,18 @@ python examples/compare_faiss_vs_leann.py
 
 | Metric | Faiss HNSW | LEANN HNSW | **Improvement** |
 |--------|------------|-------------|-----------------|
-| **Peak Memory** | 887.0 MB | 618.2 MB | **1.4x less** (268.8 MB saved) |
 | **Storage Size** | 5.5 MB | 0.5 MB | **11.4x smaller** (5.0 MB saved) |
 
 #### 📈 Key Takeaways
 
-- **🧠 Memory Efficiency**: LEANN uses **30% less memory** during index building and querying
+
 - **💾 Storage Optimization**: LEANN requires **91% less storage** for the same dataset  
-- **🔄 On-demand Computing**: Storage savings come from computing embeddings at query time instead of pre-storing them
-- **⚖️ Fair Comparison**: Both systems tested on identical hardware with the same 2,573 document dataset
+
+- **⚖️ Fair Comparison**: Both systems tested on identical hardware with the same 2,573 document dataset and the same embedding model and chunk method
 
 > **Note**: Results may vary based on dataset size, hardware configuration, and query patterns. The comparison excludes text storage to focus purely on index structures.
 
 
-### Run the comparison
-
-```bash
-python examples/compare_faiss_vs_leann.py
-```
 
 *Benchmark results obtained on Apple Silicon with consistent environmental conditions*
 
@@ -376,13 +371,13 @@ The script will print the recall and search time for each query, followed by the
 
 ### Storage Usage Comparison
 
-| System                | DPR(2.1M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
+| System                | DPR(2.1M docs)     | RPJ-wiki(60M docs)    | Chat history(5K messages)   |
 | --------------------- | ---------------- | ---------------- | ---------------- |
-| Traditional Vector DB | 3.8 GB            | 201 GB            | TBD           |
-| **LEANN**       | **324 MB** | **6 GB** | **TBD** |
-| **Reduction**   | **91% smaller**  | **97% smaller**  | **TBD**  |
+| Traditional Vector DB | 3.8 GB            | 201 GB            | **22.8 MB**           |
+| **LEANN**       | **324 MB** | **6 GB** | **0.78 MB** |
+| **Reduction**   | **91% smaller**  | **97% smaller**  | **97% smaller**  |
 
-### Memory Usage Comparison
+<!-- ### Memory Usage Comparison
 
 | System          j      | DPR(2M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
 | --------------------- | ---------------- | ---------------- | ---------------- |
@@ -395,7 +390,7 @@ The script will print the recall and search time for each query, followed by the
 | Backend             | Index Size | Query Time | Recall@3 |
 | ------------------- | ---------- | ---------- | --------- |
 | DiskANN             | 1M docs    | xms       | 0.95      |
-| HNSW                | 1M docs    | xms        | 0.95      |
+| HNSW                | 1M docs    | xms        | 0.95      | -->
 
 *Benchmarks run on Apple M3 Pro 36 GB*
 
@@ -405,14 +400,6 @@ The script will print the recall and search time for each query, followed by the
 <p align="center">
   <img src="asset/arch.png" alt="LEANN Architecture" width="800">
 </p>
-
-
-### Key Components
-
-1. **🧠 Embedding Engine**: Real-time transformer inference with caching
-2. **📊 Graph Index**: Memory-efficient navigation structures
-3. **🔄 Search Coordinator**: Orchestrates embedding + graph search
-4. **⚡ Backend Adapters**: Pluggable algorithm implementations
 
 ## 🔬 Paper
 
