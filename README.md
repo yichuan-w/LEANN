@@ -64,8 +64,8 @@ sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev l
 uv sync
 ```
 
-### 30-Second Example
-
+### 🚀 30-Second Example  
+Try it out in [**demo.ipynb**](demo.ipynb)
 ```python
 from leann.api import LeannBuilder, LeannSearcher
 # 1. Build index (no embeddings stored!)
@@ -101,9 +101,6 @@ This demo showcases how to build a RAG system for PDF/md documents using Leann.
 1. Place your PDF files (and other supported formats like .docx, .pptx, .xlsx) into the `examples/data/` directory.
 2. Ensure you have an `OPENAI_API_KEY` set in your environment variables or in a `.env` file for the LLM to function.
 
-```bash
-uv run examples/main_cli_example.py
-```
 
 
 ## ✨ Features
