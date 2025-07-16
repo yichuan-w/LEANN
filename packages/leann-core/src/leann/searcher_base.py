@@ -79,6 +79,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             passages_file=passages_source_file,
             distance_metric=kwargs.get("distance_metric"),
             use_mlx=kwargs.get("use_mlx", False),
+            enable_warmup=kwargs.get("enable_warmup", False),
         )
         if not server_started:
             raise RuntimeError(f"Failed to start embedding server on port {port}")
