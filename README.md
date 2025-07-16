@@ -445,27 +445,8 @@ We welcome contributions! Leann is built by the community, for the community.
 - 📖 **Documentation**: Help make Leann more accessible
 - 🧪 **Benchmarks**: Share your performance results
 
-### Development Setup
 
-```bash
-git clone git@github.com:yichuan520030910320/LEANN-RAG.git leann
-cd leann
-git submodule update --init --recursive
-uv sync --dev
-uv run pytest tests/
-```
-
-### Quick Tests
-
-```bash
-# Sanity check all distance functions
-uv run python tests/sanity_checks/test_distance_functions.py
-
-# Verify L2 implementation
-uv run python tests/sanity_checks/test_l2_verification.py
-```
-
-## ❓ FAQ
+<!-- ## ❓ FAQ
 
 ### Common Issues
 
@@ -486,7 +467,7 @@ export NCCL_DEBUG_SUBSYS=INIT,GRAPH
 export NCCL_IB_DISABLE=1
 export NCCL_NET_PLUGIN=none
 export NCCL_SOCKET_IFNAME=ens5
-```
+``` -->
 
 ## 📈 Roadmap
 
@@ -501,7 +482,7 @@ export NCCL_SOCKET_IFNAME=ens5
 
 
 - [ ] Advanced caching strategies
-- [ ] GPU-accelerated embedding computation
+- [ ] Add contextual-retrieval https://www.anthropic.com/news/contextual-retrieval
 - [ ] Add sleep-time-compute and summarize agent! to summarilze the file on computer!
 - [ ] Add OpenAI recompute API
 
