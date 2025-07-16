@@ -373,7 +373,7 @@ The script will print the recall and search time for each query, followed by the
 
 | System                | DPR(2.1M docs)     | RPJ-wiki(60M docs)    | Chat history(5K messages)   |
 | --------------------- | ---------------- | ---------------- | ---------------- |
-| Traditional Vector DB | 3.8 GB            | 201 GB            | **22.8 MB**           |
+| Traditional Vector DB | 3.8 GB            | 201 GB            | 22.8 MB           |
 | **LEANN**       | **324 MB** | **6 GB** | **0.78 MB** |
 | **Reduction**   | **91% smaller**  | **97% smaller**  | **97% smaller**  |
 
