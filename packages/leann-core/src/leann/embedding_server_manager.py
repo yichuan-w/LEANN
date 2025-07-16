@@ -184,7 +184,7 @@ class EmbeddingServerManager:
         Args:
             port (int): The ZMQ port for the server.
             model_name (str): The name of the embedding model to use.
-            **kwargs: Additional arguments for the server (e.g., passages_file, distance_metric).
+            **kwargs: Additional arguments for the server (e.g., passages_file, distance_metric, enable_warmup).
 
         Returns:
             bool: True if the server is started successfully or already running, False otherwise.
@@ -312,6 +312,8 @@ class EmbeddingServerManager:
             #     command.extend(["--distance-metric", kwargs["distance_metric"]])
             if "use_mlx" in kwargs and kwargs["use_mlx"]:
                 command.extend(["--use-mlx"])
+            if "enable_warmup" in kwargs and not kwargs["enable_warmup"]:
+                command.extend(["--disable-warmup"])
 
             project_root = Path(__file__).parent.parent.parent.parent.parent
             print(f"INFO: Running command from project root: {project_root}")

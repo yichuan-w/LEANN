@@ -237,7 +237,7 @@ class LeannBuilder:
 
 
 class LeannSearcher:
-    def __init__(self, index_path: str, **backend_kwargs):
+    def __init__(self, index_path: str, enable_warmup: bool = False, **backend_kwargs):
         meta_path_str = f"{index_path}.meta.json"
         if not Path(meta_path_str).exists():
             raise FileNotFoundError(f"Leann metadata file not found at {meta_path_str}")
@@ -251,6 +251,7 @@ class LeannSearcher:
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
         final_kwargs = {**self.meta_data.get("backend_kwargs", {}), **backend_kwargs}
+        final_kwargs["enable_warmup"] = enable_warmup
         self.backend_impl = backend_factory.searcher(index_path, **final_kwargs)
 
     def search(self, query: str, top_k: int = 5, **search_kwargs) -> List[SearchResult]:
@@ -306,9 +307,9 @@ from .chat import get_llm
 
 class LeannChat:
     def __init__(
-        self, index_path: str, llm_config: Optional[Dict[str, Any]] = None, **kwargs
+        self, index_path: str, llm_config: Optional[Dict[str, Any]] = None, enable_warmup: bool = False, **kwargs
     ):
-        self.searcher = LeannSearcher(index_path, **kwargs)
+        self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
         self.llm = get_llm(llm_config)
 
     def ask(self, question: str, top_k=5, **kwargs):
