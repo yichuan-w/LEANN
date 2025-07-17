@@ -85,6 +85,8 @@ uv sync
 **Ollama Setup (Optional for Local LLM):**
 
 *macOS:*
+
+First, [download Ollama for macOS](https://ollama.com/download/mac).
 ```bash
 # Install Ollama
 brew install ollama

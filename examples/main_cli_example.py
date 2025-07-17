@@ -10,7 +10,7 @@ from pathlib import Path
 dotenv.load_dotenv()
 
 node_parser = SentenceSplitter(
-    chunk_size=256, chunk_overlap=64, separator=" ", paragraph_separator="\n\n"
+    chunk_size=256, chunk_overlap=128, separator=" ", paragraph_separator="\n\n"
 )
 print("Loading documents...")
 documents = SimpleDirectoryReader(
@@ -58,17 +58,16 @@ async def main(args):
 
     print(f"\n[PHASE 2] Starting Leann chat session...")
 
-    llm_config = {"type": "hf", "model": "Qwen/Qwen3-4B"}
+    # llm_config = {"type": "hf", "model": "Qwen/Qwen3-4B"}
+    llm_config = {"type": "ollama", "model": "qwen3:8b"}
 
     chat = LeannChat(index_path=INDEX_PATH, llm_config=llm_config)
 
     query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
-    query = (
-        "What is the main idea of RL and give me 5 exapmle of classic RL algorithms?"
-    )
-    query = (
-        "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发"
-    )
+
+    # query = (
+    #     "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发"
+    # )
 
     print(f"You: {query}")
     chat_response = chat.ask(
@@ -103,7 +102,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--index-dir",
         type=str,
-        default="./test_pdf_index_pangu_test",
+        default="./test_doc_files",
         help="Directory where the Leann index will be stored.",
     )
     args = parser.parse_args()
