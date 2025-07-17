@@ -204,9 +204,9 @@ async def query_leann_index(index_path: str, query: str):
     print(f"You: {query}")
     chat_response = chat.ask(
         query, 
-        top_k=5, 
+        top_k=10, 
         recompute_beighbor_embeddings=True,
-        complexity=128,
+        complexity=32,
         beam_width=1,
         llm_config={
             "type": "openai",
