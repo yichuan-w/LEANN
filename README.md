@@ -4,11 +4,11 @@
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue.svg" alt="Python 3.9+">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey" alt="Platform">
+<img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey" alt="Platform">
 </p>
 
 <p align="center">
-  <strong>⚡ Storage Saving RAG sytem on Consumer Device</strong>
+  <strong>💾 Extreme Storage Saving • 🔒 100% Private • 📚 RAG Everything • ⚡ Easy & Accurate</strong>
 </p>
 
 <p align="center">
@@ -20,26 +20,44 @@
 
 ---
 
-## 🌟 What is Leann?
+## 🌟 What is LEANN-RAG?
 
-**Leann** revolutionizes Retrieval-Augmented Generation (RAG) by eliminating the storage bottleneck of traditional vector databases. Instead of pre-computing and storing billions of embeddings, Leann dynamically computes embeddings at query time using optimized graph-based search algorithms.
+**LEANN-RAG** is a lightweight, locally deployable **Retrieval-Augmented Generation (RAG)** engine designed for personal devices. It combines **compact storage**, **clean usability**, and **privacy-by-design**, making it easy to build personalized retrieval systems over your own data — emails, notes, documents, chats, or anything else.
 
-### 🎯 Why Leann?
+Unlike traditional vector databases that rely on massive embedding storage, LEANN reduces storage needs dramatically by using **graph-based recomputation** and **pruned HNSW search**, while maintaining responsive and reliable performance — all without sending any data to the cloud.
 
-Traditional RAG systems face a fundamental trade-off:
+---
 
-- **💾 Storage**: Storing embeddings for millions of documents requires massive disk space
-- **🔄 Memory overhead**: The indexes LlamaIndex uses usually face high memory overhead (e.g., in-memory vector databases)
-- **💰 Cost**: Vector databases are expensive to scale
+## 🔥 Key Highlights
 
-**Leann revolutionizes this with Graph-based recomputation and cutting-edge system optimizations:**
+### 💾 1. Extreme Storage Efficiency  
+LEANN reduces storage usage by **up to 97%** compared to conventional vector DBs (e.g., FAISS), by storing only pruned graph structures and computing embeddings at query time.  
+> For example: 60M chunks can be indexed in just **6GB**, compared to **200GB+** with dense storage.
 
-- ✅ **Zero embedding storage** - Only graph structure is persisted, reducing storage by 94-97%
-- ✅ **Real-time computation** - Embeddings computed on-demand with low latency
-- ✅ **Memory efficient** - Runs on consumer hardware with theoretical zero memory overhead
-- ✅ **Graph-based optimization** - Advanced pruning techniques for efficient search while keeping low storage cost, with batching and overlapping strategies using low-precision search to optimize latency
-- ✅ **Pluggable backends** - Support for DiskANN, HNSW, and other ANN algorithms (welcome contributions!)
+### 🔒 2. Fully Private, Cloud-Free  
+LEANN runs entirely locally. No cloud services, no API keys, and no risk of leaking sensitive data.  
+> Converse with your own files **without compromising privacy**.
 
+### 🧠 3. RAG Everything  
+Build truly personalized assistants by querying over **your own** chat logs, email archives, browser history, or agent memory.  
+> LEANN makes it easy to integrate personal context into RAG workflows.
+
+### ⚡ 4. Easy, Accurate, and Fast  
+LEANN is designed to be **easy to install**, with a **clean API** and minimal setup. It runs efficiently on consumer hardware without sacrificing retrieval accuracy.  
+> One command to install, one click to run.
+
+---
+
+## 🚀 Why Choose LEANN?
+
+Traditional RAG systems often require trade-offs between storage, privacy, and usability. **LEANN-RAG aims to simplify the stack** with a more practical design:
+
+- ✅ **No embedding storage** — compute on demand, save disk space  
+- ✅ **Low memory footprint** — lightweight and hardware-friendly  
+- ✅ **Privacy-first** — 100% local, no network dependency  
+- ✅ **Simple to use** — developer-friendly API and seamless setup  
+
+> 📄 For more details, see our [academic paper](https://arxiv.org/abs/2506.08276)
 ## 🚀 Quick Start
 
 ### Installation
