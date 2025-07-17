@@ -269,11 +269,15 @@ class LeannSearcher:
 
         # Use backend's compute_query_embedding method
         # This will automatically use embedding server if available and needed
+        import time
+        start_time = time.time()
+
         query_embedding = self.backend_impl.compute_query_embedding(query, zmq_port)
         print(f"  Generated embedding shape: {query_embedding.shape}")
-        print(f"🔍 DEBUG Query embedding first 10 values: {query_embedding[0][:10]}")
-        print(f"🔍 DEBUG Query embedding norm: {np.linalg.norm(query_embedding[0])}")
+        embedding_time = time.time() - start_time
+        print(f"  Embedding time: {embedding_time} seconds")
 
+        start_time = time.time()
         results = self.backend_impl.search(
             query_embedding,
             top_k,
@@ -285,6 +289,8 @@ class LeannSearcher:
             zmq_port=zmq_port,
             **kwargs,
         )
+        search_time = time.time() - start_time
+        print(f"  Search time: {search_time} seconds")
         print(
             f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results"
         )
@@ -362,7 +368,9 @@ class LeannChat:
             f"Question: {question}\n\n"
             "Please provide the best answer you can based on this context and your knowledge."
         )
-        return self.llm.ask(prompt, **llm_kwargs)
+
+        ans=self.llm.ask(prompt, **llm_kwargs)
+        return ans
 
     def start_interactive(self):
         print("\nLeann Chat started (type 'quit' to exit)")

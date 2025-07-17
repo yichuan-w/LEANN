@@ -1,9 +1,15 @@
 import os
+import sys
 import asyncio
 import dotenv
 import argparse
 from pathlib import Path
 from typing import List, Any
+
+# Add the project root to Python path so we can import from examples
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
 from llama_index.core.node_parser import SentenceSplitter
 
@@ -12,7 +18,7 @@ dotenv.load_dotenv()
 # Default mail path for macOS
 DEFAULT_MAIL_PATH = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
 
-def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_path: str = "mail_index.leann", max_count: int = -1):
+def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_path: str = "mail_index.leann", max_count: int = -1, include_html: bool = False):
     """
     Create LEANN index from multiple mail data sources.
     
@@ -20,12 +26,13 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
         messages_dirs: List of Path objects pointing to Messages directories
         index_path: Path to save the LEANN index
         max_count: Maximum number of emails to process per directory
+        include_html: Whether to include HTML content in email processing
     """
     print("Creating LEANN index from multiple mail data sources...")
     
     # Load documents using EmlxReader from LEANN_email_reader
-    from LEANN_email_reader import EmlxReader
-    reader = EmlxReader()
+    from examples.email_data.LEANN_email_reader import EmlxReader
+    reader = EmlxReader(include_html=include_html)
     # from email_data.email import EmlxMboxReader
     # from pathlib import Path
     # reader = EmlxMboxReader()
@@ -107,7 +114,7 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
     
     return index_path
 
-def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max_count: int = 1000):
+def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max_count: int = 1000, include_html: bool = False):
     """
     Create LEANN index from mail data.
     
@@ -115,6 +122,7 @@ def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max
         mail_path: Path to the mail directory
         index_path: Path to save the LEANN index
         max_count: Maximum number of emails to process
+        include_html: Whether to include HTML content in email processing
     """
     print("Creating LEANN index from mail data...")
     INDEX_DIR = Path(index_path).parent
@@ -128,8 +136,8 @@ def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max
         print(f"\n[PHASE 1] Building Leann index...")
 
         # Load documents using EmlxReader from LEANN_email_reader
-        from LEANN_email_reader import EmlxReader
-        reader = EmlxReader()
+        from examples.email_data.LEANN_email_reader import EmlxReader
+        reader = EmlxReader(include_html=include_html)
         # from email_data.email import EmlxMboxReader
         # from pathlib import Path
         # reader = EmlxMboxReader()
@@ -194,16 +202,22 @@ async def query_leann_index(index_path: str, query: str):
         query: The query string
     """
     print(f"\n[PHASE 2] Starting Leann chat session...")
-    chat = LeannChat(index_path=index_path)
+    chat = LeannChat(index_path=index_path,
+                     llm_config={"type": "openai", "model": "gpt-4o"})
     
     print(f"You: {query}")
+    import time
+    start_time = time.time()
     chat_response = chat.ask(
         query, 
-        top_k=5, 
+        top_k=10, 
         recompute_beighbor_embeddings=True,
-        complexity=128,
-        beam_width=1
+        complexity=12,
+        beam_width=1,
+        
     )
+    end_time = time.time()
+    print(f"Time taken: {end_time - start_time} seconds")
     print(f"Leann: {chat_response}")
 
 async def main():
@@ -217,6 +231,8 @@ async def main():
                        help='Maximum number of emails to process (-1 means all)')
     parser.add_argument('--query', type=str, default="Give me some funny advertisement about apple or other companies",
                        help='Single query to run (default: runs example queries)')
+    parser.add_argument('--include-html', action='store_true', default=False,
+                       help='Include HTML content in email processing (default: False)')
     
     args = parser.parse_args()
 
@@ -232,7 +248,8 @@ async def main():
     print(f"Index directory: {INDEX_DIR}")
     
     # Find all Messages directories
-    from LEANN_email_reader import EmlxReader
+    
+    from examples.email_data.LEANN_email_reader import EmlxReader
     messages_dirs = EmlxReader.find_all_messages_directories(base_mail_path)
     
     if not messages_dirs:
@@ -240,7 +257,7 @@ async def main():
         return
     
     # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_sources(messages_dirs, INDEX_PATH, args.max_emails)
+    index_path = create_leann_index_from_multiple_sources(messages_dirs, INDEX_PATH, args.max_emails, args.include_html)
     
     if index_path:
         if args.query:

@@ -179,6 +179,9 @@ python examples/mail_reader_leann.py --mail-path "/Users/yourname/Library/Mail/V
 # Run with custom index directory
 python examples/mail_reader_leann.py --index-dir "./my_mail_index"
 
+# embedd and search all of your email(this may take a long preprocessing time but it will encode all your emails)
+python examples/mail_reader_leann.py --max-emails -1
+
 # Limit number of emails processed (useful for testing)
 python examples/mail_reader_leann.py --max-emails 1000
 
@@ -397,11 +400,11 @@ The script will print the recall and search time for each query, followed by the
 
 ### Storage Usage Comparison
 
-| System                | DPR(2.1M docs)     | RPJ-wiki(60M docs)    | Chat history(5K messages)   |
-| --------------------- | ---------------- | ---------------- | ---------------- |
-| Traditional Vector DB | 3.8 GB            | 201 GB            | 22.8 MB           |
-| **LEANN**       | **324 MB** | **6 GB** | **0.78 MB** |
-| **Reduction**   | **91% smaller**  | **97% smaller**  | **97% smaller**  |
+| System                | DPR (2.1M chunks) | RPJ-wiki (60M chunks) | Chat history (400K messages) | Apple emails (90K messages chunks) |
+|-----------------------|------------------|------------------------|-----------------------------|------------------------------|
+| Traditional Vector DB | 3.8 GB           | 201 GB                 | 1.8G                     | 305.8 MB                     |
+| **LEANN**             | **324 MB**       | **6 GB**               | **64 MB**                 | **14.8 MB**                  |
+| **Reduction**         | **91% smaller**  | **97% smaller**        | **97% smaller**             | **95% smaller**              |
 
 <!-- ### Memory Usage Comparison
 

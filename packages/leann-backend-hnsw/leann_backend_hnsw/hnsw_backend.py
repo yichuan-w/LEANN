@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Literal
 import pickle
 import shutil
+import time
 
 from leann.searcher_base import BaseSearcher
 from .convert_to_csr import convert_hnsw_graph_to_csr

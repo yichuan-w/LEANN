@@ -1,6 +1,13 @@
 import os
+import sys
+import argparse
 from pathlib import Path
 from typing import List, Any
+
+# Add the project root to Python path so we can import from examples
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.core.node_parser import SentenceSplitter
 
@@ -11,11 +18,11 @@ import torch
 # --- END EMBEDDING MODEL ---
 
 # Import EmlxReader from the new module
-from LEANN_email_reader import EmlxReader
+from examples.email_data.LEANN_email_reader import EmlxReader
 
-def create_and_save_index(mail_path: str, save_dir: str = "mail_index_embedded", max_count: int = 1000):
+def create_and_save_index(mail_path: str, save_dir: str = "mail_index_embedded", max_count: int = 1000, include_html: bool = False):
     print("Creating index from mail data with embedded metadata...")
-    documents = EmlxReader().load_data(mail_path, max_count=max_count)
+    documents = EmlxReader(include_html=include_html).load_data(mail_path, max_count=max_count)
     if not documents:
         print("No documents loaded. Exiting.")
         return None
@@ -64,18 +71,33 @@ def query_index(index, query: str):
     print(f"Response: {response}")
 
 def main():
-    mail_path = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data/9/Messages"
-    save_dir = "mail_index_embedded"
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='LlamaIndex Mail Reader - Create and query email index')
+    parser.add_argument('--mail-path', type=str, 
+                       default="/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data/9/Messages",
+                       help='Path to mail data directory')
+    parser.add_argument('--save-dir', type=str, default="mail_index_embedded",
+                       help='Directory to store the index (default: mail_index_embedded)')
+    parser.add_argument('--max-emails', type=int, default=10000,
+                       help='Maximum number of emails to process')
+    parser.add_argument('--include-html', action='store_true', default=False,
+                       help='Include HTML content in email processing (default: False)')
+    
+    args = parser.parse_args()
+    
+    mail_path = args.mail_path
+    save_dir = args.save_dir
+    
     if os.path.exists(save_dir) and os.path.exists(os.path.join(save_dir, "vector_store.json")):
         print("Loading existing index...")
         index = load_index(save_dir)
     else:
         print("Creating new index...")
-        index = create_and_save_index(mail_path, save_dir, max_count=10000)
+        index = create_and_save_index(mail_path, save_dir, max_count=args.max_emails, include_html=args.include_html)
     if index:
         queries = [
             "Hows Berkeley Graduate Student Instructor",
-            "how's the icloud related advertisement saying"
+            "how's the icloud related advertisement saying",
             "Whats the number of class recommend to take per semester for incoming EECS students"
         ]
         for query in queries:

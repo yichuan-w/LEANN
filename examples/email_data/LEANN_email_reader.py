@@ -12,9 +12,14 @@ class EmlxReader(BaseReader):
     Reads individual .emlx files from Apple Mail's storage format.
     """
     
-    def __init__(self) -> None:
-        """Initialize."""
-        pass
+    def __init__(self, include_html: bool = False) -> None:
+        """
+        Initialize.
+        
+        Args:
+            include_html: Whether to include HTML content in the email body (default: False)
+        """
+        self.include_html = include_html
     
     def load_data(self, input_dir: str, **load_kwargs: Any) -> List[Document]:
         """
@@ -66,8 +71,8 @@ class EmlxReader(BaseReader):
                                 if msg.is_multipart():
                                     for part in msg.walk():
                                         if part.get_content_type() == "text/plain" or part.get_content_type() == "text/html":
-                                            # if part.get_content_type() == "text/html":
-                                            #     continue
+                                            if part.get_content_type() == "text/html" and not self.include_html:
+                                                continue
                                             body += part.get_payload(decode=True).decode('utf-8', errors='ignore')
                                             # break
                                 else:
