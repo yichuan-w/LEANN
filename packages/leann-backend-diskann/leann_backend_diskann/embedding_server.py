@@ -162,7 +162,7 @@ def create_embedding_server_thread(
     model_name="sentence-transformers/all-mpnet-base-v2",
     max_batch_size=128,
     passages_file: Optional[str] = None,
-    use_mlx: bool = False,
+    embedding_mode: str = "sentence-transformers",
     enable_warmup: bool = False,
 ):
     """
@@ -182,10 +182,27 @@ def create_embedding_server_thread(
             print(f"{RED}Port {zmq_port} is already in use{RESET}")
             return
 
-        if use_mlx:
+        # Auto-detect mode based on model name if not explicitly set
+        if embedding_mode == "sentence-transformers" and model_name.startswith("text-embedding-"):
+            embedding_mode = "openai"
+        
+        if embedding_mode == "mlx":
             from leann.api import compute_embeddings_mlx
+            import torch
             print("INFO: Using MLX for embeddings")
-        else:
+            # Set device to CPU for compatibility with DeviceTimer class
+            device = torch.device("cpu")
+            cuda_available = False
+            mps_available = False
+        elif embedding_mode == "openai":
+            from leann.api import compute_embeddings_openai
+            import torch
+            print("INFO: Using OpenAI API for embeddings")
+            # Set device to CPU for compatibility with DeviceTimer class
+            device = torch.device("cpu")
+            cuda_available = False
+            mps_available = False
+        elif embedding_mode == "sentence-transformers":
             # 初始化模型
             tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
             import torch
@@ -216,6 +233,8 @@ def create_embedding_server_thread(
                     print(f"INFO: Using FP16 precision with model: {model_name}")
                 except Exception as e:
                     print(f"WARNING: Model optimization failed: {e}")
+        else:
+            raise ValueError(f"Unsupported embedding mode: {embedding_mode}. Supported modes: sentence-transformers, mlx, openai")
 
         # Load passages from file if provided
         if passages_file and os.path.exists(passages_file):
@@ -303,7 +322,7 @@ def create_embedding_server_thread(
                 self.start_time = 0
                 self.end_time = 0
                 
-                if not use_mlx and torch.cuda.is_available():
+                if embedding_mode == "sentence-transformers" and torch.cuda.is_available():
                     self.start_event = torch.cuda.Event(enable_timing=True)
                     self.end_event = torch.cuda.Event(enable_timing=True)
                 else:
@@ -317,25 +336,25 @@ def create_embedding_server_thread(
                 self.end()
 
             def start(self):
-                if not use_mlx and torch.cuda.is_available():
+                if embedding_mode == "sentence-transformers" and torch.cuda.is_available():
                     torch.cuda.synchronize()
                     self.start_event.record()
                 else:
-                    if not use_mlx and self.device.type == "mps":
+                    if embedding_mode == "sentence-transformers" and self.device.type == "mps":
                         torch.mps.synchronize()
                     self.start_time = time.time()
 
             def end(self):
-                if not use_mlx and torch.cuda.is_available():
+                if embedding_mode == "sentence-transformers" and torch.cuda.is_available():
                     self.end_event.record()
                     torch.cuda.synchronize()
                 else:
-                    if not use_mlx and self.device.type == "mps":
+                    if embedding_mode == "sentence-transformers" and self.device.type == "mps":
                         torch.mps.synchronize()
                     self.end_time = time.time()
 
             def elapsed_time(self):
-                if not use_mlx and torch.cuda.is_available():
+                if embedding_mode == "sentence-transformers" and torch.cuda.is_available():
                     return self.start_event.elapsed_time(self.end_event) / 1000.0
                 else:
                     return self.end_time - self.start_time
@@ -571,13 +590,15 @@ def create_embedding_server_thread(
                         chunk_texts = texts[i:end_idx]
                         chunk_ids = node_ids[i:end_idx]
                         
-                        if use_mlx:
+                        if embedding_mode == "mlx":
                             embeddings_chunk = compute_embeddings_mlx(chunk_texts, model_name)
-                        else:
+                        elif embedding_mode == "openai":
+                            embeddings_chunk = compute_embeddings_openai(chunk_texts, model_name)
+                        else:  # sentence-transformers
                             embeddings_chunk = process_batch_pytorch(chunk_texts, chunk_ids, missing_ids)
                         all_embeddings.append(embeddings_chunk)
                         
-                        if not use_mlx:
+                        if embedding_mode == "sentence-transformers":
                             if cuda_available:
                                 torch.cuda.empty_cache()
                             elif device.type == "mps":
@@ -586,9 +607,11 @@ def create_embedding_server_thread(
                     hidden = np.vstack(all_embeddings)
                     print(f"INFO: Combined embeddings shape: {hidden.shape}")
                 else:
-                    if use_mlx:
+                    if embedding_mode == "mlx":
                         hidden = compute_embeddings_mlx(texts, model_name)
-                    else:
+                    elif embedding_mode == "openai":
+                        hidden = compute_embeddings_openai(texts, model_name)
+                    else:  # sentence-transformers
                         hidden = process_batch_pytorch(texts, node_ids, missing_ids)
 
                 # 序列化响应
@@ -610,7 +633,7 @@ def create_embedding_server_thread(
 
                 print(f"INFO: Serialize time: {ser_end - ser_start:.6f} seconds")
 
-                if not use_mlx:
+                if embedding_mode == "sentence-transformers":
                     if device.type == "cuda":
                         torch.cuda.synchronize()
                     elif device.type == "mps":
@@ -653,14 +676,14 @@ def create_embedding_server(
     lazy_load_passages=False,
     model_name="sentence-transformers/all-mpnet-base-v2",
     passages_file: Optional[str] = None,
-    use_mlx: bool = False,
+    embedding_mode: str = "sentence-transformers",
     enable_warmup: bool = False,
 ):
     """
     原有的 create_embedding_server 函数保持不变
     这个是阻塞版本，用于直接运行
     """
-    create_embedding_server_thread(zmq_port, model_name, max_batch_size, passages_file, use_mlx, enable_warmup)
+    create_embedding_server_thread(zmq_port, model_name, max_batch_size, passages_file, embedding_mode, enable_warmup)
 
 
 if __name__ == "__main__":
@@ -677,9 +700,17 @@ if __name__ == "__main__":
     parser.add_argument("--lazy-load-passages", action="store_true", default=True)
     parser.add_argument("--model-name", type=str, default="sentence-transformers/all-mpnet-base-v2", 
                         help="Embedding model name")
-    parser.add_argument("--use-mlx", action="store_true", default=False, help="Use MLX backend for embeddings")
+    parser.add_argument("--embedding-mode", type=str, default="sentence-transformers", 
+                        choices=["sentence-transformers", "mlx", "openai"],
+                        help="Embedding backend mode")
+    parser.add_argument("--use-mlx", action="store_true", default=False, help="Use MLX backend for embeddings (deprecated: use --embedding-mode mlx)")
     parser.add_argument("--disable-warmup", action="store_true", default=False, help="Disable warmup requests on server start")
     args = parser.parse_args()
+    
+    # Handle backward compatibility with use_mlx
+    embedding_mode = args.embedding_mode
+    if args.use_mlx:
+        embedding_mode = "mlx"
 
     create_embedding_server(
         domain=args.domain,
@@ -693,6 +724,6 @@ if __name__ == "__main__":
         lazy_load_passages=args.lazy_load_passages,
         model_name=args.model_name,
         passages_file=args.passages_file,
-        use_mlx=args.use_mlx,
+        embedding_mode=embedding_mode,
         enable_warmup=not args.disable_warmup,
     )

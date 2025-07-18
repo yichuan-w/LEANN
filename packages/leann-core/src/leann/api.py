@@ -18,11 +18,40 @@ from .chat import get_llm
 
 
 def compute_embeddings(
-    chunks: List[str], model_name: str, use_mlx: bool = False
+    chunks: List[str], 
+    model_name: str, 
+    mode: str = "sentence-transformers"
 ) -> np.ndarray:
-    """Computes embeddings using sentence-transformers or MLX for consistent results."""
-    if use_mlx:
+    """
+    Computes embeddings using different backends.
+    
+    Args:
+        chunks: List of text chunks to embed
+        model_name: Name of the embedding model
+        mode: Embedding backend mode. Options:
+            - "sentence-transformers": Use sentence-transformers library (default)
+            - "mlx": Use MLX backend for Apple Silicon
+            - "openai": Use OpenAI embedding API
+    
+    Returns:
+        numpy array of embeddings
+    """
+    # Auto-detect mode based on model name if not explicitly set
+    if mode == "sentence-transformers" and model_name.startswith("text-embedding-"):
+        mode = "openai"
+    
+    if mode == "mlx":
         return compute_embeddings_mlx(chunks, model_name)
+    elif mode == "openai":
+        return compute_embeddings_openai(chunks, model_name)
+    elif mode == "sentence-transformers":
+        return compute_embeddings_sentence_transformers(chunks, model_name)
+    else:
+        raise ValueError(f"Unsupported embedding mode: {mode}. Supported modes: sentence-transformers, mlx, openai")
+
+
+def compute_embeddings_sentence_transformers(chunks: List[str], model_name: str) -> np.ndarray:
+    """Computes embeddings using sentence-transformers library."""
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as e:
@@ -50,6 +79,49 @@ def compute_embeddings(
         chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=256
     )
 
+    return embeddings
+
+
+def compute_embeddings_openai(chunks: List[str], model_name: str) -> np.ndarray:
+    """Computes embeddings using OpenAI API."""
+    try:
+        import openai
+        import os
+    except ImportError as e:
+        raise RuntimeError(
+            "openai not available. Install with: uv pip install openai"
+        ) from e
+    
+    # Get API key from environment
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable not set")
+    
+    client = openai.OpenAI(api_key=api_key)
+    
+    print(f"INFO: Computing embeddings for {len(chunks)} chunks using OpenAI model '{model_name}'...")
+    
+    # OpenAI has a limit on batch size and input length
+    max_batch_size = 100  # Conservative batch size
+    all_embeddings = []
+    
+    for i in range(0, len(chunks), max_batch_size):
+        batch_chunks = chunks[i:i + max_batch_size]
+        print(f"INFO: Processing batch {i//max_batch_size + 1}/{(len(chunks) + max_batch_size - 1)//max_batch_size}")
+        
+        try:
+            response = client.embeddings.create(
+                model=model_name,
+                input=batch_chunks
+            )
+            batch_embeddings = [embedding.embedding for embedding in response.data]
+            all_embeddings.extend(batch_embeddings)
+        except Exception as e:
+            print(f"ERROR: Failed to get embeddings for batch starting at {i}: {e}")
+            raise
+    
+    embeddings = np.array(all_embeddings, dtype=np.float32)
+    print(f"INFO: Generated {len(embeddings)} embeddings with dimension {embeddings.shape[1]}")
     return embeddings
 
 
@@ -140,7 +212,7 @@ class LeannBuilder:
         backend_name: str,
         embedding_model: str = "facebook/contriever-msmarco",
         dimensions: Optional[int] = None,
-        use_mlx: bool = False,
+        embedding_mode: str = "sentence-transformers",
         **backend_kwargs,
     ):
         self.backend_name = backend_name
@@ -152,7 +224,7 @@ class LeannBuilder:
         self.backend_factory = backend_factory
         self.embedding_model = embedding_model
         self.dimensions = dimensions
-        self.use_mlx = use_mlx
+        self.embedding_mode = embedding_mode
         self.backend_kwargs = backend_kwargs
         self.chunks: List[Dict[str, Any]] = []
 
@@ -168,7 +240,7 @@ class LeannBuilder:
             raise ValueError("No chunks added.")
         if self.dimensions is None:
             self.dimensions = len(
-                compute_embeddings(["dummy"], self.embedding_model, self.use_mlx)[0]
+                compute_embeddings(["dummy"], self.embedding_model, self.embedding_mode)[0]
             )
         path = Path(index_path)
         index_dir = path.parent
@@ -195,7 +267,7 @@ class LeannBuilder:
             pickle.dump(offset_map, f)
         texts_to_embed = [c["text"] for c in self.chunks]
         embeddings = compute_embeddings(
-            texts_to_embed, self.embedding_model, self.use_mlx
+            texts_to_embed, self.embedding_model, self.embedding_mode
         )
         string_ids = [chunk["id"] for chunk in self.chunks]
         current_backend_kwargs = {**self.backend_kwargs, "dimensions": self.dimensions}
@@ -210,7 +282,7 @@ class LeannBuilder:
             "embedding_model": self.embedding_model,
             "dimensions": self.dimensions,
             "backend_kwargs": self.backend_kwargs,
-            "use_mlx": self.use_mlx,
+            "embedding_mode": self.embedding_mode,
             "passage_sources": [
                 {
                     "type": "jsonl",
@@ -241,7 +313,11 @@ class LeannSearcher:
             self.meta_data = json.load(f)
         backend_name = self.meta_data["backend_name"]
         self.embedding_model = self.meta_data["embedding_model"]
-        self.use_mlx = self.meta_data.get("use_mlx", False)
+        # Support both old and new format
+        self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
+        # Backward compatibility with use_mlx
+        if self.meta_data.get("use_mlx", False):
+            self.embedding_mode = "mlx"
         self.passage_manager = PassageManager(self.meta_data.get("passage_sources", []))
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
