@@ -5,6 +5,22 @@ from typing import List, Any
 from llama_index.core import Document
 from llama_index.core.readers.base import BaseReader
 
+def find_all_messages_directories(root: str = None) -> List[Path]:
+    """
+    Recursively find all 'Messages' directories under the given root.
+    Returns a list of Path objects.
+    """
+    if root is None:
+        # Auto-detect user's mail path
+        home_dir = os.path.expanduser("~")
+        root = os.path.join(home_dir, "Library", "Mail")
+    
+    messages_dirs = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        if os.path.basename(dirpath) == "Messages":
+            messages_dirs.append(Path(dirpath))
+    return messages_dirs
+
 class EmlxReader(BaseReader):
     """
     Apple Mail .emlx file reader with embedded metadata.
@@ -105,31 +121,4 @@ Date: {date}
                         continue
         
         print(f"Loaded {len(docs)} email documents")
-        return docs
-
-    @staticmethod
-    def find_all_messages_directories(base_path: str) -> List[Path]:
-        """
-        Find all Messages directories under the given base path.
-        
-        Args:
-            base_path: Base path to search for Messages directories
-            
-        Returns:
-            List of Path objects pointing to Messages directories
-        """
-        base_path_obj = Path(base_path)
-        messages_dirs = []
-        
-        if not base_path_obj.exists():
-            print(f"Base path {base_path} does not exist")
-            return messages_dirs
-        
-        # Find all Messages directories recursively
-        for messages_dir in base_path_obj.rglob("Messages"):
-            if messages_dir.is_dir():
-                messages_dirs.append(messages_dir)
-                print(f"Found Messages directory: {messages_dir}")
-        
-        print(f"Found {len(messages_dirs)} Messages directories")
-        return messages_dirs 
+        return docs 

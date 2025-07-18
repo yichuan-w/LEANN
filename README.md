@@ -193,8 +193,6 @@ LEANN can create a searchable index of your Apple Mail emails, allowing you to q
 # Use default mail path (works for most macOS setups)
 python examples/mail_reader_leann.py
 
-# Specify your own mail path
-python examples/mail_reader_leann.py --mail-path "/Users/yourname/Library/Mail/V10/..."
 
 # Run with custom index directory
 python examples/mail_reader_leann.py --index-dir "./my_mail_index"
@@ -206,23 +204,12 @@ python examples/mail_reader_leann.py --max-emails -1
 python examples/mail_reader_leann.py --max-emails 1000
 
 # Run a single query
-python examples/mail_reader_leann.py --query "Find emails about project deadlines"
+python examples/mail_reader_leann.py --query "Whats the number of class recommend to take per semester for incoming EECS students"
 ```
 
 </details>
 
-#### Finding Your Mail Path
 
-<details>
-<summary><strong>🔍 Click to expand: How to find your mail path</strong></summary>
-
-The default mail path is configured for a typical macOS setup. If you need to find your specific mail path:
-
-1. Open Terminal
-2. Run: `find ~/Library/Mail -name "Messages" -type d | head -5`
-3. Use the parent directory(ended with Data) of the Messages folder as your `--mail-path`
-
-</details>
 
 #### Example Queries
 
@@ -230,7 +217,6 @@ The default mail path is configured for a typical macOS setup. If you need to fi
 <summary><strong>💬 Click to expand: Example queries you can try</strong></summary>
 
 Once the index is built, you can ask questions like:
-- "Show me emails about meeting schedules"
 - "Find emails from my boss about deadlines"
 - "What did John say about the project timeline?"
 - "Show me emails about travel expenses"

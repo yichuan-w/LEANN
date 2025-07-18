@@ -15,8 +15,14 @@ from llama_index.core.node_parser import SentenceSplitter
 
 dotenv.load_dotenv()
 
+# Auto-detect user's mail path
+def get_mail_path():
+    """Get the mail path for the current user"""
+    home_dir = os.path.expanduser("~")
+    return os.path.join(home_dir, "Library", "Mail")
+
 # Default mail path for macOS
-DEFAULT_MAIL_PATH = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
+# DEFAULT_MAIL_PATH = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
 
 def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_path: str = "mail_index.leann", max_count: int = -1, include_html: bool = False):
     """
@@ -223,8 +229,8 @@ async def query_leann_index(index_path: str, query: str):
 async def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='LEANN Mail Reader - Create and query email index')
-    parser.add_argument('--mail-path', type=str, default=DEFAULT_MAIL_PATH,
-                       help=f'Path to mail data directory (default: {DEFAULT_MAIL_PATH})')
+    # Remove --mail-path argument and auto-detect all Messages directories
+    # Remove DEFAULT_MAIL_PATH
     parser.add_argument('--index-dir', type=str, default="./mail_index_leann_raw_text_all_dicts",
                        help='Directory to store the LEANN index (default: ./mail_index_leann_raw_text_all_dicts)')
     parser.add_argument('--max-emails', type=int, default=1000,
@@ -238,23 +244,23 @@ async def main():
 
     print(f"args: {args}")
     
-    # Base path to the mail data directory
-    base_mail_path = args.mail_path
+    # Automatically find all Messages directories under the current user's Mail directory
+    from examples.email_data.LEANN_email_reader import find_all_messages_directories
+    mail_path = get_mail_path()
+    print(f"Searching for email data in: {mail_path}")
+    messages_dirs = find_all_messages_directories(mail_path)
     
-    INDEX_DIR = Path(args.index_dir)
-    INDEX_PATH = str(INDEX_DIR / "mail_documents.leann")
+    print('len(messages_dirs): ', len(messages_dirs))
     
-    print(f"Using mail path: {base_mail_path}")
-    print(f"Index directory: {INDEX_DIR}")
-    
-    # Find all Messages directories
-    
-    from examples.email_data.LEANN_email_reader import EmlxReader
-    messages_dirs = EmlxReader.find_all_messages_directories(base_mail_path)
     
     if not messages_dirs:
         print("No Messages directories found. Exiting.")
         return
+    
+    INDEX_DIR = Path(args.index_dir)
+    INDEX_PATH = str(INDEX_DIR / "mail_documents.leann")
+    print(f"Index directory: {INDEX_DIR}")
+    print(f"Found {len(messages_dirs)} Messages directories.")
     
     # Create or load the LEANN index from all sources
     index_path = create_leann_index_from_multiple_sources(messages_dirs, INDEX_PATH, args.max_emails, args.include_html)
@@ -270,7 +276,6 @@ async def main():
                 "how's the icloud related advertisement saying",
                 "Whats the number of class recommend to take per semester for incoming EECS students"
             ]
-            
             for query in queries:
                 print("\n" + "="*60)
                 await query_leann_index(index_path, query)
