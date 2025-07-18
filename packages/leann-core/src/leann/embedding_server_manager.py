@@ -177,7 +177,7 @@ class EmbeddingServerManager:
         self.server_port: Optional[int] = None
         # atexit.register(self.stop_server)
 
-    def start_server(self, port: int, model_name: str, **kwargs) -> bool:
+    def start_server(self, port: int, model_name: str, embedding_mode: str = "sentence-transformers", **kwargs) -> bool:
         """
         Starts the embedding server process.
 
@@ -310,8 +310,8 @@ class EmbeddingServerManager:
                 command.extend(["--passages-file", str(kwargs["passages_file"])])
             # if "distance_metric" in kwargs and kwargs["distance_metric"]:
             #     command.extend(["--distance-metric", kwargs["distance_metric"]])
-            if "use_mlx" in kwargs and kwargs["use_mlx"]:
-                command.extend(["--use-mlx"])
+            if embedding_mode != "sentence-transformers":
+                command.extend(["--embedding-mode", embedding_mode])
             if "enable_warmup" in kwargs and not kwargs["enable_warmup"]:
                 command.extend(["--disable-warmup"])
 

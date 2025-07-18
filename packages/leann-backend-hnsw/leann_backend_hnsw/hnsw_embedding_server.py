@@ -150,7 +150,7 @@ def create_hnsw_embedding_server(
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     custom_max_length_param: Optional[int] = None,
     distance_metric: str = "mips",
-    use_mlx: bool = False,
+    embedding_mode: str = "sentence-transformers",
     enable_warmup: bool = False,
 ):
     """
@@ -170,13 +170,22 @@ def create_hnsw_embedding_server(
         distance_metric: The distance metric to use
         enable_warmup: Whether to perform warmup requests on server start
     """
-    if not use_mlx:
+    # Handle different embedding modes directly in HNSW server
+    
+    # Auto-detect mode based on model name if not explicitly set
+    if embedding_mode == "sentence-transformers" and model_name.startswith("text-embedding-"):
+        embedding_mode = "openai"
+    
+    if embedding_mode == "openai":
+        print(f"Using OpenAI API mode for {model_name}")
+        tokenizer = None  # No local tokenizer needed for OpenAI API
+    elif embedding_mode == "mlx":
+        print(f"Using MLX mode for {model_name}")
+        tokenizer = None  # MLX handles tokenization separately
+    else:  # sentence-transformers
         print(f"Loading tokenizer for {model_name}...")
         tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
         print(f"Tokenizer loaded successfully!")
-    else:
-        print("Using MLX mode - tokenizer will be loaded separately")
-        tokenizer = None
 
     # Device setup
     mps_available = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
@@ -199,15 +208,17 @@ def create_hnsw_embedding_server(
     print(f"Starting HNSW server on port {zmq_port} with model {model_name}")
     print(f"Loading model {model_name}... (this may take a while if downloading)")
 
-    if use_mlx:
+    if embedding_mode == "mlx":
         # For MLX models, we need to use the MLX embedding computation
         print("MLX model detected - using MLX backend for embeddings")
         model = None  # We'll handle MLX separately
-        tokenizer = None
+    elif embedding_mode == "openai":
+        # For OpenAI API, no local model needed
+        print("OpenAI API mode - no local model loading required")
+        model = None
     else:
-        # Use standard transformers for non-MLX models
+        # Use standard transformers for sentence-transformers models
         model = AutoModel.from_pretrained(model_name).to(device).eval()
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
         print(f"Model {model_name} loaded successfully!")
 
     # Check port availability
@@ -355,9 +366,12 @@ def create_hnsw_embedding_server(
     def process_batch(texts_batch, ids_batch, missing_ids):
         """Process a batch of texts and return embeddings"""
 
-        # Handle MLX models separately
-        if use_mlx:
+        # Handle different embedding modes
+        if embedding_mode == "mlx":
             return _process_batch_mlx(texts_batch, ids_batch, missing_ids)
+        elif embedding_mode == "openai":
+            from leann.api import compute_embeddings_openai
+            return compute_embeddings_openai(texts_batch, model_name)
 
         _is_e5_model = "e5" in model_name.lower()
         _is_bge_model = "bge" in model_name.lower()
@@ -795,14 +809,33 @@ def create_hnsw_embedding_server(
                         )
                         continue
 
-                    # Standard embedding request
+                    # Handle direct text embedding request (for OpenAI mode)
+                    if embedding_mode == "openai" and isinstance(request_payload, list) and len(request_payload) > 0:
+                        # Check if this is a direct text request (list of strings)
+                        if all(isinstance(item, str) for item in request_payload):
+                            print(f"Processing direct text embedding request for {len(request_payload)} texts")
+                            
+                            try:
+                                from leann.api import compute_embeddings_openai
+                                embeddings = compute_embeddings_openai(request_payload, model_name)
+                                response = embeddings.tolist()
+                                socket.send(msgpack.packb(response))
+                                e2e_end = time.time()
+                                print(f"Text embedding E2E time: {e2e_end - e2e_start:.6f} seconds")
+                                continue
+                            except Exception as e:
+                                print(f"ERROR: Failed to compute OpenAI embeddings: {e}")
+                                socket.send(msgpack.packb([]))
+                                continue
+
+                    # Standard embedding request (passage ID lookup)
                     if (
                         not isinstance(request_payload, list)
                         or len(request_payload) != 1
                         or not isinstance(request_payload[0], list)
                     ):
                         print(
-                            f"Error: Invalid MessagePack request format. Expected [[ids...]], got: {type(request_payload)}"
+                            f"Error: Invalid MessagePack request format. Expected [[ids...]] or [texts...], got: {type(request_payload)}"
                         )
                         socket.send(msgpack.packb([[], []]))
                         continue
@@ -987,10 +1020,17 @@ if __name__ == "__main__":
         "--distance-metric", type=str, default="mips", help="Distance metric to use"
     )
     parser.add_argument(
+        "--embedding-mode", 
+        type=str, 
+        default="sentence-transformers", 
+        choices=["sentence-transformers", "mlx", "openai"],
+        help="Embedding backend mode"
+    )
+    parser.add_argument(
         "--use-mlx",
         action="store_true",
         default=False,
-        help="Use MLX for model inference",
+        help="Use MLX for model inference (deprecated: use --embedding-mode mlx)",
     )
     parser.add_argument(
         "--disable-warmup",
@@ -1000,6 +1040,11 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    
+    # Handle backward compatibility with use_mlx
+    embedding_mode = args.embedding_mode
+    if args.use_mlx:
+        embedding_mode = "mlx"
 
     # Create and start the HNSW embedding server
     create_hnsw_embedding_server(
@@ -1013,6 +1058,6 @@ if __name__ == "__main__":
         model_name=args.model_name,
         custom_max_length_param=args.custom_max_length,
         distance_metric=args.distance_metric,
-        use_mlx=args.use_mlx,
+        embedding_mode=embedding_mode,
         enable_warmup=not args.disable_warmup,
     )

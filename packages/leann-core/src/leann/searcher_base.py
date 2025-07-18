@@ -78,12 +78,14 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 "Cannot use recompute mode without 'embedding_model' in meta.json."
             )
 
+        embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
+        
         server_started = self.embedding_server_manager.start_server(
             port=port,
             model_name=self.embedding_model,
             passages_file=passages_source_file,
             distance_metric=kwargs.get("distance_metric"),
-            use_mlx=kwargs.get("use_mlx", False),
+            embedding_mode=embedding_mode,
             enable_warmup=kwargs.get("enable_warmup", False),
         )
         if not server_started:
@@ -120,8 +122,8 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         # Fallback to direct computation
         from .api import compute_embeddings
 
-        use_mlx = self.meta.get("use_mlx", False)
-        return compute_embeddings([query], self.embedding_model, use_mlx)
+        embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
+        return compute_embeddings([query], self.embedding_model, embedding_mode)
 
     def _compute_embedding_via_server(self, chunks: list, zmq_port: int) -> np.ndarray:
         """Compute embeddings using the ZMQ embedding server."""
