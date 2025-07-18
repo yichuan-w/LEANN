@@ -200,7 +200,27 @@ class EmbeddingServerManager:
 
                     # Check model compatibility
                     model_matches = _check_server_model(self.server_port, model_name)
-                    if not model_matches:
+                    if model_matches:
+                        print(
+                            f"✅ Existing server already using correct model: {model_name}"
+                        )
+                        
+                        # Still check meta path if provided
+                        passages_file = kwargs.get("passages_file")
+                        if passages_file and str(passages_file).endswith(
+                            ".meta.json"
+                        ):
+                            meta_matches = _check_server_meta_path(
+                                self.server_port, str(passages_file)
+                            )
+                            if not meta_matches:
+                                print("⚠️  Updating meta path to: {passages_file}")
+                                _update_server_meta_path(
+                                    self.server_port, str(passages_file)
+                                )
+                        
+                        return True
+                    else:
                         print(
                             f"⚠️  Existing server has different model. Attempting to update to: {model_name}"
                         )
@@ -230,11 +250,6 @@ class EmbeddingServerManager:
                                     )
 
                             return True
-                    else:
-                        print(
-                            f"✅ Existing server already using correct model: {model_name}"
-                        )
-                        return True
                 else:
                     # Server process exists but port not responding - restart
                     print("⚠️  Server process exists but not responding. Restarting...")
@@ -254,7 +269,11 @@ class EmbeddingServerManager:
 
             # Check model compatibility first
             model_matches = _check_server_model(port, model_name)
-            if not model_matches:
+            if model_matches:
+                print(
+                    f"✅ Existing server on port {port} is using correct model: {model_name}"
+                )
+            else:
                 print(
                     f"⚠️  Existing server on port {port} has different model. Attempting to update to: {model_name}"
                 )
@@ -263,10 +282,6 @@ class EmbeddingServerManager:
                         f"❌ Failed to update server model to {model_name}. Consider using a different port."
                     )
                 print(f"✅ Successfully updated server model to: {model_name}")
-            else:
-                print(
-                    f"✅ Existing server on port {port} is using correct model: {model_name}"
-                )
 
             # Check meta path compatibility if provided
             if passages_file and str(passages_file).endswith(".meta.json"):
