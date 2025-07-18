@@ -76,7 +76,7 @@ def compute_embeddings_sentence_transformers(chunks: List[str], model_name: str)
     # Generate embeddings
     # give use an warning if OOM here means we need to turn down the batch size
     embeddings = model.encode(
-        chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=256
+        chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=8
     )
 
     return embeddings

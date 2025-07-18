@@ -24,7 +24,7 @@ def get_mail_path():
 # Default mail path for macOS
 # DEFAULT_MAIL_PATH = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
 
-def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_path: str = "mail_index.leann", max_count: int = -1, include_html: bool = False):
+def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_path: str = "mail_index.leann", max_count: int = -1, include_html: bool = False, embedding_model: str = "facebook/contriever"):
     """
     Create LEANN index from multiple mail data sources.
     
@@ -101,7 +101,7 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
         # Use HNSW backend for better macOS compatibility
         builder = LeannBuilder(
             backend_name="hnsw",
-            embedding_model="facebook/contriever",
+            embedding_model=embedding_model,
             graph_degree=32, 
             complexity=64,
             is_compact=True,
@@ -120,7 +120,7 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
     
     return index_path
 
-def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max_count: int = 1000, include_html: bool = False):
+def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max_count: int = 1000, include_html: bool = False, embedding_model: str = "facebook/contriever"):
     """
     Create LEANN index from mail data.
     
@@ -180,7 +180,7 @@ def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max
         # Use HNSW backend for better macOS compatibility
         builder = LeannBuilder(
             backend_name="hnsw",
-            embedding_model="facebook/contriever",
+            embedding_model=embedding_model,
             graph_degree=32, 
             complexity=64,
             is_compact=True,
@@ -239,6 +239,8 @@ async def main():
                        help='Single query to run (default: runs example queries)')
     parser.add_argument('--include-html', action='store_true', default=False,
                        help='Include HTML content in email processing (default: False)')
+    parser.add_argument('--embedding-model', type=str, default="facebook/contriever",
+                       help='Embedding model to use (default: facebook/contriever)')
     
     args = parser.parse_args()
 
@@ -263,7 +265,7 @@ async def main():
     print(f"Found {len(messages_dirs)} Messages directories.")
     
     # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_sources(messages_dirs, INDEX_PATH, args.max_emails, args.include_html)
+    index_path = create_leann_index_from_multiple_sources(messages_dirs, INDEX_PATH, args.max_emails, args.include_html, args.embedding_model)
     
     if index_path:
         if args.query:
