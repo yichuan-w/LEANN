@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.png" alt="LEANN Logo" width="225">
+  <img src="assets/logo-text.png" alt="LEANN Logo" width="400">
 </p>
 
-# LEANN - the smallest vector index in the world. RAGE!
+# The smallest vector index in the world. RAGE!
 ## With LEANN, you can RAG Anything!
 
 **97% smaller than FAISS.** RAG your emails, browser history, WeChat, or 60M documents on your laptop. No cloud, no API keys, no bullshit.
