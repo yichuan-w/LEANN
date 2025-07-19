@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="LEANN Logo" width="200">
+  <img src="assets/logo.png" alt="LEANN Logo" width="250">
 </p>
 
 # LEANN - the smallest vector index in the world. RAGE!
@@ -22,7 +22,7 @@ python demo.py  # RAG your first 1M documents
 ## The Difference is Stunning
 
 <p align="center">
-  <img src="assets/storage-comparison.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="100%">
+  <img src="assets/storage-elegant.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="100%">
 </p>
 
 **Bottom line:** Index 60 million Wikipedia articles in 6GB instead of 201GB. Your MacBook can finally handle real datasets.
