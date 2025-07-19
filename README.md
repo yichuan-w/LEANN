@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="LEANN Logo" width="250">
+  <img src="assets/logo.png" alt="LEANN Logo" width="225">
 </p>
 
 # LEANN - the smallest vector index in the world. RAGE!
