@@ -2,8 +2,17 @@
   <img src="assets/logo-text.png" alt="LEANN Logo" width="400">
 </p>
 
-# The smallest vector index in the world. RAGE!
-## With LEANN, you can RAG Anything!
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.9%2B-blue.svg" alt="Python 3.9+">
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey" alt="Platform">
+</p>
+
+<h3 align="center" tabindex="-1" class="heading-element" dir="auto">
+    The smallest vector index in the world. LEANN to RAG Anything!
+</h3>
+
+---
 
 **97% smaller than FAISS.** RAG your emails, browser history, WeChat, or 60M documents on your laptop. No cloud, no API keys, no bullshit.
 
@@ -13,16 +22,10 @@ git clone https://github.com/yichuan520030910320/LEANN-RAG.git && cd LEANN-RAG
 python demo.py  # RAG your first 1M documents
 ```
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.9%2B-blue.svg" alt="Python 3.9+">
-  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey" alt="Platform">
-</p>
-
 ## The Difference is Stunning
 
 <p align="center">
-  <img src="assets/storage-elegant.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="100%">
+  <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="100%">
 </p>
 
 **Bottom line:** Index 60 million Wikipedia articles in 6GB instead of 201GB. Your MacBook can finally handle real datasets.
