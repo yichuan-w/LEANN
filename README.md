@@ -16,6 +16,7 @@ LEANN is a revolutionary vector database that makes personal AI accessible to ev
 
 RAG your **[emails](#-search-your-entire-life)**, **[browser history](#-time-machine-for-the-web)**, **[WeChat](#-wechat-detective)**, or 60M documents on your laptop, in nearly zero cost. No cloud, no API keys, completely private.
 
+LEANN achieves this through graph-based selective recomputation with high-degree preserving pruning and dynamic batching, computing embeddings on-demand instead of storing them all. [Read more →](#️-architecture--how-it-works)
 
 ## Why LEANN?
 
@@ -23,7 +24,7 @@ RAG your **[emails](#-search-your-entire-life)**, **[browser history](#-time-mac
   <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="100%">
 </p>
 
-**The numbers speak for themselves:** Index 60 million Wikipedia articles in just 6GB instead of 201GB. Finally, your MacBook can handle enterprise-scale datasets. [See detailed benchmarks below ↓](#benchmarks)
+**The numbers speak for themselves:** Index 60 million Wikipedia articles in just 6GB instead of 201GB. Finally, your MacBook can handle enterprise-scale datasets. [See detailed benchmarks below ↓](#storage-usage-comparison)
 
 ## Why This Matters
 
@@ -217,16 +218,21 @@ This demo showcases how to build a RAG system for PDF/md documents using Leann.
 
 
 
-## How It Works
+## 🏗️ Architecture & How It Works
 
-LEANN doesn't store embeddings. Instead, it builds a lightweight graph and computes embeddings on-demand during search. 
+<p align="center">
+  <img src="assets/arch.png" alt="LEANN Architecture" width="800">
+</p>
 
 **The magic:** Most vector DBs store every single embedding (expensive). LEANN stores a pruned graph structure (cheap) and recomputes embeddings only when needed (fast).
 
+**Core techniques:**
+- **Graph-based selective recomputation:** Only compute embeddings for nodes in the search path
+- **High-degree preserving pruning:** Keep important "hub" nodes while removing redundant connections  
+- **Dynamic batching:** Efficiently batch embedding computations for GPU utilization
+- **Two-level search:** Smart graph traversal that prioritizes promising nodes
+
 **Backends:** DiskANN or HNSW - pick what works for your data size.
-
-**Performance:** Real-time search on millions of documents.
-
 
 ## Benchmarks
 
@@ -277,13 +283,6 @@ The evaluation script downloads data automatically on first run.
 | HNSW                | 1M docs    | xms        | 0.95      | -->
 
 *Benchmarks run on Apple M3 Pro 36 GB*
-
-
-## 🏗️ Architecture
-
-<p align="center">
-  <img src="assets/arch.png" alt="LEANN Architecture" width="800">
-</p>
 
 ## 🔬 Paper
 
