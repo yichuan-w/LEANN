@@ -16,7 +16,7 @@ LEANN is a revolutionary vector database that makes personal AI accessible to ev
 
 RAG your **[emails](#-search-your-entire-life)**, **[browser history](#-time-machine-for-the-web)**, **[WeChat](#-wechat-detective)**, or 60M documents on your laptop, in nearly zero cost. No cloud, no API keys, completely private.
 
-LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning* and *dynamic batching*, computing embeddings on-demand instead of storing them all. [Read more →](#️-architecture--how-it-works)
+LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Read more →](#️-architecture--how-it-works)
 
 ## Why LEANN?
 
@@ -32,7 +32,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 🪶 **Lightweight:** Minimal resource requirements - runs smoothly on any laptop without specialized hardware.
 
-📈 **Scalability:** Orgnize our messy personal data that would crash traditional vector DBs, with performance that gets better as your data grows more personalized.
+📈 **Scalability:** Organize our messy personal data that would crash traditional vector DBs, with performance that gets better as your data grows more personalized.
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
