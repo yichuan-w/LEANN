@@ -49,13 +49,23 @@ git submodule update --init --recursive
 brew install llvm libomp boost protobuf
 export CC=$(brew --prefix llvm)/bin/clang
 export CXX=$(brew --prefix llvm)/bin/clang++
+
+# Install with HNSW backend (default, recommended for most users)
 uv sync
+
+# Or add DiskANN backend if you want to test more options
+uv sync --extra diskann
 ```
 
 **Linux (Ubuntu/Debian):**
 ```bash
 sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev libmkl-full-dev libaio-dev
+
+# Install with HNSW backend (default, recommended for most users)
 uv sync
+
+# Or add DiskANN backend if you want to test more options
+uv sync --extra diskann
 ```
 
 **Ollama Setup (Optional for Local LLM):**
