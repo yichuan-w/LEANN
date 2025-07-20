@@ -21,7 +21,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 ## Why LEANN?
 
 <p align="center">
-  <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="100%">
+  <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="70%">
 </p>
 
 **The numbers speak for themselves:** Index 60 million Wikipedia articles in just 6GB instead of 201GB. From emails to browser history, everything fits on your laptop. [See detailed benchmarks below ↓](#storage-usage-comparison)
@@ -64,10 +64,9 @@ uv sync
 
 *macOS:*
 
-```bash
-# Install Ollama
-brew install ollama
+First, [download Ollama for macOS](https://ollama.com/download/mac).
 
+```bash
 # Pull a lightweight model (recommended for consumer hardware)
 ollama pull llama3.2:1b
 ```
