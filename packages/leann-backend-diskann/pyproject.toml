@@ -16,3 +16,4 @@ wheel.packages = ["leann_backend_diskann"]
 editable.mode = "redirect"
 cmake.build-type = "Release"
 build.verbose = true
+cmake.build-args = ["-j"]
