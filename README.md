@@ -16,7 +16,7 @@ LEANN is a revolutionary vector database that makes personal AI accessible to ev
 
 RAG your **[emails](#-search-your-entire-life)**, **[browser history](#-time-machine-for-the-web)**, **[WeChat](#-wechat-detective)**, or 60M documents on your laptop, in nearly zero cost. No cloud, no API keys, completely private.
 
-LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Read more →](#️-architecture--how-it-works)
+LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Read more →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
 ## Why LEANN?
 
@@ -111,7 +111,24 @@ searcher.search("Show me all conversations with John about the project")
 
 ## Wild Things You Can Do
 
-LEANN supports RAGing a lot of data sources, like .pdf, .txt, .docx, .md, and also supports RAGing your WeChat, Google Search History, and more.
+LEANN supports RAGing a lot of data sources, like .pdf, .txt, .md, and also supports RAGing your WeChat, Google Search History, and more.
+
+### 📚 Process Any Documents (.pdf, .txt, .md)
+
+Above we showed the Python API, while this CLI script demonstrates the same concepts while directly processing PDFs and documents.
+
+```bash
+# Drop your PDFs, .txt, .md files into examples/data/
+uv run ./examples/main_cli_example.py
+
+# Or use python directly
+source .venv/bin/activate
+python ./examples/main_cli_example.py
+```
+
+Uses Ollama `qwen3:8b` by default. For other models: `--llm openai --model gpt-4o` (requires `OPENAI_API_KEY` environment variable) or `--llm hf --model Qwen/Qwen3-4B`.
+
+**Works with any text format** - research papers, personal notes, presentations. Built with LlamaIndex for document parsing.
 
 ### 🕵️ Search Your Entire Life
 ```bash
