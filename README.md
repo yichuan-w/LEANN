@@ -12,7 +12,7 @@
     The smallest vector index in the world. RAG Everything with LEANN!
 </h2>
 
-LEANN is a revolutionary vector database that makes personal AI accessible to everyone. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **97% less storage** than traditional solutions.
+LEANN is a revolutionary vector database that makes personal AI accessible to everyone. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **97% less storage** than traditional solutions **without accuracy loss**.
 
 RAG your **[emails](#-search-your-entire-life)**, **[browser history](#-time-machine-for-the-web)**, **[WeChat](#-wechat-detective)**, or 60M documents on your laptop, in nearly zero cost. No cloud, no API keys, completely private.
 
@@ -29,10 +29,11 @@ RAG your **[emails](#-search-your-entire-life)**, **[browser history](#-time-mac
 
 🔒 **Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
 
-⚡ **Speed:** Real-time search on consumer hardware. No server setup, no configuration hell.
+🪶 **Lightweight:** Minimal resource requirements - runs smoothly on any laptop without specialized hardware.
 
-📈 **Scale:** Handle datasets that would crash traditional vector DBs on your laptop.
+📈 **Scalability:** Orgnize our messy personal data that would crash traditional vector DBs, with performance that gets better as your data grows more personalized.
 
+✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
 ## Quick Start in 1 minute
 
@@ -85,7 +86,9 @@ ollama pull llama3.2:1b
 
 You can also replace `llama3.2:1b` to `deepseek-r1:1.5b` or `qwen3:4b` for better performance but higher memory usage.
 
-## RAG Your Life
+## Dead Simple API
+
+Just 3 lines of code. Our declarative API makes RAG as easy as writing a config file:
 
 ```python
 from leann.api import LeannBuilder, LeannSearcher
