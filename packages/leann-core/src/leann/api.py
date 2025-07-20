@@ -96,7 +96,7 @@ def compute_embeddings_sentence_transformers(
             backend_module_name="leann_backend_hnsw.hnsw_embedding_server"
         )
 
-        server_started = server_manager.start_server(
+        server_started, actual_port = server_manager.start_server(
             port=port,
             model_name=model_name,
             embedding_mode="sentence-transformers",
@@ -104,7 +104,10 @@ def compute_embeddings_sentence_transformers(
         )
 
         if not server_started:
-            raise RuntimeError(f"Failed to start embedding server on port {port}")
+            raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
+        
+        # Use the actual port for connection
+        port = actual_port
 
         # Connect to embedding server
         context = zmq.Context()

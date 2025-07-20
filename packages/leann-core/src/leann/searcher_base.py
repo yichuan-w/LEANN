@@ -80,7 +80,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
         
-        server_started = self.embedding_server_manager.start_server(
+        server_started, actual_port = self.embedding_server_manager.start_server(
             port=port,
             model_name=self.embedding_model,
             passages_file=passages_source_file,
@@ -89,7 +89,11 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             enable_warmup=kwargs.get("enable_warmup", False),
         )
         if not server_started:
-            raise RuntimeError(f"Failed to start embedding server on port {port}")
+            raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
+        
+        # Update the port information for future use
+        if hasattr(self, '_actual_server_port'):
+            self._actual_server_port = actual_port
 
     def compute_query_embedding(
         self, query: str, zmq_port: int = 5557, use_server_if_available: bool = True
