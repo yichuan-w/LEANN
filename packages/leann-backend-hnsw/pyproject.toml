@@ -15,4 +15,4 @@ wheel.packages = ["leann_backend_hnsw"]
 editable.mode = "redirect"
 cmake.build-type = "Release"
 build.verbose = true
-cmake.build-args = ["-j"]
+build.tool-args = ["-j8"]
