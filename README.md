@@ -16,7 +16,7 @@ LEANN is a revolutionary vector database that makes personal AI accessible to ev
 
 RAG your **[emails](#-search-your-entire-life)**, **[browser history](#-time-machine-for-the-web)**, **[WeChat](#-wechat-detective)**, or 60M documents on your laptop, in nearly zero cost. No cloud, no API keys, completely private.
 
-LEANN achieves this through graph-based selective recomputation with high-degree preserving pruning and dynamic batching, computing embeddings on-demand instead of storing them all. [Read more →](#️-architecture--how-it-works)
+LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning* and *dynamic batching*, computing embeddings on-demand instead of storing them all. [Read more →](#️-architecture--how-it-works)
 
 ## Why LEANN?
 
@@ -64,7 +64,6 @@ uv sync
 
 *macOS:*
 
-First, [download Ollama for macOS](https://ollama.com/download/mac).
 ```bash
 # Install Ollama
 brew install ollama
