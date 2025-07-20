@@ -23,7 +23,7 @@ g++ ./demo_reader.cpp -o ./demo_reader && ./demo_reader --stats \
   f.read(reinterpret_cast<char *>(&val), sizeof(uint32_t))
 #define SECTOR_SIZE 4096
 
-// 辅助：获取文件大小
+// Helper: Get file size
 static size_t get_file_size(const std::string &fname) {
   std::ifstream ifs(fname, std::ios::binary | std::ios::ate);
   if (ifs.fail() || !ifs.is_open()) {
@@ -32,7 +32,7 @@ static size_t get_file_size(const std::string &fname) {
   return static_cast<size_t>(ifs.tellg());
 }
 
-// 打印 sector 的前若干 hex，用于debug
+// Print first few hex of sector for debug
 static void print_hex(const char *buf, size_t len, size_t max_len = 64) {
   size_t show_len = (len < max_len) ? len : max_len;
   for (size_t i = 0; i < show_len; i++) {
@@ -46,19 +46,19 @@ static void print_hex(const char *buf, size_t len, size_t max_len = 64) {
 }
 
 /*
-  修正后的 demo_reader:
-  1) 从 partition.bin 读:
+  Corrected demo_reader:
+  1) Read from partition.bin:
       - C, partition_nums, nd
-      - graph_partitions[i]: 分区 i 的所有 nodeID
+      - graph_partitions[i]: all nodeIDs in partition i
       - id2partition[nodeID]: nodeID => partition i
-  2) 从 _disk_graph.index 读:
-      a) sector0 里先有 2个 int: meta_n, meta_dim
-      b) 再有 meta_n个 uint64_t
-         例如: [0]=nd, [1]=dim, [2]=??, [3]=max_node_len, [4]=C, [5]..??,
-  [8]=file_size... 具体位置要结合 relayout 的写法 c) graph_node_len =
-  max_node_len - dim_in_meta*sizeof(float) 3) 用户给定 target_node_id =>
+  2) Read from _disk_graph.index:
+      a) sector0 first has 2 ints: meta_n, meta_dim
+      b) then meta_n uint64_t
+         e.g.: [0]=nd, [1]=dim, [2]=??, [3]=max_node_len, [4]=C, [5]..??,
+  [8]=file_size... specific positions need to be combined with relayout writing c) graph_node_len =
+  max_node_len - dim_in_meta*sizeof(float) 3) User given target_node_id =>
       partition_id= id2partition[node_id]
-      在 graph_partitions[partition_id] 里找 node 的下标 j
+      find node index j in graph_partitions[partition_id]
       offset = (partition_id+1)*4096 => sector
       adjacency_offset= j*graph_node_len => neighbor_count => neighbors
 */
@@ -105,7 +105,7 @@ int main(int argc, char **argv) {
               << "\n";
   }
 
-  // 1) 读取 partition.bin
+  // 1) Read partition.bin
   std::ifstream pf(partition_bin, std::ios::binary);
   if (!pf.is_open()) {
     std::cerr << "Cannot open partition.bin: " << partition_bin << std::endl;
@@ -119,8 +119,8 @@ int main(int argc, char **argv) {
             << ", partition_nums=" << partition_nums << ", nd=" << nd
             << std::endl;
 
-  // 读取分区节点列表
-  std::vector<std::vector<uint32_t>> graph_partitions(partition_nums);
+  // Read partition node lists
+  std::vector<std::vector<uint32_t> > graph_partitions(partition_nums);
   for (uint64_t i = 0; i < partition_nums; i++) {
     uint32_t psize;
     READ_U32(pf, psize);
@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
     pf.read(reinterpret_cast<char *>(graph_partitions[i].data()),
             psize * sizeof(uint32_t));
   }
-  // 读取 _id2partition[node], 大小= nd
+  // Read _id2partition[node], size= nd
   std::vector<uint32_t> id2partition(nd);
   pf.read(reinterpret_cast<char *>(id2partition.data()), nd * sizeof(uint32_t));
   pf.close();
@@ -140,23 +140,23 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // 2) 解析 _disk_graph.index
+  // 2) Parse _disk_graph.index
   std::ifstream gf(graph_index, std::ios::binary);
   if (!gf.is_open()) {
     std::cerr << "Cannot open disk_graph.index: " << graph_index << std::endl;
     return 1;
   }
-  // (a) sector0 => 先读 2个 int
+  // (a) sector0 => first read 2 ints
   int meta_n, meta_dim;
   gf.read((char *)&meta_n, sizeof(int));
   gf.read((char *)&meta_dim, sizeof(int));
   std::cout << "[debug] meta_n=" << meta_n << ", meta_dim=" << meta_dim << "\n";
 
-  // (b) 读 meta_n个 uint64_t
+  // (b) Read meta_n uint64_t
   std::vector<uint64_t> meta_info(meta_n);
   gf.read(reinterpret_cast<char *>(meta_info.data()),
           meta_n * sizeof(uint64_t));
-  // 打印
+  // Print
   for (int i = 0; i < meta_n; i++) {
     std::cout << " meta_info[" << i << "]= " << meta_info[i] << "\n";
   }
@@ -164,11 +164,11 @@ int main(int argc, char **argv) {
   size_t file_size = get_file_size(graph_index);
   std::cout << "[disk_graph.index size] " << file_size << " bytes\n";
 
-  // **根据 relayout log** 你说: meta_info[0]=nd=60450220, meta_info[1]=dim=769,
+  // **According to relayout log** you said: meta_info[0]=nd=60450220, meta_info[1]=dim=769,
   //    meta_info[2]=??(16495248?), meta_info[3]=max_node_len=3320,
   //    meta_info[4]=16 (C),
-  //    meta_info[8]= 15475261440(文件大小)
-  // 我们这里先手动解析:
+  //    meta_info[8]= 15475261440(file size)
+  // We manually parse here first:
   uint64_t nd_in_meta = meta_info[0];
   uint64_t dim_in_meta = meta_info[1];
   uint64_t max_node_len = meta_info[3];
@@ -182,7 +182,7 @@ int main(int argc, char **argv) {
             << ", c_in_meta= " << c_in_meta
             << ", entire_file_size= " << entire_file_sz << "\n";
 
-  // 计算 graph_node_len
+  // Calculate graph_node_len
   uint64_t dim_size = dim_in_meta * sizeof(float);
   uint64_t graph_node_len = max_node_len - dim_size;
   std::cout << " => graph_node_len= " << graph_node_len << "\n\n";
@@ -305,7 +305,7 @@ int main(int argc, char **argv) {
       // Error check pf_again if needed
     }
 
-    // 3) 找 target_node_id => partition_id => subIndex
+    // 3) Find target_node_id => partition_id => subIndex
     uint32_t partition_id = id2partition[target_node_id];
     if (partition_id >= partition_nums) {
       std::cerr << "Partition ID out-of-range for target node.\n";
