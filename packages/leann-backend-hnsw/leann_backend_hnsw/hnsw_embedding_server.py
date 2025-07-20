@@ -423,7 +423,7 @@ def create_hnsw_embedding_server(
             from leann.api import compute_embeddings
 
             # Compute embeddings using MLX
-            embeddings = compute_embeddings(texts_batch, model_name, use_mlx=True)
+            embeddings = compute_embeddings(texts_batch, model_name, mode="mlx", use_server=False)
 
             print(
                 f"[leann_backend_hnsw.hnsw_embedding_server LOG]: MLX embeddings computed for {len(texts_batch)} texts"

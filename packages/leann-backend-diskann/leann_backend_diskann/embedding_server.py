@@ -600,7 +600,7 @@ def create_embedding_server_thread(
                         chunk_ids = node_ids[i:end_idx]
                         
                         if embedding_mode == "mlx":
-                            embeddings_chunk = compute_embeddings_mlx(chunk_texts, model_name)
+                            embeddings_chunk = compute_embeddings_mlx(chunk_texts, model_name, batch_size=16)
                         elif embedding_mode == "openai":
                             embeddings_chunk = compute_embeddings_openai(chunk_texts, model_name)
                         else:  # sentence-transformers
@@ -617,7 +617,7 @@ def create_embedding_server_thread(
                     print(f"INFO: Combined embeddings shape: {hidden.shape}")
                 else:
                     if embedding_mode == "mlx":
-                        hidden = compute_embeddings_mlx(texts, model_name)
+                        hidden = compute_embeddings_mlx(texts, model_name, batch_size=16)
                     elif embedding_mode == "openai":
                         hidden = compute_embeddings_openai(texts, model_name)
                     else:  # sentence-transformers

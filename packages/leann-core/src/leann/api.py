@@ -21,7 +21,8 @@ def compute_embeddings(
     chunks: List[str], 
     model_name: str, 
     mode: str = "sentence-transformers",
-    use_server: bool = True
+    use_server: bool = True,
+    use_mlx: bool = False  # Backward compatibility: if True, override mode to 'mlx'
 ) -> np.ndarray:
     """
     Computes embeddings using different backends.
@@ -38,12 +39,16 @@ def compute_embeddings(
     Returns:
         numpy array of embeddings
     """
+    # Override mode for backward compatibility
+    if use_mlx:
+        mode = "mlx"
+
     # Auto-detect mode based on model name if not explicitly set
     if mode == "sentence-transformers" and model_name.startswith("text-embedding-"):
         mode = "openai"
     
     if mode == "mlx":
-        return compute_embeddings_mlx(chunks, model_name)
+        return compute_embeddings_mlx(chunks, model_name, batch_size=16)
     elif mode == "openai":
         return compute_embeddings_openai(chunks, model_name)
     elif mode == "sentence-transformers":
@@ -144,7 +149,7 @@ def _compute_embeddings_sentence_transformers_direct(chunks: List[str], model_na
     # Generate embeddings
     # give use an warning if OOM here means we need to turn down the batch size
     embeddings = model.encode(
-        chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=8
+        chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=16
     )
 
     return embeddings
@@ -173,9 +178,17 @@ def compute_embeddings_openai(chunks: List[str], model_name: str) -> np.ndarray:
     max_batch_size = 100  # Conservative batch size
     all_embeddings = []
     
-    for i in range(0, len(chunks), max_batch_size):
+    try:
+        from tqdm import tqdm
+        total_batches = (len(chunks) + max_batch_size - 1) // max_batch_size
+        batch_range = range(0, len(chunks), max_batch_size)
+        batch_iterator = tqdm(batch_range, desc="Computing embeddings", unit="batch", total=total_batches)
+    except ImportError:
+        # Fallback without progress bar
+        batch_iterator = range(0, len(chunks), max_batch_size)
+    
+    for i in batch_iterator:
         batch_chunks = chunks[i:i + max_batch_size]
-        print(f"INFO: Processing batch {i//max_batch_size + 1}/{(len(chunks) + max_batch_size - 1)//max_batch_size}")
         
         try:
             response = client.embeddings.create(
@@ -193,42 +206,64 @@ def compute_embeddings_openai(chunks: List[str], model_name: str) -> np.ndarray:
     return embeddings
 
 
-def compute_embeddings_mlx(chunks: List[str], model_name: str) -> np.ndarray:
+def compute_embeddings_mlx(chunks: List[str], model_name: str, batch_size: int = 16) -> np.ndarray:
     """Computes embeddings using an MLX model."""
     try:
         import mlx.core as mx
         from mlx_lm.utils import load
+        from tqdm import tqdm
     except ImportError as e:
         raise RuntimeError(
             "MLX or related libraries not available. Install with: uv pip install mlx mlx-lm"
         ) from e
 
     print(
-        f"INFO: Computing embeddings for {len(chunks)} chunks using MLX model '{model_name}'..."
+        f"INFO: Computing embeddings for {len(chunks)} chunks using MLX model '{model_name}' with batch_size={batch_size}..."
     )
 
     # Load model and tokenizer
     model, tokenizer = load(model_name)
 
-    # Process each chunk
+    # Process chunks in batches with progress bar
     all_embeddings = []
-    for chunk in chunks:
-        # Tokenize
-        token_ids = tokenizer.encode(chunk)  # type: ignore
+    
+    try:
+        from tqdm import tqdm
+        batch_iterator = tqdm(range(0, len(chunks), batch_size), desc="Computing embeddings", unit="batch")
+    except ImportError:
+        batch_iterator = range(0, len(chunks), batch_size)
+    
+    for i in batch_iterator:
+        batch_chunks = chunks[i:i + batch_size]
+        
+        # Tokenize all chunks in the batch
+        batch_token_ids = []
+        for chunk in batch_chunks:
+            token_ids = tokenizer.encode(chunk)  # type: ignore
+            batch_token_ids.append(token_ids)
+        
+        # Pad sequences to the same length for batch processing
+        max_length = max(len(ids) for ids in batch_token_ids)
+        padded_token_ids = []
+        for token_ids in batch_token_ids:
+            # Pad with tokenizer.pad_token_id or 0
+            padded = token_ids + [0] * (max_length - len(token_ids))
+            padded_token_ids.append(padded)
+        
+        # Convert to MLX array with batch dimension
+        input_ids = mx.array(padded_token_ids)
 
-        # Convert to MLX array and add batch dimension
-        input_ids = mx.array([token_ids])
-
-        # Get embeddings
+        # Get embeddings for the batch
         embeddings = model(input_ids)
 
-        # Mean pooling (since we only have one sequence, just take the mean)
-        pooled = embeddings.mean(axis=1)  # Shape: (1, hidden_size)
+        # Mean pooling for each sequence in the batch
+        pooled = embeddings.mean(axis=1)  # Shape: (batch_size, hidden_size)
 
-        # Convert individual embedding to numpy via list (to handle bfloat16)
-        pooled_list = pooled[0].tolist()  # Remove batch dimension and convert to list
-        pooled_numpy = np.array(pooled_list, dtype=np.float32)
-        all_embeddings.append(pooled_numpy)
+        # Convert batch embeddings to numpy
+        for j in range(len(batch_chunks)):
+            pooled_list = pooled[j].tolist()  # Convert to list
+            pooled_numpy = np.array(pooled_list, dtype=np.float32)
+            all_embeddings.append(pooled_numpy)
 
     # Stack numpy arrays
     return np.stack(all_embeddings)
@@ -294,6 +329,8 @@ class LeannBuilder:
         self.dimensions = dimensions
         self.embedding_mode = embedding_mode
         self.backend_kwargs = backend_kwargs
+        if 'mlx' in self.embedding_model:
+            self.embedding_mode = "mlx"
         self.chunks: List[Dict[str, Any]] = []
 
     def add_text(self, text: str, metadata: Optional[Dict[str, Any]] = None):
@@ -318,7 +355,13 @@ class LeannBuilder:
         offset_file = index_dir / f"{index_name}.passages.idx"
         offset_map = {}
         with open(passages_file, "w", encoding="utf-8") as f:
-            for chunk in self.chunks:
+            try:
+                from tqdm import tqdm
+                chunk_iterator = tqdm(self.chunks, desc="Writing passages", unit="chunk")
+            except ImportError:
+                chunk_iterator = self.chunks
+            
+            for chunk in chunk_iterator:
                 offset = f.tell()
                 json.dump(
                     {

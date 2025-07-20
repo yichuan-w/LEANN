@@ -11,7 +11,8 @@ requires-python = ">=3.9"
 license = { text = "MIT" }
 
 dependencies = [
-    "numpy>=1.20.0"
+    "numpy>=1.20.0",
+    "tqdm>=4.60.0"
 ]
 
 [tool.setuptools.packages.find]
