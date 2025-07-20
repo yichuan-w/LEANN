@@ -8,60 +8,33 @@
   <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey" alt="Platform">
 </p>
 
-<h3 align="center" tabindex="-1" class="heading-element" dir="auto">
-    The smallest vector index in the world. LEANN to RAG Anything!
-</h3>
+<h2 align="center" tabindex="-1" class="heading-element" dir="auto">
+    The smallest vector index in the world. RAG Everything with LEANN!
+</h2>
 
----
+LEANN is a revolutionary vector database that makes personal AI accessible to everyone. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **97% less storage** than traditional solutions.
 
-**97% smaller than FAISS.** RAG your emails, browser history, WeChat, or 60M documents on your laptop. No cloud, no API keys, no bullshit.
+RAG your emails, browser history, WeChat, or 60M documents on your laptop, in nearly zero cost. No cloud, no API keys, **completely private**.
 
-```bash
-git clone https://github.com/yichuan520030910320/LEANN-RAG.git && cd LEANN-RAG
-# 30 seconds later...
-python demo.py  # RAG your first 1M documents
-```
 
-## The Difference is Stunning
+## Why LEANN?
 
 <p align="center">
   <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="100%">
 </p>
 
-**Bottom line:** Index 60 million Wikipedia articles in 6GB instead of 201GB. Your MacBook can finally handle real datasets.
+**The numbers speak for themselves:** Index 60 million Wikipedia articles in just 6GB instead of 201GB. Finally, your MacBook can handle enterprise-scale datasets. [See detailed benchmarks below ↓](#benchmarks)
 
 ## Why This Matters
 
-**Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
+🔒 **Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
 
-**Speed:** Real-time search on consumer hardware. No server setup, no configuration hell.
+⚡ **Speed:** Real-time search on consumer hardware. No server setup, no configuration hell.
 
-**Scale:** Handle datasets that would crash traditional vector DBs on your laptop.
+📈 **Scale:** Handle datasets that would crash traditional vector DBs on your laptop.
 
-## 30-Second Demo: RAG Your Life
 
-```python
-from leann.api import LeannBuilder, LeannSearcher
-
-# Index your entire email history (90K emails = 14MB vs 305MB)
-builder = LeannBuilder(backend_name="hnsw")
-builder.add_from_mailbox("~/Library/Mail")  # Your actual emails
-builder.build_index("my_life.leann")
-
-# Ask questions about your own data
-searcher = LeannSearcher("my_life.leann") 
-searcher.search("What did my boss say about the deadline?")
-searcher.search("Find emails about vacation requests")
-searcher.search("Show me all conversations with John about the project")
-```
-
-**That's it.** No cloud setup, no API keys, no "fine-tuning". Just your data, your questions, your laptop.
-
-[Try the interactive demo →](demo.ipynb)
-
-## Get Started in 30 Seconds
-
-### Installation
+## Quick Start in 1 minute
 
 ```bash
 git clone git@github.com:yichuan520030910320/LEANN-RAG.git leann
@@ -85,6 +58,8 @@ uv sync
 
 **Ollama Setup (Optional for Local LLM):**
 
+*We support both hf-transformers and Ollama for local LLMs. Ollama is recommended for faster performance.*
+
 *macOS:*
 
 First, [download Ollama for macOS](https://ollama.com/download/mac).
@@ -94,9 +69,6 @@ brew install ollama
 
 # Pull a lightweight model (recommended for consumer hardware)
 ollama pull llama3.2:1b
-
-# For better performance but higher memory usage
-ollama pull llama3.2:3b
 ```
 
 *Linux:*
@@ -109,27 +81,34 @@ ollama serve &
 
 # Pull a lightweight model (recommended for consumer hardware)
 ollama pull llama3.2:1b
-
-# For better performance but higher memory usage
-ollama pull llama3.2:3b
 ```
 
-**Note:** For Hugging Face models >1B parameters, you may encounter OOM errors on consumer hardware. Consider using smaller models like Qwen3-0.6B or switch to Ollama for better memory management.
+You can also replace `llama3.2:1b` to `deepseek-r1:1.5b` or `qwen3:4b` for better performance but higher memory usage.
 
+## RAG Your Life
 
-### Run the Demo (support .pdf,.txt,.docx, .pptx, .csv, .md etc)
+```python
+from leann.api import LeannBuilder, LeannSearcher
 
-```bash
-uv run ./examples/main_cli_example.py
+# Index your entire email history (90K emails = 14MB vs 305MB)
+builder = LeannBuilder(backend_name="hnsw")
+builder.add_from_mailbox("~/Library/Mail")  # Your actual emails
+builder.build_index("my_life.leann")
+
+# Ask questions about your own data
+searcher = LeannSearcher("my_life.leann") 
+searcher.search("What did my boss say about the deadline?")
+searcher.search("Find emails about vacation requests")
+searcher.search("Show me all conversations with John about the project")
 ```
 
-or you want to use python 
+**That's it.** No cloud setup, no API keys, no "fine-tuning". Just your data, your questions, your laptop.
 
-```bash
-source .venv/bin/activate
-python ./examples/main_cli_example.py
-```
+[Try the interactive demo →](demo.ipynb)
+
 ## Wild Things You Can Do
+
+LEANN supports RAGing a lot of data sources, like .pdf, .txt, .docx, .md, and also supports RAGing your WeChat, Google Search History, and more.
 
 ### 🕵️ Search Your Entire Life
 ```bash
@@ -139,6 +118,28 @@ python examples/mail_reader_leann.py
 ```
 **90K emails → 14MB.** Finally, search your email like you search Google.
 
+<details>
+<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+
+```bash
+# Use default mail path (works for most macOS setups)
+python examples/mail_reader_leann.py
+
+# Run with custom index directory
+python examples/mail_reader_leann.py --index-dir "./my_mail_index"
+
+# Process all emails (may take time but indexes everything)
+python examples/mail_reader_leann.py --max-emails -1
+
+# Limit number of emails processed (useful for testing)
+python examples/mail_reader_leann.py --max-emails 1000
+
+# Run a single query
+python examples/mail_reader_leann.py --query "What did my boss say about deadlines?"
+```
+
+</details>
+
 ### 🌐 Time Machine for the Web  
 ```bash
 python examples/google_history_reader_leann.py
@@ -147,6 +148,25 @@ python examples/google_history_reader_leann.py
 ```
 **38K browser entries → 6MB.** Your browser history becomes your personal search engine.
 
+<details>
+<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+
+```bash
+# Use default Chrome profile (auto-finds all profiles)
+python examples/google_history_reader_leann.py
+
+# Run with custom index directory
+python examples/google_history_reader_leann.py --index-dir "./my_chrome_index"
+
+# Limit number of history entries processed (useful for testing)
+python examples/google_history_reader_leann.py --max-entries 500
+
+# Run a single query
+python examples/google_history_reader_leann.py --query "What websites did I visit about machine learning?"
+```
+
+</details>
+
 ### 💬 WeChat Detective
 ```bash
 python examples/wechat_history_reader_leann.py  
@@ -154,6 +174,28 @@ python examples/wechat_history_reader_leann.py
 # "Show me all group chats about weekend plans"
 ```
 **400K messages → 64MB.** Search years of chat history in any language.
+
+<details>
+<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+
+```bash
+# Use default settings (recommended for first run)
+python examples/wechat_history_reader_leann.py
+
+# Run with custom export directory
+python examples/wechat_history_reader_leann.py --export-dir "./my_wechat_exports"
+
+# Run with custom index directory
+python examples/wechat_history_reader_leann.py --index-dir "./my_wechat_index"
+
+# Limit number of chat entries processed (useful for testing)
+python examples/wechat_history_reader_leann.py --max-entries 1000
+
+# Run a single query
+python examples/wechat_history_reader_leann.py --query "Show me conversations about travel plans"
+```
+
+</details>
 
 ### 📚 Personal Wikipedia
 ```bash
@@ -178,10 +220,9 @@ LEANN doesn't store embeddings. Instead, it builds a lightweight graph and compu
 
 **The magic:** Most vector DBs store every single embedding (expensive). LEANN stores a pruned graph structure (cheap) and recomputes embeddings only when needed (fast).
 
-**Backends:** DiskANN, HNSW, or FAISS - pick what works for your data size.
+**Backends:** DiskANN or HNSW - pick what works for your data size.
 
-**Performance:** Real-time search on millions of documents. MLX support for 10-100x faster building on Apple Silicon.
-
+**Performance:** Real-time search on millions of documents.
 
 
 ## Benchmarks
