@@ -24,13 +24,13 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
   <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="100%">
 </p>
 
-**The numbers speak for themselves:** Index 60 million Wikipedia articles in just 6GB instead of 201GB. Finally, your MacBook can handle enterprise-scale datasets. [See detailed benchmarks below ↓](#storage-usage-comparison)
+**The numbers speak for themselves:** Index 60 million Wikipedia articles in just 6GB instead of 201GB. From emails to browser history, everything fits on your laptop. [See detailed benchmarks below ↓](#storage-usage-comparison)
 
 ## Why This Matters
 
 🔒 **Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
 
-🪶 **Lightweight:** Minimal resource requirements - runs smoothly on any laptop without specialized hardware.
+🪶 **Lightweight:** Smart graph pruning means less storage, less memory usage, better performance on your existing hardware.
 
 📈 **Scalability:** Organize our messy personal data that would crash traditional vector DBs, with performance that gets better as your data grows more personalized.
 
@@ -93,16 +93,19 @@ Just 3 lines of code. Our declarative API makes RAG as easy as writing a config 
 ```python
 from leann.api import LeannBuilder, LeannSearcher
 
-# Index your entire email history (90K emails = 14MB vs 305MB)
+# 1. Build index (no embeddings stored!)
 builder = LeannBuilder(backend_name="hnsw")
-builder.add_from_mailbox("~/Library/Mail")  # Your actual emails
-builder.build_index("my_life.leann")
+builder.add_text("C# is a powerful programming language")
+builder.add_text("Python is a powerful programming language")
+builder.add_text("Machine learning transforms industries")  
+builder.add_text("Neural networks process complex data")
+builder.add_text("Leann is a great storage saving engine for RAG on your macbook")
+builder.build_index("knowledge.leann")
 
-# Ask questions about your own data
-searcher = LeannSearcher("my_life.leann") 
-searcher.search("What did my boss say about the deadline?")
-searcher.search("Find emails about vacation requests")
-searcher.search("Show me all conversations with John about the project")
+# 2. Search with real-time embeddings
+searcher = LeannSearcher("knowledge.leann")
+results = searcher.search("C++ programming languages", top_k=2, recompute_beighbor_embeddings=True)
+print(results)
 ```
 
 **That's it.** No cloud setup, no API keys, no "fine-tuning". Just your data, your questions, your laptop.
@@ -160,6 +163,15 @@ python examples/mail_reader_leann.py --query "What did my boss say about deadlin
 
 </details>
 
+<details>
+<summary><strong>📋 Click to expand: Example queries you can try</strong></summary>
+
+Once the index is built, you can ask questions like:
+- "Find emails from my boss about deadlines"
+- "What did John say about the project timeline?"
+- "Show me emails about travel expenses"
+</details>
+
 ### 🌐 Time Machine for the Web  
 ```bash
 python examples/google_history_reader_leann.py
@@ -187,13 +199,53 @@ python examples/google_history_reader_leann.py --query "What websites did I visi
 
 </details>
 
+<details>
+<summary><strong>📋 Click to expand: How to find your Chrome profile</strong></summary>
+
+The default Chrome profile path is configured for a typical macOS setup. If you need to find your specific Chrome profile:
+
+1. Open Terminal
+2. Run: `ls ~/Library/Application\ Support/Google/Chrome/`
+3. Look for folders like "Default", "Profile 1", "Profile 2", etc.
+4. Use the full path as your `--chrome-profile` argument
+
+**Common Chrome profile locations:**
+- macOS: `~/Library/Application Support/Google/Chrome/Default`
+- Linux: `~/.config/google-chrome/Default`
+
+</details>
+
+<details>
+<summary><strong>💬 Click to expand: Example queries you can try</strong></summary>
+
+Once the index is built, you can ask questions like:
+
+- "What websites did I visit about machine learning?"
+- "Find my search history about programming"
+- "What YouTube videos did I watch recently?"
+- "Show me websites I visited about travel planning"
+
+</details>
+
 ### 💬 WeChat Detective
+
 ```bash
-python examples/wechat_history_reader_leann.py  
-# "我想买魔术师约翰逊的球衣，给我一些对应聊天记录"
+python examples/wechat_history_reader_leann.py
 # "Show me all group chats about weekend plans"
 ```
 **400K messages → 64MB.** Search years of chat history in any language.
+
+<details>
+<summary><strong>🔧 Click to expand: Installation Requirements</strong></summary>
+
+First, you need to install the WeChat exporter:
+
+```bash
+sudo packages/wechat-exporter/wechattweak-cli install
+```
+
+**Troubleshooting**: If you encounter installation issues, check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41).
+</details>
 
 <details>
 <summary><strong>📋 Click to expand: Command Examples</strong></summary>
@@ -202,7 +254,7 @@ python examples/wechat_history_reader_leann.py
 # Use default settings (recommended for first run)
 python examples/wechat_history_reader_leann.py
 
-# Run with custom export directory
+# Run with custom export directory and wehn we run the first time, LEANN will export all chat history automatically for you
 python examples/wechat_history_reader_leann.py --export-dir "./my_wechat_exports"
 
 # Run with custom index directory
@@ -217,21 +269,14 @@ python examples/wechat_history_reader_leann.py --query "Show me conversations ab
 
 </details>
 
-### 📚 Personal Wikipedia
-```bash
-# Index 60M Wikipedia articles in 6GB (not 201GB)
-python examples/build_massive_index.py --source wikipedia
-# "Explain quantum computing like I'm 5"
-# "What are the connections between philosophy and AI?"
-```
+<details>
+<summary><strong>💬 Click to expand: Example queries you can try</strong></summary>
 
-**PDF RAG Demo (using LlamaIndex for document parsing and Leann for indexing/search)**
+Once the index is built, you can ask questions like:
 
-This demo showcases how to build a RAG system for PDF/md documents using Leann.
+- "我想买魔术师约翰逊的球衣，给我一些对应聊天记录?" (Chinese: Show me chat records about buying Magic Johnson's jersey)
 
-1. Place your PDF files (and other supported formats like .docx, .pptx, .xlsx) into the `examples/data/` directory.
-2. Ensure you have an `OPENAI_API_KEY` set in your environment variables or in a `.env` file for the LLM to function.
-
+</details>
 
 
 ## 🏗️ Architecture & How It Works
