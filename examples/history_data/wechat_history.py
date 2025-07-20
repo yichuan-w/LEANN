@@ -190,16 +190,16 @@ class WeChatHistoryReader(BaseReader):
         
         return False
     
-    def _concatenate_messages(self, messages: List[Dict], min_length: int = 128, max_length: int = 1000, 
-                             time_window_minutes: int = 30) -> List[Dict]:
+    def _concatenate_messages(self, messages: List[Dict], max_length: int = 128, 
+                             time_window_minutes: int = 30, overlap_messages: int = 0) -> List[Dict]:
         """
         Concatenate messages based on length and time rules.
         
         Args:
             messages: List of message dictionaries
-            min_length: Minimum length for concatenated message groups
             max_length: Maximum length for concatenated message groups
             time_window_minutes: Time window in minutes to group messages together
+            overlap_messages: Number of messages to overlap between consecutive groups
             
         Returns:
             List of concatenated message groups
@@ -235,37 +235,46 @@ class WeChatHistoryReader(BaseReader):
                 time_diff_minutes = (create_time - last_timestamp) / 60
                 if time_diff_minutes > time_window_minutes:
                     # Time gap too large, start new group
-                    if current_group and current_length >= min_length:
+                    if current_group:
                         concatenated_groups.append({
                             'messages': current_group,
                             'total_length': current_length,
                             'start_time': current_group[0].get('createTime', 0),
                             'end_time': current_group[-1].get('createTime', 0)
                         })
-                    current_group = []
-                    current_length = 0
+                        # Keep last few messages for overlap
+                        if overlap_messages > 0 and len(current_group) > overlap_messages:
+                            current_group = current_group[-overlap_messages:]
+                            current_length = sum(len(self._extract_readable_text(msg.get('content', '')) or msg.get('message', '')) for msg in current_group)
+                        else:
+                            current_group = []
+                            current_length = 0
             
             # Check length constraint
             message_length = len(readable_text)
             if current_length + message_length > max_length and current_group:
                 # Current group would exceed max length, save it and start new
-                if current_length >= min_length:
-                    concatenated_groups.append({
-                        'messages': current_group,
-                        'total_length': current_length,
-                        'start_time': current_group[0].get('createTime', 0),
-                        'end_time': current_group[-1].get('createTime', 0)
-                    })
-                current_group = []
-                current_length = 0
+                concatenated_groups.append({
+                    'messages': current_group,
+                    'total_length': current_length,
+                    'start_time': current_group[0].get('createTime', 0),
+                    'end_time': current_group[-1].get('createTime', 0)
+                })
+                # Keep last few messages for overlap
+                if overlap_messages > 0 and len(current_group) > overlap_messages:
+                    current_group = current_group[-overlap_messages:]
+                    current_length = sum(len(self._extract_readable_text(msg.get('content', '')) or msg.get('message', '')) for msg in current_group)
+                else:
+                    current_group = []
+                    current_length = 0
             
             # Add message to current group
             current_group.append(message)
             current_length += message_length
             last_timestamp = create_time
         
-        # Add the last group if it meets minimum length
-        if current_group and current_length >= min_length:
+        # Add the last group if it exists
+        if current_group:
             concatenated_groups.append({
                 'messages': current_group,
                 'total_length': current_length,
@@ -345,6 +354,12 @@ Messages ({len(messages)} messages, {message_group['total_length']} chars):
 
 {concatenated_text}
 """
+        
+        doc_content = f"""
+Contact: {contact_name}
+
+{concatenated_text}
+"""
         return doc_content
     
     def load_data(self, input_dir: str = None, **load_kwargs: Any) -> List[Document]:
@@ -358,16 +373,15 @@ Messages ({len(messages)} messages, {message_group['total_length']} chars):
                 wechat_export_dir (str): Custom path to WeChat export directory.
                 include_non_text (bool): Whether to include non-text messages (images, emojis, etc.)
                 concatenate_messages (bool): Whether to concatenate messages based on length rules.
-                min_length (int): Minimum length for concatenated message groups (default: 128).
                 max_length (int): Maximum length for concatenated message groups (default: 1000).
                 time_window_minutes (int): Time window in minutes to group messages together (default: 30).
+                overlap_messages (int): Number of messages to overlap between consecutive groups (default: 2).
         """
         docs: List[Document] = []
         max_count = load_kwargs.get('max_count', 1000)
         wechat_export_dir = load_kwargs.get('wechat_export_dir', None)
         include_non_text = load_kwargs.get('include_non_text', False)
         concatenate_messages = load_kwargs.get('concatenate_messages', False)
-        min_length = load_kwargs.get('min_length', 128)
         max_length = load_kwargs.get('max_length', 1000)
         time_window_minutes = load_kwargs.get('time_window_minutes', 30)
         
@@ -417,9 +431,9 @@ Messages ({len(messages)} messages, {message_group['total_length']} chars):
                         # Concatenate messages based on rules
                         message_groups = self._concatenate_messages(
                             readable_messages, 
-                            min_length=min_length, 
                             max_length=max_length, 
-                            time_window_minutes=time_window_minutes
+                            time_window_minutes=time_window_minutes,
+                            overlap_messages=2  # Keep 2 messages overlap between groups
                         )
                         
                         # Create documents from concatenated groups

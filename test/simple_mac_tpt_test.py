@@ -264,7 +264,7 @@ def run_mlx_benchmark():
         }
     
     config = BenchmarkConfig(
-        model_path="mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ",
+        model_path="mlx-community/all-MiniLM-L6-v2-4bit",
         use_mlx=True
     )
     

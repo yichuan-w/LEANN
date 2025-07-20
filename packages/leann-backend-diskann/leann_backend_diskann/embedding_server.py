@@ -175,13 +175,13 @@ def create_embedding_server_thread(
     enable_warmup: bool = False,
 ):
     """
-    在当前线程中创建并运行 embedding server
-    这个函数设计为在单独的线程中调用
+    Create and run embedding server in the current thread
+    This function is designed to be called in a separate thread
     """
     logger.info(f"Initializing embedding server thread on port {zmq_port}")
     
     try:
-        # 检查端口是否已被占用
+        # Check if port is already occupied
         import socket
         def check_port(port):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -212,11 +212,11 @@ def create_embedding_server_thread(
             cuda_available = False
             mps_available = False
         elif embedding_mode == "sentence-transformers":
-            # 初始化模型
+            # Initialize model
             tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
             import torch
 
-            # 选择设备
+            # Select device
             mps_available = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
             cuda_available = torch.cuda.is_available()
             
@@ -230,11 +230,11 @@ def create_embedding_server_thread(
                 device = torch.device("cpu")
                 logger.info("Using CPU device")
             
-            # 加载模型
+            # Load model
             logger.info(f"Loading model {model_name}")
             model = AutoModel.from_pretrained(model_name).to(device).eval()
 
-            # 优化模型
+            # Optimize model
             if cuda_available or mps_available:
                 try:
                     model = model.half()
@@ -324,7 +324,7 @@ def create_embedding_server_thread(
                 print(f"Error during Protobuf ZMQ warmup: {e}")
 
         class DeviceTimer:
-            """设备计时器"""
+            """Device timer"""
             def __init__(self, name="", device=device):
                 self.name = name
                 self.device = device
@@ -369,60 +369,63 @@ def create_embedding_server_thread(
                     return self.end_time - self.start_time
 
             def print_elapsed(self):
-                print(f"Time taken for {self.name}: {self.elapsed_time():.6f} seconds")
+                elapsed = self.elapsed_time()
+                print(f"[{self.name}] Elapsed time: {elapsed:.3f}s")
 
         def process_batch_pytorch(texts_batch, ids_batch, missing_ids):
-            """处理文本批次"""
-            batch_size = len(texts_batch)
-            logger.info(f"Processing batch of size {batch_size}")
+            """Process text batch"""
+            if not texts_batch:
+                return np.array([])
 
-            tokenize_timer = DeviceTimer("tokenization (batch)", device)
-            to_device_timer = DeviceTimer("transfer to device (batch)", device)
-            embed_timer = DeviceTimer("embedding (batch)", device)
-            pool_timer = DeviceTimer("mean pooling (batch)", device)
+            # Filter out empty texts and their corresponding IDs
+            valid_texts = []
+            valid_ids = []
+            for i, text in enumerate(texts_batch):
+                if text.strip():  # Only include non-empty texts
+                    valid_texts.append(text)
+                    valid_ids.append(ids_batch[i])
 
-            with tokenize_timer.timing():
-                encoded_batch = tokenizer.batch_encode_plus(
-                    texts_batch,
-                    padding="max_length",
+            if not valid_texts:
+                print("WARNING: No valid texts in batch")
+                return np.array([])
+
+            # Tokenize
+            token_timer = DeviceTimer("tokenization")
+            with token_timer.timing():
+                inputs = tokenizer(
+                    valid_texts,
+                    padding=True,
                     truncation=True,
-                    max_length=256,
-                    return_tensors="pt",
-                    return_token_type_ids=False,
-                )
-            tokenize_timer.print_elapsed()
+                    max_length=512,
+                    return_tensors="pt"
+                ).to(device)
 
-            seq_length = encoded_batch["input_ids"].size(1)
-            print(f"Batch size: {batch_size}, Sequence length: {seq_length}")
-
-            with to_device_timer.timing():
-                enc = {k: v.to(device) for k, v in encoded_batch.items()}
-            to_device_timer.print_elapsed()
-
-            with torch.no_grad():
-                with embed_timer.timing():
-                    out = model(enc["input_ids"], enc["attention_mask"])
-                embed_timer.print_elapsed()
-
-                with pool_timer.timing():
-                    hidden_states = out.last_hidden_state if hasattr(out, "last_hidden_state") else out
-                    mask_expanded = enc["attention_mask"].unsqueeze(-1).expand(hidden_states.size()).float()
+            # Compute embeddings
+            embed_timer = DeviceTimer("embedding computation")
+            with embed_timer.timing():
+                with torch.no_grad():
+                    outputs = model(**inputs)
+                    hidden_states = outputs.last_hidden_state
+                    
+                    # Mean pooling
+                    attention_mask = inputs['attention_mask']
+                    mask_expanded = attention_mask.unsqueeze(-1).expand(hidden_states.size()).float()
                     sum_embeddings = torch.sum(hidden_states * mask_expanded, 1)
                     sum_mask = torch.clamp(mask_expanded.sum(1), min=1e-9)
                     batch_embeddings = sum_embeddings / sum_mask
-                pool_timer.print_elapsed()
+                embed_timer.print_elapsed()
 
             return batch_embeddings.cpu().numpy()
 
-        # ZMQ server 主循环 - 修改为REP套接字
+        # ZMQ server main loop - modified to use REP socket
         context = zmq.Context()
-        socket = context.socket(zmq.ROUTER)  # 改为REP套接字
+        socket = context.socket(zmq.ROUTER)  # Changed to REP socket
         socket.bind(f"tcp://127.0.0.1:{zmq_port}")
         print(f"INFO: ZMQ ROUTER server listening on port {zmq_port}")
 
-        # 设置超时
-        socket.setsockopt(zmq.RCVTIMEO, 5000)  # 5秒接收超时
-        socket.setsockopt(zmq.SNDTIMEO, 300000)  # 300秒发送超时
+        # Set timeouts
+        socket.setsockopt(zmq.RCVTIMEO, 5000)  # 5 second receive timeout
+        socket.setsockopt(zmq.SNDTIMEO, 300000)  # 300 second send timeout
 
         from . import embedding_pb2
 
@@ -442,18 +445,18 @@ def create_embedding_server_thread(
             try:
                 parts = socket.recv_multipart()
 
-                # --- 恢复稳健的消息格式判断 ---
-                # 必须检查 parts 的长度，避免 IndexError
+                # --- Restore robust message format detection ---
+                # Must check parts length to avoid IndexError
                 if len(parts) >= 3:
                     identity = parts[0]
-                    # empty = parts[1]  # 中间的空帧我们通常不关心
+                    # empty = parts[1]  # We usually don't care about the middle empty frame
                     message = parts[2]
                 elif len(parts) == 2:
-                    # 也能处理没有空帧的情况
+                    # Can also handle cases without empty frame
                     identity = parts[0]
                     message = parts[1]
                 else:
-                    # 如果收到格式错误的消息，打印警告并忽略它，而不是崩溃
+                    # If received message format is wrong, print warning and ignore it instead of crashing
                     print(f"WARNING: Received unexpected message format with {len(parts)} parts. Ignoring.")
                     continue
                 print(f"INFO: Received ZMQ request from client {identity.hex()[:8]}, size {len(message)} bytes")
@@ -555,17 +558,17 @@ def create_embedding_server_thread(
                 e2e_start = time.time()
                 lookup_timer = DeviceTimer("text lookup")
 
-                # 解析请求
+                # Parse request
                 req_proto = embedding_pb2.NodeEmbeddingRequest()
                 req_proto.ParseFromString(message)
                 node_ids = req_proto.node_ids
                 print(f"INFO: Request for {len(node_ids)} node embeddings: {list(node_ids)}")
 
-                # 添加调试信息
+                # Add debug information
                 if len(node_ids) > 0:
                     print(f"DEBUG: Node ID range: {min(node_ids)} to {max(node_ids)}")
                 
-                # 查找文本
+                # Look up texts
                 texts = []
                 missing_ids = []
                 with lookup_timer.timing():
@@ -575,8 +578,8 @@ def create_embedding_server_thread(
                         if txt:
                             texts.append(txt)
                         else:
-                            # 如果文本为空，我们仍然需要一个占位符来进行批处理，
-                            # 但将其ID记录为缺失
+                            # If text is empty, we still need a placeholder for batch processing,
+                            # but record its ID as missing
                             texts.append("") 
                             missing_ids.append(nid)
                 lookup_timer.print_elapsed()
@@ -584,7 +587,7 @@ def create_embedding_server_thread(
                 if missing_ids:
                     print(f"WARNING: Missing passages for IDs: {missing_ids}")
 
-                # 处理批次
+                # Process batch
                 total_size = len(texts)
                 print(f"INFO: Total batch size: {total_size}, max_batch_size: {max_batch_size}")
                 
@@ -600,7 +603,7 @@ def create_embedding_server_thread(
                         chunk_ids = node_ids[i:end_idx]
                         
                         if embedding_mode == "mlx":
-                            embeddings_chunk = compute_embeddings_mlx(chunk_texts, model_name)
+                            embeddings_chunk = compute_embeddings_mlx(chunk_texts, model_name, batch_size=16)
                         elif embedding_mode == "openai":
                             embeddings_chunk = compute_embeddings_openai(chunk_texts, model_name)
                         else:  # sentence-transformers
@@ -617,13 +620,13 @@ def create_embedding_server_thread(
                     print(f"INFO: Combined embeddings shape: {hidden.shape}")
                 else:
                     if embedding_mode == "mlx":
-                        hidden = compute_embeddings_mlx(texts, model_name)
+                        hidden = compute_embeddings_mlx(texts, model_name, batch_size=16)
                     elif embedding_mode == "openai":
                         hidden = compute_embeddings_openai(texts, model_name)
                     else:  # sentence-transformers
                         hidden = process_batch_pytorch(texts, node_ids, missing_ids)
 
-                # 序列化响应
+                # Serialize response
                 ser_start = time.time()
 
                 resp_proto = embedding_pb2.NodeEmbeddingResponse()
@@ -635,7 +638,7 @@ def create_embedding_server_thread(
 
                 response_data = resp_proto.SerializeToString()
                 
-                # REP 套接字发送单个响应
+                # REP socket sends a single response
                 socket.send_multipart([identity, b'', response_data])
 
                 ser_end = time.time()
@@ -656,11 +659,11 @@ def create_embedding_server_thread(
             except Exception as e:
                 print(f"ERROR: Error in ZMQ server: {e}")
                 try:
-                    # 发送空响应以维持REQ-REP状态
+                    # Send empty response to maintain REQ-REP state
                     empty_resp = embedding_pb2.NodeEmbeddingResponse()
                     socket.send(empty_resp.SerializeToString())
                 except:
-                    # 如果发送失败，重新创建socket
+                    # If sending fails, recreate socket
                     socket.close()
                     socket = context.socket(zmq.REP)
                     socket.bind(f"tcp://127.0.0.1:{zmq_port}")

@@ -52,7 +52,7 @@ def create_leann_index_from_multiple_wechat_exports(
                 documents = reader.load_data(
                     wechat_export_dir=str(export_dir),
                     max_count=max_count,
-                    concatenate_messages=False,  # Disable concatenation - one message per document
+                    concatenate_messages=True,  # Disable concatenation - one message per document
                 )
                 if documents:
                     print(f"Loaded {len(documents)} chat documents from {export_dir}")
@@ -222,9 +222,9 @@ async def query_leann_index(index_path: str, query: str):
     print(f"You: {query}")
     chat_response = chat.ask(
         query,
-        top_k=5,
+        top_k=20,
         recompute_beighbor_embeddings=True,
-        complexity=32,
+        complexity=64,
         beam_width=1,
         llm_config={
             "type": "openai",
@@ -252,7 +252,7 @@ async def main():
     parser.add_argument(
         "--index-dir",
         type=str,
-        default="./wechat_history_index_leann_test",
+        default="./wechat_history_june19_test",
         help="Directory to store the LEANN index (default: ./wechat_history_index_leann_test)",
     )
     parser.add_argument(
