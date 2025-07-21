@@ -52,7 +52,7 @@ def create_leann_index_from_multiple_wechat_exports(
                 documents = reader.load_data(
                     wechat_export_dir=str(export_dir),
                     max_count=max_count,
-                    concatenate_messages=True,  # Disable concatenation - one message per document
+                    concatenate_messages=False,  # Disable concatenation - one message per document
                 )
                 if documents:
                     print(f"Loaded {len(documents)} chat documents from {export_dir}")
@@ -78,7 +78,7 @@ def create_leann_index_from_multiple_wechat_exports(
         )
 
         # Create text splitter with 256 chunk size
-        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=25)
+        text_splitter = SentenceSplitter(chunk_size=128, chunk_overlap=64)
 
         # Convert Documents to text strings and chunk them
         all_texts = []
@@ -224,7 +224,7 @@ async def query_leann_index(index_path: str, query: str):
         query,
         top_k=20,
         recompute_beighbor_embeddings=True,
-        complexity=64,
+        complexity=128,
         beam_width=1,
         llm_config={
             "type": "openai",

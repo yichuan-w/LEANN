@@ -63,7 +63,7 @@ Traditional RAG systems often require trade-offs between storage, privacy, and u
 ### Installation
 
 ```bash
-git clone git@github.com:yichuan520030910320/LEANN-RAG.git leann
+git clone git@github.com:yichuan-w/LEANN.git leann
 cd leann
 git submodule update --init --recursive
 ```
