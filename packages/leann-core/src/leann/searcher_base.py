@@ -43,7 +43,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 "WARNING: embedding_model not found in meta.json. Recompute will fail."
             )
 
-        self.label_map = self._load_label_map()
 
         self.embedding_server_manager = EmbeddingServerManager(
             backend_module_name=backend_module_name
@@ -58,13 +57,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         with open(meta_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    def _load_label_map(self) -> Dict[int, str]:
-        """Loads the mapping from integer IDs to string IDs."""
-        label_map_file = self.index_dir / "leann.labels.map"
-        if not label_map_file.exists():
-            raise FileNotFoundError(f"Label map file not found: {label_map_file}")
-        with open(label_map_file, "rb") as f:
-            return pickle.load(f)
 
     def _ensure_server_running(
         self, passages_source_file: str, port: int, **kwargs
@@ -110,12 +102,12 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             Query embedding as numpy array
         """
         # Try to use embedding server if available and requested
-        if (
-            use_server_if_available
-            and self.embedding_server_manager
-            and self.embedding_server_manager.server_process
-        ):
+        if use_server_if_available:
             try:
+                # Ensure we have a server with passages_file for compatibility
+                passages_source_file = self.index_dir / f"{self.index_path.name}.meta.json"
+                self._ensure_server_running(str(passages_source_file), zmq_port)
+                
                 return self._compute_embedding_via_server([query], zmq_port)[
                     0:1
                 ]  # Return (1, D) shape

@@ -354,7 +354,7 @@ class LeannBuilder:
     def add_text(self, text: str, metadata: Optional[Dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
-        passage_id = metadata.get("id", str(uuid.uuid4()))
+        passage_id = metadata.get("id", str(len(self.chunks)))
         chunk_data = {"id": passage_id, "text": text, "metadata": metadata}
         self.chunks.append(chunk_data)
 

@@ -7,7 +7,7 @@ import sys
 import zmq
 import msgpack
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 import select
 import psutil
 
@@ -156,7 +156,7 @@ class EmbeddingServerManager:
         self.backend_module_name = backend_module_name
         self.server_process: Optional[subprocess.Popen] = None
         self.server_port: Optional[int] = None
-        atexit.register(self.stop_server)
+        self._atexit_registered = False
 
     def start_server(
         self,
@@ -258,6 +258,12 @@ class EmbeddingServerManager:
         )
         self.server_port = port
         print(f"INFO: Server process started with PID: {self.server_process.pid}")
+        
+        # Register atexit callback only when we actually start a process
+        if not self._atexit_registered:
+            # Use a lambda to avoid issues with bound methods
+            atexit.register(lambda: self.stop_server() if self.server_process else None)
+            self._atexit_registered = True
 
     def _wait_for_server_ready(self, port: int) -> tuple[bool, int]:
         """Wait for the server to be ready."""
@@ -309,17 +315,22 @@ class EmbeddingServerManager:
 
     def stop_server(self):
         """Stops the embedding server process if it's running."""
-        if self.server_process and self.server_process.poll() is None:
-            print(
-                f"INFO: Terminating session server process (PID: {self.server_process.pid})..."
-            )
-            self.server_process.terminate()
-            try:
-                self.server_process.wait(timeout=5)
-                print("INFO: Server process terminated.")
-            except subprocess.TimeoutExpired:
-                print(
-                    "WARNING: Server process did not terminate gracefully, killing it."
-                )
-                self.server_process.kill()
+        if not self.server_process:
+            return
+            
+        if self.server_process.poll() is not None:
+            # Process already terminated
+            self.server_process = None
+            return
+            
+        print(f"INFO: Terminating server process (PID: {self.server_process.pid}) for backend {self.backend_module_name}...")
+        self.server_process.terminate()
+        
+        try:
+            self.server_process.wait(timeout=5)
+            print(f"INFO: Server process {self.server_process.pid} terminated.")
+        except subprocess.TimeoutExpired:
+            print(f"WARNING: Server process {self.server_process.pid} did not terminate gracefully, killing it.")
+            self.server_process.kill()
+        
         self.server_process = None

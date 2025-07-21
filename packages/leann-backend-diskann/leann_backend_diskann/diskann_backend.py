@@ -70,10 +70,6 @@ class DiskannBuilder(LeannBackendBuilderInterface):
         data_filename = f"{index_prefix}_data.bin"
         _write_vectors_to_bin(data, index_dir / data_filename)
 
-        label_map = {i: str_id for i, str_id in enumerate(ids)}
-        label_map_file = index_dir / "leann.labels.map"
-        with open(label_map_file, "wb") as f:
-            pickle.dump(label_map, f)
 
         build_kwargs = {**self.build_params, **kwargs}
         metric_enum = _get_diskann_metrics().get(
@@ -211,10 +207,7 @@ class DiskannSearcher(BaseSearcher):
         )
 
         string_labels = [
-            [
-                self.label_map.get(int_label, f"unknown_{int_label}")
-                for int_label in batch_labels
-            ]
+            [str(int_label) for int_label in batch_labels]
             for batch_labels in labels
         ]
 

@@ -114,25 +114,11 @@ def load_passages_from_metadata(meta_file: str) -> SimplePassageLoader:
     finally:
         sys.path.pop(0)
 
-    # Load label map
-    passages_dir = Path(meta_file).parent
-    label_map_file = passages_dir / "leann.labels.map"
-
-    if label_map_file.exists():
-        import pickle
-
-        with open(label_map_file, "rb") as f:
-            label_map = pickle.load(f)
-        print(f"Loaded label map with {len(label_map)} entries")
-    else:
-        raise FileNotFoundError(f"Label map file not found: {label_map_file}")
-
-    print(f"Initialized lazy passage loading for {len(label_map)} passages")
+    print(f"Initialized lazy passage loading for {len(passage_manager.global_offset_map)} passages")
 
     class LazyPassageLoader(SimplePassageLoader):
-        def __init__(self, passage_manager, label_map):
+        def __init__(self, passage_manager):
             self.passage_manager = passage_manager
-            self.label_map = label_map
             # Initialize parent with empty data
             super().__init__({})
 
@@ -140,28 +126,24 @@ def load_passages_from_metadata(meta_file: str) -> SimplePassageLoader:
             """Get passage by ID with lazy loading"""
             try:
                 int_id = int(passage_id)
-                if int_id in self.label_map:
-                    string_id = self.label_map[int_id]
-                    passage_data = self.passage_manager.get_passage(string_id)
-                    if passage_data and passage_data.get("text"):
-                        return {"text": passage_data["text"]}
-                    else:
-                        logger.debug(f"Empty text for ID {int_id} -> {string_id}")
-                        return {"text": ""}
+                string_id = str(int_id)
+                passage_data = self.passage_manager.get_passage(string_id)
+                if passage_data and passage_data.get("text"):
+                    return {"text": passage_data["text"]}
                 else:
-                    logger.debug(f"ID {int_id} not found in label_map")
+                    logger.debug(f"Empty text for ID {int_id} -> {string_id}")
                     return {"text": ""}
             except Exception as e:
                 logger.debug(f"Exception getting passage {passage_id}: {e}")
                 return {"text": ""}
 
         def __len__(self) -> int:
-            return len(self.label_map)
+            return len(self.passage_manager.global_offset_map)
 
         def keys(self):
-            return self.label_map.keys()
+            return self.passage_manager.global_offset_map.keys()
 
-    return LazyPassageLoader(passage_manager, label_map)
+    return LazyPassageLoader(passage_manager)
 
 
 def create_hnsw_embedding_server(
