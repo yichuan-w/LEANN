@@ -13,5 +13,6 @@ dependencies = ["leann-core==0.1.0", "numpy"]
 [tool.scikit-build]
 wheel.packages = ["leann_backend_hnsw"]
 editable.mode = "redirect"
-cmake.build-type = "Debug"
+cmake.build-type = "Release"
 build.verbose = true
+build.tool-args = ["-j8"]

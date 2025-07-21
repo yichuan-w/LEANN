@@ -14,3 +14,6 @@ cmake.source-dir = "third_party/DiskANN"
 wheel.packages = ["leann_backend_diskann"]
 # 使用默认的 redirect 模式
 editable.mode = "redirect"
+cmake.build-type = "Release"
+build.verbose = true
+build.tool-args = ["-j8"]

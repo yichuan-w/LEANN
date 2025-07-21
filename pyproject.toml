@@ -9,7 +9,6 @@ requires-python = ">=3.10"
 
 dependencies = [
     "leann-core",
-    "leann-backend-diskann",
     "leann-backend-hnsw",
     "numpy>=1.26.0",
     "torch",
@@ -46,6 +45,10 @@ dev = [
     "ruff>=0.1.0",
     "matplotlib",
     "huggingface-hub>=0.20.0",
+]
+
+diskann = [
+    "leann-backend-diskann",
 ]
 
 [tool.setuptools]
