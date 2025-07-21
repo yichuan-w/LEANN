@@ -53,12 +53,22 @@ Examples:
         build_parser.add_argument("--backend", type=str, default="hnsw", choices=["hnsw", "diskann"])
         build_parser.add_argument("--embedding-model", type=str, default="facebook/contriever")
         build_parser.add_argument("--force", "-f", action="store_true", help="Force rebuild")
+        build_parser.add_argument("--graph-degree", type=int, default=32)
+        build_parser.add_argument("--complexity", type=int, default=64)
+        build_parser.add_argument("--num-threads", type=int, default=1)
+        build_parser.add_argument("--compact", action="store_true", default=True)
+        build_parser.add_argument("--recompute", action="store_true", default=True)
         
         # Search command
         search_parser = subparsers.add_parser("search", help="Search documents")
         search_parser.add_argument("index_name", help="Index name")
         search_parser.add_argument("query", help="Search query")
         search_parser.add_argument("--top-k", type=int, default=5)
+        search_parser.add_argument("--complexity", type=int, default=64)
+        search_parser.add_argument("--beam-width", type=int, default=1)
+        search_parser.add_argument("--prune-ratio", type=float, default=0.0)
+        search_parser.add_argument("--recompute-embeddings", action="store_true")
+        search_parser.add_argument("--pruning-strategy", choices=["global", "local", "proportional"], default="global")
         
         # Ask command
         ask_parser = subparsers.add_parser("ask", help="Ask questions")
@@ -67,6 +77,12 @@ Examples:
         ask_parser.add_argument("--model", type=str, default="qwen3:8b")
         ask_parser.add_argument("--host", type=str, default="http://localhost:11434")
         ask_parser.add_argument("--interactive", "-i", action="store_true")
+        ask_parser.add_argument("--top-k", type=int, default=20)
+        ask_parser.add_argument("--complexity", type=int, default=32)
+        ask_parser.add_argument("--beam-width", type=int, default=1)
+        ask_parser.add_argument("--prune-ratio", type=float, default=0.0)
+        ask_parser.add_argument("--recompute-embeddings", action="store_true")
+        ask_parser.add_argument("--pruning-strategy", choices=["global", "local", "proportional"], default="global")
         
         # List command
         list_parser = subparsers.add_parser("list", help="List all indexes")
@@ -144,11 +160,11 @@ Examples:
         builder = LeannBuilder(
             backend_name=args.backend,
             embedding_model=args.embedding_model,
-            graph_degree=32,
-            complexity=64,
-            is_compact=True,
-            is_recompute=True,
-            num_threads=1,
+            graph_degree=args.graph_degree,
+            complexity=args.complexity,
+            is_compact=args.compact,
+            is_recompute=args.recompute,
+            num_threads=args.num_threads,
         )
         
         for chunk_text in all_texts:
@@ -167,7 +183,15 @@ Examples:
             return
         
         searcher = LeannSearcher(index_path=index_path)
-        results = searcher.search(query, top_k=args.top_k)
+        results = searcher.search(
+            query, 
+            top_k=args.top_k,
+            complexity=args.complexity,
+            beam_width=args.beam_width,
+            prune_ratio=args.prune_ratio,
+            recompute_embeddings=args.recompute_embeddings,
+            pruning_strategy=args.pruning_strategy
+        )
         
         print(f"Search results for '{query}' (top {len(results)}):")
         for i, result in enumerate(results, 1):
@@ -207,9 +231,12 @@ Examples:
                 
                 response = chat.ask(
                     user_input, 
-                    top_k=20, 
-                    recompute_beighbor_embeddings=True, 
-                    complexity=32
+                    top_k=args.top_k,
+                    complexity=args.complexity,
+                    beam_width=args.beam_width,
+                    prune_ratio=args.prune_ratio,
+                    recompute_embeddings=args.recompute_embeddings,
+                    pruning_strategy=args.pruning_strategy
                 )
                 print(f"LEANN: {response}")
         else:
@@ -217,9 +244,12 @@ Examples:
             if query:
                 response = chat.ask(
                     query, 
-                    top_k=20, 
-                    recompute_beighbor_embeddings=True, 
-                    complexity=32
+                    top_k=args.top_k,
+                    complexity=args.complexity,
+                    beam_width=args.beam_width,
+                    prune_ratio=args.prune_ratio,
+                    recompute_embeddings=args.recompute_embeddings,
+                    pruning_strategy=args.pruning_strategy
                 )
                 print(f"LEANN: {response}")
     
