@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def compute_embeddings(
-    texts: List[str], model_name: str, mode: str = "sentence-transformers"
+    texts: List[str], model_name: str, mode: str = "sentence-transformers",is_build: bool = False
 ) -> np.ndarray:
     """
     Unified embedding computation entry point
@@ -27,7 +27,7 @@ def compute_embeddings(
         Normalized embeddings array, shape: (len(texts), embedding_dim)
     """
     if mode == "sentence-transformers":
-        return compute_embeddings_sentence_transformers(texts, model_name)
+        return compute_embeddings_sentence_transformers(texts, model_name, is_build=is_build)
     elif mode == "openai":
         return compute_embeddings_openai(texts, model_name)
     elif mode == "mlx":
@@ -42,6 +42,7 @@ def compute_embeddings_sentence_transformers(
     use_fp16: bool = True,
     device: str = "auto",
     batch_size: int = 32,
+    is_build: bool = False,
 ) -> np.ndarray:
     """
     Compute embeddings using SentenceTransformer
@@ -133,7 +134,7 @@ def compute_embeddings_sentence_transformers(
     embeddings = model.encode(
         texts,
         batch_size=batch_size,
-        show_progress_bar=False,  # Don't show progress bar in server environment
+        show_progress_bar=is_build,  # Don't show progress bar in server environment
         convert_to_numpy=True,
         normalize_embeddings=False,  # Keep consistent with original API behavior
         device=device,

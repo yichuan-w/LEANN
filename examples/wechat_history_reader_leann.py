@@ -224,7 +224,7 @@ async def query_leann_index(index_path: str, query: str):
         query,
         top_k=20,
         recompute_beighbor_embeddings=True,
-        complexity=128,
+        complexity=32,
         beam_width=1,
         llm_config={
             "type": "openai",
@@ -252,7 +252,7 @@ async def main():
     parser.add_argument(
         "--index-dir",
         type=str,
-        default="./wechat_history_june19_test",
+        default="./wechat_history_magic_test",
         help="Directory to store the LEANN index (default: ./wechat_history_index_leann_test)",
     )
     parser.add_argument(

@@ -20,6 +20,7 @@ def compute_embeddings(
     mode: str = "sentence-transformers",
     use_server: bool = True,
     port: Optional[int] = None,
+    is_build=False,
 ) -> np.ndarray:
     """
     Computes embeddings using different backends.
@@ -51,6 +52,7 @@ def compute_embeddings(
             chunks,
             model_name,
             mode=mode,
+            is_build=is_build,
         )
 
 
@@ -209,6 +211,7 @@ class LeannBuilder:
             self.embedding_model,
             self.embedding_mode,
             use_server=False,
+            is_build=True,
         )
         string_ids = [chunk["id"] for chunk in self.chunks]
         current_backend_kwargs = {**self.backend_kwargs, "dimensions": self.dimensions}
