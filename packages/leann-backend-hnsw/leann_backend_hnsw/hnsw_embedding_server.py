@@ -17,11 +17,19 @@ import logging
 
 # Set up logging based on environment variable
 LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
+
+# Force set logger level (don't rely on basicConfig in subprocess)
+log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
+logger.setLevel(log_level)
+
+# Ensure we have a handler if none exists
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.propagate = False
 
 
 def create_hnsw_embedding_server(
