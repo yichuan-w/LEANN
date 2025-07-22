@@ -59,10 +59,6 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         if data.dtype != np.float32:
             data = data.astype(np.float32)
 
-        label_map = {i: str_id for i, str_id in enumerate(ids)}
-        label_map_file = index_dir / "leann.labels.map"
-        with open(label_map_file, "wb") as f:
-            pickle.dump(label_map, f)
 
         metric_enum = get_metric_map().get(self.distance_metric.lower())
         if metric_enum is None:
@@ -142,13 +138,6 @@ class HNSWSearcher(BaseSearcher):
 
         self._index = faiss.read_index(str(index_file), faiss.IO_FLAG_MMAP, hnsw_config)
         
-        # Load label mapping
-        label_map_file = self.index_dir / "leann.labels.map"
-        if not label_map_file.exists():
-            raise FileNotFoundError(f"Label map file not found at {label_map_file}")
-        
-        with open(label_map_file, "rb") as f:
-            self.label_map = pickle.load(f)
 
     def search(
         self,
@@ -239,10 +228,7 @@ class HNSWSearcher(BaseSearcher):
         )
 
         string_labels = [
-            [
-                self.label_map.get(int_label, f"unknown_{int_label}")
-                for int_label in batch_labels
-            ]
+            [str(int_label) for int_label in batch_labels]
             for batch_labels in labels
         ]
 

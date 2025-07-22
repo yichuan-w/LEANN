@@ -15,5 +15,8 @@ dependencies = [
     "tqdm>=4.60.0"
 ]
 
+[project.scripts]
+leann = "leann.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]

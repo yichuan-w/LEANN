@@ -16,3 +16,7 @@ editable.mode = "redirect"
 cmake.build-type = "Release"
 build.verbose = true
 build.tool-args = ["-j8"]
+
+# CMake definitions to optimize compilation
+[tool.scikit-build.cmake.define]
+CMAKE_BUILD_PARALLEL_LEVEL = "8"

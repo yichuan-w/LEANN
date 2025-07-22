@@ -48,7 +48,7 @@ git submodule update --init --recursive
 
 **macOS:**
 ```bash
-brew install llvm libomp boost protobuf
+brew install llvm libomp boost protobuf zeromq
 export CC=$(brew --prefix llvm)/bin/clang
 export CXX=$(brew --prefix llvm)/bin/clang++
 
@@ -61,7 +61,7 @@ uv sync --extra diskann
 
 **Linux (Ubuntu/Debian):**
 ```bash
-sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev libmkl-full-dev libaio-dev
+sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev libmkl-full-dev libaio-dev libzmq3-dev
 
 # Install with HNSW backend (default, recommended for most users)
 uv sync

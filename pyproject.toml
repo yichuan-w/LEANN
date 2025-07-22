@@ -35,6 +35,7 @@ dependencies = [
     "llama-index-embeddings-huggingface>=0.5.5",
     "mlx>=0.26.3",
     "mlx-lm>=0.26.0",
+    "psutil>=5.8.0",
 ]
 
 [project.optional-dependencies]

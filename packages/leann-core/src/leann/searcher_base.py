@@ -43,8 +43,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 "WARNING: embedding_model not found in meta.json. Recompute will fail."
             )
 
-        self.label_map = self._load_label_map()
-
         self.embedding_server_manager = EmbeddingServerManager(
             backend_module_name=backend_module_name
         )
@@ -58,17 +56,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         with open(meta_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    def _load_label_map(self) -> Dict[int, str]:
-        """Loads the mapping from integer IDs to string IDs."""
-        label_map_file = self.index_dir / "leann.labels.map"
-        if not label_map_file.exists():
-            raise FileNotFoundError(f"Label map file not found: {label_map_file}")
-        with open(label_map_file, "rb") as f:
-            return pickle.load(f)
-
     def _ensure_server_running(
         self, passages_source_file: str, port: int, **kwargs
-    ) -> None:
+    ) -> int:
         """
         Ensures the embedding server is running if recompute is needed.
         This is a helper for subclasses.
@@ -79,8 +69,8 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             )
 
         embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
-        
-        server_started = self.embedding_server_manager.start_server(
+
+        server_started, actual_port = self.embedding_server_manager.start_server(
             port=port,
             model_name=self.embedding_model,
             passages_file=passages_source_file,
@@ -89,7 +79,11 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             enable_warmup=kwargs.get("enable_warmup", False),
         )
         if not server_started:
-            raise RuntimeError(f"Failed to start embedding server on port {port}")
+            raise RuntimeError(
+                f"Failed to start embedding server on port {actual_port}"
+            )
+
+        return actual_port
 
     def compute_query_embedding(
         self, query: str, zmq_port: int = 5557, use_server_if_available: bool = True
@@ -106,12 +100,16 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             Query embedding as numpy array
         """
         # Try to use embedding server if available and requested
-        if (
-            use_server_if_available
-            and self.embedding_server_manager
-            and self.embedding_server_manager.server_process
-        ):
+        if use_server_if_available:
             try:
+                # Ensure we have a server with passages_file for compatibility
+                passages_source_file = (
+                    self.index_dir / f"{self.index_path.name}.meta.json"
+                )
+                zmq_port = self._ensure_server_running(
+                    str(passages_source_file), zmq_port
+                )
+
                 return self._compute_embedding_via_server([query], zmq_port)[
                     0:1
                 ]  # Return (1, D) shape

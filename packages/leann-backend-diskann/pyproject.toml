@@ -8,11 +8,11 @@ version = "0.1.0"
 dependencies = ["leann-core==0.1.0", "numpy"]
 
 [tool.scikit-build]
-# 关键：简化的 CMake 路径
+# Key: simplified CMake path
 cmake.source-dir = "third_party/DiskANN"
-# 关键：Python 包在根目录，路径完全匹配
+# Key: Python package in root directory, paths match exactly
 wheel.packages = ["leann_backend_diskann"]
-# 使用默认的 redirect 模式
+# Use default redirect mode
 editable.mode = "redirect"
 cmake.build-type = "Release"
 build.verbose = true

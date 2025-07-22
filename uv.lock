@@ -1834,10 +1834,14 @@ source = { editable = "packages/leann-core" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "tqdm" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=1.20.0" }]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.20.0" },
+    { name = "tqdm", specifier = ">=4.60.0" },
+]
 
 [[package]]
 name = "leann-workspace"
@@ -1851,7 +1855,6 @@ dependencies = [
     { name = "flask" },
     { name = "flask-compress" },
     { name = "ipykernel" },
-    { name = "leann-backend-diskann" },
     { name = "leann-backend-hnsw" },
     { name = "leann-core" },
     { name = "llama-index" },
@@ -1867,6 +1870,7 @@ dependencies = [
     { name = "ollama" },
     { name = "openai" },
     { name = "protobuf" },
+    { name = "psutil" },
     { name = "pypdf2" },
     { name = "requests" },
     { name = "sentence-transformers" },
@@ -1884,6 +1888,9 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+diskann = [
+    { name = "leann-backend-diskann" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1896,7 +1903,7 @@ requires-dist = [
     { name = "flask-compress" },
     { name = "huggingface-hub", marker = "extra == 'dev'", specifier = ">=0.20.0" },
     { name = "ipykernel", specifier = "==6.29.5" },
-    { name = "leann-backend-diskann", editable = "packages/leann-backend-diskann" },
+    { name = "leann-backend-diskann", marker = "extra == 'diskann'", editable = "packages/leann-backend-diskann" },
     { name = "leann-backend-hnsw", editable = "packages/leann-backend-hnsw" },
     { name = "leann-core", editable = "packages/leann-core" },
     { name = "llama-index", specifier = ">=0.12.44" },
@@ -1912,6 +1919,7 @@ requires-dist = [
     { name = "ollama" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "protobuf", specifier = "==4.25.3" },
+    { name = "psutil", specifier = ">=5.8.0" },
     { name = "pypdf2", specifier = ">=3.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
@@ -1922,7 +1930,7 @@ requires-dist = [
     { name = "torch" },
     { name = "tqdm" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "diskann"]
 
 [[package]]
 name = "llama-cloud"
