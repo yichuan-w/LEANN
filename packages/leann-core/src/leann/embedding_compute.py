@@ -55,8 +55,8 @@ def compute_embeddings_sentence_transformers(
     """
     Compute embeddings using SentenceTransformer with model caching
     """
-    print(
-        f"INFO: Computing embeddings for {len(texts)} texts using SentenceTransformer, model: '{model_name}'"
+    logger.info(
+        f"Computing embeddings for {len(texts)} texts using SentenceTransformer, model: '{model_name}'"
     )
 
     # Auto-detect device
@@ -73,13 +73,13 @@ def compute_embeddings_sentence_transformers(
 
     # Check if model is already cached
     if cache_key in _model_cache:
-        print(f"INFO: Using cached model: {model_name}")
+        logger.info(f"Using cached model: {model_name}")
         model = _model_cache[cache_key]
     else:
-        print(f"INFO: Loading and caching SentenceTransformer model: {model_name}")
+        logger.info(f"Loading and caching SentenceTransformer model: {model_name}")
         from sentence_transformers import SentenceTransformer
 
-        print(f"INFO: Using device: {device}")
+        logger.info(f"Using device: {device}")
 
         # Prepare model and tokenizer optimization parameters
         model_kwargs = {
@@ -104,9 +104,9 @@ def compute_embeddings_sentence_transformers(
                 tokenizer_kwargs=tokenizer_kwargs,
                 local_files_only=True,
             )
-            print("✅ Model loaded successfully! (local + optimized)")
+            logger.info("Model loaded successfully! (local + optimized)")
         except Exception as e:
-            print(f"Local loading failed ({e}), trying network download...")
+            logger.warning(f"Local loading failed ({e}), trying network download...")
             # Fallback to network loading
             model_kwargs["local_files_only"] = False
             tokenizer_kwargs["local_files_only"] = False
@@ -118,23 +118,23 @@ def compute_embeddings_sentence_transformers(
                 tokenizer_kwargs=tokenizer_kwargs,
                 local_files_only=False,
             )
-            print("✅ Model loaded successfully! (network + optimized)")
+            logger.info("Model loaded successfully! (network + optimized)")
 
         # Apply additional optimizations (if supported)
         if use_fp16 and device in ["cuda", "mps"]:
             try:
                 model = model.half()
                 model = torch.compile(model)
-                print(f"✅ Using FP16 precision and compile optimization: {model_name}")
+                logger.info(f"Using FP16 precision and compile optimization: {model_name}")
             except Exception as e:
-                print(f"FP16 or compile optimization failed: {e}")
+                logger.warning(f"FP16 or compile optimization failed: {e}")
 
         # Cache the model
         _model_cache[cache_key] = model
-        print(f"✅ Model cached: {cache_key}")
+        logger.info(f"Model cached: {cache_key}")
 
     # Compute embeddings
-    print("INFO: Starting embedding computation...")
+    logger.info("Starting embedding computation...")
 
     embeddings = model.encode(
         texts,
@@ -178,10 +178,10 @@ def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
     else:
         client = openai.OpenAI(api_key=api_key)
         _model_cache[cache_key] = client
-        print("✅ OpenAI client cached")
+        logger.info("OpenAI client cached")
 
-    print(
-        f"INFO: Computing embeddings for {len(texts)} texts using OpenAI API, model: '{model_name}'"
+    logger.info(
+        f"Computing embeddings for {len(texts)} texts using OpenAI API, model: '{model_name}'"
     )
 
     # OpenAI has limits on batch size and input length
@@ -208,7 +208,7 @@ def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
             batch_embeddings = [embedding.embedding for embedding in response.data]
             all_embeddings.extend(batch_embeddings)
         except Exception as e:
-            print(f"ERROR: Batch {i} failed: {e}")
+            logger.error(f"Batch {i} failed: {e}")
             raise
 
     embeddings = np.array(all_embeddings, dtype=np.float32)
@@ -231,20 +231,20 @@ def compute_embeddings_mlx(
             "MLX or related libraries not available. Install with: uv pip install mlx mlx-lm"
         ) from e
 
-    print(
-        f"INFO: Computing embeddings for {len(chunks)} chunks using MLX model '{model_name}' with batch_size={batch_size}..."
+    logger.info(
+        f"Computing embeddings for {len(chunks)} chunks using MLX model '{model_name}' with batch_size={batch_size}..."
     )
 
     # Cache MLX model and tokenizer
     cache_key = f"mlx_{model_name}"
     if cache_key in _model_cache:
-        print(f"INFO: Using cached MLX model: {model_name}")
+        logger.info(f"Using cached MLX model: {model_name}")
         model, tokenizer = _model_cache[cache_key]
     else:
-        print(f"INFO: Loading and caching MLX model: {model_name}")
+        logger.info(f"Loading and caching MLX model: {model_name}")
         model, tokenizer = load(model_name)
         _model_cache[cache_key] = (model, tokenizer)
-        print(f"✅ MLX model cached: {cache_key}")
+        logger.info(f"MLX model cached: {cache_key}")
 
     # Process chunks in batches with progress bar
     all_embeddings = []
