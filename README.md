@@ -30,9 +30,9 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 🔒 **Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
 
-🪶 **Lightweight:** Smart graph pruning means less storage, less memory usage, better performance on your existing hardware.
+🪶 **Lightweight:** Graph-based recomputation eliminates heavy embedding storage, while smart graph pruning and CSR format minimize graph storage overhead. Always less storage, less memory usage!
 
-📈 **Scalability:** Organize our messy personal data that would crash traditional vector DBs, with performance that gets better as your data grows more personalized.
+📈 **Scalability:** Handle messy personal data that would crash traditional vector DBs, easily managing your growing personalized datasets.
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
