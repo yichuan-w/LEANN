@@ -104,6 +104,10 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         # Try to use embedding server if available and requested
         if use_server_if_available:
             try:
+                # TODO: Maybe we can directly use this port here?
+                # For this internal method, it's ok to assume that the server is running
+                # on that port?
+
                 # Ensure we have a server with passages_file for compatibility
                 passages_source_file = (
                     self.index_dir / f"{self.index_path.name}.meta.json"
@@ -181,7 +185,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
             recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored PQ codes
             pruning_strategy: PQ candidate selection strategy - "global" (default), "local", or "proportional"
-            zmq_port: ZMQ port for embedding server communication
+            zmq_port: ZMQ port for embedding server communication. Must be provided if recompute_embeddings is True.
             **kwargs: Backend-specific parameters (e.g., batch_size, dedup_node_dis, etc.)
 
         Returns:

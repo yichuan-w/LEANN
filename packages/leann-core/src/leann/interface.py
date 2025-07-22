@@ -64,7 +64,7 @@ class LeannBackendSearcherInterface(ABC):
             prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
             recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored PQ codes
             pruning_strategy: PQ candidate selection strategy - "global" (default), "local", or "proportional"
-            zmq_port: ZMQ port for embedding server communication
+            zmq_port: ZMQ port for embedding server communication. Must be provided if recompute_embeddings is True.
             **kwargs: Backend-specific parameters
 
         Returns:
