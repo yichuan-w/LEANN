@@ -19,7 +19,7 @@ RED = "\033[91m"
 RESET = "\033[0m"
 
 # Set up logging based on environment variable
-LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -100,7 +100,7 @@ def create_hnsw_embedding_server(
                 e2e_start = time.time()
                 request_payload = msgpack.unpackb(message_bytes)
 
-                # Handle direct text embedding request (for OpenAI and sentence-transformers)
+                # Handle direct text embedding request
                 if isinstance(request_payload, list) and len(request_payload) > 0:
                     # Check if this is a direct text request (list of strings)
                     if all(isinstance(item, str) for item in request_payload):
@@ -173,9 +173,7 @@ def create_hnsw_embedding_server(
 
                     socket.send(response_bytes)
                     e2e_end = time.time()
-                    logger.info(
-                        f"⏱️  Distance calculation E2E time: {e2e_end - e2e_start:.6f}s"
-                    )
+                    print(f"⏱️  Distance calculation E2E time: {e2e_end - e2e_start:.6f}s")
                     continue
 
                 # Standard embedding request (passage ID lookup)
