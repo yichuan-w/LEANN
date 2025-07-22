@@ -43,7 +43,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 "WARNING: embedding_model not found in meta.json. Recompute will fail."
             )
 
-
         self.embedding_server_manager = EmbeddingServerManager(
             backend_module_name=backend_module_name
         )
@@ -57,10 +56,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         with open(meta_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-
     def _ensure_server_running(
         self, passages_source_file: str, port: int, **kwargs
-    ) -> None:
+    ) -> int:
         """
         Ensures the embedding server is running if recompute is needed.
         This is a helper for subclasses.
@@ -71,7 +69,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             )
 
         embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
-        
+
         server_started, actual_port = self.embedding_server_manager.start_server(
             port=port,
             model_name=self.embedding_model,
@@ -81,11 +79,11 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             enable_warmup=kwargs.get("enable_warmup", False),
         )
         if not server_started:
-            raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
-        
-        # Update the port information for future use
-        if hasattr(self, '_actual_server_port'):
-            self._actual_server_port = actual_port
+            raise RuntimeError(
+                f"Failed to start embedding server on port {actual_port}"
+            )
+
+        return actual_port
 
     def compute_query_embedding(
         self, query: str, zmq_port: int = 5557, use_server_if_available: bool = True
@@ -105,9 +103,13 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         if use_server_if_available:
             try:
                 # Ensure we have a server with passages_file for compatibility
-                passages_source_file = self.index_dir / f"{self.index_path.name}.meta.json"
-                self._ensure_server_running(str(passages_source_file), zmq_port)
-                
+                passages_source_file = (
+                    self.index_dir / f"{self.index_path.name}.meta.json"
+                )
+                zmq_port = self._ensure_server_running(
+                    str(passages_source_file), zmq_port
+                )
+
                 return self._compute_embedding_via_server([query], zmq_port)[
                     0:1
                 ]  # Return (1, D) shape

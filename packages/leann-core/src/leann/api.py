@@ -9,9 +9,6 @@ import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Literal
 from dataclasses import dataclass, field
-import uuid
-import torch
-
 from .registry import BACKEND_REGISTRY
 from .interface import LeannBackendFactoryInterface
 from .chat import get_llm
@@ -22,7 +19,7 @@ def compute_embeddings(
     model_name: str,
     mode: str = "sentence-transformers",
     use_server: bool = True,
-    use_mlx: bool = False  # Backward compatibility: if True, override mode to 'mlx',
+    port: int = 5557,
 ) -> np.ndarray:
     """
     Computes embeddings using different backends.
@@ -39,252 +36,58 @@ def compute_embeddings(
     Returns:
         numpy array of embeddings
     """
-    # Override mode for backward compatibility
-    if use_mlx:
-        mode = "mlx"
-
-    # Auto-detect mode based on model name if not explicitly set
-    if mode == "sentence-transformers" and model_name.startswith("text-embedding-"):
-        mode = "openai"
-
-    if mode == "mlx":
-        return compute_embeddings_mlx(chunks, model_name, batch_size=16)
-    elif mode == "openai":
-        return compute_embeddings_openai(chunks, model_name)
-    elif mode == "sentence-transformers":
-        return compute_embeddings_sentence_transformers(
-            chunks, model_name, use_server=use_server
-        )
+    if use_server:
+        # Use embedding server (for search/query)
+        return compute_embeddings_via_server(chunks, model_name, port=port)
     else:
-        raise ValueError(
-            f"Unsupported embedding mode: {mode}. Supported modes: sentence-transformers, mlx, openai"
+        # Use direct computation (for build_index)
+        from .embedding_compute import (
+            compute_embeddings as compute_embeddings_direct,
+        )
+
+        return compute_embeddings_direct(
+            chunks,
+            model_name,
+            mode=mode,
         )
 
 
-def compute_embeddings_sentence_transformers(
-    chunks: List[str], model_name: str, use_server: bool = True
+def compute_embeddings_via_server(
+    chunks: List[str], model_name: str, port: int
 ) -> np.ndarray:
     """Computes embeddings using sentence-transformers.
 
     Args:
         chunks: List of text chunks to embed
         model_name: Name of the sentence transformer model
-        use_server: If True, use embedding server (good for search). If False, use direct computation (good for build).
     """
-    if not use_server:
-        print(
-            f"INFO: Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}' (direct)..."
-        )
-        return _compute_embeddings_sentence_transformers_direct(chunks, model_name)
-
     print(
         f"INFO: Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}' (via embedding server)..."
     )
+    import zmq
+    import msgpack
+    import numpy as np
 
-    # Use embedding server for sentence-transformers too
-    # This avoids loading the model twice (once in API, once in server)
-    try:
-        # Import ZMQ client functionality and server manager
-        import zmq
-        import msgpack
-        import numpy as np
-        from .embedding_server_manager import EmbeddingServerManager
+    # Connect to embedding server
+    context = zmq.Context()
+    socket = context.socket(zmq.REQ)
+    socket.connect(f"tcp://localhost:{port}")
 
-        # Ensure embedding server is running
-        port = 5557
-        server_manager = EmbeddingServerManager(
-            backend_module_name="leann_backend_hnsw.hnsw_embedding_server"
-        )
+    # Send chunks to server for embedding computation
+    request = chunks
+    socket.send(msgpack.packb(request))
 
-        server_started, actual_port = server_manager.start_server(
-            port=port,
-            model_name=model_name,
-            embedding_mode="sentence-transformers",
-            enable_warmup=False,
-        )
+    # Receive embeddings from server
+    response = socket.recv()
+    embeddings_list = msgpack.unpackb(response)
 
-        if not server_started:
-            raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
-        
-        # Use the actual port for connection
-        port = actual_port
+    # Convert back to numpy array
+    embeddings = np.array(embeddings_list, dtype=np.float32)
 
-        # Connect to embedding server
-        context = zmq.Context()
-        socket = context.socket(zmq.REQ)
-        socket.connect(f"tcp://localhost:{port}")
-
-        # Send chunks to server for embedding computation
-        request = chunks
-        socket.send(msgpack.packb(request))
-
-        # Receive embeddings from server
-        response = socket.recv()
-        embeddings_list = msgpack.unpackb(response)
-
-        # Convert back to numpy array
-        embeddings = np.array(embeddings_list, dtype=np.float32)
-
-        socket.close()
-        context.term()
-
-        return embeddings
-
-    except Exception as e:
-        # Fallback to direct sentence-transformers if server connection fails
-        print(
-            f"Warning: Failed to connect to embedding server, falling back to direct computation: {e}"
-        )
-        return _compute_embeddings_sentence_transformers_direct(chunks, model_name)
-
-
-def _compute_embeddings_sentence_transformers_direct(
-    chunks: List[str], model_name: str
-) -> np.ndarray:
-    """Direct sentence-transformers computation (fallback)."""
-    try:
-        from sentence_transformers import SentenceTransformer
-    except ImportError as e:
-        raise RuntimeError(
-            "sentence-transformers not available. Install with: uv pip install sentence-transformers"
-        ) from e
-
-    # Load model using sentence-transformers
-    model = SentenceTransformer(model_name)
-
-    model = model.half()
-    print(
-        f"INFO: Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}' (direct)..."
-    )
-    # use acclerater GPU or MAC GPU
-
-    if torch.cuda.is_available():
-        model = model.to("cuda")
-    elif torch.backends.mps.is_available():
-        model = model.to("mps")
-
-    # Generate embeddings
-    # give use an warning if OOM here means we need to turn down the batch size
-    embeddings = model.encode(
-        chunks, convert_to_numpy=True, show_progress_bar=True, batch_size=16
-    )
+    socket.close()
+    context.term()
 
     return embeddings
-
-
-def compute_embeddings_openai(chunks: List[str], model_name: str) -> np.ndarray:
-    """Computes embeddings using OpenAI API."""
-    try:
-        import openai
-        import os
-    except ImportError as e:
-        raise RuntimeError(
-            "openai not available. Install with: uv pip install openai"
-        ) from e
-
-    # Get API key from environment
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable not set")
-
-    client = openai.OpenAI(api_key=api_key)
-
-    print(
-        f"INFO: Computing embeddings for {len(chunks)} chunks using OpenAI model '{model_name}'..."
-    )
-
-    # OpenAI has a limit on batch size and input length
-    max_batch_size = 100  # Conservative batch size
-    all_embeddings = []
-    
-    try:
-        from tqdm import tqdm
-        total_batches = (len(chunks) + max_batch_size - 1) // max_batch_size
-        batch_range = range(0, len(chunks), max_batch_size)
-        batch_iterator = tqdm(batch_range, desc="Computing embeddings", unit="batch", total=total_batches)
-    except ImportError:
-        # Fallback without progress bar
-        batch_iterator = range(0, len(chunks), max_batch_size)
-    
-    for i in batch_iterator:
-        batch_chunks = chunks[i:i + max_batch_size]
-        
-        try:
-            response = client.embeddings.create(model=model_name, input=batch_chunks)
-            batch_embeddings = [embedding.embedding for embedding in response.data]
-            all_embeddings.extend(batch_embeddings)
-        except Exception as e:
-            print(f"ERROR: Failed to get embeddings for batch starting at {i}: {e}")
-            raise
-
-    embeddings = np.array(all_embeddings, dtype=np.float32)
-    print(
-        f"INFO: Generated {len(embeddings)} embeddings with dimension {embeddings.shape[1]}"
-    )
-    return embeddings
-
-
-def compute_embeddings_mlx(chunks: List[str], model_name: str, batch_size: int = 16) -> np.ndarray:
-    """Computes embeddings using an MLX model."""
-    try:
-        import mlx.core as mx
-        from mlx_lm.utils import load
-        from tqdm import tqdm
-    except ImportError as e:
-        raise RuntimeError(
-            "MLX or related libraries not available. Install with: uv pip install mlx mlx-lm"
-        ) from e
-
-    print(
-        f"INFO: Computing embeddings for {len(chunks)} chunks using MLX model '{model_name}' with batch_size={batch_size}..."
-    )
-
-    # Load model and tokenizer
-    model, tokenizer = load(model_name)
-
-    # Process chunks in batches with progress bar
-    all_embeddings = []
-    
-    try:
-        from tqdm import tqdm
-        batch_iterator = tqdm(range(0, len(chunks), batch_size), desc="Computing embeddings", unit="batch")
-    except ImportError:
-        batch_iterator = range(0, len(chunks), batch_size)
-    
-    for i in batch_iterator:
-        batch_chunks = chunks[i:i + batch_size]
-        
-        # Tokenize all chunks in the batch
-        batch_token_ids = []
-        for chunk in batch_chunks:
-            token_ids = tokenizer.encode(chunk)  # type: ignore
-            batch_token_ids.append(token_ids)
-        
-        # Pad sequences to the same length for batch processing
-        max_length = max(len(ids) for ids in batch_token_ids)
-        padded_token_ids = []
-        for token_ids in batch_token_ids:
-            # Pad with tokenizer.pad_token_id or 0
-            padded = token_ids + [0] * (max_length - len(token_ids))
-            padded_token_ids.append(padded)
-        
-        # Convert to MLX array with batch dimension
-        input_ids = mx.array(padded_token_ids)
-
-        # Get embeddings for the batch
-        embeddings = model(input_ids)
-
-        # Mean pooling for each sequence in the batch
-        pooled = embeddings.mean(axis=1)  # Shape: (batch_size, hidden_size)
-
-        # Convert batch embeddings to numpy
-        for j in range(len(batch_chunks)):
-            pooled_list = pooled[j].tolist()  # Convert to list
-            pooled_numpy = np.array(pooled_list, dtype=np.float32)
-            all_embeddings.append(pooled_numpy)
-
-    # Stack numpy arrays
-    return np.stack(all_embeddings)
 
 
 @dataclass
@@ -347,8 +150,6 @@ class LeannBuilder:
         self.dimensions = dimensions
         self.embedding_mode = embedding_mode
         self.backend_kwargs = backend_kwargs
-        if 'mlx' in self.embedding_model:
-            self.embedding_mode = "mlx"
         self.chunks: List[Dict[str, Any]] = []
 
     def add_text(self, text: str, metadata: Optional[Dict[str, Any]] = None):
@@ -380,10 +181,13 @@ class LeannBuilder:
         with open(passages_file, "w", encoding="utf-8") as f:
             try:
                 from tqdm import tqdm
-                chunk_iterator = tqdm(self.chunks, desc="Writing passages", unit="chunk")
+
+                chunk_iterator = tqdm(
+                    self.chunks, desc="Writing passages", unit="chunk"
+                )
             except ImportError:
                 chunk_iterator = self.chunks
-            
+
             for chunk in chunk_iterator:
                 offset = f.tell()
                 json.dump(
@@ -401,7 +205,11 @@ class LeannBuilder:
             pickle.dump(offset_map, f)
         texts_to_embed = [c["text"] for c in self.chunks]
         embeddings = compute_embeddings(
-            texts_to_embed, self.embedding_model, self.embedding_mode, use_server=False
+            texts_to_embed,
+            self.embedding_model,
+            self.embedding_mode,
+            use_server=False,
+            port=5557,
         )
         string_ids = [chunk["id"] for chunk in self.chunks]
         current_backend_kwargs = {**self.backend_kwargs, "dimensions": self.dimensions}
