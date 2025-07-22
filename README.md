@@ -69,7 +69,7 @@ uv sync
 uv sync --extra diskann
 ```
 
-**Ollama Setup (Optional for Local LLM):**
+**Ollama Setup (Recommended for full privacy):**
 
 *We support both hf-transformers and Ollama for local LLMs. Ollama is recommended for faster performance.*
 
@@ -101,21 +101,27 @@ You can also replace `llama3.2:1b` to `deepseek-r1:1.5b` or `qwen3:4b` for bette
 Just 3 lines of code. Our declarative API makes RAG as easy as writing a config file:
 
 ```python
-from leann.api import LeannBuilder, LeannSearcher
-
+from leann.api import LeannBuilder, LeannSearcher, LeannChat
 # 1. Build index (no embeddings stored!)
 builder = LeannBuilder(backend_name="hnsw")
-builder.add_text("C# is a powerful programming language")
-builder.add_text("Python is a powerful programming language")
+builder.add_text("C# is a powerful programming language but it is not very popular")
+builder.add_text("Python is a powerful programming language and it is very popular")
 builder.add_text("Machine learning transforms industries")  
 builder.add_text("Neural networks process complex data")
 builder.add_text("Leann is a great storage saving engine for RAG on your macbook")
 builder.build_index("knowledge.leann")
-
 # 2. Search with real-time embeddings
 searcher = LeannSearcher("knowledge.leann")
-results = searcher.search("C++ programming languages", top_k=2, recompute_beighbor_embeddings=True)
-print(results)
+results = searcher.search("programming languages", top_k=2, recompute_beighbor_embeddings=True,complexity=2)
+print("LEANN Search results: ", results)
+# 3. Chat with LEANN
+chat = LeannChat(index_path="knowledge.leann", llm_config={"type": "ollama", "model": "llama3.2:1b"})
+response = chat.ask(
+    "Compare the two retrieved programming languages and say which one is more popular today. Respond in a single well-formed sentence.",
+    top_k=2,
+    recompute_beighbor_embeddings=True,
+)
+print("LEANN Chat response: ", response)
 ```
 
 **That's it.** No cloud setup, no API keys, no "fine-tuning". Just your data, your questions, your laptop.
