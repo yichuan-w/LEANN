@@ -12,11 +12,13 @@
     The smallest vector index in the world. RAG Everything with LEANN!
 </h2>
 
-LEANN is a revolutionary vector database that makes personal AI accessible to everyone. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **97% less storage** than traditional solutions **without accuracy loss**.
+LEANN is a revolutionary vector database that democratizes personal AI. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **[97% less storage]** than traditional solutions **without accuracy loss**.
 
-RAG your **[emails](#-search-your-entire-life)**, **[browser history](#-time-machine-for-the-web)**, **[WeChat](#-wechat-detective)**, or 60M documents on your laptop, in nearly zero cost. No cloud, no API keys, completely private.
+LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
-LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Read more →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
+**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can search your **[file system](#process-any-documents-pdf-txt-md)**, **[emails](#search-your-entire-life)**, **[browser history](#time-machine-for-the-web)**, **[chat history](#wechat-detective)**, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
+
+
 
 ## Why LEANN?
 
@@ -30,16 +32,16 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 🔒 **Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
 
-🪶 **Lightweight:** Smart graph pruning means less storage, less memory usage, better performance on your existing hardware.
+🪶 **Lightweight:** Graph-based recomputation eliminates heavy embedding storage, while smart graph pruning and CSR format minimize graph storage overhead. Always less storage, less memory usage!
 
-📈 **Scalability:** Organize our messy personal data that would crash traditional vector DBs, with performance that gets better as your data grows more personalized.
+📈 **Scalability:** Handle messy personal data that would crash traditional vector DBs, easily managing your growing personalized data and agent generated memory!
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
 ## Quick Start in 1 minute
 
 ```bash
-git clone git@github.com:yichuan520030910320/LEANN-RAG.git leann
+git clone git@github.com:yichuan-w/LEANN.git leann
 cd leann
 git submodule update --init --recursive
 ```
@@ -125,7 +127,7 @@ print(results)
 
 LEANN supports RAGing a lot of data sources, like .pdf, .txt, .md, and also supports RAGing your WeChat, Google Search History, and more.
 
-### 📚 Process Any Documents (.pdf, .txt, .md)
+### Process Any Documents (.pdf, .txt, .md)
 
 Above we showed the Python API, while this CLI script demonstrates the same concepts while directly processing PDFs and documents.
 
@@ -142,7 +144,7 @@ Uses Ollama `qwen3:8b` by default. For other models: `--llm openai --model gpt-4
 
 **Works with any text format** - research papers, personal notes, presentations. Built with LlamaIndex for document parsing.
 
-### 🕵️ Search Your Entire Life
+### Search Your Entire Life
 ```bash
 python examples/mail_reader_leann.py
 # "What did my boss say about the Christmas party last year?"
@@ -181,7 +183,7 @@ Once the index is built, you can ask questions like:
 - "Show me emails about travel expenses"
 </details>
 
-### 🌐 Time Machine for the Web  
+### Time Machine for the Web  
 ```bash
 python examples/google_history_reader_leann.py
 # "What was that AI paper I read last month?"
@@ -236,7 +238,7 @@ Once the index is built, you can ask questions like:
 
 </details>
 
-### 💬 WeChat Detective
+### WeChat Detective
 
 ```bash
 python examples/wechat_history_reader_leann.py
