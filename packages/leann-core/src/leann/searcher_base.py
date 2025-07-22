@@ -2,7 +2,7 @@ import json
 import pickle
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any, Literal
+from typing import Dict, Any, Literal, Optional
 
 import numpy as np
 
@@ -86,14 +86,17 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         return actual_port
 
     def compute_query_embedding(
-        self, query: str, zmq_port: int = 5557, use_server_if_available: bool = True
+        self,
+        query: str,
+        expected_zmq_port: int = 5557,
+        use_server_if_available: bool = True,
     ) -> np.ndarray:
         """
         Compute embedding for a query string.
 
         Args:
             query: The query string to embed
-            zmq_port: ZMQ port for embedding server
+            expected_zmq_port: ZMQ port for embedding server
             use_server_if_available: Whether to try using embedding server first
 
         Returns:
@@ -107,7 +110,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                     self.index_dir / f"{self.index_path.name}.meta.json"
                 )
                 zmq_port = self._ensure_server_running(
-                    str(passages_source_file), zmq_port
+                    str(passages_source_file), expected_zmq_port
                 )
 
                 return self._compute_embedding_via_server([query], zmq_port)[
@@ -118,7 +121,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 print("⏭️ Falling back to direct model loading...")
 
         # Fallback to direct computation
-        from .api import compute_embeddings
+        from .embedding_compute import compute_embeddings
 
         embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
         return compute_embeddings([query], self.embedding_model, embedding_mode)
@@ -165,7 +168,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: int = 5557,
+        expected_zmq_port: Optional[int] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -179,7 +182,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
             recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored PQ codes
             pruning_strategy: PQ candidate selection strategy - "global" (default), "local", or "proportional"
-            zmq_port: ZMQ port for embedding server communication
+            expected_zmq_port: ZMQ port for embedding server communication
             **kwargs: Backend-specific parameters (e.g., batch_size, dedup_node_dis, etc.)
 
         Returns:
