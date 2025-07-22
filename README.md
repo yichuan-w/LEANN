@@ -132,7 +132,9 @@ LEANN supports RAGing a lot of data sources, like .pdf, .txt, .md, and also supp
 
 ### Process Any Documents (.pdf, .txt, .md)
 
-Above we showed the Python API, while this CLI script demonstrates the same concepts while directly processing PDFs and documents.
+Above we showed the Python API, while this CLI script demonstrates the same concepts while directly processing PDFs and documents, and even any directory that stores your personal files!
+
+The following scripts use Ollama `qwen3:8b` by default, so you need `ollama pull qwen3:8b` first. For other models: `--llm openai --model gpt-4o` (requires `OPENAI_API_KEY` environment variable) or `--llm hf --model Qwen/Qwen3-4B`.
 
 ```bash
 # Drop your PDFs, .txt, .md files into examples/data/
@@ -143,7 +145,7 @@ source .venv/bin/activate
 python ./examples/main_cli_example.py
 ```
 
-Uses Ollama `qwen3:8b` by default. For other models: `--llm openai --model gpt-4o` (requires `OPENAI_API_KEY` environment variable) or `--llm hf --model Qwen/Qwen3-4B`.
+
 
 **Works with any text format** - research papers, personal notes, presentations. Built with LlamaIndex for document parsing.
 
