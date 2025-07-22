@@ -154,6 +154,7 @@ def compute_embeddings_sentence_transformers(
 
 
 def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
+    # TODO: @yichuan-w add progress bar only in build mode
     """Compute embeddings using OpenAI API"""
     try:
         import openai
@@ -208,6 +209,7 @@ def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
 def compute_embeddings_mlx(
     chunks: List[str], model_name: str, batch_size: int = 16
 ) -> np.ndarray:
+    # TODO: @yichuan-w add progress bar only in build mode
     """Computes embeddings using an MLX model."""
     try:
         import mlx.core as mx
