@@ -112,7 +112,7 @@ builder.add_text("Leann is a great storage saving engine for RAG on your macbook
 builder.build_index("knowledge.leann")
 # 2. Search with real-time embeddings
 searcher = LeannSearcher("knowledge.leann")
-results = searcher.search("programming languages", top_k=2, recompute_beighbor_embeddings=True,complexity=2)
+results = searcher.search("programming languages", top_k=2, recompute_beighbor_embeddings=True)
 # 3. Chat with LEANN
 chat = LeannChat(index_path="knowledge.leann", llm_config={"type": "ollama", "model": "llama3.2:1b"})
 response = chat.ask(
