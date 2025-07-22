@@ -8,8 +8,13 @@ import numpy as np
 import torch
 from typing import List, Dict, Any
 import logging
+import os
 
+# Set up logger with proper level
 logger = logging.getLogger(__name__)
+LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
+log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
+logger.setLevel(log_level)
 
 # Global model cache to avoid repeated loading
 _model_cache: Dict[str, Any] = {}
@@ -125,7 +130,9 @@ def compute_embeddings_sentence_transformers(
             try:
                 model = model.half()
                 model = torch.compile(model)
-                logger.info(f"Using FP16 precision and compile optimization: {model_name}")
+                logger.info(
+                    f"Using FP16 precision and compile optimization: {model_name}"
+                )
             except Exception as e:
                 logger.warning(f"FP16 or compile optimization failed: {e}")
 
@@ -145,8 +152,8 @@ def compute_embeddings_sentence_transformers(
         device=device,
     )
 
-    print(
-        f"INFO: Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}"
+    logger.info(
+        f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}"
     )
 
     # Validate results
@@ -212,8 +219,8 @@ def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
             raise
 
     embeddings = np.array(all_embeddings, dtype=np.float32)
-    print(
-        f"INFO: Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}"
+    logger.info(
+        f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}"
     )
     return embeddings
 

@@ -14,6 +14,9 @@ from dataclasses import dataclass, field
 from .registry import BACKEND_REGISTRY
 from .interface import LeannBackendFactoryInterface
 from .chat import get_llm
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def compute_embeddings(
@@ -67,8 +70,8 @@ def compute_embeddings_via_server(
         chunks: List of text chunks to embed
         model_name: Name of the sentence transformer model
     """
-    print(
-        f"INFO: Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}' (via embedding server)..."
+    logger.info(
+        f"Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}' (via embedding server)..."
     )
     import zmq
     import msgpack
@@ -288,7 +291,7 @@ class LeannBuilder:
                 f"Dimension mismatch: expected {self.dimensions}, got {embedding_dim}"
             )
 
-        print(
+        logger.info(
             f"Building index from precomputed embeddings: {len(ids)} items, {embedding_dim} dimensions"
         )
 
@@ -296,7 +299,7 @@ class LeannBuilder:
         if len(self.chunks) != len(ids):
             # If no text chunks provided, create placeholder text entries
             if not self.chunks:
-                print("No text chunks provided, creating placeholder entries...")
+                logger.info("No text chunks provided, creating placeholder entries...")
                 for id_val in ids:
                     self.add_text(
                         f"Document {id_val}",
@@ -371,7 +374,9 @@ class LeannBuilder:
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
 
-        print(f"Index built successfully from precomputed embeddings: {index_path}")
+        logger.info(
+            f"Index built successfully from precomputed embeddings: {index_path}"
+        )
 
 
 class LeannSearcher:
@@ -411,10 +416,10 @@ class LeannSearcher:
         expected_zmq_port: int = 5557,
         **kwargs,
     ) -> List[SearchResult]:
-        print("🔍 DEBUG LeannSearcher.search() called:")
-        print(f"  Query: '{query}'")
-        print(f"  Top_k: {top_k}")
-        print(f"  Additional kwargs: {kwargs}")
+        logger.info("🔍 LeannSearcher.search() called:")
+        logger.info(f"  Query: '{query}'")
+        logger.info(f"  Top_k: {top_k}")
+        logger.info(f"  Additional kwargs: {kwargs}")
 
         start_time = time.time()
 
@@ -432,9 +437,9 @@ class LeannSearcher:
             use_server_if_available=recompute_embeddings,
             zmq_port=zmq_port,
         )
-        print(f"  Generated embedding shape: {query_embedding.shape}")
+        logger.info(f"  Generated embedding shape: {query_embedding.shape}")
         embedding_time = time.time() - start_time
-        print(f"  Embedding time: {embedding_time} seconds")
+        logger.info(f"  Embedding time: {embedding_time} seconds")
 
         start_time = time.time()
         results = self.backend_impl.search(
@@ -449,14 +454,14 @@ class LeannSearcher:
             **kwargs,
         )
         search_time = time.time() - start_time
-        print(f"  Search time: {search_time} seconds")
-        print(
+        logger.info(f"  Search time: {search_time} seconds")
+        logger.info(
             f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results"
         )
 
         enriched_results = []
         if "labels" in results and "distances" in results:
-            print(f"  Processing {len(results['labels'][0])} passage IDs:")
+            logger.info(f"  Processing {len(results['labels'][0])} passage IDs:")
             for i, (string_id, dist) in enumerate(
                 zip(results["labels"][0], results["distances"][0])
             ):
@@ -470,15 +475,15 @@ class LeannSearcher:
                             metadata=passage_data.get("metadata", {}),
                         )
                     )
-                    print(
+                    logger.info(
                         f"    {i + 1}. passage_id='{string_id}' -> SUCCESS: {passage_data['text']}..."
                     )
                 except KeyError:
-                    print(
+                    logger.error(
                         f"    {i + 1}. passage_id='{string_id}' -> ERROR: Passage not found in PassageManager!"
                     )
 
-        print(f"  Final enriched results: {len(enriched_results)} passages")
+        logger.info(f"  Final enriched results: {len(enriched_results)} passages")
         return enriched_results
 
 
