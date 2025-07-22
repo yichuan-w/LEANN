@@ -375,8 +375,9 @@ class OllamaChat(LLMInterface):
             "stream": False,  # Keep it simple for now
             "options": kwargs,
         }
-        logger.info(f"Sending request to Ollama: {payload}")
+        logger.debug(f"Sending request to Ollama: {payload}")
         try:
+            logger.info(f"Sending request to Ollama and waiting for response...")
             response = requests.post(full_url, data=json.dumps(payload))
             response.raise_for_status()
 
