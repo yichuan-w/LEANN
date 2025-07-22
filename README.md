@@ -294,6 +294,71 @@ Once the index is built, you can ask questions like:
 
 </details>
 
+## 🖥️ Command Line Interface
+
+LEANN includes a powerful CLI for document processing and search. Perfect for quick document indexing and interactive chat.
+
+```bash
+# Build an index from documents
+leann build my-docs --docs ./documents
+
+# Search your documents  
+leann search my-docs "machine learning concepts"
+
+# Interactive chat with your documents
+leann ask my-docs --interactive
+
+# List all your indexes
+leann list
+```
+
+**Key CLI features:**
+- Auto-detects document formats (PDF, TXT, MD, DOCX)
+- Smart text chunking with overlap
+- Multiple LLM providers (Ollama, OpenAI, HuggingFace)
+- Organized index storage in `~/.leann/indexes/`
+- Support for advanced search parameters
+
+<details>
+<summary><strong>📋 Click to expand: Complete CLI Reference</strong></summary>
+
+**Build Command:**
+```bash
+leann build INDEX_NAME --docs DIRECTORY [OPTIONS]
+
+Options:
+  --backend {hnsw,diskann}     Backend to use (default: hnsw)
+  --embedding-model MODEL      Embedding model (default: facebook/contriever)
+  --graph-degree N            Graph degree (default: 32)
+  --complexity N              Build complexity (default: 64)
+  --force                     Force rebuild existing index
+  --compact                   Use compact storage (default: true)
+  --recompute                 Enable recomputation (default: true)
+```
+
+**Search Command:**
+```bash
+leann search INDEX_NAME QUERY [OPTIONS]
+
+Options:
+  --top-k N                   Number of results (default: 5)
+  --complexity N              Search complexity (default: 64)
+  --recompute-embeddings      Use recomputation for highest accuracy
+  --pruning-strategy {global,local,proportional}
+```
+
+**Ask Command:**
+```bash
+leann ask INDEX_NAME [OPTIONS]
+
+Options:
+  --llm {ollama,openai,hf}    LLM provider (default: ollama)
+  --model MODEL               Model name (default: qwen3:8b)
+  --interactive              Interactive chat mode
+  --top-k N                  Retrieval count (default: 20)
+```
+
+</details>
 
 ## 🏗️ Architecture & How It Works
 
