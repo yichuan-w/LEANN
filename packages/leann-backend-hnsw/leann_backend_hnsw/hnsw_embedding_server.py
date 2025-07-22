@@ -57,7 +57,6 @@ def create_hnsw_embedding_server(
     finally:
         sys.path.pop(0)
 
-
     # Check port availability
     import socket
 
@@ -152,7 +151,9 @@ def create_hnsw_embedding_server(
                             raise
 
                     # Process embeddings
-                    embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
+                    embeddings = compute_embeddings(
+                        texts, model_name, mode=embedding_mode
+                    )
                     print(
                         f"INFO: Computed embeddings for {len(texts)} texts, shape: {embeddings.shape}"
                     )
@@ -280,7 +281,7 @@ if __name__ == "__main__":
         "--embedding-mode",
         type=str,
         default="sentence-transformers",
-        choices=["sentence-transformers", "openai"],
+        choices=["sentence-transformers", "openai", "mlx"],
         help="Embedding backend mode",
     )
 

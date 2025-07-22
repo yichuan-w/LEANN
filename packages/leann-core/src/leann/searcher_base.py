@@ -42,8 +42,10 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 "WARNING: embedding_model not found in meta.json. Recompute will fail."
             )
 
+        self.embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
+
         self.embedding_server_manager = EmbeddingServerManager(
-            backend_module_name=backend_module_name
+            backend_module_name=backend_module_name,
         )
 
     def _load_meta(self) -> Dict[str, Any]:
@@ -67,14 +69,12 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 "Cannot use recompute mode without 'embedding_model' in meta.json."
             )
 
-        embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
-
         server_started, actual_port = self.embedding_server_manager.start_server(
             port=port,
             model_name=self.embedding_model,
+            embedding_mode=self.embedding_mode,
             passages_file=passages_source_file,
             distance_metric=kwargs.get("distance_metric"),
-            embedding_mode=embedding_mode,
             enable_warmup=kwargs.get("enable_warmup", False),
         )
         if not server_started:
