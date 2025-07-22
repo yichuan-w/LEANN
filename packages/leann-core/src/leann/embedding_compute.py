@@ -6,7 +6,7 @@ Preserves all optimization parameters to ensure performance
 
 import numpy as np
 import torch
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,10 @@ _model_cache: Dict[str, Any] = {}
 
 
 def compute_embeddings(
-    texts: List[str], model_name: str, mode: str = "sentence-transformers",is_build: bool = False
+    texts: List[str],
+    model_name: str,
+    mode: str = "sentence-transformers",
+    is_build: bool = False,
 ) -> np.ndarray:
     """
     Unified embedding computation entry point
@@ -30,7 +33,9 @@ def compute_embeddings(
         Normalized embeddings array, shape: (len(texts), embedding_dim)
     """
     if mode == "sentence-transformers":
-        return compute_embeddings_sentence_transformers(texts, model_name, is_build=is_build)
+        return compute_embeddings_sentence_transformers(
+            texts, model_name, is_build=is_build
+        )
     elif mode == "openai":
         return compute_embeddings_openai(texts, model_name)
     elif mode == "mlx":
@@ -65,7 +70,7 @@ def compute_embeddings_sentence_transformers(
 
     # Create cache key
     cache_key = f"sentence_transformers_{model_name}_{device}_{use_fp16}"
-    
+
     # Check if model is already cached
     if cache_key in _model_cache:
         print(f"INFO: Using cached model: {model_name}")

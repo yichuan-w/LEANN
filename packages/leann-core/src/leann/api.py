@@ -113,7 +113,7 @@ class PassageManager:
         for source in passage_sources:
             assert source["type"] == "jsonl", "only jsonl is supported"
             passage_file = source["path"]
-            index_file = source["index_path"]
+            index_file = source["index_path"]  # .idx file
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
             with open(index_file, "rb") as f:
