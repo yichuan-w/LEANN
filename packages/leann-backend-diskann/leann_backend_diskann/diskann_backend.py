@@ -4,7 +4,6 @@ import struct
 from pathlib import Path
 from typing import Dict, Any, List, Literal
 import contextlib
-import pickle
 
 from leann.searcher_base import BaseSearcher
 from leann.registry import register_backend
@@ -69,7 +68,6 @@ class DiskannBuilder(LeannBackendBuilderInterface):
 
         data_filename = f"{index_prefix}_data.bin"
         _write_vectors_to_bin(data, index_dir / data_filename)
-
 
         build_kwargs = {**self.build_params, **kwargs}
         metric_enum = _get_diskann_metrics().get(
@@ -207,8 +205,7 @@ class DiskannSearcher(BaseSearcher):
         )
 
         string_labels = [
-            [str(int_label) for int_label in batch_labels]
-            for batch_labels in labels
+            [str(int_label) for int_label in batch_labels] for batch_labels in labels
         ]
 
         return {"labels": string_labels, "distances": distances}

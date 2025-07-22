@@ -70,9 +70,7 @@ async def main(args):
     # )
 
     print(f"You: {query}")
-    chat_response = chat.ask(
-        query, top_k=20, recompute_beighbor_embeddings=True, complexity=32
-    )
+    chat_response = chat.ask(query, top_k=20, recompute_embeddings=True, complexity=32)
     print(f"Leann: {chat_response}")
 
 

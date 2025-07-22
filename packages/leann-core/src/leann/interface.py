@@ -35,6 +35,13 @@ class LeannBackendSearcherInterface(ABC):
         pass
 
     @abstractmethod
+    def _ensure_server_running(
+        self, passages_source_file: str, port: Optional[int], **kwargs
+    ) -> int:
+        """Ensure server is running"""
+        pass
+
+    @abstractmethod
     def search(
         self,
         query: np.ndarray,
@@ -44,7 +51,7 @@ class LeannBackendSearcherInterface(ABC):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        expected_zmq_port: Optional[int] = None,
+        zmq_port: Optional[int] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """Search for nearest neighbors
@@ -57,7 +64,7 @@ class LeannBackendSearcherInterface(ABC):
             prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
             recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored PQ codes
             pruning_strategy: PQ candidate selection strategy - "global" (default), "local", or "proportional"
-            expected_zmq_port: ZMQ port for embedding server communication
+            zmq_port: ZMQ port for embedding server communication
             **kwargs: Backend-specific parameters
 
         Returns:
@@ -69,14 +76,14 @@ class LeannBackendSearcherInterface(ABC):
     def compute_query_embedding(
         self,
         query: str,
-        expected_zmq_port: Optional[int] = None,
         use_server_if_available: bool = True,
+        zmq_port: Optional[int] = None,
     ) -> np.ndarray:
         """Compute embedding for a query string
 
         Args:
             query: The query string to embed
-            expected_zmq_port: ZMQ port for embedding server
+            zmq_port: ZMQ port for embedding server
             use_server_if_available: Whether to try using embedding server first
 
         Returns:

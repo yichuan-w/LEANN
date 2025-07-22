@@ -1,10 +1,9 @@
 import numpy as np
 import os
 from pathlib import Path
-from typing import Dict, Any, List, Literal
-import pickle
+from typing import Dict, Any, List, Literal, Optional
 import shutil
-import time
+import logging
 
 from leann.searcher_base import BaseSearcher
 from .convert_to_csr import convert_hnsw_graph_to_csr
@@ -15,6 +14,8 @@ from leann.interface import (
     LeannBackendBuilderInterface,
     LeannBackendSearcherInterface,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_metric_map():
@@ -57,8 +58,8 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         index_dir.mkdir(parents=True, exist_ok=True)
 
         if data.dtype != np.float32:
+            logger.warning(f"Converting data to float32, shape: {data.shape}")
             data = data.astype(np.float32)
-
 
         metric_enum = get_metric_map().get(self.distance_metric.lower())
         if metric_enum is None:
@@ -81,7 +82,7 @@ class HNSWBuilder(LeannBackendBuilderInterface):
     def _convert_to_csr(self, index_file: Path):
         """Convert built index to CSR format"""
         mode_str = "CSR-pruned" if self.is_recompute else "CSR-standard"
-        print(f"INFO: Converting HNSW index to {mode_str} format...")
+        logger.info(f"INFO: Converting HNSW index to {mode_str} format...")
 
         csr_temp_file = index_file.with_suffix(".csr.tmp")
 
@@ -90,11 +91,11 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         )
 
         if success:
-            print("✅ CSR conversion successful.")
+            logger.info("✅ CSR conversion successful.")
             index_file_old = index_file.with_suffix(".old")
             shutil.move(str(index_file), str(index_file_old))
             shutil.move(str(csr_temp_file), str(index_file))
-            print(
+            logger.info(
                 f"INFO: Replaced original index with {mode_str} version at '{index_file}'"
             )
         else:
@@ -131,13 +132,11 @@ class HNSWSearcher(BaseSearcher):
 
         hnsw_config = faiss.HNSWIndexConfig()
         hnsw_config.is_compact = self.is_compact
-        hnsw_config.is_recompute = self.is_pruned or kwargs.get("is_recompute", False)
-
-        if self.is_pruned and not hnsw_config.is_recompute:
-            raise RuntimeError("Index is pruned but recompute is disabled.")
+        hnsw_config.is_recompute = (
+            self.is_pruned
+        )  # In C++ code, it's called is_recompute, but it's only for loading IIUC.
 
         self._index = faiss.read_index(str(index_file), faiss.IO_FLAG_MMAP, hnsw_config)
-        
 
     def search(
         self,
@@ -146,9 +145,9 @@ class HNSWSearcher(BaseSearcher):
         complexity: int = 64,
         beam_width: int = 1,
         prune_ratio: float = 0.0,
-        recompute_embeddings: bool = False,
+        recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: int = 5557,
+        expected_zmq_port: Optional[int] = None,
         batch_size: int = 0,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -166,7 +165,7 @@ class HNSWSearcher(BaseSearcher):
                 - "global": Use global PQ queue size for selection (default)
                 - "local": Local pruning, sort and select best candidates
                 - "proportional": Base selection on new neighbor count ratio
-            zmq_port: ZMQ port for embedding server
+            expected_zmq_port: ZMQ port for embedding server
             batch_size: Neighbor processing batch size, 0=disabled (HNSW-specific)
             **kwargs: Additional HNSW-specific parameters (for legacy compatibility)
 
@@ -175,15 +174,9 @@ class HNSWSearcher(BaseSearcher):
         """
         from . import faiss  # type: ignore
 
-        # Use recompute_embeddings parameter
-        use_recompute = recompute_embeddings or self.is_pruned
-        if use_recompute:
-            meta_file_path = self.index_dir / f"{self.index_path.name}.meta.json"
-            if not meta_file_path.exists():
-                raise RuntimeError(
-                    f"FATAL: Recompute enabled but metadata file not found: {meta_file_path}"
-                )
-            self._ensure_server_running(str(meta_file_path), port=zmq_port, **kwargs)
+        if not recompute_embeddings:
+            if self.is_pruned:
+                raise RuntimeError("Recompute is required for pruned index.")
 
         if query.dtype != np.float32:
             query = query.astype(np.float32)
@@ -191,7 +184,7 @@ class HNSWSearcher(BaseSearcher):
             faiss.normalize_L2(query)
 
         params = faiss.SearchParametersHNSW()
-        params.zmq_port = zmq_port
+        params.zmq_port = expected_zmq_port
         params.efSearch = complexity
         params.beam_size = beam_width
 
@@ -228,8 +221,7 @@ class HNSWSearcher(BaseSearcher):
         )
 
         string_labels = [
-            [str(int_label) for int_label in batch_labels]
-            for batch_labels in labels
+            [str(int_label) for int_label in batch_labels] for batch_labels in labels
         ]
 
         return {"labels": string_labels, "distances": distances}
