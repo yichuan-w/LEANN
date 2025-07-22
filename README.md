@@ -104,7 +104,7 @@ Just 3 lines of code. Our declarative API makes RAG as easy as writing a config 
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
 # 1. Build index (no embeddings stored!)
 builder = LeannBuilder(backend_name="hnsw")
-builder.add_text("C# is a powerful programming language but it is not very popular")
+builder.add_text("C# is a powerful programming language ")
 builder.add_text("Python is a powerful programming language and it is very popular")
 builder.add_text("Machine learning transforms industries")  
 builder.add_text("Neural networks process complex data")
@@ -113,15 +113,13 @@ builder.build_index("knowledge.leann")
 # 2. Search with real-time embeddings
 searcher = LeannSearcher("knowledge.leann")
 results = searcher.search("programming languages", top_k=2, recompute_beighbor_embeddings=True,complexity=2)
-print("LEANN Search results: ", results)
 # 3. Chat with LEANN
 chat = LeannChat(index_path="knowledge.leann", llm_config={"type": "ollama", "model": "llama3.2:1b"})
 response = chat.ask(
-    "Compare the two retrieved programming languages and say which one is more popular today. Respond in a single well-formed sentence.",
+    "Compare the two retrieved programming languages and say which one is more popular today.",
     top_k=2,
     recompute_beighbor_embeddings=True,
 )
-print("LEANN Chat response: ", response)
 ```
 
 **That's it.** No cloud setup, no API keys, no "fine-tuning". Just your data, your questions, your laptop.
