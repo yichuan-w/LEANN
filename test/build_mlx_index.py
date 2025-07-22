@@ -12,7 +12,7 @@ else:
     builder = LeannBuilder(
         backend_name="hnsw",
         embedding_model="mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ",
-        use_mlx=True,
+        embedding_mode="mlx",
     )
 
     # 2. Add documents
