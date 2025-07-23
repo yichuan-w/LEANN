@@ -58,8 +58,9 @@ async def main(args):
 
     print(f"\n[PHASE 2] Starting Leann chat session...")
 
-    # llm_config = {"type": "hf", "model": "Qwen/Qwen3-4B"}
+    llm_config = {"type": "hf", "model": "Qwen/Qwen3-4B"}
     llm_config = {"type": "ollama", "model": "qwen3:8b"}
+    llm_config = {"type": "openai", "model": "gpt-4o"}
 
     chat = LeannChat(index_path=INDEX_PATH, llm_config=llm_config)
 
