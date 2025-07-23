@@ -138,7 +138,9 @@ The following scripts use Ollama `qwen3:8b` by default, so you need `ollama pull
 ```bash
 # Drop your PDFs, .txt, .md files into examples/data/
 uv run ./examples/main_cli_example.py
+```
 
+```
 # Or use python directly
 source .venv/bin/activate
 python ./examples/main_cli_example.py
