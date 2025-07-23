@@ -94,7 +94,9 @@ def create_diskann_embedding_server(
     def zmq_server_thread():
         """ZMQ server thread using REP socket for universal compatibility"""
         context = zmq.Context()
-        socket = context.socket(zmq.REP)  # REP socket for both BaseSearcher and DiskANN C++ REQ clients
+        socket = context.socket(
+            zmq.REP
+        )  # REP socket for both BaseSearcher and DiskANN C++ REQ clients
         socket.bind(f"tcp://*:{zmq_port}")
         logger.info(f"DiskANN ZMQ REP server listening on port {zmq_port}")
 
@@ -128,7 +130,9 @@ def create_diskann_embedding_server(
                     node_ids = list(req_proto.node_ids)
 
                     if not node_ids:
-                        raise RuntimeError(f"PROTOBUF: Received empty node_ids! Message size: {len(message)}")
+                        raise RuntimeError(
+                            f"PROTOBUF: Received empty node_ids! Message size: {len(message)}"
+                        )
 
                     logger.info(
                         f"✅ PROTOBUF: Node ID request for {len(node_ids)} node embeddings: {node_ids[:10]}"
@@ -175,9 +179,7 @@ def create_diskann_embedding_server(
                             raise
 
                     # Debug logging
-                    logger.debug(
-                        f"Processing {len(texts)} texts"
-                    )
+                    logger.debug(f"Processing {len(texts)} texts")
                     logger.debug(
                         f"Text lengths: {[len(t) for t in texts[:5]]}"
                     )  # Show first 5
@@ -220,6 +222,7 @@ def create_diskann_embedding_server(
             except Exception as e:
                 logger.error(f"Error in ZMQ server loop: {e}")
                 import traceback
+
                 traceback.print_exc()
                 raise
 
@@ -237,6 +240,17 @@ def create_diskann_embedding_server(
 
 
 if __name__ == "__main__":
+    import signal
+    import sys
+
+    def signal_handler(sig, frame):
+        logger.info(f"Received signal {sig}, shutting down gracefully...")
+        sys.exit(0)
+
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
     parser = argparse.ArgumentParser(description="DiskANN Embedding service")
     parser.add_argument("--zmq-port", type=int, default=5555, help="ZMQ port to run on")
     parser.add_argument(
