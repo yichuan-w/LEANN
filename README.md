@@ -389,15 +389,7 @@ python examples/compare_faiss_vs_leann.py
 
 Same dataset, same hardware, same embedding model. LEANN just works better.
 
-## Reproduce Our Results
 
-```bash
-uv pip install -e ".[dev]"  # Install dev dependencies
-python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
-python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
-```
-
-The evaluation script downloads data automatically on first run.
 
 ### Storage Usage Comparison
 
@@ -424,6 +416,15 @@ The evaluation script downloads data automatically on first run.
 
 *Benchmarks run on Apple M3 Pro 36 GB*
 
+## Reproduce Our Results
+
+```bash
+uv pip install -e ".[dev]"  # Install dev dependencies
+python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
+python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
+```
+
+The evaluation script downloads data automatically on first run. The last three results were tested with partial personal data, and you can reproduce them with your own data!
 ## 🔬 Paper
 
 If you find Leann useful, please cite:
