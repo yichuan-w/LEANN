@@ -74,22 +74,17 @@ class ChromeHistoryReader(BaseReader):
                 
                 # Create document content with metadata embedded in text
                 doc_content = f"""
-[BROWSING HISTORY METADATA]
-URL: {url}
-Title: {title}
-Last Visit: {last_visit}
-Visit Count: {visit_count}
-Typed Count: {typed_count}
-Hidden: {hidden}
-[END METADATA]
-
-Title: {title}
-URL: {url}
-Last visited: {last_visit}
+[Title]: {title}
+[URL of the page]: {url}
+[Last visited time]: {last_visit}
+[Visit times]: {visit_count}
+[Typed times]: {typed_count}
 """
                 
                 # Create document with embedded metadata
-                doc = Document(text=doc_content, metadata={})
+                doc = Document(text=doc_content, metadata={ "title": title[0:150]})
+                # if len(title) > 150:
+                #     print(f"Title is too long: {title}")
                 docs.append(doc)
                 count += 1
             

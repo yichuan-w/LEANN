@@ -292,6 +292,8 @@ Once the index is built, you can ask questions like:
 
 </details>
 
+Slack supporting soon! Stay tuned!
+
 ## 🖥️ Command Line Interface
 
 LEANN includes a powerful CLI for document processing and search. Perfect for quick document indexing and interactive chat.

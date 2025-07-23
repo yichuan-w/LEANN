@@ -65,12 +65,14 @@ def create_leann_index_from_multiple_chrome_profiles(profile_dirs: List[Path], i
         
         if not all_documents:
             print("No documents loaded from any source. Exiting.")
+            # highlight info that you need to close all chrome browser before running this script and high light the instruction!!
+            print("\033[91mYou need to close or quit all chrome browser before running this script\033[0m")
             return None
         
         print(f"\nTotal loaded {len(all_documents)} history documents from {len(profile_dirs)} profiles")
         
         # Create text splitter with 256 chunk size
-        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=25)
+        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=128)
         
         # Convert Documents to text strings and chunk them
         all_texts = []
@@ -78,7 +80,9 @@ def create_leann_index_from_multiple_chrome_profiles(profile_dirs: List[Path], i
             # Split the document into chunks
             nodes = text_splitter.get_nodes_from_documents([doc])
             for node in nodes:
-                all_texts.append(node.get_content())
+                text = node.get_content()
+                # text = '[Title] ' + doc.metadata["title"] + '\n' + text
+                all_texts.append(text)
         
         print(f"Created {len(all_texts)} text chunks from {len(all_documents)} documents")
         
@@ -225,7 +229,7 @@ async def main():
     parser = argparse.ArgumentParser(description='LEANN Chrome History Reader - Create and query browser history index')
     parser.add_argument('--chrome-profile', type=str, default=DEFAULT_CHROME_PROFILE,
                        help=f'Path to Chrome profile directory (default: {DEFAULT_CHROME_PROFILE}), usually you dont need to change this')
-    parser.add_argument('--index-dir', type=str, default="./chrome_history_index_leann_test",
+    parser.add_argument('--index-dir', type=str, default="./all_google_new",
                        help='Directory to store the LEANN index (default: ./chrome_history_index_leann_test)')
     parser.add_argument('--max-entries', type=int, default=1000,
                        help='Maximum number of history entries to process (default: 1000)')
