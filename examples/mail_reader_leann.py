@@ -74,10 +74,10 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
             print("No documents loaded from any source. Exiting.")
             return None
         
-        print(f"\nTotal loaded {len(all_documents)} email documents from {len(messages_dirs)} directories")
+        print(f"\nTotal loaded {len(all_documents)} email documents from {len(messages_dirs)} directories and starting to split them into chunks")
         
         # Create text splitter with 256 chunk size
-        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=25)
+        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=128)
         
         # Convert Documents to text strings and chunk them
         all_texts = []
@@ -85,9 +85,11 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
             # Split the document into chunks
             nodes = text_splitter.get_nodes_from_documents([doc])
             for node in nodes:
-                all_texts.append(node.get_content())
+                text = node.get_content()
+                # text = '[subject] ' + doc.metadata["subject"] + '\n' + text
+                all_texts.append(text)
         
-        print(f"Created {len(all_texts)} text chunks from {len(all_documents)} documents")
+        print(f"Finished splitting {len(all_documents)} documents into {len(all_texts)} text chunks")
         
         # Create LEANN index directory
 
@@ -231,7 +233,7 @@ async def main():
     parser = argparse.ArgumentParser(description='LEANN Mail Reader - Create and query email index')
     # Remove --mail-path argument and auto-detect all Messages directories
     # Remove DEFAULT_MAIL_PATH
-    parser.add_argument('--index-dir', type=str, default="./mail_index_leann_raw_text_all_dicts",
+    parser.add_argument('--index-dir', type=str, default="./mail_index_leann_debug",
                        help='Directory to store the LEANN index (default: ./mail_index_leann_raw_text_all_dicts)')
     parser.add_argument('--max-emails', type=int, default=1000,
                        help='Maximum number of emails to process (-1 means all)')

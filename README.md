@@ -292,7 +292,7 @@ Once the index is built, you can ask questions like:
 
 </details>
 
-Slack supporting soon! Stay tuned!
+
 
 ## 🖥️ Command Line Interface
 
@@ -503,6 +503,17 @@ export NCCL_IB_DISABLE=1
 export NCCL_NET_PLUGIN=none
 export NCCL_SOCKET_IFNAME=ens5
 ``` -->
+## FAQ
+
+### 1. My building time seems long
+
+You can speed up the process by using a lightweight embedding model. Add this to your arguments:
+
+```bash
+--embedding-model sentence-transformers/all-MiniLM-L6-v2
+```
+**Model sizes:** `all-MiniLM-L6-v2` (30M parameters), `facebook/contriever` (~100M parameters), `Qwen3-0.6B` (600M parameters)
+
 
 ## 📈 Roadmap
 

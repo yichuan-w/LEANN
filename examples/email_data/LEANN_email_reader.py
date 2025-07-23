@@ -96,14 +96,12 @@ class EmlxReader(BaseReader):
                                 
                                 # Create document content with metadata embedded in text
                                 doc_content = f"""
-[EMAIL METADATA]
-File: {filename}
-From: {from_addr}
-To: {to_addr}
-Subject: {subject}
-Date: {date}
-[END METADATA]
-
+[File]: {filename}
+[From]: {from_addr}
+[To]: {to_addr}
+[Subject]: {subject}
+[Date]: {date}
+[EMAIL BODY Start]:
 {body}
 """
                                 

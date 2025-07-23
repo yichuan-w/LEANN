@@ -74,7 +74,7 @@ def create_leann_index_from_multiple_wechat_exports(
             return None
 
         print(
-            f"\nTotal loaded {len(all_documents)} chat documents from {len(export_dirs)} exports"
+            f"\nTotal loaded {len(all_documents)} chat documents from {len(export_dirs)} exports and starting to split them into chunks"
         )
 
         # Create text splitter with 256 chunk size
@@ -90,7 +90,7 @@ def create_leann_index_from_multiple_wechat_exports(
                 all_texts.append(text)
 
         print(
-            f"Created {len(all_texts)} text chunks from {len(all_documents)} documents"
+            f"Finished splitting {len(all_documents)} documents into {len(all_texts)} text chunks"
         )
 
         # Create LEANN index directory
