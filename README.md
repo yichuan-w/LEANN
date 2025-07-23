@@ -47,7 +47,7 @@ git submodule update --init --recursive
 
 **macOS:**
 ```bash
-brew install llvm libomp boost protobuf zeromq
+brew install llvm libomp boost protobuf zeromq pkgconf
 
 # Install with HNSW backend (default, recommended for most users)
 # Install uv first if you don't have it:
