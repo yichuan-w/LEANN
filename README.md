@@ -149,6 +149,8 @@ python ./examples/main_cli_example.py
 **Works with any text format** - research papers, personal notes, presentations. Built with LlamaIndex for document parsing.
 
 ### Search Your Entire Life
+
+**Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 ```bash
 python examples/mail_reader_leann.py
 # "What's the number of class recommend to take per semester for incoming EECS students?"
