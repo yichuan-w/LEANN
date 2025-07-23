@@ -60,6 +60,9 @@ def compute_embeddings_sentence_transformers(
     """
     Compute embeddings using SentenceTransformer with model caching
     """
+    # Handle empty input
+    if not texts:
+        raise ValueError("Cannot compute embeddings for empty text list")
     logger.info(
         f"Computing embeddings for {len(texts)} texts using SentenceTransformer, model: '{model_name}'"
     )

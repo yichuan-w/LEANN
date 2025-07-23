@@ -450,7 +450,7 @@ class LeannSearcher:
             prune_ratio=prune_ratio,
             recompute_embeddings=recompute_embeddings,
             pruning_strategy=pruning_strategy,
-            expected_zmq_port=zmq_port,
+            zmq_port=zmq_port,
             **kwargs,
         )
         search_time = time.time() - start_time
