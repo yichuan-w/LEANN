@@ -112,14 +112,12 @@ builder.add_text("Neural networks process complex data")
 builder.add_text("Leann is a great storage saving engine for RAG on your macbook")
 builder.build_index("knowledge.leann")
 # 2. Search with real-time embeddings
-searcher = LeannSearcher("knowledge.leann")
-results = searcher.search("programming languages", top_k=2, recompute_beighbor_embeddings=True)
+results = LeannSearcher("knowledge.leann").search("programming languages", top_k=2)
 # 3. Chat with LEANN
-chat = LeannChat(index_path="knowledge.leann", llm_config={"type": "ollama", "model": "llama3.2:1b"})
-response = chat.ask(
+llm_config={"type": "ollama", "model": "llama3.2:1b"}
+response = LeannChat(index_path="knowledge.leann",llm_config=llm_config ).ask(
     "Compare the two retrieved programming languages and say which one is more popular today.",
     top_k=2,
-    recompute_beighbor_embeddings=True,
 )
 ```
 
