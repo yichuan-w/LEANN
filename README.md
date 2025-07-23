@@ -69,14 +69,11 @@ uv sync
 uv sync --extra diskann
 ```
 
-*We support multiple LLM providers:*
 
-- **Ollama** (recommended for privacy & performance)
-- **HuggingFace Transformers** (local inference)
-- **OpenAI API** (cloud-based, skip local installation if data isn't sensitive)
 
 **Ollama Setup (Recommended for full privacy):**
 
+> *You can skip this installation if you only want to use OpenAI API for generation.*
 
 
 *macOS:*
@@ -99,8 +96,6 @@ ollama serve &
 # Pull a lightweight model (recommended for consumer hardware)
 ollama pull llama3.2:1b
 ```
-
-You can also replace `llama3.2:1b` to `deepseek-r1:1.5b` or `qwen3:4b` for better performance but higher memory usage.
 
 ## Dead Simple API
 
