@@ -145,12 +145,11 @@ Above we showed the Python API, while this CLI script demonstrates the same conc
 The following scripts use Ollama `qwen3:8b` by default, so you need `ollama pull qwen3:8b` first. For other models: `--llm openai --model gpt-4o` (requires `OPENAI_API_KEY` environment variable) or `--llm hf --model Qwen/Qwen3-4B`.
 
 ```bash
-# Drop your PDFs, .txt, .md files into examples/data/
-uv run ./examples/main_cli_example.py
+# Drop your PDFs, .txt, .md files into apps/documents/data/
+python -m apps.documents
 
-# Or use python directly
-source .venv/bin/activate
-python ./examples/main_cli_example.py
+# Or with uv
+uv run python -m apps.documents
 ```
 
 
@@ -159,7 +158,7 @@ python ./examples/main_cli_example.py
 
 ### Search Your Entire Life
 ```bash
-python examples/mail_reader_leann.py
+python -m apps.email
 # "What's the number of class recommend to take per semester for incoming EECS students?"
 ```
 **90K emails → 14MB.** Finally, search your email like you search Google.
@@ -169,19 +168,19 @@ python examples/mail_reader_leann.py
 
 ```bash
 # Use default mail path (works for most macOS setups)
-python examples/mail_reader_leann.py
+python -m apps.email
 
 # Run with custom index directory
-python examples/mail_reader_leann.py --index-dir "./my_mail_index"
+python -m apps.email --index-dir "./my_mail_index"
 
 # Process all emails (may take time but indexes everything)
-python examples/mail_reader_leann.py --max-emails -1
+python -m apps.email --max-emails -1
 
 # Limit number of emails processed (useful for testing)
-python examples/mail_reader_leann.py --max-emails 1000
+python -m apps.email --max-emails 1000
 
 # Run a single query
-python examples/mail_reader_leann.py --query "What did my boss say about deadlines?"
+python -m apps.email --query "What did my boss say about deadlines?"
 ```
 
 </details>
@@ -197,7 +196,7 @@ Once the index is built, you can ask questions like:
 
 ### Time Machine for the Web  
 ```bash
-python examples/google_history_reader_leann.py
+python -m apps.browser
 # "Tell me my browser history about machine learning system stuff?"
 ```
 **38K browser entries → 6MB.** Your browser history becomes your personal search engine.
@@ -207,16 +206,16 @@ python examples/google_history_reader_leann.py
 
 ```bash
 # Use default Chrome profile (auto-finds all profiles)
-python examples/google_history_reader_leann.py
+python -m apps.browser
 
 # Run with custom index directory
-python examples/google_history_reader_leann.py --index-dir "./my_chrome_index"
+python -m apps.browser --index-dir "./my_chrome_index"
 
 # Limit number of history entries processed (useful for testing)
-python examples/google_history_reader_leann.py --max-entries 500
+python -m apps.browser --max-entries 500
 
 # Run a single query
-python examples/google_history_reader_leann.py --query "What websites did I visit about machine learning?"
+python -m apps.browser --query "What websites did I visit about machine learning?"
 ```
 
 </details>
@@ -252,7 +251,7 @@ Once the index is built, you can ask questions like:
 ### WeChat Detective
 
 ```bash
-python examples/wechat_history_reader_leann.py
+python -m apps.wechat
 # "Show me all group chats about weekend plans"
 ```
 **400K messages → 64MB.** Search years of chat history in any language.
@@ -274,19 +273,19 @@ sudo packages/wechat-exporter/wechattweak-cli install
 
 ```bash
 # Use default settings (recommended for first run)
-python examples/wechat_history_reader_leann.py
+python -m apps.wechat
 
 # Run with custom export directory and wehn we run the first time, LEANN will export all chat history automatically for you
-python examples/wechat_history_reader_leann.py --export-dir "./my_wechat_exports"
+python -m apps.wechat --export-dir "./my_wechat_exports"
 
 # Run with custom index directory
-python examples/wechat_history_reader_leann.py --index-dir "./my_wechat_index"
+python -m apps.wechat --index-dir "./my_wechat_index"
 
 # Limit number of chat entries processed (useful for testing)
-python examples/wechat_history_reader_leann.py --max-entries 1000
+python -m apps.wechat --max-entries 1000
 
 # Run a single query
-python examples/wechat_history_reader_leann.py --query "Show me conversations about travel plans"
+python -m apps.wechat --query "Show me conversations about travel plans"
 ```
 
 </details>
@@ -388,7 +387,7 @@ Options:
 
 Run the comparison yourself:
 ```bash
-python examples/compare_faiss_vs_leann.py
+python -m apps.benchmarks
 ```
 
 | System | Storage | 
@@ -430,8 +429,8 @@ Same dataset, same hardware, same embedding model. LEANN just works better.
 
 ```bash
 uv pip install -e ".[dev]"  # Install dev dependencies
-python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
-python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
+python -m apps.evaluation data/indices/dpr/dpr_diskann      # DPR dataset
+python -m apps.evaluation data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
 ```
 
 The evaluation script downloads data automatically on first run. The last three results were tested with partial personal data, and you can reproduce them with your own data!
