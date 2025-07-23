@@ -69,9 +69,15 @@ uv sync
 uv sync --extra diskann
 ```
 
+*We support multiple LLM providers:*
+
+- **Ollama** (recommended for privacy & performance)
+- **HuggingFace Transformers** (local inference)
+- **OpenAI API** (cloud-based, skip local installation if data isn't sensitive)
+
 **Ollama Setup (Recommended for full privacy):**
 
-*We support both hf-transformers and Ollama for local LLMs. Ollama is recommended for faster performance.*
+
 
 *macOS:*
 
