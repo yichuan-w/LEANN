@@ -12,7 +12,7 @@
     The smallest vector index in the world. RAG Everything with LEANN!
 </h2>
 
-LEANN is a revolutionary vector database that democratizes personal AI. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **[97% less storage]** than traditional solutions **without accuracy loss**.
+LEANN is a revolutionary vector database that democratizes personal AI. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **97% less storage** than traditional solutions **without accuracy loss**.
 
 LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
@@ -125,15 +125,15 @@ response = chat.ask(
 )
 ```
 
-## Wild Things You Can Do
+## RAG on Everything!
 
-LEANN supports RAGing a lot of data sources, like .pdf, .txt, .md, and also supports RAGing your WeChat, Google Search History, and more.
+LEANN supports RAG on various data sources including documents (.pdf, .txt, .md), Apple Mail, Google Search History, WeChat, and more.
 
 ### Process Any Documents (.pdf, .txt, .md)
 
-Above we showed the Python API, while this CLI script demonstrates the same concepts while directly processing PDFs and documents, and even any directory that stores your personal files!
+Ask questions directly about your personal PDFs, documents, and any directory containing your files!
 
-The following scripts use Ollama `qwen3:8b` by default, so you need `ollama pull qwen3:8b` first. For other models: `--llm openai --model gpt-4o` (requires `OPENAI_API_KEY` environment variable) or `--llm hf --model Qwen/Qwen3-4B`.
+The example below asks a question about summarizing two papers (uses default data in `examples/data`):
 
 ```bash
 # Drop your PDFs, .txt, .md files into examples/data/
@@ -147,8 +147,6 @@ python ./examples/main_cli_example.py
 ```
 
 
-
-**Works with any text format** - research papers, personal notes, presentations. Built with LlamaIndex for document parsing.
 
 ### Search Your Entire Life
 
@@ -259,9 +257,9 @@ First, you need to install the WeChat exporter:
 sudo packages/wechat-exporter/wechattweak-cli install
 ```
 
-**Troubleshooting**:
-- If you encounter installation issues, check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41).
-- If you encounter the error below, try restart your wechat
+**Troubleshooting:**
+- **Installation issues**: Check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41)
+- **Export errors**: If you encounter the error below, try restarting WeChat
 ```
 Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
 Failed to find or export WeChat data. Exiting.
