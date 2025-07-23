@@ -101,7 +101,7 @@ def compute_embeddings_sentence_transformers(
         if device == "mps":
             batch_size = 128  # MPS optimal batch size from benchmark
             if model_name == "Qwen/Qwen3-Embedding-0.6B":
-                batch_size = 64
+                batch_size = 32
         elif device == "cuda":
             batch_size = 256  # CUDA optimal batch size
         # Keep original batch_size for CPU

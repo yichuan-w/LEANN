@@ -78,7 +78,7 @@ def create_leann_index_from_multiple_wechat_exports(
         )
 
         # Create text splitter with 256 chunk size
-        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=128)
+        text_splitter = SentenceSplitter(chunk_size=192, chunk_overlap=64)
 
         # Convert Documents to text strings and chunk them
         all_texts = []
