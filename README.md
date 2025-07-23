@@ -55,7 +55,7 @@ export CXX=$(brew --prefix llvm)/bin/clang++
 uv sync
 ```
 
-**Linux (Ubuntu/Debian):**
+**Linux:**
 ```bash
 sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev libmkl-full-dev libaio-dev libzmq3-dev
 
@@ -69,7 +69,7 @@ uv sync
 > *You can skip this installation if you only want to use OpenAI API for generation.*
 
 
-*macOS:*
+**macOS:**
 
 First, [download Ollama for macOS](https://ollama.com/download/mac).
 
@@ -78,7 +78,7 @@ First, [download Ollama for macOS](https://ollama.com/download/mac).
 ollama pull llama3.2:1b
 ```
 
-*Linux:*
+**Linux:**
 ```bash
 # Install Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
