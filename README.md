@@ -103,19 +103,28 @@ Just 3 lines of code. Our declarative API makes RAG as easy as writing a config 
 
 ```python
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
-# 1. Build index (no embeddings stored!)
+
+# 1. Build the index (no embeddings stored!)
 builder = LeannBuilder(backend_name="hnsw")
-builder.add_text("C# is a powerful programming language ")
+builder.add_text("C# is a powerful programming language")
 builder.add_text("Python is a powerful programming language and it is very popular")
-builder.add_text("Machine learning transforms industries")  
+builder.add_text("Machine learning transforms industries")
 builder.add_text("Neural networks process complex data")
-builder.add_text("Leann is a great storage saving engine for RAG on your macbook")
+builder.add_text("Leann is a great storage saving engine for RAG on your MacBook")
 builder.build_index("knowledge.leann")
+
 # 2. Search with real-time embeddings
-results = LeannSearcher("knowledge.leann").search("programming languages", top_k=2)
-# 3. Chat with LEANN
-llm_config={"type": "ollama", "model": "llama3.2:1b"}
-response = LeannChat(index_path="knowledge.leann",llm_config=llm_config ).ask(
+searcher = LeannSearcher("knowledge.leann")
+results = searcher.search("programming languages", top_k=2)
+
+# 3. Chat with LEANN using retrieved results
+llm_config = {
+    "type": "ollama",
+    "model": "llama3.2:1b"
+}
+
+chat = LeannChat(index_path="knowledge.leann", llm_config=llm_config)
+response = chat.ask(
     "Compare the two retrieved programming languages and say which one is more popular today.",
     top_k=2,
 )
