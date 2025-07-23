@@ -13,7 +13,7 @@ import psutil
 LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    format="%(levelname)s - %(name)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -338,5 +338,11 @@ class EmbeddingServerManager:
                 f"Server process {self.server_process.pid} did not terminate gracefully, killing it."
             )
             self.server_process.kill()
+
+        # Clean up process resources to prevent resource tracker warnings
+        try:
+            self.server_process.wait()  # Ensure process is fully cleaned up
+        except Exception:
+            pass
 
         self.server_process = None

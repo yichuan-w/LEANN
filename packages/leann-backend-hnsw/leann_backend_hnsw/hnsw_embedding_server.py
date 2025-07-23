@@ -268,6 +268,17 @@ def create_hnsw_embedding_server(
 
 
 if __name__ == "__main__":
+    import signal
+    import sys
+    
+    def signal_handler(sig, frame):
+        logger.info(f"Received signal {sig}, shutting down gracefully...")
+        sys.exit(0)
+    
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
     parser = argparse.ArgumentParser(description="HNSW Embedding service")
     parser.add_argument("--zmq-port", type=int, default=5555, help="ZMQ port to run on")
     parser.add_argument(

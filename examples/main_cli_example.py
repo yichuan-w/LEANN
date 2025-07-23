@@ -1,30 +1,12 @@
 import argparse
-from llama_index.core import SimpleDirectoryReader, Settings
+from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 import asyncio
 import dotenv
-from leann.api import LeannBuilder, LeannSearcher, LeannChat
-import shutil
+from leann.api import LeannBuilder, LeannChat
 from pathlib import Path
 
 dotenv.load_dotenv()
-
-node_parser = SentenceSplitter(
-    chunk_size=256, chunk_overlap=128, separator=" ", paragraph_separator="\n\n"
-)
-print("Loading documents...")
-documents = SimpleDirectoryReader(
-    "examples/data",
-    recursive=True,
-    encoding="utf-8",
-    required_exts=[".pdf", ".txt", ".md"],
-).load_data(show_progress=True)
-print("Documents loaded.")
-all_texts = []
-for doc in documents:
-    nodes = node_parser.get_nodes_from_documents([doc])
-    for node in nodes:
-        all_texts.append(node.get_content())
 
 
 async def main(args):
@@ -32,9 +14,27 @@ async def main(args):
     INDEX_PATH = str(INDEX_DIR / "pdf_documents.leann")
 
     if not INDEX_DIR.exists():
-        print(f"--- Index directory not found, building new index ---")
+        node_parser = SentenceSplitter(
+            chunk_size=256, chunk_overlap=128, separator=" ", paragraph_separator="\n\n"
+        )
 
-        print(f"\n[PHASE 1] Building Leann index...")
+        print("Loading documents...")
+        documents = SimpleDirectoryReader(
+            "examples/data",
+            recursive=True,
+            encoding="utf-8",
+            required_exts=[".pdf", ".txt", ".md"],
+        ).load_data(show_progress=True)
+        print("Documents loaded.")
+        all_texts = []
+        for doc in documents:
+            nodes = node_parser.get_nodes_from_documents([doc])
+            for node in nodes:
+                all_texts.append(node.get_content())
+
+        print("--- Index directory not found, building new index ---")
+
+        print("\n[PHASE 1] Building Leann index...")
 
         # Use HNSW backend for better macOS compatibility
         builder = LeannBuilder(
