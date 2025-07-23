@@ -20,7 +20,7 @@ async def main(args):
 
         print("Loading documents...")
         documents = SimpleDirectoryReader(
-            "examples/data",
+            args.data_dir,
             recursive=True,
             encoding="utf-8",
             required_exts=[".pdf", ".txt", ".md"],
@@ -103,6 +103,12 @@ if __name__ == "__main__":
         type=str,
         default="./test_doc_files",
         help="Directory where the Leann index will be stored.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="examples/data",
+        help="Directory containing documents to index (PDF, TXT, MD files).",
     )
     args = parser.parse_args()
 
