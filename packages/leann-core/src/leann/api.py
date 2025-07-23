@@ -421,9 +421,9 @@ class LeannSearcher:
         logger.info(f"  Top_k: {top_k}")
         logger.info(f"  Additional kwargs: {kwargs}")
 
-        start_time = time.time()
-
         zmq_port = None
+
+        start_time = time.time()
         if recompute_embeddings:
             zmq_port = self.backend_impl._ensure_server_running(
                 self.meta_path_str,
@@ -431,6 +431,10 @@ class LeannSearcher:
                 **kwargs,
             )
             del expected_zmq_port
+        zmq_time = time.time() - start_time
+        logger.info(f"  Launching server time: {zmq_time} seconds")
+
+        start_time = time.time()
 
         query_embedding = self.backend_impl.compute_query_embedding(
             query,
