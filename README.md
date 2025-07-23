@@ -48,14 +48,12 @@ git submodule update --init --recursive
 **macOS:**
 ```bash
 brew install llvm libomp boost protobuf zeromq
-export CC=$(brew --prefix llvm)/bin/clang
-export CXX=$(brew --prefix llvm)/bin/clang++
 
 # Install with HNSW backend (default, recommended for most users)
 # Install uv first if you don't have it:
 # curl -LsSf https://astral.sh/uv/install.sh | sh
 # See: https://docs.astral.sh/uv/getting-started/installation/#installation-methods
-uv sync
+CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv sync
 ```
 
 **Linux:**
