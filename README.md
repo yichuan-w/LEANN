@@ -52,6 +52,9 @@ export CC=$(brew --prefix llvm)/bin/clang
 export CXX=$(brew --prefix llvm)/bin/clang++
 
 # Install with HNSW backend (default, recommended for most users)
+# Install uv first if you don't have it:
+# curl -LsSf https://astral.sh/uv/install.sh | sh
+# See: https://docs.astral.sh/uv/getting-started/installation/#installation-methods
 uv sync
 ```
 
@@ -93,6 +96,7 @@ ollama pull llama3.2:1b
 ## Quick Start in 30s
 
 Our declarative API makes RAG as easy as writing a config file.
+[Try in this ipynb file →](demo.ipynb)
 
 ```python
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
@@ -122,10 +126,6 @@ response = chat.ask(
     top_k=2,
 )
 ```
-
-**That's it.** No cloud setup, no API keys, no "fine-tuning". Just your data, your questions, your laptop.
-
-[Try the interactive demo →](demo.ipynb)
 
 ## Wild Things You Can Do
 
