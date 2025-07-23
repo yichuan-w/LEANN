@@ -152,8 +152,7 @@ python ./examples/main_cli_example.py
 
 **Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 ```bash
-python examples/mail_reader_leann.py
-# "What's the number of class recommend to take per semester for incoming EECS students?"
+python examples/mail_reader_leann.py --query "What's the food I ordered by doordash or Uber eat?"
 ```
 **90K emails → 14MB.** Finally, search your email like you search Google.
 
@@ -190,8 +189,7 @@ Once the index is built, you can ask questions like:
 
 ### Time Machine for the Web  
 ```bash
-python examples/google_history_reader_leann.py
-# "Tell me my browser history about machine learning system stuff?"
+python examples/google_history_reader_leann.py --query "Tell me my browser history about machine learning?"
 ```
 **38K browser entries → 6MB.** Your browser history becomes your personal search engine.
 
@@ -245,10 +243,10 @@ Once the index is built, you can ask questions like:
 ### WeChat Detective
 
 ```bash
-python examples/wechat_history_reader_leann.py
-# "Show me all group chats about weekend plans"
+python examples/wechat_history_reader_leann.py --query "Show me all group chats about weekend plans"
 ```
 **400K messages → 64MB.** Search years of chat history in any language.
+
 
 <details>
 <summary><strong>🔧 Click to expand: Installation Requirements</strong></summary>
@@ -260,6 +258,12 @@ sudo packages/wechat-exporter/wechattweak-cli install
 ```
 
 **Troubleshooting**: If you encounter installation issues, check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41).
+If you encounter the error:
+```
+Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
+Failed to find or export WeChat data. Exiting.
+```
+Try restarting WeChat and running the script again.
 </details>
 
 <details>
