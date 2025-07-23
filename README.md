@@ -37,7 +37,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
-## Quick Start in 1 minute
+## Installation
 
 ```bash
 git clone git@github.com:yichuan-w/LEANN.git leann
@@ -53,9 +53,6 @@ export CXX=$(brew --prefix llvm)/bin/clang++
 
 # Install with HNSW backend (default, recommended for most users)
 uv sync
-
-# Or add DiskANN backend if you want to test more options
-uv sync --extra diskann
 ```
 
 **Linux (Ubuntu/Debian):**
@@ -64,11 +61,7 @@ sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev l
 
 # Install with HNSW backend (default, recommended for most users)
 uv sync
-
-# Or add DiskANN backend if you want to test more options
-uv sync --extra diskann
 ```
-
 
 
 **Ollama Setup (Recommended for full privacy):**
@@ -97,9 +90,9 @@ ollama serve &
 ollama pull llama3.2:1b
 ```
 
-## Dead Simple API
+## Quick Start in 30s
 
-Just 3 lines of code. Our declarative API makes RAG as easy as writing a config file:
+Our declarative API makes RAG as easy as writing a config file.
 
 ```python
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
