@@ -259,12 +259,11 @@ sudo packages/wechat-exporter/wechattweak-cli install
 
 **Troubleshooting**:
 - If you encounter installation issues, check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41).
-- If you encounter the error:
+- If you encounter the error below, try restart your wechat
 ```
 Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
 Failed to find or export WeChat data. Exiting.
 ```
-Try restarting WeChat and running the script again.
 </details>
 
 <details>
