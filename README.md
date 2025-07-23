@@ -152,8 +152,7 @@ python ./examples/main_cli_example.py
 ### Search Your Entire Life
 ```bash
 python examples/mail_reader_leann.py
-# "What did my boss say about the Christmas party last year?"
-# "Find all emails from my mom about birthday plans"
+# "What's the number of class recommend to take per semester for incoming EECS students?"
 ```
 **90K emails → 14MB.** Finally, search your email like you search Google.
 
@@ -191,8 +190,7 @@ Once the index is built, you can ask questions like:
 ### Time Machine for the Web  
 ```bash
 python examples/google_history_reader_leann.py
-# "What was that AI paper I read last month?"
-# "Show me all the cooking videos I watched"
+# "Tell me my browser history about machine learning system stuff?"
 ```
 **38K browser entries → 6MB.** Your browser history becomes your personal search engine.
 

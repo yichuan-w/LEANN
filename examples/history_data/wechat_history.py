@@ -335,14 +335,15 @@ class WeChatHistoryReader(BaseReader):
             if create_time:
                 try:
                     timestamp = datetime.fromtimestamp(create_time)
-                    time_str = timestamp.strftime('%H:%M:%S')
+                    # change to YYYY-MM-DD HH:MM:SS
+                    time_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
                 except:
                     time_str = str(create_time)
             else:
                 time_str = "Unknown"
             
-            sender = "Me" if is_sent_from_self else "Contact"
-            message_parts.append(f"[{time_str}] {sender}: {readable_text}")
+            sender = "[Me]" if is_sent_from_self else "[Contact]"
+            message_parts.append(f"({time_str}) {sender}: {readable_text}")
         
         concatenated_text = "\n".join(message_parts)
         
@@ -354,13 +355,11 @@ Messages ({len(messages)} messages, {message_group['total_length']} chars):
 
 {concatenated_text}
 """
-        
+        # TODO @yichuan give better format and rich info here!    
         doc_content = f"""
-Contact: {contact_name}
-
 {concatenated_text}
 """
-        return doc_content
+        return doc_content, contact_name
     
     def load_data(self, input_dir: str = None, **load_kwargs: Any) -> List[Document]:
         """
@@ -441,8 +440,8 @@ Contact: {contact_name}
                             if count >= max_count and max_count > 0:
                                 break
                             
-                            doc_content = self._create_concatenated_content(message_group, contact_name)
-                            doc = Document(text=doc_content, metadata={})
+                            doc_content, contact_name  = self._create_concatenated_content(message_group, contact_name)
+                            doc = Document(text=doc_content, metadata={"contact_name": contact_name})
                             docs.append(doc)
                             count += 1
                         

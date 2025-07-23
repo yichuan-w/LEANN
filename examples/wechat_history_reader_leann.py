@@ -52,7 +52,7 @@ def create_leann_index_from_multiple_wechat_exports(
                 documents = reader.load_data(
                     wechat_export_dir=str(export_dir),
                     max_count=max_count,
-                    concatenate_messages=False,  # Disable concatenation - one message per document
+                    concatenate_messages=True,  # Disable concatenation - one message per document
                 )
                 if documents:
                     print(f"Loaded {len(documents)} chat documents from {export_dir}")
@@ -78,7 +78,7 @@ def create_leann_index_from_multiple_wechat_exports(
         )
 
         # Create text splitter with 256 chunk size
-        text_splitter = SentenceSplitter(chunk_size=128, chunk_overlap=64)
+        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=128)
 
         # Convert Documents to text strings and chunk them
         all_texts = []
@@ -86,7 +86,8 @@ def create_leann_index_from_multiple_wechat_exports(
             # Split the document into chunks
             nodes = text_splitter.get_nodes_from_documents([doc])
             for node in nodes:
-                all_texts.append(node.get_content())
+                text = '[Contact] means the message is from: ' + doc.metadata["contact_name"] + '\n' + node.get_content()
+                all_texts.append(text)
 
         print(
             f"Created {len(all_texts)} text chunks from {len(all_documents)} documents"
@@ -224,7 +225,7 @@ async def query_leann_index(index_path: str, query: str):
         query,
         top_k=20,
         recompute_beighbor_embeddings=True,
-        complexity=32,
+        complexity=16,
         beam_width=1,
         llm_config={
             "type": "openai",
@@ -252,13 +253,13 @@ async def main():
     parser.add_argument(
         "--index-dir",
         type=str,
-        default="./wechat_history_magic_test",
+        default="./wechat_history_magic_test_11Debug_new",
         help="Directory to store the LEANN index (default: ./wechat_history_index_leann_test)",
     )
     parser.add_argument(
         "--max-entries",
         type=int,
-        default=5000,
+        default=50,
         help="Maximum number of chat entries to process (default: 5000)",
     )
     parser.add_argument(
