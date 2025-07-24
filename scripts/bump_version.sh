@@ -8,6 +8,11 @@ fi
 NEW_VERSION=$1
 
 # Update all pyproject.toml files
-sed -i '' "s/version = \".*\"/version = \"$NEW_VERSION\"/" packages/*/pyproject.toml
+# Use different sed syntax for macOS vs Linux
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s/version = \".*\"/version = \"$NEW_VERSION\"/" packages/*/pyproject.toml
+else
+    sed -i "s/version = \".*\"/version = \"$NEW_VERSION\"/" packages/*/pyproject.toml
+fi
 
 echo "Version updated to $NEW_VERSION" 
