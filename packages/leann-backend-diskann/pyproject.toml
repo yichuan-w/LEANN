@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "leann-backend-diskann"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = ["leann-core==0.1.0", "numpy"]
 
 [tool.scikit-build]
