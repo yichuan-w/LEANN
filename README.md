@@ -187,7 +187,7 @@ Once the index is built, you can ask questions like:
 - "Show me emails about travel expenses"
 </details>
 
-###  Time Machine for the Web: RAG Your Entire Browser History!
+### 🕵️ Time Machine for the Web: RAG Your Entire Browser History!
 ```bash
 python examples/google_history_reader_leann.py --query "Tell me my browser history about machine learning?"
 ```
