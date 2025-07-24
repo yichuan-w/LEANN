@@ -14,7 +14,7 @@
 
 LEANN is a revolutionary vector database that democratizes personal AI. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **97% less storage** than traditional solutions **without accuracy loss**.
 
-LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
+LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration Figs →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
 **Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can search your **[file system](#📄-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#📧-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#🕵️-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#💬-wechat-detective-unlock-your-golden-memories)**, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
