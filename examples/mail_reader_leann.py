@@ -22,7 +22,7 @@ def get_mail_path():
     return os.path.join(home_dir, "Library", "Mail")
 
 # Default mail path for macOS
-# DEFAULT_MAIL_PATH = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
+DEFAULT_MAIL_PATH = "/Users/yichuan/Library/Mail/V10/0FCA0879-FD8C-4B7E-83BF-FDDA930791C5/[Gmail].mbox/All Mail.mbox/78BA5BE1-8819-4F9A-9613-EB63772F1DD0/Data"
 
 def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_path: str = "mail_index.leann", max_count: int = -1, include_html: bool = False, embedding_model: str = "facebook/contriever"):
     """
@@ -77,7 +77,7 @@ def create_leann_index_from_multiple_sources(messages_dirs: List[Path], index_pa
         print(f"\nTotal loaded {len(all_documents)} email documents from {len(messages_dirs)} directories and starting to split them into chunks")
         
         # Create text splitter with 256 chunk size
-        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=128)
+        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=25)
         
         # Convert Documents to text strings and chunk them
         all_texts = []
@@ -158,7 +158,7 @@ def create_leann_index(mail_path: str, index_path: str = "mail_index.leann", max
         print(f"Loaded {len(documents)} email documents")
         
         # Create text splitter with 256 chunk size
-        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=25)
+        text_splitter = SentenceSplitter(chunk_size=256, chunk_overlap=128)
         
         # Convert Documents to text strings and chunk them
         all_texts = []
@@ -218,9 +218,9 @@ async def query_leann_index(index_path: str, query: str):
     start_time = time.time()
     chat_response = chat.ask(
         query, 
-        top_k=10, 
+        top_k=20, 
         recompute_beighbor_embeddings=True,
-        complexity=12,
+        complexity=32,
         beam_width=1,
         
     )
@@ -233,7 +233,7 @@ async def main():
     parser = argparse.ArgumentParser(description='LEANN Mail Reader - Create and query email index')
     # Remove --mail-path argument and auto-detect all Messages directories
     # Remove DEFAULT_MAIL_PATH
-    parser.add_argument('--index-dir', type=str, default="./mail_index_leann_debug",
+    parser.add_argument('--index-dir', type=str, default="./mail_index_index_file",
                        help='Directory to store the LEANN index (default: ./mail_index_leann_raw_text_all_dicts)')
     parser.add_argument('--max-emails', type=int, default=1000,
                        help='Maximum number of emails to process (-1 means all)')
@@ -253,6 +253,9 @@ async def main():
     mail_path = get_mail_path()
     print(f"Searching for email data in: {mail_path}")
     messages_dirs = find_all_messages_directories(mail_path)
+    # messages_dirs = find_all_messages_directories(DEFAULT_MAIL_PATH)
+    # messages_dirs = [DEFAULT_MAIL_PATH]
+    # messages_dirs = messages_dirs[:1]
     
     print('len(messages_dirs): ', len(messages_dirs))
     

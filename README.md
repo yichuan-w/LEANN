@@ -16,7 +16,7 @@ LEANN is a revolutionary vector database that democratizes personal AI. Transfor
 
 LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
-**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can search your **[file system](#process-any-documents-pdf-txt-md)**, **[emails](#search-your-entire-life)**, **[browser history](#time-machine-for-the-web)**, **[chat history](#wechat-detective)**, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
+**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can search your **[file system](#📄-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#📧-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#🕵️-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#💬-wechat-detective-unlock-your-golden-memories)**, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
 
 
@@ -129,7 +129,7 @@ response = chat.ask(
 
 LEANN supports RAG on various data sources including documents (.pdf, .txt, .md), Apple Mail, Google Search History, WeChat, and more.
 
-### Process Any Documents (.pdf, .txt, .md)
+### 📄 Personal Data Manager: Process Any Documents (.pdf, .txt, .md)!
 
 Ask questions directly about your personal PDFs, documents, and any directory containing your files!
 
@@ -148,13 +148,13 @@ python ./examples/main_cli_example.py
 
 
 
-### Search Your Entire Life
+### 📧 Your Personal Email Secretary: RAG on Apple Mail!
 
 **Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 ```bash
 python examples/mail_reader_leann.py --query "What's the food I ordered by doordash or Uber eat?"
 ```
-**90K emails → 14MB.** Finally, search your email like you search Google.
+**780K email chunks → 78MB storage** Finally, search your email like you search Google.
 
 <details>
 <summary><strong>📋 Click to expand: Command Examples</strong></summary>
@@ -187,11 +187,11 @@ Once the index is built, you can ask questions like:
 - "Show me emails about travel expenses"
 </details>
 
-### Time Machine for the Web  
+### 🕵️ Time Machine for the Web: RAG Your Entire Browser History!
 ```bash
 python examples/google_history_reader_leann.py --query "Tell me my browser history about machine learning?"
 ```
-**38K browser entries → 6MB.** Your browser history becomes your personal search engine.
+**38K browser entries → 6MB storage.** Your browser history becomes your personal search engine.
 
 <details>
 <summary><strong>📋 Click to expand: Command Examples</strong></summary>
@@ -240,12 +240,12 @@ Once the index is built, you can ask questions like:
 
 </details>
 
-### WeChat Detective
+### 💬 WeChat Detective: Unlock Your Golden Memories!
 
 ```bash
 python examples/wechat_history_reader_leann.py --query "Show me all group chats about weekend plans"
 ```
-**400K messages → 64MB.** Search years of chat history in any language.
+**400K messages → 64MB storage** Search years of chat history in any language.
 
 
 <details>
@@ -400,11 +400,11 @@ Same dataset, same hardware, same embedding model. LEANN just works better.
 
 ### Storage Usage Comparison
 
-| System                | DPR (2.1M chunks) | RPJ-wiki (60M chunks) | Chat history (400K messages) | Apple emails (90K messages chunks) |Google Search History (38K entries)
+| System                | DPR (2.1M chunks) | RPJ-wiki (60M chunks) | Chat history (400K messages) | Apple emails (780K messages chunks) |Google Search History (38K entries)
 |-----------------------|------------------|------------------------|-----------------------------|------------------------------|------------------------------|
-| Traditional Vector DB(FAISS) | 3.8 GB           | 201 GB                 | 1.8G                     | 305.8 MB                     |130.4 MB                     |
-| **LEANN**             | **324 MB**       | **6 GB**               | **64 MB**                 | **14.8 MB**                  |**6.4MB**                  |
-| **Reduction**         | **91% smaller**  | **97% smaller**        | **97% smaller**             | **95% smaller**              |**95% smaller**              |
+| Traditional Vector DB(FAISS) | 3.8 GB           | 201 GB                 | 1.8G                     | 2.4G                     |130.4 MB                     |
+| **LEANN**             | **324 MB**       | **6 GB**               | **64 MB**                 | **79 MB**                  |**6.4MB**                  |
+| **Reduction**         | **91% smaller**  | **97% smaller**        | **97% smaller**             | **97% smaller**              |**95% smaller**              |
 
 <!-- ### Memory Usage Comparison
 

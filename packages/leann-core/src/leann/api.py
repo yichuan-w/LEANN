@@ -142,7 +142,7 @@ class LeannBuilder:
     def __init__(
         self,
         backend_name: str,
-        embedding_model: str = "facebook/contriever-msmarco",
+        embedding_model: str = "facebook/contriever",
         dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
         **backend_kwargs,
