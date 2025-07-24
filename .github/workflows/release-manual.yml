@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
       
     steps:
       - uses: actions/checkout@v4
@@ -26,8 +27,8 @@ jobs:
       
       - name: Check CI status
         run: |
-          echo "ℹ️  This workflow assumes CI has already passed on the current commit."
-          echo "   If not, please wait for CI to complete before releasing."
+          echo "ℹ️  This workflow will download build artifacts from the latest CI run."
+          echo "   CI must have completed successfully on the current commit."
           echo ""
           
       - name: Validate version format
@@ -64,11 +65,69 @@ jobs:
           git add packages/*/pyproject.toml
           git commit -m "chore: release v${{ inputs.version }}"
       
-      - name: Build packages for TestPyPI
+      - name: Get CI run ID
+        id: get-ci-run
         run: |
-          echo "🔨 Building packages for testing..."
-          ./scripts/build_and_test.sh all
-          echo "✅ Build successful! (Already tested on multiple platforms)"
+          # Get the latest successful CI run on the previous commit (before version bump)
+          COMMIT_SHA=$(git rev-parse HEAD~1)
+          RUN_ID=$(gh run list \
+            --workflow="CI - Build and Test" \
+            --status=success \
+            --commit=$COMMIT_SHA \
+            --json databaseId \
+            --jq '.[0].databaseId')
+          
+          if [ -z "$RUN_ID" ]; then
+            echo "❌ No successful CI run found for commit $COMMIT_SHA"
+            echo ""
+            echo "This usually means:"
+            echo "1. CI hasn't run on the latest commit yet"
+            echo "2. CI failed on the latest commit"
+            echo ""
+            echo "Please ensure CI passes on main branch before releasing."
+            exit 1
+          fi
+          
+          echo "✅ Found CI run: $RUN_ID"
+          echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Download artifacts from CI
+        run: |
+          echo "📦 Downloading artifacts from CI run ${{ steps.get-ci-run.outputs.run-id }}..."
+          
+          # Download all wheel artifacts
+          gh run download ${{ steps.get-ci-run.outputs.run-id }} \
+            --pattern "wheels-*" \
+            --dir ./dist-downloads
+          
+          # Consolidate all wheels into packages/*/dist/
+          mkdir -p packages/leann-core/dist
+          mkdir -p packages/leann-backend-hnsw/dist
+          mkdir -p packages/leann-backend-diskann/dist
+          mkdir -p packages/leann/dist
+          
+          find ./dist-downloads -name "*.whl" -exec cp {} ./packages/ \;
+          
+          # Move wheels to correct package directories
+          for wheel in packages/*.whl; do
+            if [[ $wheel == *"leann_core"* ]]; then
+              mv "$wheel" packages/leann-core/dist/
+            elif [[ $wheel == *"leann_backend_hnsw"* ]]; then
+              mv "$wheel" packages/leann-backend-hnsw/dist/
+            elif [[ $wheel == *"leann_backend_diskann"* ]]; then
+              mv "$wheel" packages/leann-backend-diskann/dist/
+            elif [[ $wheel == *"leann-"* ]] && [[ $wheel != *"backend"* ]] && [[ $wheel != *"core"* ]]; then
+              mv "$wheel" packages/leann/dist/
+            fi
+          done
+          
+          # List downloaded wheels
+          echo "✅ Downloaded wheels:"
+          find packages/*/dist -name "*.whl" -type f | sort
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Test on TestPyPI (optional)
         if: inputs.test_pypi
