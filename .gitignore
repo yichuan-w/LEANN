@@ -12,7 +12,6 @@ outputs/
 *.idx 
 *.map
 .history/
-scripts/
 lm_eval.egg-info/
 demo/experiment_results/**/*.json
 *.jsonl
