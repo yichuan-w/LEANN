@@ -90,7 +90,7 @@ jobs:
       - name: Build wheel
         run: |
           cd packages/leann-backend-hnsw
-          uv build --wheel
+          uv build --wheel --python python
           
       - name: Repair wheel (Linux)
         if: runner.os == 'Linux'
@@ -167,7 +167,7 @@ jobs:
       - name: Build wheel
         run: |
           cd packages/leann-backend-diskann
-          uv build --wheel
+          uv build --wheel --python python
           
       - name: Repair wheel (Linux)
         if: runner.os == 'Linux'
