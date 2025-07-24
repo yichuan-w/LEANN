@@ -222,7 +222,6 @@ async def query_leann_index(index_path: str, query: str):
         recompute_beighbor_embeddings=True,
         complexity=32,
         beam_width=1,
-        
     )
     end_time = time.time()
     print(f"Time taken: {end_time - start_time} seconds")

@@ -549,6 +549,7 @@ class HFChat(LLMInterface):
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def ask(self, prompt: str, **kwargs) -> str:
+        print('kwargs in HF: ', kwargs)
         # Check if this is a Qwen model and add /no_think by default
         is_qwen_model = "qwen" in self.model.config._name_or_path.lower()
         
