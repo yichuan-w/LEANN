@@ -28,6 +28,68 @@ def check_ollama_models() -> List[str]:
         return []
 
 
+def check_ollama_model_exists_remotely(model_name: str) -> tuple[bool, list[str]]:
+    """Check if a model exists in Ollama's remote library and return available tags
+    
+    Returns:
+        (model_exists, available_tags): bool and list of matching tags
+    """
+    try:
+        import requests
+        import re
+        
+        # Split model name and tag
+        if ':' in model_name:
+            base_model, requested_tag = model_name.split(':', 1)
+        else:
+            base_model, requested_tag = model_name, None
+        
+        # First check if base model exists in library
+        library_response = requests.get("https://ollama.com/library", timeout=8)
+        if library_response.status_code != 200:
+            return True, []  # Assume exists if can't check
+            
+        # Extract model names from library page
+        models_in_library = re.findall(r'href="/library/([^"]+)"', library_response.text)
+        
+        if base_model not in models_in_library:
+            return False, []  # Base model doesn't exist
+        
+        # If base model exists, get available tags
+        tags_response = requests.get(f"https://ollama.com/library/{base_model}/tags", timeout=8)
+        if tags_response.status_code != 200:
+            return True, []  # Base model exists but can't get tags
+            
+        # Extract tags for this model - be more specific to avoid HTML artifacts
+        tag_pattern = rf'{re.escape(base_model)}:[a-zA-Z0-9\.\-_]+'
+        raw_tags = re.findall(tag_pattern, tags_response.text)
+        
+        # Clean up tags - remove HTML artifacts and duplicates
+        available_tags = []
+        seen = set()
+        for tag in raw_tags:
+            # Skip if it looks like HTML (contains < or >)
+            if '<' in tag or '>' in tag:
+                continue
+            if tag not in seen:
+                seen.add(tag)
+                available_tags.append(tag)
+        
+        # Check if exact model exists
+        if requested_tag is None:
+            # User just requested base model, suggest tags
+            return True, available_tags[:10]  # Return up to 10 tags
+        else:
+            exact_match = model_name in available_tags
+            return exact_match, available_tags[:10]
+            
+    except Exception:
+        pass
+    
+    # If scraping fails, assume model might exist (don't block user)
+    return True, []
+
+
 def search_ollama_models_fuzzy(query: str, available_models: List[str]) -> List[str]:
     """Use intelligent fuzzy search for Ollama models"""
     if not available_models:
@@ -243,24 +305,66 @@ def validate_model_and_suggest(model_name: str, llm_type: str) -> Optional[str]:
     if llm_type == "ollama":
         available_models = check_ollama_models()
         if available_models and model_name not in available_models:
-            # Use intelligent fuzzy search based on locally installed models
-            suggestions = search_ollama_models_fuzzy(model_name, available_models)
-            
             error_msg = f"Model '{model_name}' not found in your local Ollama installation."
-            if suggestions:
-                error_msg += "\n\nDid you mean one of these installed models?\n"
-                for i, suggestion in enumerate(suggestions, 1):
-                    error_msg += f"  {i}. {suggestion}\n"
-            else:
-                error_msg += "\n\nYour installed models:\n"
-                for i, model in enumerate(available_models[:8], 1):
-                    error_msg += f"  {i}. {model}\n"
-                if len(available_models) > 8:
-                    error_msg += f"  ... and {len(available_models) - 8} more\n"
             
-            error_msg += "\nTo list all models: ollama list"
-            error_msg += "\nTo download a new model: ollama pull <model_name>"
-            error_msg += "\nBrowse models: https://ollama.com/library"
+            # Check if the model exists remotely and get available tags
+            model_exists_remotely, available_tags = check_ollama_model_exists_remotely(model_name)
+            
+            if model_exists_remotely and model_name in available_tags:
+                # Exact model exists remotely - suggest pulling it
+                error_msg += f"\n\nTo install the requested model:\n"
+                error_msg += f"  ollama pull {model_name}\n"
+                
+                # Show local alternatives
+                suggestions = search_ollama_models_fuzzy(model_name, available_models)
+                if suggestions:
+                    error_msg += "\nOr use one of these similar installed models:\n"
+                    for i, suggestion in enumerate(suggestions, 1):
+                        error_msg += f"  {i}. {suggestion}\n"
+                        
+            elif model_exists_remotely and available_tags:
+                # Base model exists but requested tag doesn't - suggest correct tags
+                base_model = model_name.split(':')[0]
+                requested_tag = model_name.split(':', 1)[1] if ':' in model_name else None
+                
+                error_msg += f"\n\nModel '{base_model}' exists, but tag '{requested_tag}' is not available."
+                error_msg += f"\n\nAvailable {base_model} models you can install:\n"
+                for i, tag in enumerate(available_tags[:8], 1):
+                    error_msg += f"  {i}. ollama pull {tag}\n"
+                if len(available_tags) > 8:
+                    error_msg += f"  ... and {len(available_tags) - 8} more variants\n"
+                    
+                # Also show local alternatives
+                suggestions = search_ollama_models_fuzzy(model_name, available_models)
+                if suggestions:
+                    error_msg += "\nOr use one of these similar installed models:\n"
+                    for i, suggestion in enumerate(suggestions, 1):
+                        error_msg += f"  {i}. {suggestion}\n"
+                        
+            else:
+                # Model doesn't exist remotely - show fuzzy suggestions
+                suggestions = search_ollama_models_fuzzy(model_name, available_models)
+                error_msg += f"\n\nModel '{model_name}' was not found in Ollama's library."
+                
+                if suggestions:
+                    error_msg += "\n\nDid you mean one of these installed models?\n"
+                    for i, suggestion in enumerate(suggestions, 1):
+                        error_msg += f"  {i}. {suggestion}\n"
+                else:
+                    error_msg += "\n\nYour installed models:\n"
+                    for i, model in enumerate(available_models[:8], 1):
+                        error_msg += f"  {i}. {model}\n"
+                    if len(available_models) > 8:
+                        error_msg += f"  ... and {len(available_models) - 8} more\n"
+            
+            error_msg += "\n\nCommands:"
+            error_msg += "\n  ollama list                    # List installed models"
+            if model_exists_remotely and available_tags:
+                if model_name in available_tags:
+                    error_msg += f"\n  ollama pull {model_name}          # Install requested model"
+                else:
+                    error_msg += f"\n  ollama pull {available_tags[0]}    # Install recommended variant"
+            error_msg += "\n  https://ollama.com/library     # Browse available models"
             return error_msg
             
     elif llm_type == "hf":
