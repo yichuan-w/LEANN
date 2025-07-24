@@ -5,14 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "leann-core"
 version = "0.1.0"
-description = "Core API and plugin system for Leann."
+description = "Core API and plugin system for LEANN"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 
+# All required dependencies included
 dependencies = [
     "numpy>=1.20.0",
-    "tqdm>=4.60.0"
+    "tqdm>=4.60.0",
+    "psutil>=5.8.0",
+    "pyzmq>=23.0.0",
+    "msgpack>=1.0.0",
+    "torch>=2.0.0",
+    "sentence-transformers>=2.2.0",
+    "llama-index-core>=0.12.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.scripts]

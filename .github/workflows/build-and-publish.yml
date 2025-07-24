@@ -1,0 +1,256 @@
+name: Build and Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to PyPI'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'test'
+          - 'prod'
+
+jobs:
+  # Build pure Python package: leann-core
+  build-core:
+    name: Build leann-core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+          
+      - name: Install build dependencies
+        run: |
+          uv pip install --system build twine
+          
+      - name: Build package
+        run: |
+          cd packages/leann-core
+          uv build
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: leann-core-dist
+          path: packages/leann-core/dist/
+
+  # Build binary package: leann-backend-hnsw (default backend)
+  build-hnsw:
+    name: Build leann-backend-hnsw
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+          
+      - name: Install system dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libomp-dev libboost-all-dev libzmq3-dev \
+            pkg-config patchelf
+          
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install libomp boost zeromq
+          
+      - name: Install build dependencies
+        run: |
+          uv pip install --system scikit-build-core numpy swig
+          uv pip install --system auditwheel delocate
+          
+      - name: Build wheel
+        run: |
+          cd packages/leann-backend-hnsw
+          uv pip wheel . --no-deps -w dist
+          
+      - name: Repair wheel (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd packages/leann-backend-hnsw
+          auditwheel repair dist/*.whl -w dist_repaired
+          rm -rf dist
+          mv dist_repaired dist
+          
+      - name: Repair wheel (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd packages/leann-backend-hnsw
+          delocate-wheel -w dist_repaired -v dist/*.whl
+          rm -rf dist
+          mv dist_repaired dist
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hnsw-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: packages/leann-backend-hnsw/dist/
+
+  # Build binary package: leann-backend-diskann (multi-platform)
+  build-diskann:
+    name: Build leann-backend-diskann
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+          
+      - name: Install system dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libomp-dev libboost-all-dev libaio-dev libzmq3-dev \
+            pkg-config protobuf-compiler libprotobuf-dev libabsl-dev patchelf
+          
+          # Install Intel MKL using Intel's installer
+          wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940.sh
+          sudo sh intel-onemkl-2025.0.0.940.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
+          source /opt/intel/oneapi/setvars.sh
+          echo "MKLROOT=/opt/intel/oneapi/mkl/latest" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/opt/intel/oneapi/mkl/latest/lib/intel64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install libomp boost zeromq
+          # MKL is not available on Homebrew, but DiskANN can work without it
+          
+      - name: Install build dependencies
+        run: |
+          uv pip install --system scikit-build-core numpy Cython pybind11
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            uv pip install --system auditwheel
+          else
+            uv pip install --system delocate
+          fi
+          
+      - name: Build wheel
+        run: |
+          cd packages/leann-backend-diskann
+          uv pip wheel . --no-deps -w dist
+          
+      - name: Repair wheel (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd packages/leann-backend-diskann
+          auditwheel repair dist/*.whl -w dist_repaired
+          rm -rf dist
+          mv dist_repaired dist
+          
+      - name: Repair wheel (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd packages/leann-backend-diskann
+          delocate-wheel -w dist_repaired -v dist/*.whl
+          rm -rf dist
+          mv dist_repaired dist
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: diskann-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: packages/leann-backend-diskann/dist/
+
+  # Build meta-package: leann (build last)
+  build-meta:
+    name: Build leann meta-package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+          
+      - name: Install build dependencies
+        run: |
+          uv pip install --system build
+          
+      - name: Build package
+        run: |
+          cd packages/leann
+          uv build
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: leann-meta-dist
+          path: packages/leann/dist/
+
+  # Publish to PyPI
+  publish:
+    name: Publish to PyPI
+    needs: [build-core, build-hnsw, build-diskann, build-meta]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || github.event.inputs.publish != 'false'
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          
+      - name: Flatten directory structure
+        run: |
+          mkdir -p all_wheels
+          find dist -name "*.whl" -exec cp {} all_wheels/ \;
+          find dist -name "*.tar.gz" -exec cp {} all_wheels/ \;
+          
+      - name: Publish to Test PyPI
+        if: github.event.inputs.publish == 'test' || github.event_name == 'workflow_dispatch'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: all_wheels/
+          
+      - name: Publish to PyPI
+        if: github.event_name == 'release' || github.event.inputs.publish == 'prod'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: all_wheels/ 
