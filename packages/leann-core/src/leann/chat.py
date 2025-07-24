@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional, List
 import logging
 import os
 import difflib
+import torch
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -501,7 +502,7 @@ class OllamaChat(LLMInterface):
 
 
 class HFChat(LLMInterface):
-    """LLM interface for local Hugging Face Transformers models."""
+    """LLM interface for local Hugging Face Transformers models with proper chat templates."""
 
     def __init__(self, model_name: str = "deepseek-ai/deepseek-llm-7b-chat"):
         logger.info(f"Initializing HFChat with model='{model_name}'")
@@ -512,7 +513,7 @@ class HFChat(LLMInterface):
             raise ValueError(model_error)
             
         try:
-            from transformers.pipelines import pipeline
+            from transformers import AutoTokenizer, AutoModelForCausalLM
             import torch
         except ImportError:
             raise ImportError(
@@ -521,54 +522,100 @@ class HFChat(LLMInterface):
 
         # Auto-detect device
         if torch.cuda.is_available():
-            device = "cuda"
+            self.device = "cuda"
             logger.info("CUDA is available. Using GPU.")
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            device = "mps"
+            self.device = "mps"
             logger.info("MPS is available. Using Apple Silicon GPU.")
         else:
-            device = "cpu"
+            self.device = "cpu"
             logger.info("No GPU detected. Using CPU.")
 
-        self.pipeline = pipeline("text-generation", model=model_name, device=device)
+        # Load tokenizer and model
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
+            device_map="auto" if self.device != "cpu" else None,
+            trust_remote_code=True
+        )
+        
+        # Move model to device if not using device_map
+        if self.device != "cpu" and "device_map" not in str(self.model):
+            self.model = self.model.to(self.device)
+        
+        # Set pad token if not present
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def ask(self, prompt: str, **kwargs) -> str:
-        # Map OpenAI-style arguments to Hugging Face equivalents
-        if "max_tokens" in kwargs:
-            # Prefer user-provided max_new_tokens if both are present
-            kwargs.setdefault("max_new_tokens", kwargs["max_tokens"])
-            # Remove the unsupported key to avoid errors in Transformers
-            kwargs.pop("max_tokens")
+        # Check if this is a Qwen model and add /no_think by default
+        is_qwen_model = "qwen" in self.model.config._name_or_path.lower()
+        
+        # For Qwen models, automatically add /no_think to the prompt
+        if is_qwen_model and "/no_think" not in prompt and "/think" not in prompt:
+            prompt = prompt + " /no_think"
+        
+        # Prepare chat template
+        messages = [{"role": "user", "content": prompt}]
+        
+        # Apply chat template if available
+        if hasattr(self.tokenizer, "apply_chat_template"):
+            try:
+                formatted_prompt = self.tokenizer.apply_chat_template(
+                    messages, 
+                    tokenize=False, 
+                    add_generation_prompt=True
+                )
+            except Exception as e:
+                logger.warning(f"Chat template failed, using raw prompt: {e}")
+                formatted_prompt = prompt
+        else:
+            # Fallback for models without chat template
+            formatted_prompt = prompt
 
-        # Handle temperature=0 edge-case for greedy decoding
-        if "temperature" in kwargs and kwargs["temperature"] == 0.0:
-            # Remove unsupported zero temperature and use deterministic generation
-            kwargs.pop("temperature")
-            kwargs.setdefault("do_sample", False)
+        # Tokenize input
+        inputs = self.tokenizer(
+            formatted_prompt, 
+            return_tensors="pt", 
+            padding=True,
+            truncation=True,
+            max_length=2048
+        )
+        
+        # Move inputs to device
+        if self.device != "cpu":
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-        # Sensible defaults for text generation
-        params = {"max_length": 500, "num_return_sequences": 1, **kwargs}
-        logger.info(f"Generating text with Hugging Face model with params: {params}")
-        results = self.pipeline(prompt, **params)
+        # Set generation parameters
+        generation_config = {
+            "max_new_tokens": kwargs.get("max_tokens", kwargs.get("max_new_tokens", 512)),
+            "temperature": kwargs.get("temperature", 0.7),
+            "top_p": kwargs.get("top_p", 0.9),
+            "do_sample": kwargs.get("temperature", 0.7) > 0,
+            "pad_token_id": self.tokenizer.eos_token_id,
+            "eos_token_id": self.tokenizer.eos_token_id,
+        }
+        
+        # Handle temperature=0 for greedy decoding
+        if generation_config["temperature"] == 0.0:
+            generation_config["do_sample"] = False
+            generation_config.pop("temperature")
 
-        # Handle different response formats from transformers
-        if isinstance(results, list) and len(results) > 0:
-            generated_text = (
-                results[0].get("generated_text", "")
-                if isinstance(results[0], dict)
-                else str(results[0])
+        logger.info(f"Generating with HuggingFace model, config: {generation_config}")
+        
+        # Generate
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                **generation_config
             )
-        else:
-            generated_text = str(results)
 
-        # Extract only the newly generated portion by removing the original prompt
-        if isinstance(generated_text, str) and generated_text.startswith(prompt):
-            response = generated_text[len(prompt) :].strip()
-        else:
-            # Fallback: return the full response if prompt removal fails
-            response = str(generated_text)
-
-        return response
+        # Decode response
+        generated_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+        response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        
+        return response.strip()
 
 
 class OpenAIChat(LLMInterface):

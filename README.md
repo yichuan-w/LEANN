@@ -152,7 +152,7 @@ python ./examples/main_cli_example.py
 
 **Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 ```bash
-python examples/mail_reader_leann.py --query "What's the food I ordered by doordash or Uber eat?"
+python examples/mail_reader_leann.py --query "What's the food I ordered by doordash or Uber eat mostly?"
 ```
 **780K email chunks → 78MB storage** Finally, search your email like you search Google.
 
@@ -187,7 +187,7 @@ Once the index is built, you can ask questions like:
 - "Show me emails about travel expenses"
 </details>
 
-### 🔍 Time Machine for the Web: RAG Your Entire Browser History!
+### 🔍 Time Machine for the Web: RAG Your Entire Google Browser History!
 ```bash
 python examples/google_history_reader_leann.py --query "Tell me my browser history about machine learning?"
 ```
