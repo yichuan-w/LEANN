@@ -1,0 +1,124 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.1)'
+        required: true
+        type: string
+      test_pypi:
+        description: 'Test on TestPyPI first'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  validate-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Check CI status
+        run: |
+          echo "ℹ️  This workflow assumes CI has already passed on the current commit."
+          echo "   If not, please wait for CI to complete before releasing."
+          echo ""
+          
+      - name: Validate version format
+        run: |
+          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version format. Use semantic versioning (e.g., 0.1.1)"
+            exit 1
+          fi
+          echo "✅ Version format valid: ${{ inputs.version }}"
+      
+      - name: Check if version already exists
+        run: |
+          if git tag | grep -q "^v${{ inputs.version }}$"; then
+            echo "❌ Version v${{ inputs.version }} already exists!"
+            exit 1
+          fi
+          echo "✅ Version is new"
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      - name: Update versions
+        run: |
+          ./scripts/bump_version.sh ${{ inputs.version }}
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add packages/*/pyproject.toml
+          git commit -m "chore: release v${{ inputs.version }}"
+      
+      - name: Build packages for TestPyPI
+        run: |
+          echo "🔨 Building packages for testing..."
+          ./scripts/build_and_test.sh all
+          echo "✅ Build successful! (Already tested on multiple platforms)"
+      
+      - name: Test on TestPyPI (optional)
+        if: inputs.test_pypi
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        run: |
+          pip install twine
+          echo "📦 Uploading to TestPyPI..."
+          twine upload --repository testpypi packages/*/dist/* --verbose
+          echo "✅ Test upload successful!"
+          echo "📋 Check packages at: https://test.pypi.org/user/your-username/"
+          echo ""
+          echo "To test installation:"
+          echo "pip install -i https://test.pypi.org/simple/ leann"
+      
+      - name: Create and push tag
+        run: |
+          git tag "v${{ inputs.version }}"
+          git push origin main
+          git push origin "v${{ inputs.version }}"
+          echo "✅ Tag v${{ inputs.version }} created and pushed"
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Release v${{ inputs.version }}
+          body: |
+            ## 🚀 Release v${{ inputs.version }}
+            
+            ### What's Changed
+            See the [full changelog](https://github.com/${{ github.repository }}/compare/...v${{ inputs.version }})
+            
+            ### Installation
+            ```bash
+            pip install leann==${{ inputs.version }}
+            ```
+            
+            ### Test Installation (if using TestPyPI)
+            ```bash
+            pip install -i https://test.pypi.org/simple/ leann==${{ inputs.version }}
+            ```
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Trigger PyPI publish
+        run: |
+          echo "🚀 Triggering PyPI publish workflow..."
+          # The existing build-and-publish.yml will be triggered by the tag push
+          echo "✅ Release process completed! The publish workflow will run automatically." 

@@ -1,16 +1,51 @@
 # Release Guide
 
-## One-line Release 🚀
+## 📋 Prerequisites
+
+Before releasing, ensure:
+1. ✅ All code changes are committed and pushed
+2. ✅ CI has passed on the latest commit (check [Actions](https://github.com/yichuan-w/LEANN/actions/workflows/ci.yml))
+3. ✅ You have determined the new version number
+
+## 🚀 Recommended: Manual Release Workflow
+
+### Via GitHub UI (Most Reliable)
+
+1. **Verify CI Status**: Check that the latest commit has a green checkmark ✅
+2. Go to [Actions → Manual Release](https://github.com/yichuan-w/LEANN/actions/workflows/release-manual.yml)
+3. Click "Run workflow"
+4. Enter version (e.g., `0.1.1`)
+5. Toggle "Test on TestPyPI first" if desired
+6. Click "Run workflow"
+
+**What happens:**
+- ✅ Validates version format
+- ✅ Updates all package versions
+- ✅ Optionally tests on TestPyPI
+- ✅ Creates tag and GitHub release
+- ✅ Automatically triggers PyPI publish
+
+### Via Command Line
+
+```bash
+gh workflow run release-manual.yml -f version=0.1.1 -f test_pypi=true
+```
+
+## ⚡ Quick Release (One-Line)
+
+For experienced users who want the fastest path:
 
 ```bash
 ./scripts/release.sh 0.1.1
 ```
 
-That's it! This script will:
+This script will:
 1. Update all package versions
 2. Commit and push changes
 3. Create GitHub release
 4. CI automatically builds and publishes to PyPI
+
+⚠️ **Note**: If CI fails, you'll need to manually fix and re-tag
 
 ## Manual Testing Before Release
 
@@ -31,13 +66,6 @@ pip install packages/*/dist/*.whl
 # Upload to Production PyPI (use with caution)
 ./scripts/upload_to_pypi.sh prod
 ```
-
-### Why Manual Build for DiskANN?
-
-DiskANN's complex dependencies (protobuf, abseil, etc.) sometimes require local testing before release. The build script will:
-- Compile the C++ extension
-- Use `delocate` (macOS) or `auditwheel` (Linux) to bundle system libraries
-- Create a self-contained wheel with no external dependencies
 
 ## First-time setup
 
