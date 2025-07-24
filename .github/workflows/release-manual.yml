@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
       
     steps:
       - uses: actions/checkout@v4
@@ -67,10 +68,10 @@ jobs:
       - name: Get CI run ID
         id: get-ci-run
         run: |
-          # Get the latest successful CI run on this commit
-          COMMIT_SHA=$(git rev-parse HEAD)
+          # Get the latest successful CI run on the previous commit (before version bump)
+          COMMIT_SHA=$(git rev-parse HEAD~1)
           RUN_ID=$(gh run list \
-            --workflow=ci.yml \
+            --workflow="CI - Build and Test" \
             --status=success \
             --commit=$COMMIT_SHA \
             --json databaseId \
@@ -78,7 +79,12 @@ jobs:
           
           if [ -z "$RUN_ID" ]; then
             echo "❌ No successful CI run found for commit $COMMIT_SHA"
-            echo "Please wait for CI to complete before releasing."
+            echo ""
+            echo "This usually means:"
+            echo "1. CI hasn't run on the latest commit yet"
+            echo "2. CI failed on the latest commit"
+            echo ""
+            echo "Please ensure CI passes on main branch before releasing."
             exit 1
           fi
           
