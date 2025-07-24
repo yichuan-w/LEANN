@@ -1865,8 +1865,8 @@ dependencies = [
     { name = "llama-index-node-parser-docling" },
     { name = "llama-index-readers-docling" },
     { name = "llama-index-vector-stores-faiss" },
-    { name = "mlx" },
-    { name = "mlx-lm" },
+    { name = "mlx", marker = "sys_platform == 'darwin'" },
+    { name = "mlx-lm", marker = "sys_platform == 'darwin'" },
     { name = "msgpack" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1915,8 +1915,8 @@ requires-dist = [
     { name = "llama-index-readers-docling" },
     { name = "llama-index-vector-stores-faiss", specifier = ">=0.4.0" },
     { name = "matplotlib", marker = "extra == 'dev'" },
-    { name = "mlx", specifier = ">=0.26.3" },
-    { name = "mlx-lm", specifier = ">=0.26.0" },
+    { name = "mlx", marker = "sys_platform == 'darwin'", specifier = ">=0.26.3" },
+    { name = "mlx-lm", marker = "sys_platform == 'darwin'", specifier = ">=0.26.0" },
     { name = "msgpack", specifier = ">=1.1.1" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "ollama" },
@@ -2512,25 +2512,21 @@ name = "mlx"
 version = "0.26.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mlx-metal" },
+    { name = "mlx-metal", marker = "sys_platform == 'darwin'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/5d/97eb54c52f10341a7212c15757c02c37dcabdbf07b88527d0e806494540a/mlx-0.26.5-cp310-cp310-macosx_13_0_arm64.whl", hash = "sha256:027cf842643ee27176e24c604b453f3200d9c03a96aa0a24c7f9de7027e87485", size = 518555 },
     { url = "https://files.pythonhosted.org/packages/29/46/f3ba95a185aab82bfe03970619ed7de108b2a260f87b2da4754d7d4b9ec1/mlx-0.26.5-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:f7f26bb955b7b33564ff93f06050d086639dc7e55d4addda19f3658960822cf4", size = 491454 },
     { url = "https://files.pythonhosted.org/packages/66/68/ac4c423f0ebb56707467490b80b314a0f2476b91f7d4e24fc73c724865cd/mlx-0.26.5-cp310-cp310-macosx_15_0_arm64.whl", hash = "sha256:907c1fadbd3a13db40e0f455d19cc1750ec9961432b603605b501945126927a7", size = 491455 },
-    { url = "https://files.pythonhosted.org/packages/b4/b6/2eaa6082d1ce58449c6bc197d8caf4540551b88b1502ac9c2496321e89f3/mlx-0.26.5-cp310-cp310-manylinux_2_34_x86_64.manylinux_2_35_x86_64.whl", hash = "sha256:c9dfd46c9cf60e12b3440d8224068826f3c58b0ff2afadd6185f907ae587df17", size = 587645 },
     { url = "https://files.pythonhosted.org/packages/62/69/420613a3f242291451a70f4c9e910bf71de48b588ff3a89dfcd9427392e4/mlx-0.26.5-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:04367b20970a081c4359111c667ba62788592fd66184943c7eff10d660a13fce", size = 518440 },
     { url = "https://files.pythonhosted.org/packages/63/a9/fec899b16b0f8c61eff96e5133e8140359ce4a1bd0e3b8c9df61f00d0c7c/mlx-0.26.5-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:aa14defb1c5b330c94e9873d09c90f27d72681970c20c1490457c8a2a51b93e5", size = 491747 },
     { url = "https://files.pythonhosted.org/packages/26/9b/6655f81bf17c9b8a6f461aa7fe801d01d5ec5d76bd9d3339c26d8585e206/mlx-0.26.5-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:1e2d90d391c83932dee9a21ce5c95de30a60ce7fdac61143e3a15a4d8e55271d", size = 491752 },
-    { url = "https://files.pythonhosted.org/packages/39/28/68b86a11dd6230334729eb497d159d07df1b6eb95b665c3d306f64e557d8/mlx-0.26.5-cp311-cp311-manylinux_2_34_x86_64.manylinux_2_35_x86_64.whl", hash = "sha256:b6ab9ee55d0c2e2a67d66b35bdd52adf5e21adf9fdc4c2cc2e4c6f465ec30145", size = 587909 },
     { url = "https://files.pythonhosted.org/packages/a3/86/6511ddb1a2ed944a7210709aafcc0c148c443f96790b359790b490d772e3/mlx-0.26.5-cp312-cp312-macosx_13_0_arm64.whl", hash = "sha256:a29a060d089906a8ce753d0cb605c9c20005ce1865ccde8d06ad91c8c4325dc7", size = 510746 },
     { url = "https://files.pythonhosted.org/packages/50/af/7ce7d90fce96646d12b517dfb0c7a24914bfff815a412805568e42289e1f/mlx-0.26.5-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:d754e964c7c320c67f4a1a00d6d2d60c1eec8213b83ebe754702bf6dc51a36a4", size = 492448 },
     { url = "https://files.pythonhosted.org/packages/52/c1/8193c3adb61debec85d72cd9315c0e753f4ffd64ff2a4000e0e7f1e2b001/mlx-0.26.5-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:77c5b750b24a18ed6e433dc46d787193b124a869b1b65d1532bfb7d37ec7172f", size = 492450 },
-    { url = "https://files.pythonhosted.org/packages/cf/35/9f60fd3a7b35f8fb58afd47c231f69d91bc13cfc5bef84094296fe204ae7/mlx-0.26.5-cp312-cp312-manylinux_2_34_x86_64.manylinux_2_35_x86_64.whl", hash = "sha256:9c2b5dc36c57c8e2fe2245ca8cb2db167d053395afd53979f18728e2311cd633", size = 581086 },
     { url = "https://files.pythonhosted.org/packages/25/4d/97558bd1dcae9661674ca15d8318e696a0297a14c1c975142422bc1a4111/mlx-0.26.5-cp313-cp313-macosx_13_0_arm64.whl", hash = "sha256:538fa0d35173e163ea07fa30440f1e8f9194c87c0dde8e58872b5863a55f8ced", size = 510717 },
     { url = "https://files.pythonhosted.org/packages/3a/f9/920d1b252832298b3661a4927d2a24264f2e0a84a0c3e3debe8f0e78f333/mlx-0.26.5-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:8eb957ad603114940ac9ed90b12d1b4c353e78d2458e788bfffed417c7b735b4", size = 492457 },
     { url = "https://files.pythonhosted.org/packages/fa/c9/f51621f83108fa296b638dbe8e7ae8ed412931ccfa0e7e12ed4ca5ab8402/mlx-0.26.5-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:68d9f0466d7a2c88b3233a69248c3d7f8e5443ecfafcec2da13f04f6395469c6", size = 492457 },
-    { url = "https://files.pythonhosted.org/packages/95/21/cea8ef82af0d6fe0383492594769a80078528935ca7e01a018174d81b5ce/mlx-0.26.5-cp313-cp313-manylinux_2_34_x86_64.manylinux_2_35_x86_64.whl", hash = "sha256:108921cdb1247017d252313887d2cc7953e02c76383f0163c0eed11418605307", size = 580980 },
 ]
 
 [[package]]
@@ -2538,13 +2534,13 @@ name = "mlx-lm"
 version = "0.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "jinja2" },
-    { name = "mlx" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "protobuf" },
-    { name = "pyyaml" },
-    { name = "transformers" },
+    { name = "jinja2", marker = "sys_platform == 'darwin'" },
+    { name = "mlx", marker = "sys_platform == 'darwin'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' and sys_platform == 'darwin'" },
+    { name = "numpy", version = "2.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' and sys_platform == 'darwin'" },
+    { name = "protobuf", marker = "sys_platform == 'darwin'" },
+    { name = "pyyaml", marker = "sys_platform == 'darwin'" },
+    { name = "transformers", marker = "sys_platform == 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8d/aa/a2f02e67736a2bf57acefb3a1a342005586f1be8d7b2fb37ca5f3d4f3049/mlx_lm-0.26.0.tar.gz", hash = "sha256:78980ad994baf976779cc1c34c0d55c1c6b63dffef4899d67fec240d0c443b52", size = 159064 }
 wheels = [
@@ -3017,7 +3013,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.5.1.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/78/4535c9c7f859a64781e43c969a3a7e84c54634e319a996d43ef32ce46f83/nvidia_cudnn_cu12-9.5.1.17-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:30ac3869f6db17d170e0e556dd6cc5eee02647abc31ca856634d5a40f82c15b2", size = 570988386 },
@@ -3028,7 +3024,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/16/73727675941ab8e6ffd86ca3a4b7b47065edcca7a997920b831f8147c99d/nvidia_cufft_cu12-11.3.0.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ccba62eb9cef5559abd5e0d54ceed2d9934030f51163df018532142a8ec533e5", size = 200221632 },
@@ -3057,9 +3053,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
-    { name = "nvidia-cusparse-cu12" },
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/6e/c2cf12c9ff8b872e92b4a5740701e51ff17689c4d726fca91875b07f655d/nvidia_cusolver_cu12-11.7.1.2-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:e9e49843a7707e42022babb9bcfa33c29857a93b88020c4e4434656a655b698c", size = 158229790 },
@@ -3071,7 +3067,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/06/1e/b8b7c2f4099a37b96af5c9bb158632ea9e5d9d27d7391d7eb8fc45236674/nvidia_cusparse_cu12-12.5.4.2-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:7556d9eca156e18184b94947ade0fba5bb47d69cec46bf8660fd2c71a4b48b73", size = 216561367 },
@@ -5312,7 +5308,7 @@ name = "triton"
 version = "3.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "setuptools" },
+    { name = "setuptools", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8d/a9/549e51e9b1b2c9b854fd761a1d23df0ba2fbc60bd0c13b489ffa518cfcb7/triton-3.3.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b74db445b1c562844d3cfad6e9679c72e93fdfb1a90a24052b03bb5c49d1242e", size = 155600257 },
