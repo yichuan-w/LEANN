@@ -131,13 +131,24 @@ jobs:
       
       - name: Test on TestPyPI (optional)
         if: inputs.test_pypi
+        continue-on-error: true
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
         run: |
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "⚠️  TEST_PYPI_API_TOKEN not configured, skipping TestPyPI upload"
+            echo "   To enable TestPyPI testing, add TEST_PYPI_API_TOKEN to repository secrets"
+            exit 0
+          fi
+          
           pip install twine
           echo "📦 Uploading to TestPyPI..."
-          twine upload --repository testpypi packages/*/dist/* --verbose
+          twine upload --repository testpypi packages/*/dist/* --verbose || {
+            echo "⚠️  TestPyPI upload failed, but continuing with release"
+            echo "   This is optional and won't block the release"
+            exit 0
+          }
           echo "✅ Test upload successful!"
           echo "📋 Check packages at: https://test.pypi.org/user/your-username/"
           echo ""

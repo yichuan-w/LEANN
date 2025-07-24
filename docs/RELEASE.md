@@ -7,6 +7,16 @@ Before releasing, ensure:
 2. ✅ CI has passed on the latest commit (check [Actions](https://github.com/yichuan-w/LEANN/actions/workflows/ci.yml))
 3. ✅ You have determined the new version number
 
+### Optional: TestPyPI Configuration
+
+To enable TestPyPI testing (recommended but not required):
+1. Get a TestPyPI API token from https://test.pypi.org/manage/account/token/
+2. Add it to repository secrets: Settings → Secrets → Actions → New repository secret
+   - Name: `TEST_PYPI_API_TOKEN`
+   - Value: Your TestPyPI token (starts with `pypi-`)
+
+**Note**: TestPyPI testing is optional. If not configured, the release will skip TestPyPI and proceed.
+
 ## 🚀 Recommended: Manual Release Workflow
 
 ### Via GitHub UI (Most Reliable)
