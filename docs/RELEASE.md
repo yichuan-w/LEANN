@@ -20,6 +20,7 @@ Before releasing, ensure:
 
 **What happens:**
 - ✅ Validates version format
+- ✅ Downloads pre-built packages from CI (no rebuild needed!)
 - ✅ Updates all package versions
 - ✅ Optionally tests on TestPyPI
 - ✅ Creates tag and GitHub release
