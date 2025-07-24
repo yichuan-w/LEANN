@@ -75,7 +75,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libomp-dev libboost-all-dev libzmq3-dev \
-            pkg-config patchelf
+            pkg-config libopenblas-dev patchelf
           
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
@@ -140,7 +140,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libomp-dev libboost-all-dev libaio-dev libzmq3-dev \
-            pkg-config protobuf-compiler libprotobuf-dev libabsl-dev patchelf
+            protobuf-compiler libprotobuf-dev libabsl-dev patchelf
           
           # Install Intel MKL using Intel's installer
           wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940.sh
@@ -152,7 +152,7 @@ jobs:
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install libomp boost zeromq
+          brew install libomp boost zeromq protobuf
           # MKL is not available on Homebrew, but DiskANN can work without it
           
       - name: Install build dependencies
