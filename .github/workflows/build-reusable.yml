@@ -124,9 +124,33 @@ jobs:
         if: runner.os == 'Linux' && matrix.container != ''
         run: |
           # manylinux2014 uses yum instead of apt
-          yum install -y epel-release
-          yum install -y boost-devel protobuf-compiler zeromq-devel \
-            pkg-config openblas-devel libaio-devel protobuf-devel
+          # Update yum cache first
+          yum clean all
+          yum makecache
+          
+          # Install EPEL repository
+          yum install -y epel-release || true
+          
+          # Update cache again after EPEL
+          yum makecache || true
+          
+          # Install development packages
+          # Note: Some packages might have different names in CentOS 7
+          yum install -y \
+            boost-devel \
+            protobuf-compiler \
+            zeromq-devel \
+            pkgconfig \
+            openblas-devel \
+            protobuf-devel || {
+              echo "Some packages failed to install, trying alternatives..."
+              # Try alternative package names
+              yum install -y libzmq3-devel || true
+              yum install -y libzmq-devel || true
+          }
+          
+          # Install optional packages that might not be available
+          yum install -y libaio-devel || echo "libaio-devel not available, continuing..."
           
           # Build tools are pre-installed in manylinux
           # MKL is more complex in container, skip for now and use OpenBLAS

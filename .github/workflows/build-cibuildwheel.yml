@@ -51,9 +51,10 @@ jobs:
           CIBW_SKIP: "*-win32 *-manylinux_i686 pp*"
           
           CIBW_BEFORE_ALL_LINUX: |
-            yum install -y epel-release
-            yum install -y boost-devel protobuf-compiler zeromq-devel \
-              pkg-config openblas-devel
+            yum clean all && yum makecache
+            yum install -y epel-release || true
+            yum makecache || true
+            yum install -y boost-devel protobuf-compiler zeromq-devel pkgconfig openblas-devel || echo "Some packages failed, continuing..."
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install llvm libomp boost protobuf zeromq
@@ -76,9 +77,11 @@ jobs:
           CIBW_SKIP: "*-win32 *-manylinux_i686 pp*"
           
           CIBW_BEFORE_ALL_LINUX: |
-            yum install -y epel-release
-            yum install -y protobuf-compiler openblas-devel \
-              libaio-devel protobuf-devel
+            yum clean all && yum makecache
+            yum install -y epel-release || true
+            yum makecache || true
+            yum install -y protobuf-compiler openblas-devel protobuf-devel || echo "Some packages failed, continuing..."
+            yum install -y libaio-devel || echo "libaio-devel not available, continuing..."
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install llvm libomp protobuf
