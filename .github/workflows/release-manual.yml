@@ -1,167 +1,79 @@
-name: Manual Release
+name: Release
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 0.1.1)'
+        description: 'Version to release (e.g., 0.1.2)'
         required: true
         type: string
-      test_pypi:
-        description: 'Test on TestPyPI first'
-        required: false
-        type: boolean
-        default: true
 
 jobs:
-  validate-and-release:
+  update-version:
+    name: Update Version
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read
-      
+    outputs:
+      commit-sha: ${{ steps.push.outputs.commit-sha }}
+    
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v3  # Compatibility with manylinux2014
       
-      - name: Check CI status
-        run: |
-          echo "ℹ️  This workflow will download build artifacts from the latest CI run."
-          echo "   CI must have completed successfully on the current commit."
-          echo ""
-          
-      - name: Validate version format
+      - name: Validate version
         run: |
           if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "❌ Invalid version format. Use semantic versioning (e.g., 0.1.1)"
+            echo "❌ Invalid version format"
             exit 1
           fi
-          echo "✅ Version format valid: ${{ inputs.version }}"
+          echo "✅ Version format valid"
       
-      - name: Check if version already exists
-        run: |
-          if git tag | grep -q "^v${{ inputs.version }}$"; then
-            echo "❌ Version v${{ inputs.version }} already exists!"
-            exit 1
-          fi
-          echo "✅ Version is new"
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-      
-      - name: Update versions
+      - name: Update versions and push
+        id: push
         run: |
           ./scripts/bump_version.sh ${{ inputs.version }}
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add packages/*/pyproject.toml
           git commit -m "chore: release v${{ inputs.version }}"
-      
-      - name: Push version update
-        run: |
-          git push origin HEAD:main
-          echo "✅ Pushed version update to main branch"
+          git push origin main
+          
           COMMIT_SHA=$(git rev-parse HEAD)
           echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-        id: push-version
-          
-      - name: Wait for CI to complete
-        id: wait-for-ci
-        run: |
-          echo "⏳ Waiting for CI to build new version..."
-          COMMIT_SHA="${{ steps.push-version.outputs.commit-sha }}"
-          
-          # Wait up to 20 minutes for CI to complete
-          for i in {1..40}; do
-            RUN_ID=$(gh run list \
-              --workflow="CI - Build Multi-Platform Packages" \
-              --commit=$COMMIT_SHA \
-              --json databaseId,status \
-              --jq '.[] | select(.status == "completed") | .databaseId' | head -1)
-            
-            if [ ! -z "$RUN_ID" ]; then
-              echo "✅ Found completed CI run: $RUN_ID"
-              echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            
-            echo "⏳ Waiting for CI... (attempt $i/40)"
-            sleep 30
-          done
-          
-          echo "❌ CI did not complete within 20 minutes"
-          exit 1
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "✅ Pushed version update: $COMMIT_SHA"
+
+  build-packages:
+    name: Build packages
+    needs: update-version
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      ref: ${{ needs.update-version.outputs.commit-sha }}
+
+  publish:
+    name: Publish and Release
+    needs: build-packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - uses: actions/checkout@v3  # Consistency with build workflow
+        with:
+          ref: ${{ needs.update-version.outputs.commit-sha }}
       
-      - name: Download artifacts from CI run
-        run: |
-          echo "📦 Downloading artifacts from CI run ${{ steps.wait-for-ci.outputs.run-id }}..."
-          
-          # Download all artifacts (not just wheels-*)
-          gh run download ${{ steps.wait-for-ci.outputs.run-id }} \
-            --dir ./dist-downloads
-          
-          # Consolidate all wheels into packages/*/dist/
-          mkdir -p packages/leann-core/dist
-          mkdir -p packages/leann-backend-hnsw/dist
-          mkdir -p packages/leann-backend-diskann/dist
-          mkdir -p packages/leann/dist
-          
-          find ./dist-downloads -name "*.whl" -exec cp {} ./packages/ \;
-          
-          # Move wheels to correct package directories
-          for wheel in packages/*.whl; do
-            if [[ $wheel == *"leann_core"* ]]; then
-              mv "$wheel" packages/leann-core/dist/
-            elif [[ $wheel == *"leann_backend_hnsw"* ]]; then
-              mv "$wheel" packages/leann-backend-hnsw/dist/
-            elif [[ $wheel == *"leann_backend_diskann"* ]]; then
-              mv "$wheel" packages/leann-backend-diskann/dist/
-            elif [[ $wheel == *"leann-"* ]] && [[ $wheel != *"backend"* ]] && [[ $wheel != *"core"* ]]; then
-              mv "$wheel" packages/leann/dist/
-            fi
-          done
-          
-          # List downloaded wheels
-          echo "✅ Downloaded wheels:"
-          find packages/*/dist -name "*.whl" -type f | sort
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3  # Match upload-artifact version
+        with:
+          path: dist-artifacts
       
-      - name: Test on TestPyPI (optional)
-        if: inputs.test_pypi
-        continue-on-error: true
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      - name: Collect packages
         run: |
-          if [ -z "$TWINE_PASSWORD" ]; then
-            echo "⚠️  TEST_PYPI_API_TOKEN not configured, skipping TestPyPI upload"
-            echo "   To enable TestPyPI testing, add TEST_PYPI_API_TOKEN to repository secrets"
-            exit 0
-          fi
+          mkdir -p dist
+          find dist-artifacts -name "*.whl" -exec cp {} dist/ \;
+          find dist-artifacts -name "*.tar.gz" -exec cp {} dist/ \;
           
-          pip install twine
-          echo "📦 Uploading to TestPyPI..."
-          twine upload --repository testpypi packages/*/dist/* --verbose || {
-            echo "⚠️  TestPyPI upload failed, but continuing with release"
-            echo "   This is optional and won't block the release"
-            exit 0
-          }
-          echo "✅ Test upload successful!"
-          echo "📋 Check packages at: https://test.pypi.org/user/your-username/"
-          echo ""
-          echo "To test installation:"
-          echo "pip install -i https://test.pypi.org/simple/ leann"
+          echo "📦 Packages to publish:"
+          ls -la dist/
       
       - name: Publish to PyPI
         env:
@@ -170,46 +82,22 @@ jobs:
         run: |
           if [ -z "$TWINE_PASSWORD" ]; then
             echo "❌ PYPI_API_TOKEN not configured!"
-            echo "   Please add PYPI_API_TOKEN to repository secrets"
             exit 1
           fi
           
           pip install twine
-          echo "📦 Publishing to PyPI..."
-          
-          # Collect all wheels in one place
-          mkdir -p all_wheels
-          find packages/*/dist -name "*.whl" -exec cp {} all_wheels/ \;
-          find packages/*/dist -name "*.tar.gz" -exec cp {} all_wheels/ \;
-          
-          echo "📋 Packages to publish:"
-          ls -la all_wheels/
-          
-          # Upload to PyPI
-          twine upload all_wheels/* --skip-existing --verbose
+          twine upload dist/* --skip-existing --verbose
           
           echo "✅ Published to PyPI!"
-          echo "🎉 Check packages at: https://pypi.org/project/leann/"
       
-      - name: Create and push tag
+      - name: Create release
         run: |
           git tag "v${{ inputs.version }}"
-          git push origin main
           git push origin "v${{ inputs.version }}"
-          echo "✅ Tag v${{ inputs.version }} created and pushed"
-      
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ inputs.version }}
-          name: Release v${{ inputs.version }}
-          body: |
-            ## 🚀 Release v${{ inputs.version }}
-            
-            ### What's Changed
-            See the [full changelog](https://github.com/${{ github.repository }}/compare/...v${{ inputs.version }})
-            
-            ### Installation
-            ```bash
-            pip install leann==${{ inputs.version }}
-            ```
+          
+          gh release create "v${{ inputs.version }}" \
+            --title "Release v${{ inputs.version }}" \
+            --notes "🚀 Released to PyPI: https://pypi.org/project/leann/${{ inputs.version }}/" \
+            --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

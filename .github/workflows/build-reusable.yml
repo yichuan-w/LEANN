@@ -1,0 +1,230 @@
+name: Reusable Build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref to build'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} Python ${{ matrix.python }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.9'
+            container: 'quay.io/pypa/manylinux2014_x86_64'
+          - os: ubuntu-latest
+            python: '3.10'
+            container: 'quay.io/pypa/manylinux2014_x86_64'
+          - os: ubuntu-latest
+            python: '3.11'
+            container: 'quay.io/pypa/manylinux2014_x86_64'
+          - os: ubuntu-latest
+            python: '3.12'
+            container: 'quay.io/pypa/manylinux2014_x86_64'
+          - os: macos-latest
+            python: '3.9'
+            container: ''
+          - os: macos-latest
+            python: '3.10'
+            container: ''
+          - os: macos-latest
+            python: '3.11'
+            container: ''
+          - os: macos-latest
+            python: '3.12'
+            container: ''
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    
+    steps:
+      # Use v3 for manylinux2014 compatibility (Node.js 16 instead of 20)
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+      
+      - name: Setup Python (macOS and regular Ubuntu)
+        if: matrix.container == ''
+        uses: actions/setup-python@v4  # v4 for better compatibility
+        with:
+          python-version: ${{ matrix.python }}
+      
+      - name: Setup Python (manylinux container)
+        if: matrix.container != ''
+        run: |
+          # Use the pre-installed Python version in manylinux container
+          # Convert Python version format (3.9 -> 39, 3.10 -> 310, etc.)
+          PY_VER=$(echo "${{ matrix.python }}" | sed 's/\.//g')
+          /opt/python/cp${PY_VER}-*/bin/python -m pip install --upgrade pip
+          # Create symlinks for convenience
+          ln -sf /opt/python/cp${PY_VER}-*/bin/python /usr/local/bin/python
+          ln -sf /opt/python/cp${PY_VER}-*/bin/pip /usr/local/bin/pip
+      
+      - name: Install uv (macOS and regular Ubuntu)
+        if: matrix.container == ''
+        uses: astral-sh/setup-uv@v4
+      
+      - name: Install uv (manylinux container)
+        if: matrix.container != ''
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      - name: Install system dependencies (Ubuntu - regular)
+        if: runner.os == 'Linux' && matrix.container == ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev \
+            pkg-config libopenblas-dev patchelf libabsl-dev libaio-dev libprotobuf-dev
+          
+          # Install Intel MKL for DiskANN
+          wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940.sh
+          sudo sh intel-onemkl-2025.0.0.940.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
+          source /opt/intel/oneapi/setvars.sh
+          echo "MKLROOT=/opt/intel/oneapi/mkl/latest" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/opt/intel/oneapi/mkl/latest/lib/intel64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+      
+      - name: Install system dependencies (manylinux container)
+        if: runner.os == 'Linux' && matrix.container != ''
+        run: |
+          # manylinux2014 uses yum instead of apt
+          yum install -y epel-release
+          yum install -y boost-devel protobuf-compiler zeromq-devel \
+            pkg-config openblas-devel libaio-devel protobuf-devel
+          
+          # Build tools are pre-installed in manylinux
+          # MKL is more complex in container, skip for now and use OpenBLAS
+      
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm libomp boost protobuf zeromq
+      
+      - name: Install build dependencies
+        run: |
+          if [[ -n "${{ matrix.container }}" ]]; then
+            # In manylinux container, use regular pip
+            pip install scikit-build-core numpy swig Cython pybind11 auditwheel
+          else
+            # Regular environment, use uv
+            uv pip install --system scikit-build-core numpy swig Cython pybind11
+            if [[ "$RUNNER_OS" == "Linux" ]]; then
+              uv pip install --system auditwheel
+            else
+              uv pip install --system delocate
+            fi
+          fi
+      
+      - name: Build packages
+        run: |
+          # Choose build command based on environment
+          if [[ -n "${{ matrix.container }}" ]]; then
+            BUILD_CMD="pip wheel . --no-deps -w dist"
+          else
+            BUILD_CMD="uv build --wheel --python python"
+          fi
+          
+          # Build core (platform independent)
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            cd packages/leann-core
+            if [[ -n "${{ matrix.container }}" ]]; then
+              pip wheel . --no-deps -w dist
+            else
+              uv build
+            fi
+            cd ../..
+          fi
+          
+          # Build HNSW backend
+          cd packages/leann-backend-hnsw
+          if [ "${{ matrix.os }}" == "macos-latest" ]; then
+            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ $BUILD_CMD
+          else
+            eval $BUILD_CMD
+          fi
+          cd ../..
+          
+          # Build DiskANN backend
+          cd packages/leann-backend-diskann
+          if [ "${{ matrix.os }}" == "macos-latest" ]; then
+            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ $BUILD_CMD
+          else
+            eval $BUILD_CMD
+          fi
+          cd ../..
+          
+          # Build meta package (platform independent)
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            cd packages/leann
+            if [[ -n "${{ matrix.container }}" ]]; then
+              pip wheel . --no-deps -w dist
+            else
+              uv build
+            fi
+            cd ../..
+          fi
+      
+      - name: Repair wheels (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Repair HNSW wheel
+          cd packages/leann-backend-hnsw
+          if [ -d dist ]; then
+            # Show what platform auditwheel will use
+            auditwheel show dist/*.whl || true
+            # Let auditwheel auto-detect the appropriate manylinux tag
+            auditwheel repair dist/*.whl -w dist_repaired
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+          
+          # Repair DiskANN wheel
+          cd packages/leann-backend-diskann
+          if [ -d dist ]; then
+            # Show what platform auditwheel will use
+            auditwheel show dist/*.whl || true
+            # Let auditwheel auto-detect the appropriate manylinux tag
+            auditwheel repair dist/*.whl -w dist_repaired
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+      
+      - name: Repair wheels (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Repair HNSW wheel
+          cd packages/leann-backend-hnsw
+          if [ -d dist ]; then
+            delocate-wheel -w dist_repaired -v dist/*.whl
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+          
+          # Repair DiskANN wheel
+          cd packages/leann-backend-diskann
+          if [ -d dist ]; then
+            delocate-wheel -w dist_repaired -v dist/*.whl
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+      
+      - name: List built packages
+        run: |
+          echo "📦 Built packages:"
+          find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3  # v3 for manylinux2014 compatibility
+        with:
+          name: packages-${{ matrix.os }}-py${{ matrix.python }}
+          path: packages/*/dist/ 
