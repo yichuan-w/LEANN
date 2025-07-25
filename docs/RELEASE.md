@@ -1,111 +1,22 @@
 # Release Guide
 
-## Required: PyPI Configuration
+## Setup (One-time)
 
-Before releasing, ensure you have configured the PyPI API token:
+Add `PYPI_API_TOKEN` to GitHub Secrets:
+1. Get token: https://pypi.org/manage/account/token/
+2. Add to secrets: Settings → Secrets → Actions → `PYPI_API_TOKEN`
 
-1. Generate API token at https://pypi.org/manage/account/token/
-2. Add as GitHub secret: `PYPI_API_TOKEN`
-3. For full automation, also add a Personal Access Token:
-   - Create PAT at https://github.com/settings/tokens with `workflow` scope
-   - Add as GitHub secret: `WORKFLOW_PAT`
-   - This allows the release workflow to trigger CI builds automatically
+## Release (One-click)
 
-## 📋 Prerequisites
+1. Go to: https://github.com/yichuan-w/LEANN/actions/workflows/release-manual.yml
+2. Click "Run workflow"
+3. Enter version: `0.1.2`
+4. Click green "Run workflow" button
 
-Before releasing, ensure:
-1. ✅ All code changes are committed and pushed
-2. ✅ CI has passed on the latest commit (check [Actions](https://github.com/yichuan-w/LEANN/actions/workflows/ci.yml))
-3. ✅ You have determined the new version number
+That's it! The workflow will automatically:
+- ✅ Update version in all packages
+- ✅ Build all packages
+- ✅ Publish to PyPI
+- ✅ Create GitHub tag and release
 
-### Required: PyPI Configuration
-
-To enable PyPI publishing:
-1. Get a PyPI API token from https://pypi.org/manage/account/token/
-2. Add it to repository secrets: Settings → Secrets → Actions → New repository secret
-   - Name: `PYPI_API_TOKEN`
-   - Value: Your PyPI token (starts with `pypi-`)
-
-### Optional: TestPyPI Configuration
-
-To enable TestPyPI testing (recommended but not required):
-1. Get a TestPyPI API token from https://test.pypi.org/manage/account/token/
-2. Add it to repository secrets: Settings → Secrets → Actions → New repository secret
-   - Name: `TEST_PYPI_API_TOKEN`
-   - Value: Your TestPyPI token (starts with `pypi-`)
-
-**Note**: TestPyPI testing is optional. If not configured, the release will skip TestPyPI and proceed.
-
-## 🚀 Recommended: Manual Release Workflow
-
-### Via GitHub UI (Most Reliable)
-
-1. **Verify CI Status**: Check that the latest commit has a green checkmark ✅
-2. Go to [Actions → Manual Release](https://github.com/yichuan-w/LEANN/actions/workflows/release-manual.yml)
-3. Click "Run workflow"
-4. Enter version (e.g., `0.1.1`)
-5. Toggle "Test on TestPyPI first" if desired
-6. Click "Run workflow"
-
-**What happens:**
-- ✅ Downloads pre-built packages from CI (no rebuild needed!)
-- ✅ Updates all package versions
-- ✅ Optionally tests on TestPyPI
-- ✅ **Publishes directly to PyPI**
-- ✅ Creates tag and GitHub release
-
-### Via Command Line
-
-```bash
-gh workflow run release-manual.yml -f version=0.1.1 -f test_pypi=true
-```
-
-## ⚡ Quick Release (One-Line)
-
-For experienced users who want the fastest path:
-
-```bash
-./scripts/release.sh 0.1.1
-```
-
-This script will:
-1. Update all package versions
-2. Commit and push changes
-3. Create GitHub release
-4. **Manual Release workflow will automatically publish to PyPI**
-
-⚠️ **Note**: If CI fails, you'll need to manually fix and re-tag
-
-## Manual Testing Before Release
-
-For testing specific packages locally (especially DiskANN on macOS):
-
-```bash
-# Build specific package locally
-./scripts/build_and_test.sh diskann  # or hnsw, core, meta, all
-
-# Test installation in a clean environment
-python -m venv test_env
-source test_env/bin/activate
-pip install packages/*/dist/*.whl
-
-# Upload to Test PyPI (optional)
-./scripts/upload_to_pypi.sh test
-
-# Upload to Production PyPI (use with caution)
-./scripts/upload_to_pypi.sh prod
-```
-
-## First-time setup
-
-1. Install GitHub CLI:
-   ```bash
-   brew install gh
-   gh auth login
-   ```
-
-2. Set PyPI token in GitHub:
-   ```bash
-   gh secret set PYPI_API_TOKEN
-   # Paste your PyPI token when prompted
-   ``` 
+Check progress: https://github.com/yichuan-w/LEANN/actions 
