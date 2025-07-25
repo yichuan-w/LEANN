@@ -45,79 +45,9 @@ jobs:
   build-packages:
     name: Build packages
     needs: update-version
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            python: '3.11'
-          - os: macos-latest
-            python: '3.11'
-    runs-on: ${{ matrix.os }}
-    
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.update-version.outputs.commit-sha }}
-          submodules: recursive
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-      
-      - name: Install system dependencies (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev
-      
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install llvm libomp boost protobuf zeromq
-      
-      - name: Build packages
-        run: |
-          # Build core (platform independent)
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            cd packages/leann-core
-            uv build
-            cd ../..
-          fi
-          
-          # Build HNSW backend
-          cd packages/leann-backend-hnsw
-          uv pip install --system -r pyproject.toml --extra build
-          CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build
-          cd ../..
-          
-          # Build DiskANN backend
-          cd packages/leann-backend-diskann
-          uv pip install --system -r pyproject.toml --extra build
-          CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build
-          cd ../..
-          
-          # Build meta package (platform independent)
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            cd packages/leann
-            uv build
-            cd ../..
-          fi
-          
-          echo "📦 Built packages:"
-          find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
-        env:
-          CC: ${{ runner.os == 'macOS' && '$(brew --prefix llvm)/bin/clang' || '' }}
-          CXX: ${{ runner.os == 'macOS' && '$(brew --prefix llvm)/bin/clang++' || '' }}
-      
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: packages-${{ matrix.os }}-${{ matrix.python }}
-          path: packages/*/dist/
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      ref: ${{ needs.update-version.outputs.commit-sha }}
 
   publish:
     name: Publish and Release
