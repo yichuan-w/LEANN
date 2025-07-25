@@ -37,7 +37,7 @@ def main():
         import faiss
     except ImportError:
         print("Faiss is not installed.")
-        print("Please install it with `uv pip install faiss-cpu`")
+        print("Please install it with `uv pip install faiss-cpu` and you can  then run this script again")
         sys.exit(1)
 
     from llama_index.core import (

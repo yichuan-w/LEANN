@@ -92,8 +92,8 @@ class HNSWBuilder(LeannBackendBuilderInterface):
 
         if success:
             logger.info("✅ CSR conversion successful.")
-            index_file_old = index_file.with_suffix(".old")
-            shutil.move(str(index_file), str(index_file_old))
+            # index_file_old = index_file.with_suffix(".old")
+            # shutil.move(str(index_file), str(index_file_old))
             shutil.move(str(csr_temp_file), str(index_file))
             logger.info(
                 f"INFO: Replaced original index with {mode_str} version at '{index_file}'"
