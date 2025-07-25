@@ -59,6 +59,13 @@ jobs:
           # Install numpy before building
           CIBW_BEFORE_BUILD: |
             pip install numpy
+            pip install --upgrade pip setuptools wheel
+          
+          CIBW_BEFORE_BUILD_LINUX: |
+            pip install numpy
+            pip install --upgrade pip setuptools wheel
+            # 确保Python开发文件可用
+            python -m pip install --force-reinstall numpy
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake libomp
@@ -76,8 +83,6 @@ jobs:
           # Linux-specific environment variables
           CIBW_ENVIRONMENT_LINUX: |
             CMAKE_BUILD_PARALLEL_LEVEL=8
-            Python_FIND_VIRTUALENV=ONLY
-            Python3_FIND_VIRTUALENV=ONLY
       
       - name: Build leann-backend-diskann wheels  
         uses: pypa/cibuildwheel@v2.20.0
@@ -99,6 +104,13 @@ jobs:
           # Install numpy before building
           CIBW_BEFORE_BUILD: |
             pip install numpy
+            pip install --upgrade pip setuptools wheel
+          
+          CIBW_BEFORE_BUILD_LINUX: |
+            pip install numpy
+            pip install --upgrade pip setuptools wheel
+            # 确保Python开发文件可用
+            python -m pip install --force-reinstall numpy
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake libomp
@@ -116,6 +128,11 @@ jobs:
             CMAKE_BUILD_PARALLEL_LEVEL=8
             Python_FIND_VIRTUALENV=ONLY
             Python3_FIND_VIRTUALENV=ONLY
+            Python_FIND_STRATEGY=LOCATION
+            Python3_FIND_STRATEGY=LOCATION
+            CMAKE_PREFIX_PATH=$VIRTUAL_ENV
+            Python_EXECUTABLE=$VIRTUAL_ENV/bin/python
+            Python3_EXECUTABLE=$VIRTUAL_ENV/bin/python
       
       - uses: actions/upload-artifact@v4
         with:
