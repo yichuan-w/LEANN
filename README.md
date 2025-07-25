@@ -400,45 +400,17 @@ Options:
 
 ## Benchmarks
 
-Run the comparison yourself:
-```bash
-python examples/compare_faiss_vs_leann.py
-```
 
-| System | Storage | 
-|--------|---------|
-| FAISS HNSW | 5.5 MB |
-| LEANN | 0.5 MB |
-| **Savings** | **91%** |
+📊 **[Simple Example: Compare LEANN vs FAISS →](examples/compare_faiss_vs_leann.py)**
+### Storage Comparison
 
-Same dataset, same hardware, same embedding model. LEANN just works better.
+| System | DPR (2.1M) | Wiki (60M) | Chat (400K) | Email (780K) | Browser (38K) |
+|--------|-------------|------------|-------------|--------------|---------------|
+| Traditional vector database (e.g., FAISS) | 3.8 GB      | 201 GB     | 1.8 GB     | 2.4 GB      | 130 MB        |
+| LEANN  | 324 MB      | 6 GB       | 64 MB       | 79 MB       | 6.4 MB        |
+| Savings| 91%         | 97%        | 97%         | 97%         | 95%           |
 
 
-
-### Storage Usage Comparison
-
-| System                | DPR (2.1M chunks) | RPJ-wiki (60M chunks) | Chat history (400K messages) | Apple emails (780K messages chunks) |Google Search History (38K entries)
-|-----------------------|------------------|------------------------|-----------------------------|------------------------------|------------------------------|
-| Traditional Vector DB(FAISS) | 3.8 GB           | 201 GB                 | 1.8G                     | 2.4G                     |130.4 MB                     |
-| **LEANN**             | **324 MB**       | **6 GB**               | **64 MB**                 | **79 MB**                  |**6.4MB**                  |
-| **Reduction**         | **91% smaller**  | **97% smaller**        | **97% smaller**             | **97% smaller**              |**95% smaller**              |
-
-<!-- ### Memory Usage Comparison
-
-| System          j      | DPR(2M docs)     | RPJ-wiki(60M docs)    | Chat history()   |
-| --------------------- | ---------------- | ---------------- | ---------------- |
-| Traditional Vector DB(LLamaindex faiss) | x GB           | x GB            | x GB           |
-| **Leann**       | **xx MB** | **x GB** | **x GB** |
-| **Reduction**   | **x%**  | **x%**  | **x%**  |
-
-### Query Performance of LEANN
-
-| Backend             | Index Size | Query Time | Recall@3 |
-| ------------------- | ---------- | ---------- | --------- |
-| DiskANN             | 1M docs    | xms       | 0.95      |
-| HNSW                | 1M docs    | xms        | 0.95      | -->
-
-*Benchmarks run on Apple M3 Pro 36 GB*
 
 ## Reproduce Our Results
 
