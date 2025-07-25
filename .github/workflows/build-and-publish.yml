@@ -226,7 +226,7 @@ jobs:
     name: Publish to PyPI
     needs: [build-core, build-hnsw, build-diskann, build-meta]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' || github.event.inputs.publish != 'false'
+    if: github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     
     steps:
       - name: Download all artifacts
@@ -240,17 +240,14 @@ jobs:
           find dist -name "*.whl" -exec cp {} all_wheels/ \;
           find dist -name "*.tar.gz" -exec cp {} all_wheels/ \;
           
-      - name: Publish to Test PyPI
-        if: github.event.inputs.publish == 'test' || github.event_name == 'workflow_dispatch'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          repository-url: https://test.pypi.org/legacy/
-          packages-dir: all_wheels/
+      - name: Show what will be published
+        run: |
+          echo "📦 Packages to be published:"
+          ls -la all_wheels/
           
       - name: Publish to PyPI
-        if: github.event_name == 'release' || github.event.inputs.publish == 'prod'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
-          packages-dir: all_wheels/ 
+          packages-dir: all_wheels/
+          skip-existing: true 
