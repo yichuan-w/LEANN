@@ -1,9 +1,0 @@
-Dataset,Metric,Original,original + batch,original + two_level,original + two_level + batch
-NQ,Latency,6.9,5.8,4.2,3.7
-NQ,SpeedUp,1,1.18965517,1.64285714,1.86486486
-TriviaQA,Latency,17.054,14.542,12.046,10.83
-TriviaQA,SpeedUp,1,1.17274103,1.41573967,1.57469990
-GPQA,Latency,9.164,7.639,6.798,5.77
-GPQA,SpeedUp,1,1.19963346,1.34804354,1.58821490
-HotpotQA,Latency,60.279,39.827,50.664,29.868
-HotpotQA,SpeedUp,1,1.51352098,1.18977972,2.01817999
