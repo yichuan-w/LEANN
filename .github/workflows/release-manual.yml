@@ -12,13 +12,13 @@ jobs:
   update-version:
     name: Update Version
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       commit-sha: ${{ steps.push.outputs.commit-sha }}
     
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Validate version
         run: |
