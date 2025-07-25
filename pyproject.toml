@@ -60,3 +60,26 @@ py-modules = []
 leann-core = { path = "packages/leann-core", editable = true }
 leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = true }
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
+
+[tool.cibuildwheel]
+# 跳过32位和PyPy构建
+skip = "*-win32 *-manylinux_i686 pp* *musllinux*"
+
+# 使用更新的manylinux镜像以获得更好的兼容性
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+
+# Linux系统依赖
+[tool.cibuildwheel.linux]
+before-all = """
+  dnf install -y epel-release
+  dnf install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake
+"""
+
+# macOS系统依赖
+[tool.cibuildwheel.macos]
+before-all = "brew install boost zeromq openblas cmake"
+
+# Windows系统依赖
+[tool.cibuildwheel.windows]
+before-all = "choco install cmake -y"

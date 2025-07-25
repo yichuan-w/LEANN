@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         
     steps:
       - uses: actions/checkout@v4
@@ -27,118 +27,77 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'  # Version for building pure Python packages
+          python-version: '3.11'
       
-      # Build each package separately in our monorepo
+      # Build pure Python packages separately
       - name: Build pure Python packages (leann-core, leann)
-        if: matrix.os == 'ubuntu-latest'  # Only build once, they're platform-independent
+        if: matrix.os == 'ubuntu-latest'  # Only build once
         run: |
-          # Install build tools
           python -m pip install --upgrade pip build
-          
-          # Build pure Python packages
           python -m build packages/leann-core --outdir wheelhouse/
           python -m build packages/leann --outdir wheelhouse/
       
       - name: Build leann-backend-hnsw wheels  
-        uses: pypa/cibuildwheel@v2.16.2
+        uses: pypa/cibuildwheel@v2.20.0
         with:
           package-dir: packages/leann-backend-hnsw
           output-dir: wheelhouse
         env:
-          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
-          CIBW_SKIP: "*-win32 *-manylinux_i686 pp*"
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
+          CIBW_SKIP: "*-win32 *-manylinux_i686 pp* *musllinux*"
           
+          # Use manylinux_2_28 for better compatibility
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          
+          # Install dependencies before building
           CIBW_BEFORE_ALL_LINUX: |
-            yum clean all && yum makecache
-            yum install -y epel-release || true
-            yum makecache || true
-            # Install system dependencies
-            yum install -y \
-              gcc-c++ \
-              boost-devel \
-              protobuf-compiler \
-              protobuf-devel \
-              zeromq-devel \
-              pkgconfig \
-              openblas-devel \
-              cmake || echo "Some packages failed, continuing..."
-            
-            # Verify zmq installation and create pkg-config file if needed
-            if [ ! -f /usr/lib64/pkgconfig/libzmq.pc ] && [ ! -f /usr/lib/pkgconfig/libzmq.pc ]; then
-              echo "Creating libzmq.pc file..."
-              mkdir -p /usr/lib64/pkgconfig
-              cat > /usr/lib64/pkgconfig/libzmq.pc << 'EOF'
-            prefix=/usr
-            exec_prefix=${prefix}
-            libdir=${exec_prefix}/lib64
-            includedir=${prefix}/include
-            
-            Name: libzmq
-            Description: ZeroMQ library
-            Version: 4.1.4
-            Libs: -L${libdir} -lzmq
-            Cflags: -I${includedir}
-            EOF
-            fi
+            dnf install -y epel-release
+            dnf install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake
           
           CIBW_BEFORE_ALL_MACOS: |
-            brew install llvm libomp boost protobuf zeromq
+            brew install boost zeromq openblas cmake
           
-          CIBW_ENVIRONMENT_LINUX: |
-            PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH
+          CIBW_BEFORE_ALL_WINDOWS: |
+            choco install cmake -y
           
-          CIBW_ENVIRONMENT_MACOS: |
-            CC=$(brew --prefix llvm)/bin/clang
-            CXX=$(brew --prefix llvm)/bin/clang++
+          # Test the wheel
+          CIBW_TEST_COMMAND: |
+            python -c "import leann_backend_hnsw; print('HNSW backend imported successfully')"
           
-          CIBW_TEST_REQUIRES: leann-core numpy pyzmq msgpack
-          CIBW_TEST_COMMAND: python -c "import leann_backend_hnsw"
+          # Environment variables for build
+          CIBW_ENVIRONMENT: |
+            CMAKE_BUILD_PARALLEL_LEVEL=8
       
-      - name: Build leann-backend-diskann wheels
-        uses: pypa/cibuildwheel@v2.16.2
+      - name: Build leann-backend-diskann wheels  
+        uses: pypa/cibuildwheel@v2.20.0
         with:
           package-dir: packages/leann-backend-diskann
           output-dir: wheelhouse
         env:
-          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
-          CIBW_SKIP: "*-win32 *-manylinux_i686 pp*"
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
+          CIBW_SKIP: "*-win32 *-manylinux_i686 pp* *musllinux*"
+          
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
           
           CIBW_BEFORE_ALL_LINUX: |
-            yum clean all && yum makecache
-            yum install -y epel-release || true
-            yum makecache || true
-            # Install system dependencies for DiskANN
-            yum install -y \
-              gcc-c++ \
-              protobuf-compiler \
-              protobuf-devel \
-              openblas-devel \
-              pkgconfig \
-              cmake || echo "Some packages failed, continuing..."
-            yum install -y libaio-devel || echo "libaio-devel not available, continuing..."
+            dnf install -y epel-release
+            dnf install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake
           
           CIBW_BEFORE_ALL_MACOS: |
-            brew install llvm libomp protobuf
+            brew install boost zeromq openblas cmake
           
-          CIBW_ENVIRONMENT_LINUX: |
-            PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH
+          CIBW_BEFORE_ALL_WINDOWS: |
+            choco install cmake -y
           
-          CIBW_ENVIRONMENT_MACOS: |
-            CC=$(brew --prefix llvm)/bin/clang
-            CXX=$(brew --prefix llvm)/bin/clang++
+          CIBW_TEST_COMMAND: |
+            python -c "import leann_backend_diskann; print('DiskANN backend imported successfully')"
           
-          CIBW_TEST_REQUIRES: leann-core numpy
-          CIBW_TEST_COMMAND: python -c "import leann_backend_diskann"
-      
-      - name: List built packages
-        run: |
-          echo "📦 Built packages:"
-          ls -la wheelhouse/
+          CIBW_ENVIRONMENT: |
+            CMAKE_BUILD_PARALLEL_LEVEL=8
       
       - uses: actions/upload-artifact@v4
         with:
-          name: cibw-wheels-${{ matrix.os }}
+          name: wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl 

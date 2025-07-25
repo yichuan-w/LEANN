@@ -16,12 +16,15 @@ dependencies = [
 ]
 
 [tool.scikit-build]
-wheel.packages = ["leann_backend_hnsw"]
-editable.mode = "redirect"
-cmake.build-type = "Release"
-build.verbose = true
-build.tool-args = ["-j8"]
+wheel.exclude = ["CMakeLists.txt", "src", "third_party"]
+sdist.include = ["CMakeLists.txt", "src", "third_party", "leann_backend_hnsw/*.txt"]
+cmake.args = ["-DCMAKE_BUILD_TYPE=Release"]
+# 确保 CMake 可以找到系统库
+cmake.verbose = true
 
 # CMake definitions to optimize compilation
 [tool.scikit-build.cmake.define]
 CMAKE_BUILD_PARALLEL_LEVEL = "8"
+# Help CMake find Python in cibuildwheel environments
+Python_FIND_VIRTUALENV = "ONLY"
+Python3_FIND_VIRTUALENV = "ONLY"

@@ -1,0 +1,60 @@
+name: Test Manylinux Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/**'
+      - 'packages/**'
+      - 'pyproject.toml'
+  push:
+    branches:
+      - 'fix/manylinux-*'
+      - 'test/build-*'
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-cibuildwheel.yml
+    
+  test-install:
+    needs: build
+    runs-on: ubuntu-22.04  # Simulating Colab environment
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+          
+      - name: Test installation
+        run: |
+          python -m pip install --upgrade pip
+          # Find and install the appropriate wheels
+          pip install dist/leann_core-*.whl
+          pip install dist/leann_backend_hnsw-*manylinux*.whl
+          pip install dist/leann-*.whl
+          
+      - name: Test import
+        run: |
+          python -c "
+          import leann
+          from leann import LeannBuilder, LeannSearcher
+          print('Successfully imported leann modules')
+          
+          # Quick functionality test
+          builder = LeannBuilder(backend_name='hnsw')
+          builder.add_text('Test document')
+          print('LeannBuilder created and used successfully')
+          " 
