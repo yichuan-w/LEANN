@@ -68,6 +68,10 @@ jobs:
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake libomp
           
+          # Pre-install test dependencies to avoid compilation
+          CIBW_BEFORE_TEST: |
+            pip install --only-binary :all: "pyzmq>=23.0.0,<27"
+          
           # Test command to verify the wheel works
           CIBW_TEST_COMMAND: |
             python -c "import leann_backend_hnsw; print('HNSW backend imported successfully')"
@@ -125,6 +129,10 @@ jobs:
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake libomp
           
+          # Pre-install test dependencies to avoid compilation
+          CIBW_BEFORE_TEST: |
+            pip install --only-binary :all: "pyzmq>=23.0.0,<27"
+          
           # Test command to verify the wheel works
           CIBW_TEST_COMMAND: |
             python -c "import leann_backend_diskann; print('DiskANN backend imported successfully')"
@@ -132,8 +140,8 @@ jobs:
           # Skip problematic configurations
           CIBW_TEST_SKIP: "*-macosx_arm64"  # Skip ARM64 tests on GitHub Actions
           
-          # Test dependencies - install pre-built pyzmq to avoid compilation issues
-          CIBW_TEST_REQUIRES: "pytest numpy pyzmq"
+          # Test dependencies - avoid pyzmq due to manylinux2014 compatibility issues
+          CIBW_TEST_REQUIRES: "pytest numpy"
           
           CIBW_ENVIRONMENT: |
             CMAKE_BUILD_PARALLEL_LEVEL=8

@@ -11,7 +11,7 @@ description = "Custom-built HNSW (Faiss) backend for the Leann toolkit."
 dependencies = [
     "leann-core==0.1.8", 
     "numpy",
-    "pyzmq>=23.0.0",
+    "pyzmq>=23.0.0,<27",  # Cap at 26.x for manylinux2014 compatibility
     "msgpack>=1.0.0",
 ]
 
