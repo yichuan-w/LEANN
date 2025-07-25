@@ -112,19 +112,19 @@ jobs:
       - name: Repair wheels (Linux)
         if: runner.os == 'Linux'
         run: |
-          # Repair HNSW wheel
+          # Repair HNSW wheel - use manylinux2014 for better compatibility
           cd packages/leann-backend-hnsw
           if [ -d dist ]; then
-            auditwheel repair dist/*.whl -w dist_repaired
+            auditwheel repair dist/*.whl -w dist_repaired --plat manylinux2014_x86_64
             rm -rf dist
             mv dist_repaired dist
           fi
           cd ../..
           
-          # Repair DiskANN wheel
+          # Repair DiskANN wheel - use manylinux2014 for better compatibility
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
-            auditwheel repair dist/*.whl -w dist_repaired
+            auditwheel repair dist/*.whl -w dist_repaired --plat manylinux2014_x86_64
             rm -rf dist
             mv dist_repaired dist
           fi
