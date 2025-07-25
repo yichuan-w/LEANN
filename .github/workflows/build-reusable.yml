@@ -13,6 +13,7 @@ jobs:
   build:
     name: Build ${{ matrix.os }} Python ${{ matrix.python }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -43,15 +44,44 @@ jobs:
     container: ${{ matrix.container }}
     
     steps:
-      # Use v3 for manylinux2014 compatibility (Node.js 16 instead of 20)
-      - uses: actions/checkout@v3
+      # For manylinux2014 compatibility, we'll handle checkout differently
+      - uses: actions/checkout@v4
+        if: matrix.container == ''
         with:
           ref: ${{ inputs.ref }}
           submodules: recursive
       
+      # Manual checkout for containers to avoid Node.js compatibility issues
+      - name: Manual checkout in container
+        if: matrix.container != ''
+        run: |
+          # Install git if not available
+          yum install -y git || true
+          
+          # Configure git to handle the directory ownership issue
+          git config --global --add safe.directory ${GITHUB_WORKSPACE}
+          git config --global --add safe.directory /__w/LEANN/LEANN
+          git config --global --add safe.directory /github/workspace
+          git config --global --add safe.directory $(pwd)
+          
+          # Clone the repository manually in the container
+          git init
+          git remote add origin https://github.com/${GITHUB_REPOSITORY}.git
+          
+          # Fetch the appropriate ref
+          if [ -n "${{ inputs.ref }}" ]; then
+            git fetch --depth=1 origin ${{ inputs.ref }}
+          else
+            git fetch --depth=1 origin ${GITHUB_SHA}
+          fi
+          git checkout FETCH_HEAD
+          
+          # Initialize submodules
+          git submodule update --init --recursive
+      
       - name: Setup Python (macOS and regular Ubuntu)
         if: matrix.container == ''
-        uses: actions/setup-python@v4  # v4 for better compatibility
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       
@@ -94,9 +124,56 @@ jobs:
         if: runner.os == 'Linux' && matrix.container != ''
         run: |
           # manylinux2014 uses yum instead of apt
-          yum install -y epel-release
-          yum install -y boost-devel protobuf-compiler zeromq-devel \
-            pkg-config openblas-devel libaio-devel protobuf-devel
+          # Update yum cache first
+          yum clean all
+          yum makecache
+          
+          # Install EPEL repository
+          yum install -y epel-release || true
+          
+          # Update cache again after EPEL
+          yum makecache || true
+          
+          # Install development packages
+          # Note: Some packages might have different names in CentOS 7
+          yum install -y \
+            gcc-c++ \
+            boost-devel \
+            protobuf-compiler \
+            protobuf-devel \
+            zeromq-devel \
+            pkgconfig \
+            openblas-devel \
+            cmake || {
+              echo "Some packages failed to install, trying alternatives..."
+              # Try alternative package names
+              yum install -y libzmq3-devel || true
+              yum install -y libzmq-devel || true
+          }
+          
+          # Install optional packages that might not be available
+          yum install -y libaio-devel || echo "libaio-devel not available, continuing..."
+          
+          # Verify zmq installation and create pkg-config file if needed
+          if [ ! -f /usr/lib64/pkgconfig/libzmq.pc ] && [ ! -f /usr/lib/pkgconfig/libzmq.pc ]; then
+            echo "Creating libzmq.pc file..."
+            mkdir -p /usr/lib64/pkgconfig
+            cat > /usr/lib64/pkgconfig/libzmq.pc << 'EOF'
+          prefix=/usr
+          exec_prefix=${prefix}
+          libdir=${exec_prefix}/lib64
+          includedir=${prefix}/include
+          
+          Name: libzmq
+          Description: ZeroMQ library
+          Version: 4.1.4
+          Libs: -L${libdir} -lzmq
+          Cflags: -I${includedir}
+          EOF
+          fi
+          
+          # Update PKG_CONFIG_PATH
+          echo "PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
           
           # Build tools are pre-installed in manylinux
           # MKL is more complex in container, skip for now and use OpenBLAS
@@ -224,7 +301,7 @@ jobs:
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
       
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3  # v3 for manylinux2014 compatibility
+        uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.os }}-py${{ matrix.python }}
+          name: packages-${{ matrix.os }}-py${{ matrix.python }}${{ matrix.container && '-manylinux' || '' }}
           path: packages/*/dist/ 
