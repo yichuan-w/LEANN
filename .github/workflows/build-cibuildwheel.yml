@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]  # Focus on Linux/manylinux for Colab compatibility
         
     steps:
       - uses: actions/checkout@v4
