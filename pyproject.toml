@@ -60,3 +60,29 @@ py-modules = []
 leann-core = { path = "packages/leann-core", editable = true }
 leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = true }
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
+
+[tool.cibuildwheel]
+# Skip 32-bit and PyPy builds
+skip = "*-win32 *-manylinux_i686 pp* *musllinux*"
+
+# Use manylinux_2_35 for Colab compatibility while keeping modern features
+manylinux-x86_64-image = "manylinux_2_35"
+manylinux-aarch64-image = "manylinux_2_35"
+
+# Linux system dependencies
+[tool.cibuildwheel.linux]
+before-all = """
+  yum install -y epel-release
+  yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3 python3-devel
+  ln -sf /usr/bin/cmake3 /usr/bin/cmake
+"""
+
+# macOS system dependencies
+[tool.cibuildwheel.macos]
+before-all = "brew install boost zeromq openblas cmake libomp"
+# Set minimum macOS version
+environment = { MACOSX_DEPLOYMENT_TARGET = "11.0", CMAKE_OSX_DEPLOYMENT_TARGET = "11.0" }
+
+# Environment variables configuration
+[tool.cibuildwheel.environment]
+CMAKE_BUILD_PARALLEL_LEVEL = "8"
