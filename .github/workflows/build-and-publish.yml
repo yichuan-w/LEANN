@@ -1,15 +1,14 @@
-name: Build and Publish to PyPI
+name: CI - Build Multi-Platform Packages
 
 on:
-  release:
-    types: [published]
   push:
-    tags:
-      - 'v*'
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish to PyPI'
+        description: 'Publish to PyPI (only use for emergency fixes)'
         required: true
         default: 'false'
         type: choice
@@ -221,12 +220,12 @@ jobs:
           name: leann-meta-dist
           path: packages/leann/dist/
 
-  # Publish to PyPI
+  # Publish to PyPI (only for emergency fixes or manual triggers)
   publish:
-    name: Publish to PyPI
+    name: Publish to PyPI (Emergency)
     needs: [build-core, build-hnsw, build-diskann, build-meta]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish != 'false'
     
     steps:
       - name: Download all artifacts
@@ -245,7 +244,17 @@ jobs:
           echo "📦 Packages to be published:"
           ls -la all_wheels/
           
+      - name: Publish to Test PyPI
+        if: github.event.inputs.publish == 'test'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: all_wheels/
+          skip-existing: true
+          
       - name: Publish to PyPI
+        if: github.event.inputs.publish == 'prod'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}

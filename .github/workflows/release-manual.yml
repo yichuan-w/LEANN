@@ -155,6 +155,34 @@ jobs:
           echo "To test installation:"
           echo "pip install -i https://test.pypi.org/simple/ leann"
       
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "❌ PYPI_API_TOKEN not configured!"
+            echo "   Please add PYPI_API_TOKEN to repository secrets"
+            exit 1
+          fi
+          
+          pip install twine
+          echo "📦 Publishing to PyPI..."
+          
+          # Collect all wheels in one place
+          mkdir -p all_wheels
+          find packages/*/dist -name "*.whl" -exec cp {} all_wheels/ \;
+          find packages/*/dist -name "*.tar.gz" -exec cp {} all_wheels/ \;
+          
+          echo "📋 Packages to publish:"
+          ls -la all_wheels/
+          
+          # Upload to PyPI
+          twine upload all_wheels/* --skip-existing --verbose
+          
+          echo "✅ Published to PyPI!"
+          echo "🎉 Check packages at: https://pypi.org/project/leann/"
+      
       - name: Create and push tag
         run: |
           git tag "v${{ inputs.version }}"
@@ -187,8 +215,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Trigger PyPI publish
+      - name: Summary
         run: |
-          echo "🚀 Triggering PyPI publish workflow..."
-          # The existing build-and-publish.yml will be triggered by the tag push
-          echo "✅ Release process completed! The publish workflow will run automatically." 
+          echo "✅ Release v${{ inputs.version }} completed!"
+          echo ""
+          echo "📊 What was done:"
+          echo "1. ✅ Downloaded build artifacts from CI"
+          echo "2. ✅ Updated version numbers to ${{ inputs.version }}"
+          echo "3. ✅ Published packages to PyPI"
+          echo "4. ✅ Created git tag v${{ inputs.version }}"
+          echo "5. ✅ Created GitHub Release"
+          echo ""
+          echo "🎉 Installation:"
+          echo "pip install leann==${{ inputs.version }}" 

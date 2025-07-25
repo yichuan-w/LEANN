@@ -7,6 +7,14 @@ Before releasing, ensure:
 2. ✅ CI has passed on the latest commit (check [Actions](https://github.com/yichuan-w/LEANN/actions/workflows/ci.yml))
 3. ✅ You have determined the new version number
 
+### Required: PyPI Configuration
+
+To enable PyPI publishing:
+1. Get a PyPI API token from https://pypi.org/manage/account/token/
+2. Add it to repository secrets: Settings → Secrets → Actions → New repository secret
+   - Name: `PYPI_API_TOKEN`
+   - Value: Your PyPI token (starts with `pypi-`)
+
 ### Optional: TestPyPI Configuration
 
 To enable TestPyPI testing (recommended but not required):
@@ -29,12 +37,11 @@ To enable TestPyPI testing (recommended but not required):
 6. Click "Run workflow"
 
 **What happens:**
-- ✅ Validates version format
 - ✅ Downloads pre-built packages from CI (no rebuild needed!)
 - ✅ Updates all package versions
 - ✅ Optionally tests on TestPyPI
+- ✅ **Publishes directly to PyPI**
 - ✅ Creates tag and GitHub release
-- ✅ Automatically triggers PyPI publish
 
 ### Via Command Line
 
@@ -54,7 +61,7 @@ This script will:
 1. Update all package versions
 2. Commit and push changes
 3. Create GitHub release
-4. CI automatically builds and publishes to PyPI
+4. **Manual Release workflow will automatically publish to PyPI**
 
 ⚠️ **Note**: If CI fails, you'll need to manually fix and re-tag
 
