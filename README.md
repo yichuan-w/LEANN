@@ -133,6 +133,10 @@ LEANN supports RAG on various data sources including documents (.pdf, .txt, .md)
 
 Ask questions directly about your personal PDFs, documents, and any directory containing your files!
 
+<p align="center">
+  <img src="videos/paper_clear.gif" alt="LEANN Document Search Demo" width="600">
+</p>
+
 The example below asks a question about summarizing two papers (uses default data in `examples/data`):
 
 ```bash
@@ -149,6 +153,10 @@ python ./examples/main_cli_example.py
 
 
 ### 📧 Your Personal Email Secretary: RAG on Apple Mail!
+
+<p align="center">
+  <img src="videos/mail_clear.gif" alt="LEANN Email Search Demo" width="600">
+</p>
 
 **Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 ```bash
@@ -188,6 +196,11 @@ Once the index is built, you can ask questions like:
 </details>
 
 ### 🔍 Time Machine for the Web: RAG Your Entire Google Browser History!
+
+<p align="center">
+  <img src="videos/google_clear.gif" alt="LEANN Browser History Search Demo" width="600">
+</p>
+
 ```bash
 python examples/google_history_reader_leann.py --query "Tell me my browser history about machine learning?"
 ```
@@ -241,6 +254,10 @@ Once the index is built, you can ask questions like:
 </details>
 
 ### 💬 WeChat Detective: Unlock Your Golden Memories!
+
+<p align="center">
+  <img src="videos/wechat_clear.gif" alt="LEANN WeChat Search Demo" width="600">
+</p>
 
 ```bash
 python examples/wechat_history_reader_leann.py --query "Show me all group chats about weekend plans"

@@ -63,16 +63,14 @@ async def main(args):
     llm_config = {"type": "openai", "model": "gpt-4o"}
 
     chat = LeannChat(index_path=INDEX_PATH, llm_config=llm_config)
-
-    query = "Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?"
-
     # query = (
     #     "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发"
     # )
+    query = args.query
 
     print(f"You: {query}")
     chat_response = chat.ask(query, top_k=20, recompute_embeddings=True, complexity=32)
-    print(f"Leann: {chat_response}")
+    print(f"Leann chat response: \033[36m{chat_response}\033[0m")
 
 
 if __name__ == "__main__":
@@ -109,6 +107,12 @@ if __name__ == "__main__":
         type=str,
         default="examples/data",
         help="Directory containing documents to index (PDF, TXT, MD files).",
+    )
+    parser.add_argument(
+        "--query",
+        type=str,
+        default="Based on the paper, what are the main techniques LEANN explores to reduce the storage overhead and DLPM explore to achieve Fairness and Efiiciency trade-off?",
+        help="The query to ask the Leann chat system.",
     )
     args = parser.parse_args()
 

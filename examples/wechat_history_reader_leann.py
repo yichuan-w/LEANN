@@ -234,7 +234,7 @@ async def query_leann_index(index_path: str, query: str):
         },
         llm_kwargs={"temperature": 0.0, "max_tokens": 1000},
     )
-    print(f"Leann: {chat_response}")
+    print(f"Leann chat response: \033[36m{chat_response}\033[0m")
 
 
 async def main():

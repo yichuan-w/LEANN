@@ -441,9 +441,9 @@ class LeannSearcher:
             use_server_if_available=recompute_embeddings,
             zmq_port=zmq_port,
         )
-        logger.info(f"  Generated embedding shape: {query_embedding.shape}")
+        # logger.info(f"  Generated embedding shape: {query_embedding.shape}")
         embedding_time = time.time() - start_time
-        logger.info(f"  Embedding time: {embedding_time} seconds")
+        # logger.info(f"  Embedding time: {embedding_time} seconds")
 
         start_time = time.time()
         results = self.backend_impl.search(
@@ -458,7 +458,7 @@ class LeannSearcher:
             **kwargs,
         )
         search_time = time.time() - start_time
-        logger.info(f"  Search time: {search_time} seconds")
+        # logger.info(f"  Search time: {search_time} seconds")
         logger.info(
             f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results"
         )
@@ -479,15 +479,25 @@ class LeannSearcher:
                             metadata=passage_data.get("metadata", {}),
                         )
                     )
+                    
+                    # Color codes for better logging
+                    GREEN = "\033[92m"
+                    BLUE = "\033[94m"
+                    YELLOW = "\033[93m"
+                    RESET = "\033[0m"
+                    
+                    # Truncate text for display (first 100 chars)
+                    display_text = passage_data['text']
                     logger.info(
-                        f"    {i + 1}. passage_id='{string_id}' -> SUCCESS: {passage_data['text']}..."
+                        f"   {GREEN}✓{RESET} {BLUE}[{i + 1:2d}]{RESET} {YELLOW}ID:{RESET} '{string_id}' {YELLOW}Score:{RESET} {dist:.4f} {YELLOW}Text:{RESET} {display_text}"
                     )
                 except KeyError:
+                    RED = "\033[91m"
                     logger.error(
-                        f"    {i + 1}. passage_id='{string_id}' -> ERROR: Passage not found in PassageManager!"
+                        f"   {RED}✗{RESET} [{i + 1:2d}] ID: '{string_id}' -> {RED}ERROR: Passage not found!{RESET}"
                     )
 
-        logger.info(f"  Final enriched results: {len(enriched_results)} passages")
+        logger.info(f"  {GREEN}✓ Final enriched results: {len(enriched_results)} passages{RESET}")
         return enriched_results
 
 
@@ -517,7 +527,7 @@ class LeannChat:
     ):
         if llm_kwargs is None:
             llm_kwargs = {}
-
+        search_time = time.time()
         results = self.searcher.search(
             question,
             top_k=top_k,
@@ -529,6 +539,8 @@ class LeannChat:
             expected_zmq_port=expected_zmq_port,
             **search_kwargs,
         )
+        search_time = time.time() - search_time
+        # logger.info(f"  Search time: {search_time} seconds")
         context = "\n\n".join([r.text for r in results])
         prompt = (
             "Here is some retrieved context that might help answer your question:\n\n"

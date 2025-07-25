@@ -222,14 +222,15 @@ async def query_leann_index(index_path: str, query: str):
             "max_tokens": 1000
         }
     )
-    print(f"Leann: {chat_response}")
+
+    print(f"Leann chat response: \033[36m{chat_response}\033[0m")
 
 async def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='LEANN Chrome History Reader - Create and query browser history index')
     parser.add_argument('--chrome-profile', type=str, default=DEFAULT_CHROME_PROFILE,
                        help=f'Path to Chrome profile directory (default: {DEFAULT_CHROME_PROFILE}), usually you dont need to change this')
-    parser.add_argument('--index-dir', type=str, default="./all_google_new",
+    parser.add_argument('--index-dir', type=str, default="./google_history_index",
                        help='Directory to store the LEANN index (default: ./chrome_history_index_leann_test)')
     parser.add_argument('--max-entries', type=int, default=1000,
                        help='Maximum number of history entries to process (default: 1000)')

@@ -224,15 +224,16 @@ async def query_leann_index(index_path: str, query: str):
         beam_width=1,
     )
     end_time = time.time()
-    print(f"Time taken: {end_time - start_time} seconds")
-    print(f"Leann: {chat_response}")
+    # print(f"Time taken: {end_time - start_time} seconds")
+    # highlight the answer
+    print(f"Leann chat response: \033[36m{chat_response}\033[0m")
 
 async def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='LEANN Mail Reader - Create and query email index')
     # Remove --mail-path argument and auto-detect all Messages directories
     # Remove DEFAULT_MAIL_PATH
-    parser.add_argument('--index-dir', type=str, default="./mail_index_index_file",
+    parser.add_argument('--index-dir', type=str, default="./mail_index",
                        help='Directory to store the LEANN index (default: ./mail_index_leann_raw_text_all_dicts)')
     parser.add_argument('--max-emails', type=int, default=1000,
                        help='Maximum number of emails to process (-1 means all)')
