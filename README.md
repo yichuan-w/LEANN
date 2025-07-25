@@ -38,7 +38,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
 ## Installation
-
+> `pip leann` coming soon!
 ```bash
 git clone git@github.com:yichuan-w/LEANN.git leann
 cd leann
