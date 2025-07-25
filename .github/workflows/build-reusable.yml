@@ -58,6 +58,12 @@ jobs:
           # Install git if not available
           yum install -y git || true
           
+          # Configure git to handle the directory ownership issue
+          git config --global --add safe.directory ${GITHUB_WORKSPACE}
+          git config --global --add safe.directory /__w/LEANN/LEANN
+          git config --global --add safe.directory /github/workspace
+          git config --global --add safe.directory $(pwd)
+          
           # Clone the repository manually in the container
           git init
           git remote add origin https://github.com/${GITHUB_REPOSITORY}.git
