@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         
     steps:
       - uses: actions/checkout@v4
@@ -58,9 +58,6 @@ jobs:
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake
           
-          CIBW_BEFORE_ALL_WINDOWS: |
-            choco install cmake -y
-          
           # Test the wheel
           CIBW_TEST_COMMAND: |
             python -c "import leann_backend_hnsw; print('HNSW backend imported successfully')"
@@ -68,6 +65,8 @@ jobs:
           # Environment variables for build
           CIBW_ENVIRONMENT: |
             CMAKE_BUILD_PARALLEL_LEVEL=8
+            Python_FIND_VIRTUALENV=ONLY
+            Python3_FIND_VIRTUALENV=ONLY
       
       - name: Build leann-backend-diskann wheels  
         uses: pypa/cibuildwheel@v2.20.0
@@ -88,14 +87,13 @@ jobs:
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake
           
-          CIBW_BEFORE_ALL_WINDOWS: |
-            choco install cmake -y
-          
           CIBW_TEST_COMMAND: |
             python -c "import leann_backend_diskann; print('DiskANN backend imported successfully')"
           
           CIBW_ENVIRONMENT: |
             CMAKE_BUILD_PARALLEL_LEVEL=8
+            Python_FIND_VIRTUALENV=ONLY
+            Python3_FIND_VIRTUALENV=ONLY
       
       - uses: actions/upload-artifact@v4
         with:

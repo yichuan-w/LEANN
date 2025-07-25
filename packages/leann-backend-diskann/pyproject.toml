@@ -22,6 +22,3 @@ sdist.include = ["CMakeLists.txt", "src", "third_party", "leann_backend_diskann/
 
 [tool.scikit-build.cmake.define]
 CMAKE_BUILD_PARALLEL_LEVEL = "8"
-# Help CMake find Python in cibuildwheel environments
-Python_FIND_VIRTUALENV = "ONLY"
-Python3_FIND_VIRTUALENV = "ONLY"

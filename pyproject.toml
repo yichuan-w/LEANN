@@ -79,7 +79,3 @@ before-all = """
 # macOS系统依赖
 [tool.cibuildwheel.macos]
 before-all = "brew install boost zeromq openblas cmake"
-
-# Windows系统依赖
-[tool.cibuildwheel.windows]
-before-all = "choco install cmake -y"
