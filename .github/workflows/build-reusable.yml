@@ -57,7 +57,6 @@ jobs:
           
           # Build HNSW backend
           cd packages/leann-backend-hnsw
-          uv pip install --system -r pyproject.toml --extra build
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
             CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build
           else
@@ -67,7 +66,6 @@ jobs:
           
           # Build DiskANN backend
           cd packages/leann-backend-diskann
-          uv pip install --system -r pyproject.toml --extra build
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
             CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build
           else
