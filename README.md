@@ -94,7 +94,7 @@ ollama pull llama3.2:1b
 ## Quick Start in 30s
 
 Our declarative API makes RAG as easy as writing a config file.
-[Try in this ipynb file →](demo.ipynb)
+[Try in this ipynb file →](demo.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb)
 
 ```python
 from leann.api import LeannBuilder, LeannSearcher, LeannChat
