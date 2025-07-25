@@ -13,6 +13,7 @@ jobs:
   build:
     name: Build ${{ matrix.os }} Python ${{ matrix.python }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -43,15 +44,38 @@ jobs:
     container: ${{ matrix.container }}
     
     steps:
-      # Use v3 for manylinux2014 compatibility (Node.js 16 instead of 20)
-      - uses: actions/checkout@v3
+      # For manylinux2014 compatibility, we'll handle checkout differently
+      - uses: actions/checkout@v4
+        if: matrix.container == ''
         with:
           ref: ${{ inputs.ref }}
           submodules: recursive
       
+      # Manual checkout for containers to avoid Node.js compatibility issues
+      - name: Manual checkout in container
+        if: matrix.container != ''
+        run: |
+          # Install git if not available
+          yum install -y git || true
+          
+          # Clone the repository manually in the container
+          git init
+          git remote add origin https://github.com/${GITHUB_REPOSITORY}.git
+          
+          # Fetch the appropriate ref
+          if [ -n "${{ inputs.ref }}" ]; then
+            git fetch --depth=1 origin ${{ inputs.ref }}
+          else
+            git fetch --depth=1 origin ${GITHUB_SHA}
+          fi
+          git checkout FETCH_HEAD
+          
+          # Initialize submodules
+          git submodule update --init --recursive
+      
       - name: Setup Python (macOS and regular Ubuntu)
         if: matrix.container == ''
-        uses: actions/setup-python@v4  # v4 for better compatibility
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       
@@ -224,7 +248,7 @@ jobs:
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
       
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3  # v3 for manylinux2014 compatibility
+        uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.os }}-py${{ matrix.python }}
+          name: packages-${{ matrix.os }}-py${{ matrix.python }}${{ matrix.container && '-manylinux' || '' }}
           path: packages/*/dist/ 
