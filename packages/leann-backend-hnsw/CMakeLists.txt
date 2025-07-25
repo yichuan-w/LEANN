@@ -84,4 +84,8 @@ set(FAISS_BUILD_AVX512 OFF CACHE BOOL "" FORCE)
 # IMPORTANT: Disable building AVX versions to speed up compilation
 set(FAISS_BUILD_AVX_VERSIONS OFF CACHE BOOL "" FORCE)
 
+# Force Faiss to use our Python settings
+set(Python_FIND_VIRTUALENV ONLY CACHE STRING "" FORCE)
+set(Python3_FIND_VIRTUALENV ONLY CACHE STRING "" FORCE)
+
 add_subdirectory(third_party/faiss)
