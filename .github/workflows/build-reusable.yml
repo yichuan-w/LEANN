@@ -43,14 +43,15 @@ jobs:
     container: ${{ matrix.container }}
     
     steps:
-      - uses: actions/checkout@v4
+      # Use v3 for manylinux2014 compatibility (Node.js 16 instead of 20)
+      - uses: actions/checkout@v3
         with:
           ref: ${{ inputs.ref }}
           submodules: recursive
       
       - name: Setup Python (macOS and regular Ubuntu)
         if: matrix.container == ''
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4  # v4 for better compatibility
         with:
           python-version: ${{ matrix.python }}
       
@@ -223,7 +224,7 @@ jobs:
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
       
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3  # v3 for manylinux2014 compatibility
         with:
           name: packages-${{ matrix.os }}-py${{ matrix.python }}
           path: packages/*/dist/ 

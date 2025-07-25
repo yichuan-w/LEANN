@@ -18,7 +18,7 @@ jobs:
       commit-sha: ${{ steps.push.outputs.commit-sha }}
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3  # Compatibility with manylinux2014
       
       - name: Validate version
         run: |
@@ -57,12 +57,12 @@ jobs:
       contents: write
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3  # Consistency with build workflow
         with:
           ref: ${{ needs.update-version.outputs.commit-sha }}
       
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v3  # Match upload-artifact version
         with:
           path: dist-artifacts
       
