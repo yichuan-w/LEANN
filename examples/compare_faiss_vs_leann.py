@@ -135,6 +135,7 @@ def test_leann_hnsw():
         nodes = node_parser.get_nodes_from_documents([doc])
         for node in nodes:
             all_texts.append(node.get_content())
+    print(f"Total number of chunks: {len(all_texts)}")
 
     tracker.checkpoint("After text chunking")
 

@@ -26,7 +26,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
   <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="70%">
 </p>
 
-> **The numbers speak for themselves:** Index 60 million Wikipedia chunks in just 6GB instead of 201GB. From emails to browser history, everything fits on your laptop. [See detailed benchmarks for different applications below ↓](#storage-usage-comparison)
+> **The numbers speak for themselves:** Index 60 million Wikipedia chunks in just 6GB instead of 201GB. From emails to browser history, everything fits on your laptop. [See detailed benchmarks for different applications below ↓](#storage-comparison-on-different-applications)
 
 
 🔒 **Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
@@ -402,7 +402,7 @@ Options:
 
 
 📊 **[Simple Example: Compare LEANN vs FAISS →](examples/compare_faiss_vs_leann.py)**
-### Storage Comparison
+### Storage Comparison on Different Applications {#storage-comparison-on-different-applications}
 
 | System | DPR (2.1M) | Wiki (60M) | Chat (400K) | Email (780K) | Browser (38K) |
 |--------|-------------|------------|-------------|--------------|---------------|
@@ -439,98 +439,15 @@ If you find Leann useful, please cite:
 }
 ```
 
-## ✨ Features
+## ✨ [Detailed Features →](docs/features.md)
 
-### 🔥 Core Features
-
-- **🔄 Real-time Embeddings** - Eliminate heavy embedding storage with dynamic computation using optimized ZMQ servers and highly optimized search paradigm (overlapping and batching) with highly optimized embedding engine
-- **📈 Scalable Architecture** - Handles millions of documents on consumer hardware; the larger your dataset, the more LEANN can save
-- **🎯 Graph Pruning** - Advanced techniques to minimize the storage overhead of vector search to a limited footprint
-- **🏗️ Pluggable Backends** - DiskANN, HNSW/FAISS with unified API
-
-### 🛠️ Technical Highlights
-- **🔄 Recompute Mode** - Highest accuracy scenarios while eliminating vector storage overhead
-- **⚡ Zero-copy Operations** - Minimize IPC overhead by transferring distances instead of embeddings
-- **🚀 High-throughput Embedding Pipeline** - Optimized batched processing for maximum efficiency
-- **🎯 Two-level Search** - Novel coarse-to-fine search overlap for accelerated query processing (optional)
-- **💾 Memory-mapped Indices** - Fast startup with raw text mapping to reduce memory overhead
-- **🚀 MLX Support** - Ultra-fast recompute/build with quantized embedding models, accelerating building and search ([minimal example](test/build_mlx_index.py))
-
-### 🎨 Developer Experience
-
-- **Simple Python API** - Get started in minutes
-- **Extensible backend system** - Easy to add new algorithms
-- **Comprehensive examples** - From basic usage to production deployment
-
-## 🤝 Contributing
-
-We welcome contributions! Leann is built by the community, for the community.
-
-### Ways to Contribute
-
-- 🐛 **Bug Reports**: Found an issue? Let us know!
-- 💡 **Feature Requests**: Have an idea? We'd love to hear it!
-- 🔧 **Code Contributions**: PRs welcome for all skill levels
-- 📖 **Documentation**: Help make Leann more accessible
-- 🧪 **Benchmarks**: Share your performance results
+## 🤝 [Contributing →](docs/contributing.md)
 
 
-<!-- ## ❓ FAQ
-
-### Common Issues
-
-#### NCCL Topology Error
-
-**Problem**: You encounter `ncclTopoComputePaths` error during document processing:
-
-```
-ncclTopoComputePaths (system=<optimized out>, comm=comm@entry=0x5555a82fa3c0) at graph/paths.cc:688
-```
-
-**Solution**: Set these environment variables before running your script:
-
-```bash
-export NCCL_TOPO_DUMP_FILE=/tmp/nccl_topo.xml
-export NCCL_DEBUG=INFO
-export NCCL_DEBUG_SUBSYS=INIT,GRAPH
-export NCCL_IB_DISABLE=1
-export NCCL_NET_PLUGIN=none
-export NCCL_SOCKET_IFNAME=ens5
-``` -->
-## FAQ
-
-### 1. My building time seems long
-
-You can speed up the process by using a lightweight embedding model. Add this to your arguments:
-
-```bash
---embedding-model sentence-transformers/all-MiniLM-L6-v2
-```
-**Model sizes:** `all-MiniLM-L6-v2` (30M parameters), `facebook/contriever` (~100M parameters), `Qwen3-0.6B` (600M parameters)
+## [FAQ →](docs/faq.md)
 
 
-## 📈 Roadmap
-
-### 🎯 Q2 2025
-
-- [X] DiskANN backend with MIPS/L2/Cosine support
-- [X] HNSW backend integration
-- [X] Real-time embedding pipeline
-- [X] Memory-efficient graph pruning
-
-### 🚀 Q3 2025
-
-
-- [ ] Advanced caching strategies
-- [ ] Add contextual-retrieval https://www.anthropic.com/news/contextual-retrieval
-- [ ] Add sleep-time-compute and summarize agent! to summarilze the file on computer!
-- [ ] Add OpenAI recompute API
-
-### 🌟 Q4 2025
-
-- [ ] Integration with LangChain/LlamaIndex
-- [ ] Visual similarity search
-- [ ] Query rewrtiting, rerank and expansion
+## 📈 [Roadmap →](docs/roadmap.md)
 
 ## 📄 License
 
@@ -538,11 +455,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-- **Microsoft Research** for the DiskANN algorithm
-- **Meta AI** for FAISS and optimization insights
-- **HuggingFace** for the transformer ecosystem
-- **Our amazing contributors** who make this possible
-
+This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.edu/)
 ---
 
 <p align="center">
