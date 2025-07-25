@@ -53,7 +53,7 @@ jobs:
           # Linux dependencies - 使用yum因为manylinux2014基于CentOS 7
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y epel-release
-            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3 python3-devel
+            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
             ln -sf /usr/bin/cmake3 /usr/bin/cmake
           
           # Install numpy before building
@@ -63,9 +63,7 @@ jobs:
           
           CIBW_BEFORE_BUILD_LINUX: |
             pip install numpy
-            pip install --upgrade pip setuptools wheel
-            # 确保Python开发文件可用
-            python -m pip install --force-reinstall numpy
+            pip install --upgrade pip setuptools wheel swig
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake libomp
@@ -98,7 +96,7 @@ jobs:
           
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y epel-release
-            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3 python3-devel
+            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
             ln -sf /usr/bin/cmake3 /usr/bin/cmake
           
           # Install numpy before building
@@ -108,9 +106,7 @@ jobs:
           
           CIBW_BEFORE_BUILD_LINUX: |
             pip install numpy
-            pip install --upgrade pip setuptools wheel
-            # 确保Python开发文件可用
-            python -m pip install --force-reinstall numpy
+            pip install --upgrade pip setuptools wheel swig
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake libomp

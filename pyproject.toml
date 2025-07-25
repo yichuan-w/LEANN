@@ -84,6 +84,3 @@ before-all = "brew install boost zeromq openblas cmake libomp"
 # 环境变量配置
 [tool.cibuildwheel.environment]
 CMAKE_BUILD_PARALLEL_LEVEL = "8"
-
-# 构建前安装必要的Python包
-before-build = "pip install numpy"

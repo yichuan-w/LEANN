@@ -21,6 +21,8 @@ sdist.include = ["CMakeLists.txt", "src", "third_party", "leann_backend_hnsw/*.t
 cmake.args = ["-DCMAKE_BUILD_TYPE=Release"]
 # 确保 CMake 可以找到系统库
 cmake.verbose = true
+build-dir = "build/{cache_tag}"
+minimum-version = "build-system.requires"
 
 # CMake definitions to optimize compilation
 [tool.scikit-build.cmake.define]
