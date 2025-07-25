@@ -122,11 +122,11 @@ jobs:
           # Linux-specific environment variables
           CIBW_ENVIRONMENT_LINUX: |
             CMAKE_BUILD_PARALLEL_LEVEL=8
+            CMAKE_PREFIX_PATH=$VIRTUAL_ENV
             Python_FIND_VIRTUALENV=ONLY
             Python3_FIND_VIRTUALENV=ONLY
             Python_FIND_STRATEGY=LOCATION
             Python3_FIND_STRATEGY=LOCATION
-            CMAKE_PREFIX_PATH=$VIRTUAL_ENV
             Python_EXECUTABLE=$VIRTUAL_ENV/bin/python
             Python3_EXECUTABLE=$VIRTUAL_ENV/bin/python
       
