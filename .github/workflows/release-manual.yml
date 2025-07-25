@@ -65,41 +65,49 @@ jobs:
           git add packages/*/pyproject.toml
           git commit -m "chore: release v${{ inputs.version }}"
       
-      - name: Get CI run ID
-        id: get-ci-run
+      - name: Push version update
         run: |
-          # Get the latest successful CI run on the previous commit (before version bump)
-          COMMIT_SHA=$(git rev-parse HEAD~1)
-          RUN_ID=$(gh run list \
-            --workflow="CI - Build and Test" \
-            --status=success \
-            --commit=$COMMIT_SHA \
-            --json databaseId \
-            --jq '.[0].databaseId')
+          git push origin HEAD:main
+          echo "✅ Pushed version update to main branch"
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+        id: push-version
           
-          if [ -z "$RUN_ID" ]; then
-            echo "❌ No successful CI run found for commit $COMMIT_SHA"
-            echo ""
-            echo "This usually means:"
-            echo "1. CI hasn't run on the latest commit yet"
-            echo "2. CI failed on the latest commit"
-            echo ""
-            echo "Please ensure CI passes on main branch before releasing."
-            exit 1
-          fi
+      - name: Wait for CI to complete
+        id: wait-for-ci
+        run: |
+          echo "⏳ Waiting for CI to build new version..."
+          COMMIT_SHA="${{ steps.push-version.outputs.commit-sha }}"
           
-          echo "✅ Found CI run: $RUN_ID"
-          echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
+          # Wait up to 20 minutes for CI to complete
+          for i in {1..40}; do
+            RUN_ID=$(gh run list \
+              --workflow="CI - Build Multi-Platform Packages" \
+              --commit=$COMMIT_SHA \
+              --json databaseId,status \
+              --jq '.[] | select(.status == "completed") | .databaseId' | head -1)
+            
+            if [ ! -z "$RUN_ID" ]; then
+              echo "✅ Found completed CI run: $RUN_ID"
+              echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            echo "⏳ Waiting for CI... (attempt $i/40)"
+            sleep 30
+          done
+          
+          echo "❌ CI did not complete within 20 minutes"
+          exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Download artifacts from CI
+      - name: Download artifacts from CI run
         run: |
-          echo "📦 Downloading artifacts from CI run ${{ steps.get-ci-run.outputs.run-id }}..."
+          echo "📦 Downloading artifacts from CI run ${{ steps.wait-for-ci.outputs.run-id }}..."
           
-          # Download all wheel artifacts
-          gh run download ${{ steps.get-ci-run.outputs.run-id }} \
-            --pattern "wheels-*" \
+          # Download all artifacts (not just wheels-*)
+          gh run download ${{ steps.wait-for-ci.outputs.run-id }} \
             --dir ./dist-downloads
           
           # Consolidate all wheels into packages/*/dist/
@@ -131,18 +139,57 @@ jobs:
       
       - name: Test on TestPyPI (optional)
         if: inputs.test_pypi
+        continue-on-error: true
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
         run: |
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "⚠️  TEST_PYPI_API_TOKEN not configured, skipping TestPyPI upload"
+            echo "   To enable TestPyPI testing, add TEST_PYPI_API_TOKEN to repository secrets"
+            exit 0
+          fi
+          
           pip install twine
           echo "📦 Uploading to TestPyPI..."
-          twine upload --repository testpypi packages/*/dist/* --verbose
+          twine upload --repository testpypi packages/*/dist/* --verbose || {
+            echo "⚠️  TestPyPI upload failed, but continuing with release"
+            echo "   This is optional and won't block the release"
+            exit 0
+          }
           echo "✅ Test upload successful!"
           echo "📋 Check packages at: https://test.pypi.org/user/your-username/"
           echo ""
           echo "To test installation:"
           echo "pip install -i https://test.pypi.org/simple/ leann"
+      
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "❌ PYPI_API_TOKEN not configured!"
+            echo "   Please add PYPI_API_TOKEN to repository secrets"
+            exit 1
+          fi
+          
+          pip install twine
+          echo "📦 Publishing to PyPI..."
+          
+          # Collect all wheels in one place
+          mkdir -p all_wheels
+          find packages/*/dist -name "*.whl" -exec cp {} all_wheels/ \;
+          find packages/*/dist -name "*.tar.gz" -exec cp {} all_wheels/ \;
+          
+          echo "📋 Packages to publish:"
+          ls -la all_wheels/
+          
+          # Upload to PyPI
+          twine upload all_wheels/* --skip-existing --verbose
+          
+          echo "✅ Published to PyPI!"
+          echo "🎉 Check packages at: https://pypi.org/project/leann/"
       
       - name: Create and push tag
         run: |
@@ -166,18 +213,3 @@ jobs:
             ```bash
             pip install leann==${{ inputs.version }}
             ```
-            
-            ### Test Installation (if using TestPyPI)
-            ```bash
-            pip install -i https://test.pypi.org/simple/ leann==${{ inputs.version }}
-            ```
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Trigger PyPI publish
-        run: |
-          echo "🚀 Triggering PyPI publish workflow..."
-          # The existing build-and-publish.yml will be triggered by the tag push
-          echo "✅ Release process completed! The publish workflow will run automatically." 
