@@ -93,13 +93,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Download artifacts from CI
+      - name: Download artifacts from CI run
         run: |
           echo "📦 Downloading artifacts from CI run ${{ steps.get-ci-run.outputs.run-id }}..."
           
-          # Download all wheel artifacts
+          # Download all artifacts (not just wheels-*)
           gh run download ${{ steps.get-ci-run.outputs.run-id }} \
-            --pattern "wheels-*" \
             --dir ./dist-downloads
           
           # Consolidate all wheels into packages/*/dist/
@@ -205,26 +204,3 @@ jobs:
             ```bash
             pip install leann==${{ inputs.version }}
             ```
-            
-            ### Test Installation (if using TestPyPI)
-            ```bash
-            pip install -i https://test.pypi.org/simple/ leann==${{ inputs.version }}
-            ```
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Summary
-        run: |
-          echo "✅ Release v${{ inputs.version }} completed!"
-          echo ""
-          echo "📊 What was done:"
-          echo "1. ✅ Downloaded build artifacts from CI"
-          echo "2. ✅ Updated version numbers to ${{ inputs.version }}"
-          echo "3. ✅ Published packages to PyPI"
-          echo "4. ✅ Created git tag v${{ inputs.version }}"
-          echo "5. ✅ Created GitHub Release"
-          echo ""
-          echo "🎉 Installation:"
-          echo "pip install leann==${{ inputs.version }}" 
