@@ -19,7 +19,7 @@ dependencies = [
 wheel.exclude = ["CMakeLists.txt", "src", "third_party"]
 sdist.include = ["CMakeLists.txt", "src", "third_party", "leann_backend_hnsw/*.txt"]
 cmake.args = ["-DCMAKE_BUILD_TYPE=Release"]
-# 确保 CMake 可以找到系统库
+# Ensure CMake can find system libraries
 build-dir = "build/{cache_tag}"
 minimum-version = "build-system.requires"
 

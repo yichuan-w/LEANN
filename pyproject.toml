@@ -62,14 +62,14 @@ leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = tr
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
 
 [tool.cibuildwheel]
-# 跳过32位和PyPy构建
+# Skip 32-bit and PyPy builds
 skip = "*-win32 *-manylinux_i686 pp* *musllinux*"
 
-# 使用manylinux2014以获得最大兼容性（支持GLIBC 2.17）
+# Use manylinux2014 for maximum compatibility (supports GLIBC 2.17)
 manylinux-x86_64-image = "manylinux2014"
 manylinux-aarch64-image = "manylinux2014"
 
-# Linux系统依赖
+# Linux system dependencies
 [tool.cibuildwheel.linux]
 before-all = """
   yum install -y epel-release
@@ -77,12 +77,12 @@ before-all = """
   ln -sf /usr/bin/cmake3 /usr/bin/cmake
 """
 
-# macOS系统依赖
+# macOS system dependencies
 [tool.cibuildwheel.macos]
 before-all = "brew install boost zeromq openblas cmake libomp"
-# 设置macOS最小版本
+# Set minimum macOS version
 environment = { MACOSX_DEPLOYMENT_TARGET = "11.0", CMAKE_OSX_DEPLOYMENT_TARGET = "11.0" }
 
-# 环境变量配置
+# Environment variables configuration
 [tool.cibuildwheel.environment]
 CMAKE_BUILD_PARALLEL_LEVEL = "8"
