@@ -112,8 +112,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 passages_source_file = (
                     self.index_dir / f"{self.index_path.name}.meta.json"
                 )
+                # Convert to absolute path to ensure server can find it
                 zmq_port = self._ensure_server_running(
-                    str(passages_source_file), zmq_port
+                    str(passages_source_file.resolve()), zmq_port
                 )
 
                 return self._compute_embedding_via_server([query], zmq_port)[
