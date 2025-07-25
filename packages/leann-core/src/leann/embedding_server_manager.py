@@ -269,7 +269,9 @@ class EmbeddingServerManager:
         ]
 
         if kwargs.get("passages_file"):
-            command.extend(["--passages-file", str(kwargs["passages_file"])])
+            # Convert to absolute path to ensure subprocess can find the file
+            passages_file = Path(kwargs["passages_file"]).resolve()
+            command.extend(["--passages-file", str(passages_file)])
         if embedding_mode != "sentence-transformers":
             command.extend(["--embedding-mode", embedding_mode])
 
