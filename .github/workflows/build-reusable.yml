@@ -137,12 +137,14 @@ jobs:
           # Install development packages
           # Note: Some packages might have different names in CentOS 7
           yum install -y \
+            gcc-c++ \
             boost-devel \
             protobuf-compiler \
+            protobuf-devel \
             zeromq-devel \
             pkgconfig \
             openblas-devel \
-            protobuf-devel || {
+            cmake || {
               echo "Some packages failed to install, trying alternatives..."
               # Try alternative package names
               yum install -y libzmq3-devel || true
@@ -151,6 +153,27 @@ jobs:
           
           # Install optional packages that might not be available
           yum install -y libaio-devel || echo "libaio-devel not available, continuing..."
+          
+          # Verify zmq installation and create pkg-config file if needed
+          if [ ! -f /usr/lib64/pkgconfig/libzmq.pc ] && [ ! -f /usr/lib/pkgconfig/libzmq.pc ]; then
+            echo "Creating libzmq.pc file..."
+            mkdir -p /usr/lib64/pkgconfig
+            cat > /usr/lib64/pkgconfig/libzmq.pc << 'EOF'
+          prefix=/usr
+          exec_prefix=${prefix}
+          libdir=${exec_prefix}/lib64
+          includedir=${prefix}/include
+          
+          Name: libzmq
+          Description: ZeroMQ library
+          Version: 4.1.4
+          Libs: -L${libdir} -lzmq
+          Cflags: -I${includedir}
+          EOF
+          fi
+          
+          # Update PKG_CONFIG_PATH
+          echo "PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
           
           # Build tools are pre-installed in manylinux
           # MKL is more complex in container, skip for now and use OpenBLAS

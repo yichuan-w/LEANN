@@ -54,10 +54,40 @@ jobs:
             yum clean all && yum makecache
             yum install -y epel-release || true
             yum makecache || true
-            yum install -y boost-devel protobuf-compiler zeromq-devel pkgconfig openblas-devel || echo "Some packages failed, continuing..."
+            # Install system dependencies
+            yum install -y \
+              gcc-c++ \
+              boost-devel \
+              protobuf-compiler \
+              protobuf-devel \
+              zeromq-devel \
+              pkgconfig \
+              openblas-devel \
+              cmake || echo "Some packages failed, continuing..."
+            
+            # Verify zmq installation and create pkg-config file if needed
+            if [ ! -f /usr/lib64/pkgconfig/libzmq.pc ] && [ ! -f /usr/lib/pkgconfig/libzmq.pc ]; then
+              echo "Creating libzmq.pc file..."
+              mkdir -p /usr/lib64/pkgconfig
+              cat > /usr/lib64/pkgconfig/libzmq.pc << 'EOF'
+            prefix=/usr
+            exec_prefix=${prefix}
+            libdir=${exec_prefix}/lib64
+            includedir=${prefix}/include
+            
+            Name: libzmq
+            Description: ZeroMQ library
+            Version: 4.1.4
+            Libs: -L${libdir} -lzmq
+            Cflags: -I${includedir}
+            EOF
+            fi
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install llvm libomp boost protobuf zeromq
+          
+          CIBW_ENVIRONMENT_LINUX: |
+            PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH
           
           CIBW_ENVIRONMENT_MACOS: |
             CC=$(brew --prefix llvm)/bin/clang
@@ -80,11 +110,21 @@ jobs:
             yum clean all && yum makecache
             yum install -y epel-release || true
             yum makecache || true
-            yum install -y protobuf-compiler openblas-devel protobuf-devel || echo "Some packages failed, continuing..."
+            # Install system dependencies for DiskANN
+            yum install -y \
+              gcc-c++ \
+              protobuf-compiler \
+              protobuf-devel \
+              openblas-devel \
+              pkgconfig \
+              cmake || echo "Some packages failed, continuing..."
             yum install -y libaio-devel || echo "libaio-devel not available, continuing..."
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install llvm libomp protobuf
+          
+          CIBW_ENVIRONMENT_LINUX: |
+            PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_PATH
           
           CIBW_ENVIRONMENT_MACOS: |
             CC=$(brew --prefix llvm)/bin/clang
