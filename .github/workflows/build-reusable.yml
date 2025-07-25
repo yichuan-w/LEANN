@@ -11,14 +11,26 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.os }}
+    name: Build ${{ matrix.os }} Python ${{ matrix.python }}
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
+            python: '3.9'
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: ubuntu-latest
             python: '3.11'
+          - os: ubuntu-latest
+            python: '3.12'
+          - os: macos-latest
+            python: '3.9'
+          - os: macos-latest
+            python: '3.10'
           - os: macos-latest
             python: '3.11'
+          - os: macos-latest
+            python: '3.12'
     runs-on: ${{ matrix.os }}
     
     steps:
@@ -39,12 +51,29 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev
+          sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev \
+            pkg-config libopenblas-dev patchelf libabsl-dev libaio-dev libprotobuf-dev
+          
+          # Install Intel MKL for DiskANN
+          wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940.sh
+          sudo sh intel-onemkl-2025.0.0.940.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
+          source /opt/intel/oneapi/setvars.sh
+          echo "MKLROOT=/opt/intel/oneapi/mkl/latest" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/opt/intel/oneapi/mkl/latest/lib/intel64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
       
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install llvm libomp boost protobuf zeromq
+      
+      - name: Install build dependencies
+        run: |
+          uv pip install --system scikit-build-core numpy swig Cython pybind11
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            uv pip install --system auditwheel
+          else
+            uv pip install --system delocate
+          fi
       
       - name: Build packages
         run: |
@@ -58,18 +87,18 @@ jobs:
           # Build HNSW backend
           cd packages/leann-backend-hnsw
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build
+            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build --wheel --python python
           else
-            uv build
+            uv build --wheel --python python
           fi
           cd ../..
           
           # Build DiskANN backend
           cd packages/leann-backend-diskann
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build
+            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build --wheel --python python
           else
-            uv build
+            uv build --wheel --python python
           fi
           cd ../..
           
@@ -79,12 +108,56 @@ jobs:
             uv build
             cd ../..
           fi
+      
+      - name: Repair wheels (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Repair HNSW wheel
+          cd packages/leann-backend-hnsw
+          if [ -d dist ]; then
+            auditwheel repair dist/*.whl -w dist_repaired
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
           
+          # Repair DiskANN wheel
+          cd packages/leann-backend-diskann
+          if [ -d dist ]; then
+            auditwheel repair dist/*.whl -w dist_repaired
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+      
+      - name: Repair wheels (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Repair HNSW wheel
+          cd packages/leann-backend-hnsw
+          if [ -d dist ]; then
+            delocate-wheel -w dist_repaired -v dist/*.whl
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+          
+          # Repair DiskANN wheel
+          cd packages/leann-backend-diskann
+          if [ -d dist ]; then
+            delocate-wheel -w dist_repaired -v dist/*.whl
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+      
+      - name: List built packages
+        run: |
           echo "📦 Built packages:"
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.os }}-${{ matrix.python }}
+          name: packages-${{ matrix.os }}-py${{ matrix.python }}
           path: packages/*/dist/ 
