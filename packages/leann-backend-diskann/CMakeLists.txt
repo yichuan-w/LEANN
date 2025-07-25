@@ -33,4 +33,4 @@ set(Python3_FIND_VIRTUALENV ONLY CACHE STRING "" FORCE)
 
 # Tell CMake to directly enter the DiskANN submodule and execute its own CMakeLists.txt
 # DiskANN will handle everything itself, including compiling Python bindings
-add_subdirectory(src/third_party/DiskANN)
+add_subdirectory(third_party/DiskANN)
