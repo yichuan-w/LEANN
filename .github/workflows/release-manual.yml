@@ -71,7 +71,7 @@ jobs:
           # Get the latest successful CI run on the previous commit (before version bump)
           COMMIT_SHA=$(git rev-parse HEAD~1)
           RUN_ID=$(gh run list \
-            --workflow="CI - Build and Test" \
+            --workflow="CI - Build Multi-Platform Packages" \
             --status=success \
             --commit=$COMMIT_SHA \
             --json databaseId \
