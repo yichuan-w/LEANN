@@ -1,0 +1,100 @@
+name: Build with cibuildwheel
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref to build'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+      
+      # Build each package separately in our monorepo
+      - name: Build leann-core wheels
+        uses: pypa/cibuildwheel@v2.16.2
+        with:
+          package-dir: packages/leann-core
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+          CIBW_SKIP: "*-win32 *-manylinux_i686 pp*"
+          # Pure Python package, no special requirements
+      
+      - name: Build leann-backend-hnsw wheels  
+        uses: pypa/cibuildwheel@v2.16.2
+        with:
+          package-dir: packages/leann-backend-hnsw
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+          CIBW_SKIP: "*-win32 *-manylinux_i686 pp*"
+          
+          CIBW_BEFORE_ALL_LINUX: |
+            yum install -y epel-release
+            yum install -y boost-devel protobuf-compiler zeromq-devel \
+              pkg-config openblas-devel
+          
+          CIBW_BEFORE_ALL_MACOS: |
+            brew install llvm libomp boost protobuf zeromq
+          
+          CIBW_ENVIRONMENT_MACOS: |
+            CC=$(brew --prefix llvm)/bin/clang
+            CXX=$(brew --prefix llvm)/bin/clang++
+          
+          CIBW_TEST_REQUIRES: leann-core numpy pyzmq msgpack
+          CIBW_TEST_COMMAND: python -c "import leann_backend_hnsw"
+      
+      - name: Build leann-backend-diskann wheels
+        uses: pypa/cibuildwheel@v2.16.2
+        with:
+          package-dir: packages/leann-backend-diskann
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+          CIBW_SKIP: "*-win32 *-manylinux_i686 pp*"
+          
+          CIBW_BEFORE_ALL_LINUX: |
+            yum install -y epel-release
+            yum install -y protobuf-compiler openblas-devel \
+              libaio-devel protobuf-devel
+          
+          CIBW_BEFORE_ALL_MACOS: |
+            brew install llvm libomp protobuf
+          
+          CIBW_ENVIRONMENT_MACOS: |
+            CC=$(brew --prefix llvm)/bin/clang
+            CXX=$(brew --prefix llvm)/bin/clang++
+          
+          CIBW_TEST_REQUIRES: leann-core numpy
+          CIBW_TEST_COMMAND: python -c "import leann_backend_diskann"
+      
+      - name: Build leann meta-package
+        uses: pypa/cibuildwheel@v2.16.2
+        with:
+          package-dir: packages/leann
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+          CIBW_SKIP: "*-win32 *-manylinux_i686 pp*"
+          # Pure Python meta-package
+      
+      - uses: actions/upload-artifact@v3
+        with:
+          name: cibw-wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl 
