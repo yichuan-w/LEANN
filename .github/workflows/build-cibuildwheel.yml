@@ -46,14 +46,15 @@ jobs:
           CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
           CIBW_SKIP: "*-win32 *-manylinux_i686 pp* *musllinux*"
           
-          # Use manylinux_2_28 for better compatibility
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
-          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          # 使用manylinux2014生成兼容性更好的wheels
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
           
-          # Install dependencies before building
+          # Linux dependencies - 使用yum因为manylinux2014基于CentOS 7
           CIBW_BEFORE_ALL_LINUX: |
-            dnf install -y epel-release
-            dnf install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake
+            yum install -y epel-release
+            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
+            ln -sf /usr/bin/cmake3 /usr/bin/cmake
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake
@@ -77,12 +78,13 @@ jobs:
           CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
           CIBW_SKIP: "*-win32 *-manylinux_i686 pp* *musllinux*"
           
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
-          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
           
           CIBW_BEFORE_ALL_LINUX: |
-            dnf install -y epel-release
-            dnf install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake
+            yum install -y epel-release
+            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
+            ln -sf /usr/bin/cmake3 /usr/bin/cmake
           
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake

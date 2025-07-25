@@ -65,15 +65,16 @@ leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
 # 跳过32位和PyPy构建
 skip = "*-win32 *-manylinux_i686 pp* *musllinux*"
 
-# 使用更新的manylinux镜像以获得更好的兼容性
-manylinux-x86_64-image = "manylinux_2_28"
-manylinux-aarch64-image = "manylinux_2_28"
+# 使用manylinux2014以获得最大兼容性（支持GLIBC 2.17）
+manylinux-x86_64-image = "manylinux2014"
+manylinux-aarch64-image = "manylinux2014"
 
 # Linux系统依赖
 [tool.cibuildwheel.linux]
 before-all = """
-  dnf install -y epel-release
-  dnf install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake
+  yum install -y epel-release
+  yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
+  ln -sf /usr/bin/cmake3 /usr/bin/cmake
 """
 
 # macOS系统依赖
