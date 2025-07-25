@@ -1,0 +1,12 @@
+name: CI - cibuildwheel (Test)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-cibuildwheel.yml 

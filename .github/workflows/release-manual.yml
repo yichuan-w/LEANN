@@ -7,6 +7,11 @@ on:
         description: 'Version to release (e.g., 0.1.2)'
         required: true
         type: string
+      use_cibuildwheel:
+        description: 'Use cibuildwheel for better compatibility (recommended for Colab)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   update-version:
@@ -42,16 +47,26 @@ jobs:
           echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
           echo "✅ Pushed version update: $COMMIT_SHA"
 
-  build-packages:
-    name: Build packages
+  build-packages-reusable:
+    name: Build packages (Standard)
     needs: update-version
+    if: ${{ !inputs.use_cibuildwheel }}
     uses: ./.github/workflows/build-reusable.yml
+    with:
+      ref: ${{ needs.update-version.outputs.commit-sha }}
+  
+  build-packages-cibuildwheel:
+    name: Build packages (cibuildwheel)
+    needs: update-version
+    if: ${{ inputs.use_cibuildwheel }}
+    uses: ./.github/workflows/build-cibuildwheel.yml
     with:
       ref: ${{ needs.update-version.outputs.commit-sha }}
 
   publish:
     name: Publish and Release
-    needs: build-packages
+    needs: [update-version, build-packages-reusable, build-packages-cibuildwheel]
+    if: always() && needs.update-version.result == 'success' && (needs.build-packages-reusable.result == 'success' || needs.build-packages-cibuildwheel.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
