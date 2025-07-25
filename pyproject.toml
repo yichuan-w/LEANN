@@ -73,10 +73,17 @@ manylinux-aarch64-image = "manylinux2014"
 [tool.cibuildwheel.linux]
 before-all = """
   yum install -y epel-release
-  yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
+  yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3 python3-devel
   ln -sf /usr/bin/cmake3 /usr/bin/cmake
 """
 
 # macOS系统依赖
 [tool.cibuildwheel.macos]
-before-all = "brew install boost zeromq openblas cmake"
+before-all = "brew install boost zeromq openblas cmake libomp"
+
+# 环境变量配置
+[tool.cibuildwheel.environment]
+CMAKE_BUILD_PARALLEL_LEVEL = "8"
+
+# 构建前安装必要的Python包
+before-build = "pip install numpy"

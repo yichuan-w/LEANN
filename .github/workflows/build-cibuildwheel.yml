@@ -53,11 +53,15 @@ jobs:
           # Linux dependencies - 使用yum因为manylinux2014基于CentOS 7
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y epel-release
-            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
+            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3 python3-devel
             ln -sf /usr/bin/cmake3 /usr/bin/cmake
           
+          # Install numpy before building
+          CIBW_BEFORE_BUILD: |
+            pip install numpy
+          
           CIBW_BEFORE_ALL_MACOS: |
-            brew install boost zeromq openblas cmake
+            brew install boost zeromq openblas cmake libomp
           
           # Test the wheel
           CIBW_TEST_COMMAND: |
@@ -65,6 +69,12 @@ jobs:
           
           # Environment variables for build
           CIBW_ENVIRONMENT: |
+            CMAKE_BUILD_PARALLEL_LEVEL=8
+            Python_FIND_VIRTUALENV=ONLY
+            Python3_FIND_VIRTUALENV=ONLY
+          
+          # Linux-specific environment variables
+          CIBW_ENVIRONMENT_LINUX: |
             CMAKE_BUILD_PARALLEL_LEVEL=8
             Python_FIND_VIRTUALENV=ONLY
             Python3_FIND_VIRTUALENV=ONLY
@@ -83,16 +93,26 @@ jobs:
           
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y epel-release
-            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
+            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3 python3-devel
             ln -sf /usr/bin/cmake3 /usr/bin/cmake
           
+          # Install numpy before building
+          CIBW_BEFORE_BUILD: |
+            pip install numpy
+          
           CIBW_BEFORE_ALL_MACOS: |
-            brew install boost zeromq openblas cmake
+            brew install boost zeromq openblas cmake libomp
           
           CIBW_TEST_COMMAND: |
             python -c "import leann_backend_diskann; print('DiskANN backend imported successfully')"
           
           CIBW_ENVIRONMENT: |
+            CMAKE_BUILD_PARALLEL_LEVEL=8
+            Python_FIND_VIRTUALENV=ONLY
+            Python3_FIND_VIRTUALENV=ONLY
+          
+          # Linux-specific environment variables
+          CIBW_ENVIRONMENT_LINUX: |
             CMAKE_BUILD_PARALLEL_LEVEL=8
             Python_FIND_VIRTUALENV=ONLY
             Python3_FIND_VIRTUALENV=ONLY
