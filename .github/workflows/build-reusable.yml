@@ -28,6 +28,9 @@ jobs:
           - os: ubuntu-latest
             python: '3.12'
             container: 'quay.io/pypa/manylinux2014_x86_64'
+          - os: ubuntu-latest
+            python: '3.13'
+            container: 'quay.io/pypa/manylinux2014_x86_64'
           - os: macos-latest
             python: '3.9'
             container: ''
@@ -39,6 +42,9 @@ jobs:
             container: ''
           - os: macos-latest
             python: '3.12'
+            container: ''
+          - os: macos-latest
+            python: '3.13'
             container: ''
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
