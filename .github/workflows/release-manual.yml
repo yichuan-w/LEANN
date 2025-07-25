@@ -31,16 +31,26 @@ jobs:
       - name: Update versions and push
         id: push
         run: |
-          ./scripts/bump_version.sh ${{ inputs.version }}
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add packages/*/pyproject.toml
-          git commit -m "chore: release v${{ inputs.version }}"
-          git push origin main
+          # Check current version
+          CURRENT_VERSION=$(grep "^version" packages/leann-core/pyproject.toml | cut -d'"' -f2)
+          echo "Current version: $CURRENT_VERSION"
+          echo "Target version: ${{ inputs.version }}"
           
-          COMMIT_SHA=$(git rev-parse HEAD)
+          if [ "$CURRENT_VERSION" = "${{ inputs.version }}" ]; then
+            echo "⚠️  Version is already ${{ inputs.version }}, skipping update"
+            COMMIT_SHA=$(git rev-parse HEAD)
+          else
+            ./scripts/bump_version.sh ${{ inputs.version }}
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            git add packages/*/pyproject.toml
+            git commit -m "chore: release v${{ inputs.version }}"
+            git push origin main
+            COMMIT_SHA=$(git rev-parse HEAD)
+            echo "✅ Pushed version update: $COMMIT_SHA"
+          fi
+          
           echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-          echo "✅ Pushed version update: $COMMIT_SHA"
 
   build-packages:
     name: Build packages
@@ -93,12 +103,24 @@ jobs:
       
       - name: Create release
         run: |
-          git tag "v${{ inputs.version }}"
-          git push origin "v${{ inputs.version }}"
+          # Check if tag already exists
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "⚠️  Tag v${{ inputs.version }} already exists, skipping tag creation"
+          else
+            git tag "v${{ inputs.version }}"
+            git push origin "v${{ inputs.version }}"
+            echo "✅ Created and pushed tag v${{ inputs.version }}"
+          fi
           
-          gh release create "v${{ inputs.version }}" \
-            --title "Release v${{ inputs.version }}" \
-            --notes "🚀 Released to PyPI: https://pypi.org/project/leann/${{ inputs.version }}/" \
-            --latest
+          # Check if release already exists
+          if gh release view "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "⚠️  Release v${{ inputs.version }} already exists, skipping release creation"
+          else
+            gh release create "v${{ inputs.version }}" \
+              --title "Release v${{ inputs.version }}" \
+              --notes "🚀 Released to PyPI: https://pypi.org/project/leann/${{ inputs.version }}/" \
+              --latest
+            echo "✅ Created GitHub release v${{ inputs.version }}"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
