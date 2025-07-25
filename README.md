@@ -26,7 +26,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
   <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="70%">
 </p>
 
-> **The numbers speak for themselves:** Index 60 million Wikipedia chunks in just 6GB instead of 201GB. From emails to browser history, everything fits on your laptop. [See detailed benchmarks for different applications below ↓](#storage-comparison-on-different-applications)
+> **The numbers speak for themselves:** Index 60 million Wikipedia chunks in just 6GB instead of 201GB. From emails to browser history, everything fits on your laptop. [See detailed benchmarks for different applications below ↓](#storage-comparison)
 
 
 🔒 **Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
@@ -402,7 +402,7 @@ Options:
 
 
 📊 **[Simple Example: Compare LEANN vs FAISS →](examples/compare_faiss_vs_leann.py)**
-### Storage Comparison on Different Applications {#storage-comparison-on-different-applications}
+### Storage Comparison
 
 | System | DPR (2.1M) | Wiki (60M) | Chat (400K) | Email (780K) | Browser (38K) |
 |--------|-------------|------------|-------------|--------------|---------------|
