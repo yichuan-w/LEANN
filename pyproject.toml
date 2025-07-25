@@ -80,6 +80,8 @@ before-all = """
 # macOS系统依赖
 [tool.cibuildwheel.macos]
 before-all = "brew install boost zeromq openblas cmake libomp"
+# 设置macOS最小版本
+environment = { MACOSX_DEPLOYMENT_TARGET = "11.0", CMAKE_OSX_DEPLOYMENT_TARGET = "11.0" }
 
 # 环境变量配置
 [tool.cibuildwheel.environment]

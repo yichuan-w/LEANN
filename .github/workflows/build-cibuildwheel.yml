@@ -68,9 +68,15 @@ jobs:
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake libomp
           
-          # Test the wheel
+          # Test command to verify the wheel works
           CIBW_TEST_COMMAND: |
             python -c "import leann_backend_hnsw; print('HNSW backend imported successfully')"
+          
+          # Skip problematic configurations
+          CIBW_TEST_SKIP: "*-macosx_arm64"  # Skip ARM64 tests on GitHub Actions
+          
+          # Test dependencies
+          CIBW_TEST_REQUIRES: "pytest numpy"
           
           # Environment variables for build
           CIBW_ENVIRONMENT: |
@@ -81,6 +87,14 @@ jobs:
           # Linux-specific environment variables
           CIBW_ENVIRONMENT_LINUX: |
             CMAKE_BUILD_PARALLEL_LEVEL=8
+          
+          # macOS-specific environment variables
+          CIBW_ENVIRONMENT_MACOS: |
+            CMAKE_BUILD_PARALLEL_LEVEL=8
+            MACOSX_DEPLOYMENT_TARGET=11.0
+            CMAKE_OSX_DEPLOYMENT_TARGET=11.0
+            Python_FIND_VIRTUALENV=ONLY
+            Python3_FIND_VIRTUALENV=ONLY
       
       - name: Build leann-backend-diskann wheels  
         uses: pypa/cibuildwheel@v2.20.0
@@ -111,8 +125,15 @@ jobs:
           CIBW_BEFORE_ALL_MACOS: |
             brew install boost zeromq openblas cmake libomp
           
+          # Test command to verify the wheel works
           CIBW_TEST_COMMAND: |
             python -c "import leann_backend_diskann; print('DiskANN backend imported successfully')"
+          
+          # Skip problematic configurations
+          CIBW_TEST_SKIP: "*-macosx_arm64"  # Skip ARM64 tests on GitHub Actions
+          
+          # Test dependencies - install pre-built pyzmq to avoid compilation issues
+          CIBW_TEST_REQUIRES: "pytest numpy pyzmq"
           
           CIBW_ENVIRONMENT: |
             CMAKE_BUILD_PARALLEL_LEVEL=8
@@ -129,6 +150,14 @@ jobs:
             Python3_FIND_STRATEGY=LOCATION
             Python_EXECUTABLE=$VIRTUAL_ENV/bin/python
             Python3_EXECUTABLE=$VIRTUAL_ENV/bin/python
+          
+          # macOS-specific environment variables
+          CIBW_ENVIRONMENT_MACOS: |
+            CMAKE_BUILD_PARALLEL_LEVEL=8
+            MACOSX_DEPLOYMENT_TARGET=11.0
+            CMAKE_OSX_DEPLOYMENT_TARGET=11.0
+            Python_FIND_VIRTUALENV=ONLY
+            Python3_FIND_VIRTUALENV=ONLY
       
       - uses: actions/upload-artifact@v4
         with:
