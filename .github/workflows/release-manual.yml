@@ -72,6 +72,18 @@ jobs:
           COMMIT_SHA=$(git rev-parse HEAD)
           echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
         id: push-version
+        
+      - name: Trigger CI build
+        run: |
+          echo "🚀 Manually triggering CI for the new version..."
+          gh workflow run "CI - Build Multi-Platform Packages" \
+            --ref main \
+            -f publish=false
+          
+          # Give GitHub a moment to register the new workflow run
+          sleep 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Wait for CI to complete
         id: wait-for-ci
@@ -81,11 +93,24 @@ jobs:
           
           # Wait up to 20 minutes for CI to complete
           for i in {1..40}; do
+            # First check if CI is running
+            RUNNING_ID=$(gh run list \
+              --workflow="CI - Build Multi-Platform Packages" \
+              --commit=$COMMIT_SHA \
+              --status=in_progress \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            
+            if [ ! -z "$RUNNING_ID" ]; then
+              echo "⏳ CI is running (ID: $RUNNING_ID)..."
+            fi
+            
+            # Check if CI has completed
             RUN_ID=$(gh run list \
               --workflow="CI - Build Multi-Platform Packages" \
               --commit=$COMMIT_SHA \
-              --json databaseId,status \
-              --jq '.[] | select(.status == "completed") | .databaseId' | head -1)
+              --json databaseId,status,conclusion \
+              --jq '.[] | select(.status == "completed" and .conclusion == "success") | .databaseId' | head -1)
             
             if [ ! -z "$RUN_ID" ]; then
               echo "✅ Found completed CI run: $RUN_ID"
