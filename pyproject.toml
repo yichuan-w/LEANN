@@ -65,9 +65,9 @@ leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
 # Skip 32-bit and PyPy builds
 skip = "*-win32 *-manylinux_i686 pp* *musllinux*"
 
-# Use manylinux2014 for maximum compatibility (supports GLIBC 2.17)
-manylinux-x86_64-image = "manylinux2014"
-manylinux-aarch64-image = "manylinux2014"
+# Use manylinux_2_35 for Colab compatibility while keeping modern features
+manylinux-x86_64-image = "manylinux_2_35"
+manylinux-aarch64-image = "manylinux_2_35"
 
 # Linux system dependencies
 [tool.cibuildwheel.linux]

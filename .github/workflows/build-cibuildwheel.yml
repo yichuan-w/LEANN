@@ -46,15 +46,14 @@ jobs:
           CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
           CIBW_SKIP: "*-win32 *-manylinux_i686 pp* *musllinux*"
           
-          # 使用manylinux2014生成兼容性更好的wheels
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
-          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
+          # Use manylinux_2_35 for Colab compatibility with modern features
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_35
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_35
           
-          # Linux dependencies - 使用yum因为manylinux2014基于CentOS 7
+          # Linux dependencies - using dnf for manylinux_2_35 (based on AlmaLinux 9)
           CIBW_BEFORE_ALL_LINUX: |
-            yum install -y epel-release
-            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
-            ln -sf /usr/bin/cmake3 /usr/bin/cmake
+            dnf install -y epel-release
+            dnf install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake python3-devel
           
           # Install numpy before building
           CIBW_BEFORE_BUILD: |
@@ -70,7 +69,7 @@ jobs:
           
           # Pre-install test dependencies to avoid compilation
           CIBW_BEFORE_TEST: |
-            pip install --only-binary :all: "pyzmq>=23.0.0,<27"
+            pip install --only-binary :all: "pyzmq>=23.0.0"
           
           # Test command to verify the wheel works
           CIBW_TEST_COMMAND: |
@@ -109,13 +108,12 @@ jobs:
           CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
           CIBW_SKIP: "*-win32 *-manylinux_i686 pp* *musllinux*"
           
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
-          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_35
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_35
           
           CIBW_BEFORE_ALL_LINUX: |
-            yum install -y epel-release
-            yum install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake3
-            ln -sf /usr/bin/cmake3 /usr/bin/cmake
+            dnf install -y epel-release
+            dnf install -y gcc-c++ boost-devel zeromq-devel openblas-devel cmake python3-devel
           
           # Install numpy before building
           CIBW_BEFORE_BUILD: |
@@ -131,7 +129,7 @@ jobs:
           
           # Pre-install test dependencies to avoid compilation
           CIBW_BEFORE_TEST: |
-            pip install --only-binary :all: "pyzmq>=23.0.0,<27"
+            pip install --only-binary :all: "pyzmq>=23.0.0"
           
           # Test command to verify the wheel works
           CIBW_TEST_COMMAND: |

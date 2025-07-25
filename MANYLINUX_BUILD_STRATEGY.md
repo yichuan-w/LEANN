@@ -4,7 +4,7 @@
 Google Colab requires wheels compatible with `manylinux_2_35_x86_64` or earlier. Our previous builds were producing `manylinux_2_39_x86_64` wheels, which are incompatible.
 
 ## Solution
-We're using `cibuildwheel` with `manylinux2014` images to build wheels that are compatible with a wide range of Linux distributions, including Google Colab.
+We're using `cibuildwheel` with `manylinux_2_35` images to build wheels that are compatible with Google Colab while maintaining modern toolchain features.
 
 ### Key Changes
 
