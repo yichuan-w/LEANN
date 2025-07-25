@@ -4,8 +4,8 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "leann-backend-diskann"
-version = "0.1.6"
-dependencies = ["leann-core==0.1.6", "numpy"]
+version = "0.1.7"
+dependencies = ["leann-core==0.1.7", "numpy"]
 
 [tool.scikit-build]
 # Key: simplified CMake path
