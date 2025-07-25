@@ -1,5 +1,16 @@
 # Release Guide
 
+## Required: PyPI Configuration
+
+Before releasing, ensure you have configured the PyPI API token:
+
+1. Generate API token at https://pypi.org/manage/account/token/
+2. Add as GitHub secret: `PYPI_API_TOKEN`
+3. For full automation, also add a Personal Access Token:
+   - Create PAT at https://github.com/settings/tokens with `workflow` scope
+   - Add as GitHub secret: `WORKFLOW_PAT`
+   - This allows the release workflow to trigger CI builds automatically
+
 ## 📋 Prerequisites
 
 Before releasing, ensure:

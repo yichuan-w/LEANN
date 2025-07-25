@@ -76,6 +76,16 @@ jobs:
       - name: Trigger CI build
         run: |
           echo "🚀 Manually triggering CI for the new version..."
+          
+          # Check if we have a PAT for triggering workflows
+          if [ -z "${{ secrets.WORKFLOW_PAT }}" ]; then
+            echo "⚠️  No WORKFLOW_PAT found. CI will be triggered by the push event."
+            echo "   Note: If CI doesn't trigger automatically, you'll need to:"
+            echo "   1. Add a Personal Access Token with 'workflow' scope as WORKFLOW_PAT secret"
+            echo "   2. Or manually run the CI workflow after this release completes"
+            exit 0
+          fi
+          
           gh workflow run "CI - Build Multi-Platform Packages" \
             --ref main \
             -f publish=false
@@ -83,13 +93,52 @@ jobs:
           # Give GitHub a moment to register the new workflow run
           sleep 5
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_PAT || secrets.GITHUB_TOKEN }}
           
       - name: Wait for CI to complete
         id: wait-for-ci
         run: |
           echo "⏳ Waiting for CI to build new version..."
           COMMIT_SHA="${{ steps.push-version.outputs.commit-sha }}"
+          
+          # First, wait a bit for CI to potentially start
+          echo "⏳ Waiting for CI to start..."
+          sleep 30
+          
+          # Check if there's any CI run for this commit
+          CI_EXISTS=$(gh run list \
+            --workflow="CI - Build Multi-Platform Packages" \
+            --commit=$COMMIT_SHA \
+            --json databaseId \
+            --jq 'length')
+          
+          if [ "$CI_EXISTS" -eq "0" ]; then
+            echo "⚠️  No CI run found for commit $COMMIT_SHA"
+            echo "   This might be because:"
+            echo "   1. WORKFLOW_PAT is not configured"
+            echo "   2. CI hasn't started yet"
+            echo ""
+            echo "   You can manually trigger CI after this release completes:"
+            echo "   gh workflow run 'CI - Build Multi-Platform Packages' --ref main"
+            echo ""
+            echo "   For now, we'll use the artifacts from the latest successful CI run."
+            
+            # Get the latest successful CI run
+            LATEST_RUN=$(gh run list \
+              --workflow="CI - Build Multi-Platform Packages" \
+              --status=success \
+              --json databaseId \
+              --jq '.[0].databaseId')
+              
+            if [ -z "$LATEST_RUN" ]; then
+              echo "❌ No successful CI runs found!"
+              exit 1
+            fi
+            
+            echo "📦 Using artifacts from CI run: $LATEST_RUN"
+            echo "run-id=$LATEST_RUN" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           
           # Wait up to 20 minutes for CI to complete
           for i in {1..40}; do
