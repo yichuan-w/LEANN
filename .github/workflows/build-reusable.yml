@@ -82,7 +82,7 @@ jobs:
       - name: Build packages
         run: |
           # Build core (platform independent)
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
             cd packages/leann-core
             uv build
             cd ../..
@@ -107,7 +107,7 @@ jobs:
           cd ../..
           
           # Build meta package (platform independent)
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
             cd packages/leann
             uv build
             cd ../..
