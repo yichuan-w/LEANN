@@ -18,6 +18,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _is_colab_environment() -> bool:
+    """Check if we're running in Google Colab environment."""
+    return "COLAB_GPU" in os.environ or "COLAB_TPU" in os.environ
+
+
+def _get_available_port(start_port: int = 5557) -> int:
+    """Get an available port starting from start_port."""
+    port = start_port
+    while port < start_port + 100:  # Try up to 100 ports
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("localhost", port))
+                return port
+        except OSError:
+            port += 1
+    raise RuntimeError(f"No available ports found in range {start_port}-{start_port+100}")
+
+
 def _check_port(port: int) -> bool:
     """Check if a port is in use"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -175,47 +193,58 @@ class EmbeddingServerManager:
         embedding_mode: str = "sentence-transformers",
         **kwargs,
     ) -> tuple[bool, int]:
-        """
-        Starts the embedding server process.
-
-        Args:
-            port (int): The preferred ZMQ port for the server.
-            model_name (str): The name of the embedding model to use.
-            **kwargs: Additional arguments for the server.
-
-        Returns:
-            tuple[bool, int]: (success, actual_port_used)
-        """
+        """Start the embedding server."""
         passages_file = kwargs.get("passages_file")
-        assert isinstance(passages_file, str), "passages_file must be a string"
 
-        # Check if we have a compatible running server
+        # Check if we have a compatible server already running
         if self._has_compatible_running_server(model_name, passages_file):
-            assert self.server_port is not None, (
-                "a compatible running server should set server_port"
-            )
-            return True, self.server_port
+            logger.info("Found compatible running server!")
+            return True, port
 
-        # Find available port (compatible or free)
-        try:
-            actual_port, is_compatible = _find_compatible_port_or_next_available(
-                port, model_name, passages_file
-            )
-        except RuntimeError as e:
-            logger.error(str(e))
-            return False, port
+        # For Colab environment, use a different strategy
+        if _is_colab_environment():
+            logger.info("Detected Colab environment, using alternative startup strategy")
+            return self._start_server_colab(port, model_name, embedding_mode, **kwargs)
+
+        # Find a compatible port or next available
+        actual_port, is_compatible = _find_compatible_port_or_next_available(
+            port, model_name, passages_file
+        )
 
         if is_compatible:
-            logger.info(f"Using existing compatible server on port {actual_port}")
-            self.server_port = actual_port
-            self.server_process = None  # We don't own this process
+            logger.info(f"Found compatible server on port {actual_port}")
             return True, actual_port
 
-        if actual_port != port:
-            logger.info(f"Using port {actual_port} instead of {port}")
-
-        # Start new server
+        # Start a new server
         return self._start_new_server(actual_port, model_name, embedding_mode, **kwargs)
+
+    def _start_server_colab(
+        self,
+        port: int,
+        model_name: str,
+        embedding_mode: str = "sentence-transformers",
+        **kwargs,
+    ) -> tuple[bool, int]:
+        """Start server with Colab-specific configuration."""
+        # Try to find an available port
+        try:
+            actual_port = _get_available_port(port)
+        except RuntimeError:
+            logger.error("No available ports found")
+            return False, port
+
+        logger.info(f"Starting server on port {actual_port} for Colab environment")
+        
+        # Use a simpler startup strategy for Colab
+        command = self._build_server_command(actual_port, model_name, embedding_mode, **kwargs)
+        
+        try:
+            # In Colab, we'll use a more direct approach
+            self._launch_server_process_colab(command, actual_port)
+            return self._wait_for_server_ready_colab(actual_port)
+        except Exception as e:
+            logger.error(f"Failed to start embedding server in Colab: {e}")
+            return False, actual_port
 
     def _has_compatible_running_server(
         self, model_name: str, passages_file: str
@@ -348,3 +377,45 @@ class EmbeddingServerManager:
             pass
 
         self.server_process = None
+
+    def _launch_server_process_colab(self, command: list, port: int) -> None:
+        """Launch the server process with Colab-specific settings."""
+        logger.info(f"Colab Command: {' '.join(command)}")
+
+        # In Colab, we need to be more careful about process management
+        self.server_process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.server_port = port
+        logger.info(f"Colab server process started with PID: {self.server_process.pid}")
+
+        # Register atexit callback
+        if not self._atexit_registered:
+            atexit.register(lambda: self.stop_server() if self.server_process else None)
+            self._atexit_registered = True
+
+    def _wait_for_server_ready_colab(self, port: int) -> tuple[bool, int]:
+        """Wait for the server to be ready with Colab-specific timeout."""
+        max_wait, wait_interval = 30, 0.5  # Shorter timeout for Colab
+        
+        for _ in range(int(max_wait / wait_interval)):
+            if _check_port(port):
+                logger.info("Colab embedding server is ready!")
+                return True, port
+
+            if self.server_process and self.server_process.poll() is not None:
+                # Check for error output
+                stdout, stderr = self.server_process.communicate()
+                logger.error(f"Colab server terminated during startup.")
+                logger.error(f"stdout: {stdout}")
+                logger.error(f"stderr: {stderr}")
+                return False, port
+
+            time.sleep(wait_interval)
+
+        logger.error(f"Colab server failed to start within {max_wait} seconds.")
+        self.stop_server()
+        return False, port

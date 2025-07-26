@@ -7,6 +7,33 @@ from llama_index.core.node_parser import SentenceSplitter
 
 from .api import LeannBuilder, LeannSearcher, LeannChat
 
+def extract_pdf_text_with_pymupdf(file_path: str) -> str:
+    """Extract text from PDF using PyMuPDF for better quality."""
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(file_path)
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        doc.close()
+        return text
+    except ImportError:
+        # Fallback to default reader
+        return None
+
+def extract_pdf_text_with_pdfplumber(file_path: str) -> str:
+    """Extract text from PDF using pdfplumber for better quality."""
+    try:
+        import pdfplumber
+        text = ""
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                text += page.extract_text() or ""
+        return text
+    except ImportError:
+        # Fallback to default reader
+        return None
+
 
 class LeannCLI:
     def __init__(self):
@@ -145,12 +172,42 @@ Examples:
     def load_documents(self, docs_dir: str):
         print(f"Loading documents from {docs_dir}...")
 
-        documents = SimpleDirectoryReader(
+        # Try to use better PDF parsers first
+        documents = []
+        docs_path = Path(docs_dir)
+        
+        for file_path in docs_path.rglob("*.pdf"):
+            print(f"Processing PDF: {file_path}")
+            
+            # Try PyMuPDF first (best quality)
+            text = extract_pdf_text_with_pymupdf(str(file_path))
+            if text is None:
+                # Try pdfplumber
+                text = extract_pdf_text_with_pdfplumber(str(file_path))
+            
+            if text:
+                # Create a simple document structure
+                from llama_index.core import Document
+                doc = Document(text=text, metadata={"source": str(file_path)})
+                documents.append(doc)
+            else:
+                # Fallback to default reader
+                print(f"Using default reader for {file_path}")
+                default_docs = SimpleDirectoryReader(
+                    str(file_path.parent),
+                    filename_as_id=True,
+                    required_exts=[file_path.suffix],
+                ).load_data()
+                documents.extend(default_docs)
+
+        # Load other file types with default reader
+        other_docs = SimpleDirectoryReader(
             docs_dir,
             recursive=True,
             encoding="utf-8",
-            required_exts=[".pdf", ".txt", ".md", ".docx"],
+            required_exts=[".txt", ".md", ".docx"],
         ).load_data(show_progress=True)
+        documents.extend(other_docs)
 
         all_texts = []
         for doc in documents:

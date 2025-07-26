@@ -97,11 +97,13 @@ def create_leann_index_from_multiple_chrome_profiles(profile_dirs: List[Path], i
         # Use HNSW backend for better macOS compatibility
         builder = LeannBuilder(
             backend_name="hnsw",
-            embedding_model="facebook/contriever",
+            embedding_model="text-embedding-3-small",
+            embedding_mode="openai",
+            
             graph_degree=32, 
             complexity=64,
-            is_compact=True,
-            is_recompute=True,
+            is_compact=False,
+            is_recompute=False,
             num_threads=1  # Force single-threaded mode
         )
 

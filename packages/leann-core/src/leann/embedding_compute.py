@@ -264,9 +264,10 @@ def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
     logger.info(
         f"Computing embeddings for {len(texts)} texts using OpenAI API, model: '{model_name}'"
     )
+    print(f"len of texts: {len(texts)}")
 
     # OpenAI has limits on batch size and input length
-    max_batch_size = 100  # Conservative batch size
+    max_batch_size = 1000  # Conservative batch size
     all_embeddings = []
 
     try:
@@ -296,6 +297,7 @@ def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
     logger.info(
         f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}"
     )
+    print(f"len of embeddings: {len(embeddings)}")
     return embeddings
 
 
