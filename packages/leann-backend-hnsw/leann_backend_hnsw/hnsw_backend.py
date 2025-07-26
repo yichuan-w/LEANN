@@ -48,6 +48,10 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         self.efConstruction = self.build_params.setdefault("efConstruction", 200)
         self.distance_metric = self.build_params.setdefault("distance_metric", "mips")
         self.dimensions = self.build_params.get("dimensions")
+        if not self.is_recompute:
+            if self.is_compact:
+                # TODO: support this case @andy
+                raise ValueError("is_recompute is False, but is_compact is True. This is not compatible now. change is compact to False and you can use the original HNSW index.")
 
     def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs):
         from . import faiss  # type: ignore

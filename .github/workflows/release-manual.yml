@@ -57,7 +57,7 @@ jobs:
     needs: update-version
     uses: ./.github/workflows/build-reusable.yml
     with:
-      ref: ${{ needs.update-version.outputs.commit-sha }}
+      ref: 'main' 
 
   publish:
     name: Publish and Release
@@ -70,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.update-version.outputs.commit-sha }}
+          ref: 'main' 
       
       - name: Download all artifacts
         uses: actions/download-artifact@v4

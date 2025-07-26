@@ -195,7 +195,7 @@ Once the index is built, you can ask questions like:
 - "Show me emails about travel expenses"
 </details>
 
-### 🔍 Time Machine for the Web: RAG Your Entire Google Browser History!
+### 🔍 Time Machine for the Web: RAG Your Entire Chrome Browser History!
 
 <p align="center">
   <img src="videos/google_clear.gif" alt="LEANN Browser History Search Demo" width="600">
