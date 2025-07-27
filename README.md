@@ -147,6 +147,15 @@ response = chat.ask(
 
 LEANN supports RAG on various data sources including documents (.pdf, .txt, .md), Apple Mail, Google Search History, WeChat, and more.
 
+Our project provides many **ready-to-use examples**. If you installed LEANN via pip, you can clone our examples and run them immediately:
+
+```bash
+git clone git@github.com:yichuan-w/LEANN.git leann
+cd leann
+```
+
+> **Note:** If you built from source, you already have the examples and can skip cloning.
+
 ### 📄 Personal Data Manager: Process Any Documents (.pdf, .txt, .md)!
 
 Ask questions directly about your personal PDFs, documents, and any directory containing your files!
@@ -172,14 +181,7 @@ python ./examples/main_cli_example.py
 
 ### 📧 Your Personal Email Secretary: RAG on Apple Mail!
 
-Our project provides many **ready-to-use examples**. If you installed LEANN via pip, you can clone our examples and run them immediately:
 
-```bash
-git clone git@github.com:yichuan-w/LEANN.git leann
-cd leann
-```
-
-> **Note:** If you built from source, you already have the examples and can skip cloning.
 
 <p align="center">
   <img src="videos/mail_clear.gif" alt="LEANN Email Search Demo" width="600">
