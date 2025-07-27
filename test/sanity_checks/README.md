@@ -7,7 +7,7 @@ This directory contains comprehensive sanity checks for the Leann system, ensuri
 ### `test_distance_functions.py`
 Tests all supported distance functions across DiskANN backend:
 - ✅ **MIPS** (Maximum Inner Product Search)
-- ✅ **L2** (Euclidean Distance) 
+- ✅ **L2** (Euclidean Distance)
 - ✅ **Cosine** (Cosine Similarity)
 
 ```bash
@@ -27,7 +27,7 @@ uv run python tests/sanity_checks/test_l2_verification.py
 ### `test_sanity_check.py`
 Comprehensive end-to-end verification including:
 - Distance function testing
-- Embedding model compatibility  
+- Embedding model compatibility
 - Search result correctness validation
 - Backend integration testing
 
@@ -64,7 +64,7 @@ When all tests pass, you should see:
 ```
 📊 测试结果总结:
   mips      : ✅ 通过
-  l2        : ✅ 通过  
+  l2        : ✅ 通过
   cosine    : ✅ 通过
 
 🎉 测试完成!
@@ -98,7 +98,7 @@ pkill -f "embedding_server"
 
 ### Typical Timing (3 documents, consumer hardware):
 - **Index Building**: 2-5 seconds per distance function
-- **Search Query**: 50-200ms 
+- **Search Query**: 50-200ms
 - **Recompute Mode**: 5-15 seconds (higher accuracy)
 
 ### Memory Usage:

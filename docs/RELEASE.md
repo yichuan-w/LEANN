@@ -19,4 +19,4 @@ That's it! The workflow will automatically:
 - ✅ Publish to PyPI
 - ✅ Create GitHub tag and release
 
-Check progress: https://github.com/yichuan-w/LEANN/actions 
+Check progress: https://github.com/yichuan-w/LEANN/actions

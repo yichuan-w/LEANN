@@ -92,7 +92,10 @@ def main():
         help="Directory to store the index (default: mail_index_embedded)",
     )
     parser.add_argument(
-        "--max-emails", type=int, default=10000, help="Maximum number of emails to process"
+        "--max-emails",
+        type=int,
+        default=10000,
+        help="Maximum number of emails to process",
     )
     parser.add_argument(
         "--include-html",
@@ -112,7 +115,10 @@ def main():
     else:
         print("Creating new index...")
         index = create_and_save_index(
-            mail_path, save_dir, max_count=args.max_emails, include_html=args.include_html
+            mail_path,
+            save_dir,
+            max_count=args.max_emails,
+            include_html=args.include_html,
         )
     if index:
         queries = [

@@ -347,7 +347,9 @@ def demo_aggregation():
         print(f"\n{'=' * 20} {method.upper()} AGGREGATION {'=' * 20}")
 
         aggregator = MultiVectorAggregator(
-            aggregation_method=method, spatial_clustering=True, cluster_distance_threshold=100.0
+            aggregation_method=method,
+            spatial_clustering=True,
+            cluster_distance_threshold=100.0,
         )
 
         aggregated = aggregator.aggregate_results(mock_results, top_k=5)

@@ -28,4 +28,4 @@ else
 fi
 
 echo "✅ Version updated to $NEW_VERSION"
-echo "✅ Dependencies updated to use leann-core==$NEW_VERSION" 
+echo "✅ Dependencies updated to use leann-core==$NEW_VERSION"

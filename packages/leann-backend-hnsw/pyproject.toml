@@ -9,7 +9,7 @@ name = "leann-backend-hnsw"
 version = "0.1.14"
 description = "Custom-built HNSW (Faiss) backend for the Leann toolkit."
 dependencies = [
-    "leann-core==0.1.14", 
+    "leann-core==0.1.14",
     "numpy",
     "pyzmq>=23.0.0",
     "msgpack>=1.0.0",

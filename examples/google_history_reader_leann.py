@@ -21,7 +21,9 @@ DEFAULT_CHROME_PROFILE = os.path.expanduser("~/Library/Application Support/Googl
 
 
 def create_leann_index_from_multiple_chrome_profiles(
-    profile_dirs: list[Path], index_path: str = "chrome_history_index.leann", max_count: int = -1
+    profile_dirs: list[Path],
+    index_path: str = "chrome_history_index.leann",
+    max_count: int = -1,
 ):
     """
     Create LEANN index from multiple Chrome profile data sources.

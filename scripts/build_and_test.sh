@@ -19,16 +19,16 @@ uv pip install build twine delocate auditwheel scikit-build-core cmake pybind11 
 build_package() {
     local package_dir=$1
     local package_name=$(basename $package_dir)
-    
+
     echo "Building $package_name..."
     cd $package_dir
-    
+
     # Clean previous builds
     rm -rf dist/ build/ _skbuild/
-    
+
     # Build directly with pip wheel (avoids sdist issues)
     pip wheel . --no-deps -w dist
-    
+
     # Repair wheel for binary packages
     if [[ "$package_name" != "leann-core" ]] && [[ "$package_name" != "leann" ]]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -57,7 +57,7 @@ build_package() {
             fi
         fi
     fi
-    
+
     echo "Built wheels in $package_dir/dist/"
     ls -la dist/
     cd - > /dev/null
@@ -84,4 +84,4 @@ else
 fi
 
 echo -e "\nBuild complete! Test with:"
-echo "uv pip install packages/*/dist/*.whl" 
+echo "uv pip install packages/*/dist/*.whl"

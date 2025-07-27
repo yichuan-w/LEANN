@@ -245,7 +245,11 @@ def search_hf_models_fuzzy(query: str, limit: int = 10) -> list[str]:
 
         # HF Hub's search is already fuzzy! It handles typos and partial matches
         models = list_models(
-            search=query, filter="text-generation", sort="downloads", direction=-1, limit=limit
+            search=query,
+            filter="text-generation",
+            sort="downloads",
+            direction=-1,
+            limit=limit,
         )
 
         model_names = [model.id if hasattr(model, "id") else str(model) for model in models]
@@ -582,7 +586,11 @@ class HFChat(LLMInterface):
 
         # Tokenize input
         inputs = self.tokenizer(
-            formatted_prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048
+            formatted_prompt,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=2048,
         )
 
         # Move inputs to device

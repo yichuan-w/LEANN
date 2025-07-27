@@ -170,7 +170,11 @@ class Benchmark:
 
     def _create_random_batch(self, batch_size: int) -> torch.Tensor:
         return torch.randint(
-            0, 1000, (batch_size, self.config.seq_length), device=self.device, dtype=torch.long
+            0,
+            1000,
+            (batch_size, self.config.seq_length),
+            device=self.device,
+            dtype=torch.long,
         )
 
     def _run_inference(self, input_ids: torch.Tensor) -> float:
@@ -256,7 +260,11 @@ def run_mlx_benchmark():
     """Run MLX-specific benchmark"""
     if not MLX_AVAILABLE:
         print("MLX not available, skipping MLX benchmark")
-        return {"max_throughput": 0.0, "avg_throughput": 0.0, "error": "MLX not available"}
+        return {
+            "max_throughput": 0.0,
+            "avg_throughput": 0.0,
+            "error": "MLX not available",
+        }
 
     config = BenchmarkConfig(model_path="mlx-community/all-MiniLM-L6-v2-4bit", use_mlx=True)
 
@@ -265,7 +273,11 @@ def run_mlx_benchmark():
         results = benchmark.run()
 
         if not results:
-            return {"max_throughput": 0.0, "avg_throughput": 0.0, "error": "No valid results"}
+            return {
+                "max_throughput": 0.0,
+                "avg_throughput": 0.0,
+                "error": "No valid results",
+            }
 
         max_throughput = max(results[batch_size]["throughput"] for batch_size in results)
         avg_throughput = np.mean([results[batch_size]["throughput"] for batch_size in results])

@@ -37,4 +37,4 @@ For full documentation, visit [https://leann.readthedocs.io](https://leann.readt
 
 ## License
 
-MIT License 
+MIT License

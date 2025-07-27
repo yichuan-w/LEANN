@@ -474,7 +474,8 @@ Messages ({len(messages)} messages, {message_group["total_length"]} chars):
                                 message_group, contact_name
                             )
                             doc = Document(
-                                text=doc_content, metadata={"contact_name": contact_name}
+                                text=doc_content,
+                                metadata={"contact_name": contact_name},
                             )
                             docs.append(doc)
                             count += 1

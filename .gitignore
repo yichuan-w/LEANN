@@ -9,7 +9,7 @@ demo/indices/
 outputs/
 *.pkl
 *.pdf
-*.idx 
+*.idx
 *.map
 .history/
 lm_eval.egg-info/

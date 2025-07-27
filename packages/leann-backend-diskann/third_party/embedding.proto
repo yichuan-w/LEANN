@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package protoembedding;
 
-message NodeEmbeddingRequest { 
-  repeated uint32 node_ids = 1; 
+message NodeEmbeddingRequest {
+  repeated uint32 node_ids = 1;
 }
 
 message NodeEmbeddingResponse {

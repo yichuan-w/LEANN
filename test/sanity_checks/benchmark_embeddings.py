@@ -115,7 +115,13 @@ def main():
     # --- Plotting ---
     print("\n--- Generating Plot ---")
     plt.figure(figsize=(10, 6))
-    plt.plot(BATCH_SIZES, results_torch, marker="o", linestyle="-", label=f"PyTorch ({device})")
+    plt.plot(
+        BATCH_SIZES,
+        results_torch,
+        marker="o",
+        linestyle="-",
+        label=f"PyTorch ({device})",
+    )
     plt.plot(BATCH_SIZES, results_mlx, marker="s", linestyle="-", label="MLX")
 
     plt.title(f"Embedding Performance: MLX vs PyTorch\nModel: {MODEL_NAME_TORCH}")

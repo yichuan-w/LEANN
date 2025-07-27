@@ -27,7 +27,10 @@ def load_sample_documents():
             "title": "Intro to Python",
             "content": "Python is a high-level, interpreted language known for simplicity.",
         },
-        {"title": "ML Basics", "content": "Machine learning builds systems that learn from data."},
+        {
+            "title": "ML Basics",
+            "content": "Machine learning builds systems that learn from data.",
+        },
         {
             "title": "Data Structures",
             "content": "Data structures like arrays, lists, and graphs organize data.",

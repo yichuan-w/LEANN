@@ -72,7 +72,11 @@ def read_vector_raw(f, element_fmt_char):
 def read_numpy_vector(f, np_dtype, struct_fmt_char):
     """Reads a vector into a NumPy array."""
     count = -1  # Initialize count for robust error handling
-    print(f"  Reading vector (dtype={np_dtype}, fmt='{struct_fmt_char}')... ", end="", flush=True)
+    print(
+        f"  Reading vector (dtype={np_dtype}, fmt='{struct_fmt_char}')... ",
+        end="",
+        flush=True,
+    )
     try:
         count, data_bytes = read_vector_raw(f, struct_fmt_char)
         print(f"Count={count}, Bytes={len(data_bytes)}")
@@ -647,7 +651,10 @@ def convert_hnsw_graph_to_csr(input_filename, output_filename, prune_embeddings=
         print(f"Error: Input file not found: {input_filename}", file=sys.stderr)
         return False
     except MemoryError as e:
-        print(f"\nFatal MemoryError during conversion: {e}. Insufficient RAM.", file=sys.stderr)
+        print(
+            f"\nFatal MemoryError during conversion: {e}. Insufficient RAM.",
+            file=sys.stderr,
+        )
         # Clean up potentially partially written output file?
         try:
             os.remove(output_filename)

@@ -17,23 +17,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
-      
+
       - name: Install ruff
         run: |
           uv tool install ruff
-      
+
       - name: Run ruff check
         run: |
           ruff check .
-      
+
       - name: Run ruff format check
         run: |
           ruff format --check .
@@ -65,40 +65,40 @@ jobs:
           - os: macos-latest
             python: '3.13'
     runs-on: ${{ matrix.os }}
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
           submodules: recursive
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
-      
+
       - name: Install system dependencies (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev \
             pkg-config libopenblas-dev patchelf libabsl-dev libaio-dev libprotobuf-dev
-          
+
           # Install Intel MKL for DiskANN
           wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940.sh
           sudo sh intel-onemkl-2025.0.0.940.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
           source /opt/intel/oneapi/setvars.sh
           echo "MKLROOT=/opt/intel/oneapi/mkl/latest" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=/opt/intel/oneapi/mkl/latest/lib/intel64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-      
+
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install llvm libomp boost protobuf zeromq
-      
+
       - name: Install build dependencies
         run: |
           uv pip install --system scikit-build-core numpy swig Cython pybind11
@@ -107,7 +107,7 @@ jobs:
           else
             uv pip install --system delocate
           fi
-      
+
       - name: Build packages
         run: |
           # Build core (platform independent)
@@ -116,7 +116,7 @@ jobs:
             uv build
             cd ../..
           fi
-          
+
           # Build HNSW backend
           cd packages/leann-backend-hnsw
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
@@ -125,7 +125,7 @@ jobs:
             uv build --wheel --python python
           fi
           cd ../..
-          
+
           # Build DiskANN backend
           cd packages/leann-backend-diskann
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
@@ -134,14 +134,14 @@ jobs:
             uv build --wheel --python python
           fi
           cd ../..
-          
+
           # Build meta package (platform independent)
           if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
             cd packages/leann
             uv build
             cd ../..
           fi
-      
+
       - name: Repair wheels (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -153,7 +153,7 @@ jobs:
             mv dist_repaired dist
           fi
           cd ../..
-          
+
           # Repair DiskANN wheel
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
@@ -162,7 +162,7 @@ jobs:
             mv dist_repaired dist
           fi
           cd ../..
-      
+
       - name: Repair wheels (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -174,7 +174,7 @@ jobs:
             mv dist_repaired dist
           fi
           cd ../..
-          
+
           # Repair DiskANN wheel
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
@@ -183,14 +183,14 @@ jobs:
             mv dist_repaired dist
           fi
           cd ../..
-      
+
       - name: List built packages
         run: |
           echo "📦 Built packages:"
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
-      
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: packages-${{ matrix.os }}-py${{ matrix.python }}
-          path: packages/*/dist/ 
+          path: packages/*/dist/

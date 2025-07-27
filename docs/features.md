@@ -19,4 +19,4 @@
 
 - **Simple Python API** - Get started in minutes
 - **Extensible backend system** - Easy to add new algorithms
-- **Comprehensive examples** - From basic usage to production deployment 
+- **Comprehensive examples** - From basic usage to production deployment

@@ -315,7 +315,11 @@ async def main():
 
     # Create or load the LEANN index from all sources
     index_path = create_leann_index_from_multiple_sources(
-        messages_dirs, INDEX_PATH, args.max_emails, args.include_html, args.embedding_model
+        messages_dirs,
+        INDEX_PATH,
+        args.max_emails,
+        args.include_html,
+        args.embedding_model,
     )
 
     if index_path:

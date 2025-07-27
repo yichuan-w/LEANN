@@ -16,10 +16,10 @@ jobs:
       contents: write
     outputs:
       commit-sha: ${{ steps.push.outputs.commit-sha }}
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Validate version
         run: |
           # Remove 'v' prefix if present for validation
@@ -30,7 +30,7 @@ jobs:
             exit 1
           fi
           echo "✅ Version format valid: ${{ inputs.version }}"
-      
+
       - name: Update versions and push
         id: push
         run: |
@@ -38,7 +38,7 @@ jobs:
           CURRENT_VERSION=$(grep "^version" packages/leann-core/pyproject.toml | cut -d'"' -f2)
           echo "Current version: $CURRENT_VERSION"
           echo "Target version: ${{ inputs.version }}"
-          
+
           if [ "$CURRENT_VERSION" = "${{ inputs.version }}" ]; then
             echo "⚠️  Version is already ${{ inputs.version }}, skipping update"
             COMMIT_SHA=$(git rev-parse HEAD)
@@ -52,7 +52,7 @@ jobs:
             COMMIT_SHA=$(git rev-parse HEAD)
             echo "✅ Pushed version update: $COMMIT_SHA"
           fi
-          
+
           echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
 
   build-packages:
@@ -60,7 +60,7 @@ jobs:
     needs: update-version
     uses: ./.github/workflows/build-reusable.yml
     with:
-      ref: 'main' 
+      ref: 'main'
 
   publish:
     name: Publish and Release
@@ -69,26 +69,26 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 'main' 
-      
+          ref: 'main'
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist-artifacts
-      
+
       - name: Collect packages
         run: |
           mkdir -p dist
           find dist-artifacts -name "*.whl" -exec cp {} dist/ \;
           find dist-artifacts -name "*.tar.gz" -exec cp {} dist/ \;
-          
+
           echo "📦 Packages to publish:"
           ls -la dist/
-      
+
       - name: Publish to PyPI
         env:
           TWINE_USERNAME: __token__
@@ -98,12 +98,12 @@ jobs:
             echo "❌ PYPI_API_TOKEN not configured!"
             exit 1
           fi
-          
+
           pip install twine
           twine upload dist/* --skip-existing --verbose
-          
+
           echo "✅ Published to PyPI!"
-      
+
       - name: Create release
         run: |
           # Check if tag already exists
@@ -114,7 +114,7 @@ jobs:
             git push origin "v${{ inputs.version }}"
             echo "✅ Created and pushed tag v${{ inputs.version }}"
           fi
-          
+
           # Check if release already exists
           if gh release view "v${{ inputs.version }}" >/dev/null 2>&1; then
             echo "⚠️  Release v${{ inputs.version }} already exists, skipping release creation"

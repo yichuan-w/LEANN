@@ -15,4 +15,4 @@ VERSION=$1
 git add . && git commit -m "chore: bump version to $VERSION" && git push
 
 # Create release (triggers CI)
-gh release create v$VERSION --generate-notes 
+gh release create v$VERSION --generate-notes

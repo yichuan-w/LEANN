@@ -1,6 +1,6 @@
 import json
 import sqlite3
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from typing import Annotated
 
@@ -26,7 +26,7 @@ def get_safe_path(s: str) -> str:
 def process_history(history: str):
     if history.startswith("<?xml") or history.startswith("<msg>"):
         try:
-            root = ET.fromstring(history)
+            root = ElementTree.fromstring(history)
             title = root.find(".//title").text if root.find(".//title") is not None else None
             quoted = (
                 root.find(".//refermsg/content").text
@@ -52,7 +52,8 @@ def get_message(history: dict | str):
 
 def export_chathistory(user_id: str):
     res = requests.get(
-        "http://localhost:48065/wechat/chatlog", params={"userId": user_id, "count": 100000}
+        "http://localhost:48065/wechat/chatlog",
+        params={"userId": user_id, "count": 100000},
     ).json()
     for i in range(len(res["chatLogs"])):
         res["chatLogs"][i]["content"] = process_history(res["chatLogs"][i]["content"])
@@ -116,7 +117,8 @@ def export_sqlite(
     all_users = requests.get("http://localhost:48065/wechat/allcontacts").json()
     for user in tqdm(all_users):
         cursor.execute(
-            "INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)", (user["arg"], user["title"])
+            "INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)",
+            (user["arg"], user["title"]),
         )
         usr_chatlog = export_chathistory(user["arg"])
         for msg in usr_chatlog:

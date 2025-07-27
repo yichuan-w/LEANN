@@ -18,4 +18,4 @@
 
 - [ ] Integration with LangChain/LlamaIndex
 - [ ] Visual similarity search
-- [ ] Query rewrtiting, rerank and expansion 
+- [ ] Query rewrtiting, rerank and expansion
