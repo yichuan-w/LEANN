@@ -25,14 +25,21 @@ dependencies = [
     "requests>=2.25.0",
     "sentence-transformers>=2.2.0",
     "openai>=1.0.0",
+    # PDF parsing dependencies - essential for document processing
     "PyPDF2>=3.0.0",
+    "pdfplumber>=0.11.0",
+    "pymupdf>=1.26.0",
+    "pypdfium2>=4.30.0",
+    # LlamaIndex core and readers - updated versions
     "llama-index>=0.12.44",
+    "llama-index-readers-file>=0.4.0",  # Essential for PDF parsing
     "llama-index-readers-docling",
     "llama-index-node-parser-docling",
-    "ipykernel==6.29.5",
-    "msgpack>=1.1.1",
     "llama-index-vector-stores-faiss>=0.4.0",
     "llama-index-embeddings-huggingface>=0.5.5",
+    # Other dependencies
+    "ipykernel==6.29.5",
+    "msgpack>=1.1.1",
     "mlx>=0.26.3; sys_platform == 'darwin'",
     "mlx-lm>=0.26.0; sys_platform == 'darwin'",
     "psutil>=5.8.0",
@@ -50,6 +57,14 @@ dev = [
 
 diskann = [
     "leann-backend-diskann",
+]
+
+# Add a new optional dependency group for document processing
+documents = [
+    "beautifulsoup4>=4.13.0",  # For HTML parsing
+    "python-docx>=0.8.11",     # For Word documents
+    "openpyxl>=3.1.0",         # For Excel files
+    "pandas>=2.2.0",           # For data processing
 ]
 
 [tool.setuptools]
