@@ -39,12 +39,21 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 ## Installation
 
+> **Prerequisites:** Install uv first if you don't have it:
+> ```bash
+> curl -LsSf https://astral.sh/uv/install.sh | sh
+> ```
+> 📖 [Detailed uv installation methods →](https://docs.astral.sh/uv/getting-started/installation/#installation-methods)
+
+
 LEANN provides two installation methods: **pip install** (quick and easy) and **build from source** (recommended for development).
+
+
 
 ### 🚀 Quick Install (Recommended for most users)
 
 ```bash
-pip install leann
+uv pip install leann
 ```
 
 ### 🔧 Build from Source (Recommended for development)
@@ -61,10 +70,7 @@ git submodule update --init --recursive
 ```bash
 brew install llvm libomp boost protobuf zeromq pkgconf
 
-# Install with HNSW backend (default, recommended for most users)
-# Install uv first if you don't have it:
-# curl -LsSf https://astral.sh/uv/install.sh | sh
-# See: https://docs.astral.sh/uv/getting-started/installation/#installation-methods
+
 CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv sync
 ```
 
@@ -165,6 +171,15 @@ python ./examples/main_cli_example.py
 
 
 ### 📧 Your Personal Email Secretary: RAG on Apple Mail!
+
+Our project provides many **ready-to-use examples**. If you installed LEANN via pip, you can clone our examples and run them immediately:
+
+```bash
+git clone git@github.com:yichuan-w/LEANN.git leann
+cd leann
+```
+
+> **Note:** If you built from source, you already have the examples and can skip cloning.
 
 <p align="center">
   <img src="videos/mail_clear.gif" alt="LEANN Email Search Demo" width="600">
