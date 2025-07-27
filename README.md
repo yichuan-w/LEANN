@@ -38,7 +38,19 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
 ## Installation
-> `pip leann` coming soon!
+
+LEANN provides two installation methods: **pip install** (quick and easy) and **build from source** (recommended for development).
+
+### 🚀 Quick Install (Recommended for most users)
+
+```bash
+pip install leann
+```
+
+### 🔧 Build from Source (Recommended for development)
+
+For development, we recommend building from source:
+
 ```bash
 git clone git@github.com:yichuan-w/LEANN.git leann
 cd leann
@@ -65,7 +77,7 @@ uv sync
 ```
 
 
-**Ollama Setup (Recommended for full privacy):**
+<!-- **Ollama Setup (Recommended for full privacy):**
 
 > *You can skip this installation if you only want to use OpenAI API for generation.*
 
@@ -89,7 +101,7 @@ ollama serve &
 
 # Pull a lightweight model (recommended for consumer hardware)
 ollama pull llama3.2:1b
-```
+``` -->
 
 ## Quick Start in 30s
 
@@ -324,7 +336,7 @@ LEANN includes a powerful CLI for document processing and search. Perfect for qu
 # Build an index from documents
 leann build my-docs --docs ./documents
 
-# Search your documents  
+# Search your documents
 leann search my-docs "machine learning concepts"
 
 # Interactive chat with your documents
@@ -392,7 +404,7 @@ Options:
 
 **Core techniques:**
 - **Graph-based selective recomputation:** Only compute embeddings for nodes in the search path
-- **High-degree preserving pruning:** Keep important "hub" nodes while removing redundant connections  
+- **High-degree preserving pruning:** Keep important "hub" nodes while removing redundant connections
 - **Dynamic batching:** Efficiently batch embedding computations for GPU utilization
 - **Two-level search:** Smart graph traversal that prioritizes promising nodes
 
@@ -429,13 +441,13 @@ If you find Leann useful, please cite:
 
 ```bibtex
 @misc{wang2025leannlowstoragevectorindex,
-      title={LEANN: A Low-Storage Vector Index}, 
+      title={LEANN: A Low-Storage Vector Index},
       author={Yichuan Wang and Shu Liu and Zhifei Li and Yongji Wu and Ziming Mao and Yilong Zhao and Xiao Yan and Zhiying Xu and Yang Zhou and Ion Stoica and Sewon Min and Matei Zaharia and Joseph E. Gonzalez},
       year={2025},
       eprint={2506.08276},
       archivePrefix={arXiv},
       primaryClass={cs.DB},
-      url={https://arxiv.org/abs/2506.08276}, 
+      url={https://arxiv.org/abs/2506.08276},
 }
 ```
 
@@ -465,4 +477,3 @@ This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.e
 <p align="center">
   Made with ❤️ by the Leann team
 </p>
-
