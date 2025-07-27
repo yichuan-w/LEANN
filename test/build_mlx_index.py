@@ -1,5 +1,6 @@
 import os
-from leann.api import LeannBuilder, LeannSearcher, LeannChat
+
+from leann.api import LeannBuilder, LeannChat
 
 # Define the path for our new MLX-based index
 INDEX_PATH = "./mlx_diskann_index/leann"
@@ -38,7 +39,5 @@ chat = LeannChat(index_path=INDEX_PATH)
 # add query
 query = "MLX is an array framework for machine learning on Apple silicon."
 print(f"Query: {query}")
-response = chat.ask(
-    query, top_k=3, recompute_beighbor_embeddings=True, complexity=3, beam_width=1
-)
+response = chat.ask(query, top_k=3, recompute_beighbor_embeddings=True, complexity=3, beam_width=1)
 print(f"Response: {response}")

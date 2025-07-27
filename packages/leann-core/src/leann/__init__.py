@@ -14,4 +14,4 @@ from .registry import BACKEND_REGISTRY, autodiscover_backends
 
 autodiscover_backends()
 
-__all__ = ["LeannBuilder", "LeannSearcher", "LeannChat", "BACKEND_REGISTRY"]
+__all__ = ["BACKEND_REGISTRY", "LeannBuilder", "LeannChat", "LeannSearcher"]

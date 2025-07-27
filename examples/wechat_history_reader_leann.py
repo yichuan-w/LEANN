@@ -1,13 +1,11 @@
-import os
-import asyncio
-import dotenv
 import argparse
+import asyncio
+import os
 from pathlib import Path
-from typing import List, Any, Optional
-from leann.api import LeannBuilder, LeannSearcher, LeannChat
+
+import dotenv
+from leann.api import LeannBuilder, LeannChat
 from llama_index.core.node_parser import SentenceSplitter
-import requests
-import time
 
 dotenv.load_dotenv()
 
@@ -16,7 +14,7 @@ DEFAULT_WECHAT_EXPORT_DIR = "./wechat_export_direct"
 
 
 def create_leann_index_from_multiple_wechat_exports(
-    export_dirs: List[Path],
+    export_dirs: list[Path],
     index_path: str = "wechat_history_index.leann",
     max_count: int = -1,
 ):
@@ -38,15 +36,13 @@ def create_leann_index_from_multiple_wechat_exports(
     INDEX_DIR = Path(index_path).parent
 
     if not INDEX_DIR.exists():
-        print(f"--- Index directory not found, building new index ---")
+        print("--- Index directory not found, building new index ---")
         all_documents = []
         total_processed = 0
 
         # Process each WeChat export directory
         for i, export_dir in enumerate(export_dirs):
-            print(
-                f"\nProcessing WeChat export {i + 1}/{len(export_dirs)}: {export_dir}"
-            )
+            print(f"\nProcessing WeChat export {i + 1}/{len(export_dirs)}: {export_dir}")
 
             try:
                 documents = reader.load_data(
@@ -86,7 +82,12 @@ def create_leann_index_from_multiple_wechat_exports(
             # Split the document into chunks
             nodes = text_splitter.get_nodes_from_documents([doc])
             for node in nodes:
-                text = '[Contact] means the message is from: ' + doc.metadata["contact_name"] + '\n' + node.get_content()
+                text = (
+                    "[Contact] means the message is from: "
+                    + doc.metadata["contact_name"]
+                    + "\n"
+                    + node.get_content()
+                )
                 all_texts.append(text)
 
         print(
@@ -94,12 +95,12 @@ def create_leann_index_from_multiple_wechat_exports(
         )
 
         # Create LEANN index directory
-        print(f"--- Index directory not found, building new index ---")
+        print("--- Index directory not found, building new index ---")
         INDEX_DIR.mkdir(exist_ok=True)
 
-        print(f"--- Building new LEANN index ---")
+        print("--- Building new LEANN index ---")
 
-        print(f"\n[PHASE 1] Building Leann index...")
+        print("\n[PHASE 1] Building Leann index...")
 
         # Use HNSW backend for better macOS compatibility
         builder = LeannBuilder(
@@ -125,7 +126,7 @@ def create_leann_index_from_multiple_wechat_exports(
 
 
 def create_leann_index(
-    export_dir: str = None,
+    export_dir: str | None = None,
     index_path: str = "wechat_history_index.leann",
     max_count: int = 1000,
 ):
@@ -141,12 +142,12 @@ def create_leann_index(
     INDEX_DIR = Path(index_path).parent
 
     if not INDEX_DIR.exists():
-        print(f"--- Index directory not found, building new index ---")
+        print("--- Index directory not found, building new index ---")
         INDEX_DIR.mkdir(exist_ok=True)
 
-        print(f"--- Building new LEANN index ---")
+        print("--- Building new LEANN index ---")
 
-        print(f"\n[PHASE 1] Building Leann index...")
+        print("\n[PHASE 1] Building Leann index...")
 
         # Load documents using WeChatHistoryReader from history_data
         from history_data.wechat_history import WeChatHistoryReader
@@ -179,12 +180,12 @@ def create_leann_index(
         print(f"Created {len(all_texts)} text chunks from {len(documents)} documents")
 
         # Create LEANN index directory
-        print(f"--- Index directory not found, building new index ---")
+        print("--- Index directory not found, building new index ---")
         INDEX_DIR.mkdir(exist_ok=True)
 
-        print(f"--- Building new LEANN index ---")
+        print("--- Building new LEANN index ---")
 
-        print(f"\n[PHASE 1] Building Leann index...")
+        print("\n[PHASE 1] Building Leann index...")
 
         # Use HNSW backend for better macOS compatibility
         builder = LeannBuilder(
@@ -217,7 +218,7 @@ async def query_leann_index(index_path: str, query: str):
         index_path: Path to the LEANN index
         query: The query string
     """
-    print(f"\n[PHASE 2] Starting Leann chat session...")
+    print("\n[PHASE 2] Starting Leann chat session...")
     chat = LeannChat(index_path=index_path)
 
     print(f"You: {query}")
@@ -307,7 +308,7 @@ async def main():
         else:
             # Example queries
             queries = [
-                "我想买魔术师约翰逊的球衣，给我一些对应聊天记录?",
+                "我想买魔术师约翰逊的球衣,给我一些对应聊天记录?",
             ]
 
             for query in queries:

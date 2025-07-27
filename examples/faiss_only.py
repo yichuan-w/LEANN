@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Test only Faiss HNSW"""
 
+import os
 import sys
 import time
+
 import psutil
-import gc
-import os
 
 
 def get_memory_usage():
@@ -37,20 +37,20 @@ def main():
         import faiss
     except ImportError:
         print("Faiss is not installed.")
-        print("Please install it with `uv pip install faiss-cpu` and you can  then run this script again")
+        print(
+            "Please install it with `uv pip install faiss-cpu` and you can  then run this script again"
+        )
         sys.exit(1)
 
     from llama_index.core import (
-        SimpleDirectoryReader,
-        VectorStoreIndex,
-        StorageContext,
         Settings,
-        node_parser,
-        Document,
+        SimpleDirectoryReader,
+        StorageContext,
+        VectorStoreIndex,
     )
     from llama_index.core.node_parser import SentenceSplitter
-    from llama_index.vector_stores.faiss import FaissVectorStore
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+    from llama_index.vector_stores.faiss import FaissVectorStore
 
     tracker = MemoryTracker("Faiss HNSW")
     tracker.checkpoint("Initial")
@@ -90,8 +90,9 @@ def main():
                 vector_store=vector_store, persist_dir="./storage_faiss"
             )
             from llama_index.core import load_index_from_storage
+
             index = load_index_from_storage(storage_context=storage_context)
-            print(f"Index loaded from ./storage_faiss")
+            print("Index loaded from ./storage_faiss")
             tracker.checkpoint("After loading existing index")
             index_loaded = True
         except Exception as e:
@@ -99,19 +100,18 @@ def main():
             print("Cleaning up corrupted index and building new one...")
             # Clean up corrupted index
             import shutil
+
             if os.path.exists("./storage_faiss"):
                 shutil.rmtree("./storage_faiss")
-    
+
     if not index_loaded:
         print("Building new Faiss HNSW index...")
-        
+
         # Use the correct Faiss building pattern from the example
         vector_store = FaissVectorStore(faiss_index=faiss_index)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
-            documents, 
-            storage_context=storage_context,
-            transformations=[node_parser]
+            documents, storage_context=storage_context, transformations=[node_parser]
         )
         tracker.checkpoint("After index building")
 
@@ -124,10 +124,10 @@ def main():
     runtime_start_mem = get_memory_usage()
     print(f"Before load memory: {runtime_start_mem:.1f} MB")
     tracker.checkpoint("Before load memory")
-    
+
     query_engine = index.as_query_engine(similarity_top_k=20)
     queries = [
-        "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发",
+        "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面,任务令一般在什么城市颁发",
         "What is LEANN and how does it work?",
         "华为诺亚方舟实验室的主要研究内容",
     ]
@@ -141,7 +141,7 @@ def main():
 
     runtime_end_mem = get_memory_usage()
     runtime_overhead = runtime_end_mem - runtime_start_mem
-    
+
     peak_memory = tracker.summary()
     print(f"Peak Memory: {peak_memory:.1f} MB")
     print(f"Runtime Memory Overhead: {runtime_overhead:.1f} MB")

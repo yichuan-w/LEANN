@@ -7,9 +7,9 @@ Contains simple parser for mbox files.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from fsspec import AbstractFileSystem
+from typing import Any
 
+from fsspec import AbstractFileSystem
 from llama_index.core.readers.base import BaseReader
 from llama_index.core.schema import Document
 
@@ -27,11 +27,7 @@ class MboxReader(BaseReader):
     """
 
     DEFAULT_MESSAGE_FORMAT: str = (
-        "Date: {_date}\n"
-        "From: {_from}\n"
-        "To: {_to}\n"
-        "Subject: {_subject}\n"
-        "Content: {_content}"
+        "Date: {_date}\nFrom: {_from}\nTo: {_to}\nSubject: {_subject}\nContent: {_content}"
     )
 
     def __init__(
@@ -45,9 +41,7 @@ class MboxReader(BaseReader):
         try:
             from bs4 import BeautifulSoup  # noqa
         except ImportError:
-            raise ImportError(
-                "`beautifulsoup4` package not found: `pip install beautifulsoup4`"
-            )
+            raise ImportError("`beautifulsoup4` package not found: `pip install beautifulsoup4`")
 
         super().__init__(*args, **kwargs)
         self.max_count = max_count
@@ -56,9 +50,9 @@ class MboxReader(BaseReader):
     def load_data(
         self,
         file: Path,
-        extra_info: Optional[Dict] = None,
-        fs: Optional[AbstractFileSystem] = None,
-    ) -> List[Document]:
+        extra_info: dict | None = None,
+        fs: AbstractFileSystem | None = None,
+    ) -> list[Document]:
         """Parse file into string."""
         # Import required libraries
         import mailbox
@@ -74,7 +68,7 @@ class MboxReader(BaseReader):
             )
 
         i = 0
-        results: List[str] = []
+        results: list[str] = []
         # Load file using mailbox
         bytes_parser = BytesParser(policy=default).parse
         mbox = mailbox.mbox(file, factory=bytes_parser)  # type: ignore
@@ -124,7 +118,7 @@ class MboxReader(BaseReader):
 class EmlxMboxReader(MboxReader):
     """
     EmlxMboxReader - Modified MboxReader that handles directories of .emlx files.
-    
+
     Extends MboxReader to work with Apple Mail's .emlx format by:
     1. Reading .emlx files from a directory
     2. Converting them to mbox format in memory
@@ -134,13 +128,13 @@ class EmlxMboxReader(MboxReader):
     def load_data(
         self,
         directory: Path,
-        extra_info: Optional[Dict] = None,
-        fs: Optional[AbstractFileSystem] = None,
-    ) -> List[Document]:
+        extra_info: dict | None = None,
+        fs: AbstractFileSystem | None = None,
+    ) -> list[Document]:
         """Parse .emlx files from directory into strings using MboxReader logic."""
-        import tempfile
         import os
-        
+        import tempfile
+
         if fs:
             logger.warning(
                 "fs was specified but EmlxMboxReader doesn't support loading "
@@ -150,37 +144,37 @@ class EmlxMboxReader(MboxReader):
         # Find all .emlx files in the directory
         emlx_files = list(directory.glob("*.emlx"))
         logger.info(f"Found {len(emlx_files)} .emlx files in {directory}")
-        
+
         if not emlx_files:
             logger.warning(f"No .emlx files found in {directory}")
             return []
 
         # Create a temporary mbox file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.mbox', delete=False) as temp_mbox:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".mbox", delete=False) as temp_mbox:
             temp_mbox_path = temp_mbox.name
-            
+
             # Convert .emlx files to mbox format
             for emlx_file in emlx_files:
                 try:
                     # Read the .emlx file
-                    with open(emlx_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(emlx_file, encoding="utf-8", errors="ignore") as f:
                         content = f.read()
-                    
+
                     # .emlx format: first line is length, rest is email content
-                    lines = content.split('\n', 1)
+                    lines = content.split("\n", 1)
                     if len(lines) >= 2:
                         email_content = lines[1]  # Skip the length line
-                        
+
                         # Write to mbox format (each message starts with "From " and ends with blank line)
                         temp_mbox.write(f"From {emlx_file.name} {email_content}\n\n")
-                    
+
                 except Exception as e:
                     logger.warning(f"Failed to process {emlx_file}: {e}")
                     continue
-            
+
             # Close the temporary file so MboxReader can read it
             temp_mbox.close()
-            
+
             try:
                 # Use the parent MboxReader's logic to parse the mbox file
                 return super().load_data(Path(temp_mbox_path), extra_info, fs)
@@ -188,5 +182,5 @@ class EmlxMboxReader(MboxReader):
                 # Clean up temporary file
                 try:
                     os.unlink(temp_mbox_path)
-                except:
+                except OSError:
                     pass

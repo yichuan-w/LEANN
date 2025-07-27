@@ -1,10 +1,11 @@
 import argparse
-from llama_index.core import SimpleDirectoryReader
-from llama_index.core.node_parser import SentenceSplitter
 import asyncio
+from pathlib import Path
+
 import dotenv
 from leann.api import LeannBuilder, LeannChat
-from pathlib import Path
+from llama_index.core import SimpleDirectoryReader
+from llama_index.core.node_parser import SentenceSplitter
 
 dotenv.load_dotenv()
 
@@ -56,7 +57,7 @@ async def main(args):
     else:
         print(f"--- Using existing index at {INDEX_DIR} ---")
 
-    print(f"\n[PHASE 2] Starting Leann chat session...")
+    print("\n[PHASE 2] Starting Leann chat session...")
 
     llm_config = {"type": "hf", "model": "Qwen/Qwen3-4B"}
     llm_config = {"type": "ollama", "model": "qwen3:8b"}
@@ -64,7 +65,7 @@ async def main(args):
 
     chat = LeannChat(index_path=INDEX_PATH, llm_config=llm_config)
     # query = (
-    #     "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发"
+    #     "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面,任务令一般在什么城市颁发"
     # )
     query = args.query
 
@@ -74,9 +75,7 @@ async def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Run Leann Chat with various LLM backends."
-    )
+    parser = argparse.ArgumentParser(description="Run Leann Chat with various LLM backends.")
     parser.add_argument(
         "--llm",
         type=str,

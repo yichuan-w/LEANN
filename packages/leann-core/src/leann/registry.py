@@ -1,13 +1,13 @@
 # packages/leann-core/src/leann/registry.py
 
-from typing import Dict, TYPE_CHECKING
 import importlib
 import importlib.metadata
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from leann.interface import LeannBackendFactoryInterface
 
-BACKEND_REGISTRY: Dict[str, "LeannBackendFactoryInterface"] = {}
+BACKEND_REGISTRY: dict[str, "LeannBackendFactoryInterface"] = {}
 
 
 def register_backend(name: str):
@@ -31,13 +31,11 @@ def autodiscover_backends():
             backend_module_name = dist_name.replace("-", "_")
             discovered_backends.append(backend_module_name)
 
-    for backend_module_name in sorted(
-        discovered_backends
-    ):  # sort for deterministic loading
+    for backend_module_name in sorted(discovered_backends):  # sort for deterministic loading
         try:
             importlib.import_module(backend_module_name)
             # Registration message is printed by the decorator
-        except ImportError as e:
+        except ImportError:
             # print(f"WARN: Could not import backend module '{backend_module_name}': {e}")
             pass
     # print("INFO: Backend auto-discovery finished.")

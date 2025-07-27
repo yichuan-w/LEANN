@@ -5,24 +5,21 @@ It correctly compares results by fetching the text content for both the new sear
 results and the golden standard results, making the comparison robust to ID changes.
 """
 
-import json
 import argparse
+import json
+import sys
 import time
 from pathlib import Path
-import sys
-import numpy as np
-from typing import List
 
-from leann.api import LeannSearcher, LeannBuilder
+import numpy as np
+from leann.api import LeannBuilder, LeannSearcher
 
 
 def download_data_if_needed(data_root: Path, download_embeddings: bool = False):
     """Checks if the data directory exists, and if not, downloads it from HF Hub."""
     if not data_root.exists():
         print(f"Data directory '{data_root}' not found.")
-        print(
-            "Downloading evaluation data from Hugging Face Hub... (this may take a moment)"
-        )
+        print("Downloading evaluation data from Hugging Face Hub... (this may take a moment)")
         try:
             from huggingface_hub import snapshot_download
 
@@ -63,7 +60,7 @@ def download_data_if_needed(data_root: Path, download_embeddings: bool = False):
             sys.exit(1)
 
 
-def download_embeddings_if_needed(data_root: Path, dataset_type: str = None):
+def download_embeddings_if_needed(data_root: Path, dataset_type: str | None = None):
     """Download embeddings files specifically."""
     embeddings_dir = data_root / "embeddings"
 
@@ -101,7 +98,7 @@ def download_embeddings_if_needed(data_root: Path, dataset_type: str = None):
 
 
 # --- Helper Function to get Golden Passages ---
-def get_golden_texts(searcher: LeannSearcher, golden_ids: List[int]) -> set:
+def get_golden_texts(searcher: LeannSearcher, golden_ids: list[int]) -> set:
     """
     Retrieves the text for golden passage IDs directly from the LeannSearcher's
     passage manager.
@@ -113,24 +110,20 @@ def get_golden_texts(searcher: LeannSearcher, golden_ids: List[int]) -> set:
             passage_data = searcher.passage_manager.get_passage(str(gid))
             golden_texts.add(passage_data["text"])
         except KeyError:
-            print(
-                f"Warning: Golden passage ID '{gid}' not found in the index's passage data."
-            )
+            print(f"Warning: Golden passage ID '{gid}' not found in the index's passage data.")
     return golden_texts
 
 
-def load_queries(file_path: Path) -> List[str]:
+def load_queries(file_path: Path) -> list[str]:
     queries = []
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         for line in f:
             data = json.loads(line)
             queries.append(data["query"])
     return queries
 
 
-def build_index_from_embeddings(
-    embeddings_file: str, output_path: str, backend: str = "hnsw"
-):
+def build_index_from_embeddings(embeddings_file: str, output_path: str, backend: str = "hnsw"):
     """
     Build a LEANN index from pre-computed embeddings.
 
@@ -173,9 +166,7 @@ def build_index_from_embeddings(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Run recall evaluation on a LEANN index."
-    )
+    parser = argparse.ArgumentParser(description="Run recall evaluation on a LEANN index.")
     parser.add_argument(
         "index_path",
         type=str,
@@ -202,9 +193,7 @@ def main():
     parser.add_argument(
         "--num-queries", type=int, default=10, help="Number of queries to evaluate."
     )
-    parser.add_argument(
-        "--top-k", type=int, default=3, help="The 'k' value for recall@k."
-    )
+    parser.add_argument("--top-k", type=int, default=3, help="The 'k' value for recall@k.")
     parser.add_argument(
         "--ef-search", type=int, default=120, help="The 'efSearch' parameter for HNSW."
     )
@@ -219,9 +208,7 @@ def main():
     # Download data based on mode
     if args.mode == "build":
         # For building mode, we need embeddings
-        download_data_if_needed(
-            data_root, download_embeddings=False
-        )  # Basic data first
+        download_data_if_needed(data_root, download_embeddings=False)  # Basic data first
 
         # Auto-detect dataset type and download embeddings
         if args.embeddings_file:
@@ -262,9 +249,7 @@ def main():
         print(f"Index built successfully: {built_index_path}")
 
         # Ask if user wants to run evaluation
-        eval_response = (
-            input("Run evaluation on the built index? (y/n): ").strip().lower()
-        )
+        eval_response = input("Run evaluation on the built index? (y/n): ").strip().lower()
         if eval_response != "y":
             print("Index building complete. Exiting.")
             return
@@ -293,12 +278,8 @@ def main():
                         break
 
             if not args.index_path:
-                print(
-                    "No indices found. The data download should have included pre-built indices."
-                )
-                print(
-                    "Please check the data/indices/ directory or provide --index-path manually."
-                )
+                print("No indices found. The data download should have included pre-built indices.")
+                print("Please check the data/indices/ directory or provide --index-path manually.")
                 sys.exit(1)
 
     # Detect dataset type from index path to select the correct ground truth
@@ -310,14 +291,10 @@ def main():
     else:
         # Fallback: try to infer from the index directory name
         dataset_type = Path(args.index_path).name
-        print(
-            f"WARNING: Could not detect dataset type from path, inferred '{dataset_type}'."
-        )
+        print(f"WARNING: Could not detect dataset type from path, inferred '{dataset_type}'.")
 
     queries_file = data_root / "queries" / "nq_open.jsonl"
-    golden_results_file = (
-        data_root / "ground_truth" / dataset_type / "flat_results_nq_k3.json"
-    )
+    golden_results_file = data_root / "ground_truth" / dataset_type / "flat_results_nq_k3.json"
 
     print(f"INFO: Detected dataset type: {dataset_type}")
     print(f"INFO: Using queries file: {queries_file}")
@@ -327,7 +304,7 @@ def main():
         searcher = LeannSearcher(args.index_path)
         queries = load_queries(queries_file)
 
-        with open(golden_results_file, "r") as f:
+        with open(golden_results_file) as f:
             golden_results_data = json.load(f)
 
         num_eval_queries = min(args.num_queries, len(queries))
@@ -339,9 +316,7 @@ def main():
 
         for i in range(num_eval_queries):
             start_time = time.time()
-            new_results = searcher.search(
-                queries[i], top_k=args.top_k, ef=args.ef_search
-            )
+            new_results = searcher.search(queries[i], top_k=args.top_k, ef=args.ef_search)
             search_times.append(time.time() - start_time)
 
             # Correct Recall Calculation: Based on TEXT content

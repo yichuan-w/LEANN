@@ -35,9 +35,9 @@ dependencies = [
 
 [project.optional-dependencies]
 colab = [
-    "torch>=2.0.0,<3.0.0",  # 限制torch版本避免冲突
-    "transformers>=4.30.0,<5.0.0",  # 限制transformers版本
-    "accelerate>=0.20.0,<1.0.0",  # 限制accelerate版本
+    "torch>=2.0.0,<3.0.0",  # Limit torch version to avoid conflicts
+    "transformers>=4.30.0,<5.0.0",  # Limit transformers version
+    "accelerate>=0.20.0,<1.0.0",  # Limit accelerate version
 ]
 
 [project.scripts]

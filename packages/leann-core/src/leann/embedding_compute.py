@@ -4,11 +4,12 @@ Consolidates all embedding computation logic using SentenceTransformer
 Preserves all optimization parameters to ensure performance
 """
 
-import numpy as np
-import torch
-from typing import List, Dict, Any
 import logging
 import os
+from typing import Any
+
+import numpy as np
+import torch
 
 # Set up logger with proper level
 logger = logging.getLogger(__name__)
@@ -17,11 +18,11 @@ log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
 logger.setLevel(log_level)
 
 # Global model cache to avoid repeated loading
-_model_cache: Dict[str, Any] = {}
+_model_cache: dict[str, Any] = {}
 
 
 def compute_embeddings(
-    texts: List[str],
+    texts: list[str],
     model_name: str,
     mode: str = "sentence-transformers",
     is_build: bool = False,
@@ -59,7 +60,7 @@ def compute_embeddings(
 
 
 def compute_embeddings_sentence_transformers(
-    texts: List[str],
+    texts: list[str],
     model_name: str,
     use_fp16: bool = True,
     device: str = "auto",
@@ -114,9 +115,7 @@ def compute_embeddings_sentence_transformers(
         logger.info(f"Using cached optimized model: {model_name}")
         model = _model_cache[cache_key]
     else:
-        logger.info(
-            f"Loading and caching optimized SentenceTransformer model: {model_name}"
-        )
+        logger.info(f"Loading and caching optimized SentenceTransformer model: {model_name}")
         from sentence_transformers import SentenceTransformer
 
         logger.info(f"Using device: {device}")
@@ -134,9 +133,7 @@ def compute_embeddings_sentence_transformers(
                 if hasattr(torch.mps, "set_per_process_memory_fraction"):
                     torch.mps.set_per_process_memory_fraction(0.9)
             except AttributeError:
-                logger.warning(
-                    "Some MPS optimizations not available in this PyTorch version"
-                )
+                logger.warning("Some MPS optimizations not available in this PyTorch version")
         elif device == "cpu":
             # TODO: Haven't tested this yet
             torch.set_num_threads(min(8, os.cpu_count() or 4))
@@ -226,25 +223,22 @@ def compute_embeddings_sentence_transformers(
             device=device,
         )
 
-    logger.info(
-        f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}"
-    )
+    logger.info(f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}")
 
     # Validate results
     if np.isnan(embeddings).any() or np.isinf(embeddings).any():
-        raise RuntimeError(
-            f"Detected NaN or Inf values in embeddings, model: {model_name}"
-        )
+        raise RuntimeError(f"Detected NaN or Inf values in embeddings, model: {model_name}")
 
     return embeddings
 
 
-def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
+def compute_embeddings_openai(texts: list[str], model_name: str) -> np.ndarray:
     # TODO: @yichuan-w add progress bar only in build mode
     """Compute embeddings using OpenAI API"""
     try:
-        import openai
         import os
+
+        import openai
     except ImportError as e:
         raise ImportError(f"OpenAI package not installed: {e}")
 
@@ -294,16 +288,12 @@ def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
             raise
 
     embeddings = np.array(all_embeddings, dtype=np.float32)
-    logger.info(
-        f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}"
-    )
+    logger.info(f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}")
     print(f"len of embeddings: {len(embeddings)}")
     return embeddings
 
 
-def compute_embeddings_mlx(
-    chunks: List[str], model_name: str, batch_size: int = 16
-) -> np.ndarray:
+def compute_embeddings_mlx(chunks: list[str], model_name: str, batch_size: int = 16) -> np.ndarray:
     # TODO: @yichuan-w add progress bar only in build mode
     """Computes embeddings using an MLX model."""
     try:

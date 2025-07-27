@@ -3,14 +3,15 @@
 Memory comparison between Faiss HNSW and LEANN HNSW backend
 """
 
+import gc
 import logging
 import os
+import subprocess
 import sys
 import time
-import psutil
-import gc
-import subprocess
 from pathlib import Path
+
+import psutil
 from llama_index.core.node_parser import SentenceSplitter
 
 # Setup logging
@@ -83,9 +84,7 @@ def test_faiss_hnsw():
 
         for line in lines:
             if "Peak Memory:" in line:
-                peak_memory = float(
-                    line.split("Peak Memory:")[1].split("MB")[0].strip()
-                )
+                peak_memory = float(line.split("Peak Memory:")[1].split("MB")[0].strip())
 
         return {"peak_memory": peak_memory}
 
@@ -111,9 +110,8 @@ def test_leann_hnsw():
 
     tracker.checkpoint("After imports")
 
+    from leann.api import LeannBuilder
     from llama_index.core import SimpleDirectoryReader
-    from leann.api import LeannBuilder, LeannSearcher
-
 
     # Load and parse documents
     documents = SimpleDirectoryReader(
@@ -197,16 +195,14 @@ def test_leann_hnsw():
     runtime_start_mem = get_memory_usage()
     print(f"Before load memory: {runtime_start_mem:.1f} MB")
     tracker.checkpoint("Before load memory")
-    
+
     # Load searcher
     searcher = LeannSearcher(index_path)
     tracker.checkpoint("After searcher loading")
 
-
-
     print("Running search queries...")
     queries = [
-        "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面，任务令一般在什么城市颁发",
+        "什么是盘古大模型以及盘古开发过程中遇到了什么阴暗面,任务令一般在什么城市颁发",
         "What is LEANN and how does it work?",
         "华为诺亚方舟实验室的主要研究内容",
     ]
@@ -304,21 +300,15 @@ def main():
 
         print("\nLEANN vs Faiss Performance:")
         memory_saving = faiss_results["peak_memory"] - leann_results["peak_memory"]
-        print(
-            f"  Search Memory: {memory_ratio:.1f}x less ({memory_saving:.1f} MB saved)"
-        )
+        print(f"  Search Memory: {memory_ratio:.1f}x less ({memory_saving:.1f} MB saved)")
 
         # Storage comparison
         if leann_storage_size > faiss_storage_size:
             storage_ratio = leann_storage_size / faiss_storage_size
-            print(
-                f"  Storage Size: {storage_ratio:.1f}x larger (LEANN uses more storage)"
-            )
+            print(f"  Storage Size: {storage_ratio:.1f}x larger (LEANN uses more storage)")
         elif faiss_storage_size > leann_storage_size:
             storage_ratio = faiss_storage_size / leann_storage_size
-            print(
-                f"  Storage Size: {storage_ratio:.1f}x smaller (LEANN uses less storage)"
-            )
+            print(f"  Storage Size: {storage_ratio:.1f}x smaller (LEANN uses less storage)")
         else:
             print("  Storage Size: similar")
     else:

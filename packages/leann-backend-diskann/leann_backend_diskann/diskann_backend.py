@@ -1,20 +1,19 @@
-import numpy as np
+import contextlib
+import logging
 import os
 import struct
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Literal, Optional
-import contextlib
+from typing import Any, Literal
 
-import logging
-
-from leann.searcher_base import BaseSearcher
-from leann.registry import register_backend
+import numpy as np
 from leann.interface import (
-    LeannBackendFactoryInterface,
     LeannBackendBuilderInterface,
+    LeannBackendFactoryInterface,
     LeannBackendSearcherInterface,
 )
+from leann.registry import register_backend
+from leann.searcher_base import BaseSearcher
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +99,7 @@ class DiskannBuilder(LeannBackendBuilderInterface):
     def __init__(self, **kwargs):
         self.build_params = kwargs
 
-    def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs):
+    def build(self, data: np.ndarray, ids: list[str], index_path: str, **kwargs):
         path = Path(index_path)
         index_dir = path.parent
         index_prefix = path.stem
@@ -186,11 +185,11 @@ class DiskannSearcher(BaseSearcher):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: Optional[int] = None,
+        zmq_port: int | None = None,
         batch_recompute: bool = False,
         dedup_node_dis: bool = False,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Search for nearest neighbors using DiskANN index.
 
@@ -216,14 +215,10 @@ class DiskannSearcher(BaseSearcher):
         # Handle zmq_port compatibility: DiskANN can now update port at runtime
         if recompute_embeddings:
             if zmq_port is None:
-                raise ValueError(
-                    "zmq_port must be provided if recompute_embeddings is True"
-                )
+                raise ValueError("zmq_port must be provided if recompute_embeddings is True")
             current_port = self._index.get_zmq_port()
             if zmq_port != current_port:
-                logger.debug(
-                    f"Updating DiskANN zmq_port from {current_port} to {zmq_port}"
-                )
+                logger.debug(f"Updating DiskANN zmq_port from {current_port} to {zmq_port}")
                 self._index.set_zmq_port(zmq_port)
 
         # DiskANN doesn't support "proportional" strategy
@@ -259,8 +254,6 @@ class DiskannSearcher(BaseSearcher):
                 use_global_pruning,
             )
 
-        string_labels = [
-            [str(int_label) for int_label in batch_labels] for batch_labels in labels
-        ]
+        string_labels = [[str(int_label) for int_label in batch_labels] for batch_labels in labels]
 
         return {"labels": string_labels, "distances": distances}

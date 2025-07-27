@@ -3,17 +3,17 @@ HNSW-specific embedding server
 """
 
 import argparse
+import json
+import logging
+import os
+import sys
 import threading
 import time
-import os
-import zmq
-import numpy as np
-import msgpack
-import json
 from pathlib import Path
-from typing import Optional
-import sys
-import logging
+
+import msgpack
+import numpy as np
+import zmq
 
 # Set up logging based on environment variable
 LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
@@ -33,7 +33,7 @@ if not logger.handlers:
 
 
 def create_hnsw_embedding_server(
-    passages_file: Optional[str] = None,
+    passages_file: str | None = None,
     zmq_port: int = 5555,
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     distance_metric: str = "mips",
@@ -52,8 +52,8 @@ def create_hnsw_embedding_server(
     sys.path.insert(0, str(leann_core_path))
 
     try:
-        from leann.embedding_compute import compute_embeddings
         from leann.api import PassageManager
+        from leann.embedding_compute import compute_embeddings
 
         logger.info("Successfully imported unified embedding computation module")
     except ImportError as e:
@@ -78,13 +78,11 @@ def create_hnsw_embedding_server(
         raise ValueError("Only metadata files (.meta.json) are supported")
 
     # Load metadata to get passage sources
-    with open(passages_file, "r") as f:
+    with open(passages_file) as f:
         meta = json.load(f)
 
     # Convert relative paths to absolute paths based on metadata file location
-    metadata_dir = Path(
-        passages_file
-    ).parent.parent  # Go up one level from the metadata file
+    metadata_dir = Path(passages_file).parent.parent  # Go up one level from the metadata file
     passage_sources = []
     for source in meta["passage_sources"]:
         source_copy = source.copy()
@@ -134,9 +132,7 @@ def create_hnsw_embedding_server(
                         response = embeddings.tolist()
                         socket.send(msgpack.packb(response))
                         e2e_end = time.time()
-                        logger.info(
-                            f"⏱️  Text embedding E2E time: {e2e_end - e2e_start:.6f}s"
-                        )
+                        logger.info(f"⏱️  Text embedding E2E time: {e2e_end - e2e_start:.6f}s")
                         continue
 
                 # Handle distance calculation requests
@@ -162,17 +158,13 @@ def create_hnsw_embedding_server(
                             texts.append(txt)
                         except KeyError:
                             logger.error(f"Passage ID {nid} not found")
-                            raise RuntimeError(
-                                f"FATAL: Passage with ID {nid} not found"
-                            )
+                            raise RuntimeError(f"FATAL: Passage with ID {nid} not found")
                         except Exception as e:
                             logger.error(f"Exception looking up passage ID {nid}: {e}")
                             raise
 
                     # Process embeddings
-                    embeddings = compute_embeddings(
-                        texts, model_name, mode=embedding_mode
-                    )
+                    embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
                     logger.info(
                         f"Computed embeddings for {len(texts)} texts, shape: {embeddings.shape}"
                     )
@@ -186,18 +178,12 @@ def create_hnsw_embedding_server(
                         distances = -np.dot(embeddings, query_vector)
 
                     response_payload = distances.flatten().tolist()
-                    response_bytes = msgpack.packb(
-                        [response_payload], use_single_float=True
-                    )
-                    logger.debug(
-                        f"Sending distance response with {len(distances)} distances"
-                    )
+                    response_bytes = msgpack.packb([response_payload], use_single_float=True)
+                    logger.debug(f"Sending distance response with {len(distances)} distances")
 
                     socket.send(response_bytes)
                     e2e_end = time.time()
-                    logger.info(
-                        f"⏱️  Distance calculation E2E time: {e2e_end - e2e_start:.6f}s"
-                    )
+                    logger.info(f"⏱️  Distance calculation E2E time: {e2e_end - e2e_start:.6f}s")
                     continue
 
                 # Standard embedding request (passage ID lookup)
@@ -222,9 +208,7 @@ def create_hnsw_embedding_server(
                         passage_data = passages.get_passage(str(nid))
                         txt = passage_data["text"]
                         if not txt:
-                            raise RuntimeError(
-                                f"FATAL: Empty text for passage ID {nid}"
-                            )
+                            raise RuntimeError(f"FATAL: Empty text for passage ID {nid}")
                         texts.append(txt)
                     except KeyError:
                         raise RuntimeError(f"FATAL: Passage with ID {nid} not found")
@@ -243,11 +227,9 @@ def create_hnsw_embedding_server(
                     logger.error(
                         f"NaN or Inf detected in embeddings! Requested IDs: {node_ids[:5]}..."
                     )
-                    assert False
+                    raise AssertionError()
 
-                hidden_contiguous_f32 = np.ascontiguousarray(
-                    embeddings, dtype=np.float32
-                )
+                hidden_contiguous_f32 = np.ascontiguousarray(embeddings, dtype=np.float32)
                 response_payload = [
                     list(hidden_contiguous_f32.shape),
                     hidden_contiguous_f32.flatten().tolist(),

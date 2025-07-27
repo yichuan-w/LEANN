@@ -5,12 +5,14 @@ from pathlib import Path
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 
-from .api import LeannBuilder, LeannSearcher, LeannChat
+from .api import LeannBuilder, LeannChat, LeannSearcher
+
 
 def extract_pdf_text_with_pymupdf(file_path: str) -> str:
     """Extract text from PDF using PyMuPDF for better quality."""
     try:
         import fitz  # PyMuPDF
+
         doc = fitz.open(file_path)
         text = ""
         for page in doc:
@@ -21,10 +23,12 @@ def extract_pdf_text_with_pymupdf(file_path: str) -> str:
         # Fallback to default reader
         return None
 
+
 def extract_pdf_text_with_pdfplumber(file_path: str) -> str:
     """Extract text from PDF using pdfplumber for better quality."""
     try:
         import pdfplumber
+
         text = ""
         with pdfplumber.open(file_path) as pdf:
             for page in pdf.pages:
@@ -72,18 +76,12 @@ Examples:
         # Build command
         build_parser = subparsers.add_parser("build", help="Build document index")
         build_parser.add_argument("index_name", help="Index name")
-        build_parser.add_argument(
-            "--docs", type=str, required=True, help="Documents directory"
-        )
+        build_parser.add_argument("--docs", type=str, required=True, help="Documents directory")
         build_parser.add_argument(
             "--backend", type=str, default="hnsw", choices=["hnsw", "diskann"]
         )
-        build_parser.add_argument(
-            "--embedding-model", type=str, default="facebook/contriever"
-        )
-        build_parser.add_argument(
-            "--force", "-f", action="store_true", help="Force rebuild"
-        )
+        build_parser.add_argument("--embedding-model", type=str, default="facebook/contriever")
+        build_parser.add_argument("--force", "-f", action="store_true", help="Force rebuild")
         build_parser.add_argument("--graph-degree", type=int, default=32)
         build_parser.add_argument("--complexity", type=int, default=64)
         build_parser.add_argument("--num-threads", type=int, default=1)
@@ -129,7 +127,7 @@ Examples:
         )
 
         # List command
-        list_parser = subparsers.add_parser("list", help="List all indexes")
+        subparsers.add_parser("list", help="List all indexes")
 
         return parser
 
@@ -137,17 +135,13 @@ Examples:
         print("Stored LEANN indexes:")
 
         if not self.indexes_dir.exists():
-            print(
-                "No indexes found. Use 'leann build <name> --docs <dir>' to create one."
-            )
+            print("No indexes found. Use 'leann build <name> --docs <dir>' to create one.")
             return
 
         index_dirs = [d for d in self.indexes_dir.iterdir() if d.is_dir()]
 
         if not index_dirs:
-            print(
-                "No indexes found. Use 'leann build <name> --docs <dir>' to create one."
-            )
+            print("No indexes found. Use 'leann build <name> --docs <dir>' to create one.")
             return
 
         print(f"Found {len(index_dirs)} indexes:")
@@ -157,15 +151,15 @@ Examples:
 
             print(f"  {i}. {index_name} [{status}]")
             if self.index_exists(index_name):
-                meta_file = index_dir / "documents.leann.meta.json"
-                size_mb = sum(
-                    f.stat().st_size for f in index_dir.iterdir() if f.is_file()
-                ) / (1024 * 1024)
+                index_dir / "documents.leann.meta.json"
+                size_mb = sum(f.stat().st_size for f in index_dir.iterdir() if f.is_file()) / (
+                    1024 * 1024
+                )
                 print(f"     Size: {size_mb:.1f} MB")
 
         if index_dirs:
             example_name = index_dirs[0].name
-            print(f"\nUsage:")
+            print("\nUsage:")
             print(f'  leann search {example_name} "your query"')
             print(f"  leann ask {example_name} --interactive")
 
@@ -175,19 +169,20 @@ Examples:
         # Try to use better PDF parsers first
         documents = []
         docs_path = Path(docs_dir)
-        
+
         for file_path in docs_path.rglob("*.pdf"):
             print(f"Processing PDF: {file_path}")
-            
+
             # Try PyMuPDF first (best quality)
             text = extract_pdf_text_with_pymupdf(str(file_path))
             if text is None:
                 # Try pdfplumber
                 text = extract_pdf_text_with_pdfplumber(str(file_path))
-            
+
             if text:
                 # Create a simple document structure
                 from llama_index.core import Document
+
                 doc = Document(text=text, metadata={"source": str(file_path)})
                 documents.append(doc)
             else:

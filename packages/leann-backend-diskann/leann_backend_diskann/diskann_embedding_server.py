@@ -3,16 +3,16 @@ DiskANN-specific embedding server
 """
 
 import argparse
+import json
+import logging
+import os
+import sys
 import threading
 import time
-import os
-import zmq
-import numpy as np
-import json
 from pathlib import Path
-from typing import Optional
-import sys
-import logging
+
+import numpy as np
+import zmq
 
 # Set up logging based on environment variable
 LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
@@ -32,7 +32,7 @@ if not logger.handlers:
 
 
 def create_diskann_embedding_server(
-    passages_file: Optional[str] = None,
+    passages_file: str | None = None,
     zmq_port: int = 5555,
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     embedding_mode: str = "sentence-transformers",
@@ -50,8 +50,8 @@ def create_diskann_embedding_server(
     sys.path.insert(0, str(leann_core_path))
 
     try:
-        from leann.embedding_compute import compute_embeddings
         from leann.api import PassageManager
+        from leann.embedding_compute import compute_embeddings
 
         logger.info("Successfully imported unified embedding computation module")
     except ImportError as e:
@@ -76,7 +76,7 @@ def create_diskann_embedding_server(
         raise ValueError("Only metadata files (.meta.json) are supported")
 
     # Load metadata to get passage sources
-    with open(passages_file, "r") as f:
+    with open(passages_file) as f:
         meta = json.load(f)
 
     passages = PassageManager(meta["passage_sources"])
@@ -150,9 +150,7 @@ def create_diskann_embedding_server(
                         ):
                             texts = request
                             is_text_request = True
-                            logger.info(
-                                f"✅ MSGPACK: Direct text request for {len(texts)} texts"
-                            )
+                            logger.info(f"✅ MSGPACK: Direct text request for {len(texts)} texts")
                         else:
                             raise ValueError("Not a valid msgpack text request")
                     except Exception as msgpack_error:
@@ -167,9 +165,7 @@ def create_diskann_embedding_server(
                             passage_data = passages.get_passage(str(nid))
                             txt = passage_data["text"]
                             if not txt:
-                                raise RuntimeError(
-                                    f"FATAL: Empty text for passage ID {nid}"
-                                )
+                                raise RuntimeError(f"FATAL: Empty text for passage ID {nid}")
                             texts.append(txt)
                         except KeyError as e:
                             logger.error(f"Passage ID {nid} not found: {e}")
@@ -180,9 +176,7 @@ def create_diskann_embedding_server(
 
                     # Debug logging
                     logger.debug(f"Processing {len(texts)} texts")
-                    logger.debug(
-                        f"Text lengths: {[len(t) for t in texts[:5]]}"
-                    )  # Show first 5
+                    logger.debug(f"Text lengths: {[len(t) for t in texts[:5]]}")  # Show first 5
 
                 # Process embeddings using unified computation
                 embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
@@ -199,9 +193,7 @@ def create_diskann_embedding_server(
                 else:
                     # For DiskANN C++ compatibility: return protobuf format
                     resp_proto = embedding_pb2.NodeEmbeddingResponse()
-                    hidden_contiguous = np.ascontiguousarray(
-                        embeddings, dtype=np.float32
-                    )
+                    hidden_contiguous = np.ascontiguousarray(embeddings, dtype=np.float32)
 
                     # Serialize embeddings data
                     resp_proto.embeddings_data = hidden_contiguous.tobytes()

@@ -7,6 +7,6 @@ A revolutionary vector database that democratizes personal AI.
 __version__ = "0.1.0"
 
 # Re-export main API from leann-core
-from leann_core import LeannBuilder, LeannSearcher, LeannChat
+from leann_core import LeannBuilder, LeannChat, LeannSearcher
 
-__all__ = ["LeannBuilder", "LeannSearcher", "LeannChat"]
+__all__ = ["LeannBuilder", "LeannChat", "LeannSearcher"]

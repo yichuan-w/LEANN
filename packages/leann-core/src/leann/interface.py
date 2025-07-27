@@ -1,15 +1,14 @@
 from abc import ABC, abstractmethod
+from typing import Any, Literal
+
 import numpy as np
-from typing import Dict, Any, List, Literal, Optional
 
 
 class LeannBackendBuilderInterface(ABC):
     """Backend interface for building indexes"""
 
     @abstractmethod
-    def build(
-        self, data: np.ndarray, ids: List[str], index_path: str, **kwargs
-    ) -> None:
+    def build(self, data: np.ndarray, ids: list[str], index_path: str, **kwargs) -> None:
         """Build index
 
         Args:
@@ -35,9 +34,7 @@ class LeannBackendSearcherInterface(ABC):
         pass
 
     @abstractmethod
-    def _ensure_server_running(
-        self, passages_source_file: str, port: Optional[int], **kwargs
-    ) -> int:
+    def _ensure_server_running(self, passages_source_file: str, port: int | None, **kwargs) -> int:
         """Ensure server is running"""
         pass
 
@@ -51,9 +48,9 @@ class LeannBackendSearcherInterface(ABC):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: Optional[int] = None,
+        zmq_port: int | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Search for nearest neighbors
 
         Args:
@@ -77,7 +74,7 @@ class LeannBackendSearcherInterface(ABC):
         self,
         query: str,
         use_server_if_available: bool = True,
-        zmq_port: Optional[int] = None,
+        zmq_port: int | None = None,
     ) -> np.ndarray:
         """Compute embedding for a query string
 

@@ -1,1 +1,1 @@
-from . import diskann_backend
+from . import diskann_backend as diskann_backend

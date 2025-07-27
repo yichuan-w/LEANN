@@ -1,7 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any, Literal, Optional
+from typing import Any, Literal
 
 import numpy as np
 
@@ -38,9 +38,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         self.embedding_model = self.meta.get("embedding_model")
         if not self.embedding_model:
-            print(
-                "WARNING: embedding_model not found in meta.json. Recompute will fail."
-            )
+            print("WARNING: embedding_model not found in meta.json. Recompute will fail.")
 
         self.embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
 
@@ -48,26 +46,22 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             backend_module_name=backend_module_name,
         )
 
-    def _load_meta(self) -> Dict[str, Any]:
+    def _load_meta(self) -> dict[str, Any]:
         """Loads the metadata file associated with the index."""
         # This is the corrected logic for finding the meta file.
         meta_path = self.index_dir / f"{self.index_path.name}.meta.json"
         if not meta_path.exists():
             raise FileNotFoundError(f"Leann metadata file not found at {meta_path}")
-        with open(meta_path, "r", encoding="utf-8") as f:
+        with open(meta_path, encoding="utf-8") as f:
             return json.load(f)
 
-    def _ensure_server_running(
-        self, passages_source_file: str, port: int, **kwargs
-    ) -> int:
+    def _ensure_server_running(self, passages_source_file: str, port: int, **kwargs) -> int:
         """
         Ensures the embedding server is running if recompute is needed.
         This is a helper for subclasses.
         """
         if not self.embedding_model:
-            raise ValueError(
-                "Cannot use recompute mode without 'embedding_model' in meta.json."
-            )
+            raise ValueError("Cannot use recompute mode without 'embedding_model' in meta.json.")
 
         server_started, actual_port = self.embedding_server_manager.start_server(
             port=port,
@@ -78,9 +72,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             enable_warmup=kwargs.get("enable_warmup", False),
         )
         if not server_started:
-            raise RuntimeError(
-                f"Failed to start embedding server on port {actual_port}"
-            )
+            raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
 
         return actual_port
 
@@ -109,9 +101,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 # on that port?
 
                 # Ensure we have a server with passages_file for compatibility
-                passages_source_file = (
-                    self.index_dir / f"{self.index_path.name}.meta.json"
-                )
+                passages_source_file = self.index_dir / f"{self.index_path.name}.meta.json"
                 # Convert to absolute path to ensure server can find it
                 zmq_port = self._ensure_server_running(
                     str(passages_source_file.resolve()), zmq_port
@@ -132,8 +122,8 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
     def _compute_embedding_via_server(self, chunks: list, zmq_port: int) -> np.ndarray:
         """Compute embeddings using the ZMQ embedding server."""
-        import zmq
         import msgpack
+        import zmq
 
         try:
             context = zmq.Context()
@@ -172,9 +162,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: Optional[int] = None,
+        zmq_port: int | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Search for the top_k nearest neighbors of the query vector.
 

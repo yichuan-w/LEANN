@@ -1,19 +1,19 @@
-import numpy as np
-import os
-from pathlib import Path
-from typing import Dict, Any, List, Literal, Optional
-import shutil
 import logging
+import os
+import shutil
+from pathlib import Path
+from typing import Any, Literal
 
-from leann.searcher_base import BaseSearcher
-from .convert_to_csr import convert_hnsw_graph_to_csr
-
-from leann.registry import register_backend
+import numpy as np
 from leann.interface import (
-    LeannBackendFactoryInterface,
     LeannBackendBuilderInterface,
+    LeannBackendFactoryInterface,
     LeannBackendSearcherInterface,
 )
+from leann.registry import register_backend
+from leann.searcher_base import BaseSearcher
+
+from .convert_to_csr import convert_hnsw_graph_to_csr
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +51,11 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         if not self.is_recompute:
             if self.is_compact:
                 # TODO: support this case @andy
-                raise ValueError("is_recompute is False, but is_compact is True. This is not compatible now. change is compact to False and you can use the original HNSW index.")
+                raise ValueError(
+                    "is_recompute is False, but is_compact is True. This is not compatible now. change is compact to False and you can use the original HNSW index."
+                )
 
-    def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs):
+    def build(self, data: np.ndarray, ids: list[str], index_path: str, **kwargs):
         from . import faiss  # type: ignore
 
         path = Path(index_path)
@@ -99,16 +101,12 @@ class HNSWBuilder(LeannBackendBuilderInterface):
             # index_file_old = index_file.with_suffix(".old")
             # shutil.move(str(index_file), str(index_file_old))
             shutil.move(str(csr_temp_file), str(index_file))
-            logger.info(
-                f"INFO: Replaced original index with {mode_str} version at '{index_file}'"
-            )
+            logger.info(f"INFO: Replaced original index with {mode_str} version at '{index_file}'")
         else:
             # Clean up and fail fast
             if csr_temp_file.exists():
                 os.remove(csr_temp_file)
-            raise RuntimeError(
-                "CSR conversion failed - cannot proceed with compact format"
-            )
+            raise RuntimeError("CSR conversion failed - cannot proceed with compact format")
 
 
 class HNSWSearcher(BaseSearcher):
@@ -146,7 +144,7 @@ class HNSWSearcher(BaseSearcher):
         self,
         query: np.ndarray,
         top_k: int,
-        zmq_port: Optional[int] = None,
+        zmq_port: int | None = None,
         complexity: int = 64,
         beam_width: int = 1,
         prune_ratio: float = 0.0,
@@ -154,7 +152,7 @@ class HNSWSearcher(BaseSearcher):
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         batch_size: int = 0,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Search for nearest neighbors using HNSW index.
 
@@ -183,9 +181,7 @@ class HNSWSearcher(BaseSearcher):
                 raise RuntimeError("Recompute is required for pruned index.")
         if recompute_embeddings:
             if zmq_port is None:
-                raise ValueError(
-                    "zmq_port must be provided if recompute_embeddings is True"
-                )
+                raise ValueError("zmq_port must be provided if recompute_embeddings is True")
 
         if query.dtype != np.float32:
             query = query.astype(np.float32)
@@ -194,9 +190,7 @@ class HNSWSearcher(BaseSearcher):
 
         params = faiss.SearchParametersHNSW()
         if zmq_port is not None:
-            params.zmq_port = (
-                zmq_port  # C++ code won't use this if recompute_embeddings is False
-            )
+            params.zmq_port = zmq_port  # C++ code won't use this if recompute_embeddings is False
         params.efSearch = complexity
         params.beam_size = beam_width
 
@@ -209,9 +203,7 @@ class HNSWSearcher(BaseSearcher):
             params.send_neigh_times_ratio = 0.0
         elif pruning_strategy == "proportional":
             params.local_prune = False
-            params.send_neigh_times_ratio = (
-                1.0  # Any value > 1e-6 triggers proportional mode
-            )
+            params.send_neigh_times_ratio = 1.0  # Any value > 1e-6 triggers proportional mode
         else:  # "global"
             params.local_prune = False
             params.send_neigh_times_ratio = 0.0
@@ -232,8 +224,6 @@ class HNSWSearcher(BaseSearcher):
             params,
         )
 
-        string_labels = [
-            [str(int_label) for int_label in batch_labels] for batch_labels in labels
-        ]
+        string_labels = [[str(int_label) for int_label in batch_labels] for batch_labels in labels]
 
         return {"labels": string_labels, "distances": distances}

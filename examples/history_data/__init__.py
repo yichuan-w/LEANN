@@ -1,3 +1,3 @@
 from .history import ChromeHistoryReader
 
-__all__ = ['ChromeHistoryReader'] 
+__all__ = ["ChromeHistoryReader"]

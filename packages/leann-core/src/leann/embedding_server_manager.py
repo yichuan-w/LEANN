@@ -1,12 +1,12 @@
-import time
 import atexit
+import logging
+import os
 import socket
 import subprocess
 import sys
-import os
-import logging
+import time
 from pathlib import Path
-from typing import Optional
+
 import psutil
 
 # Set up logging based on environment variable
@@ -33,7 +33,7 @@ def _get_available_port(start_port: int = 5557) -> int:
                 return port
         except OSError:
             port += 1
-    raise RuntimeError(f"No available ports found in range {start_port}-{start_port+100}")
+    raise RuntimeError(f"No available ports found in range {start_port}-{start_port + 100}")
 
 
 def _check_port(port: int) -> bool:
@@ -182,8 +182,8 @@ class EmbeddingServerManager:
                                        e.g., "leann_backend_diskann.embedding_server"
         """
         self.backend_module_name = backend_module_name
-        self.server_process: Optional[subprocess.Popen] = None
-        self.server_port: Optional[int] = None
+        self.server_process: subprocess.Popen | None = None
+        self.server_port: int | None = None
         self._atexit_registered = False
 
     def start_server(
@@ -234,10 +234,10 @@ class EmbeddingServerManager:
             return False, port
 
         logger.info(f"Starting server on port {actual_port} for Colab environment")
-        
+
         # Use a simpler startup strategy for Colab
         command = self._build_server_command(actual_port, model_name, embedding_mode, **kwargs)
-        
+
         try:
             # In Colab, we'll use a more direct approach
             self._launch_server_process_colab(command, actual_port)
@@ -246,26 +246,16 @@ class EmbeddingServerManager:
             logger.error(f"Failed to start embedding server in Colab: {e}")
             return False, actual_port
 
-    def _has_compatible_running_server(
-        self, model_name: str, passages_file: str
-    ) -> bool:
+    def _has_compatible_running_server(self, model_name: str, passages_file: str) -> bool:
         """Check if we have a compatible running server."""
-        if not (
-            self.server_process
-            and self.server_process.poll() is None
-            and self.server_port
-        ):
+        if not (self.server_process and self.server_process.poll() is None and self.server_port):
             return False
 
         if _check_process_matches_config(self.server_port, model_name, passages_file):
-            logger.info(
-                f"Existing server process (PID {self.server_process.pid}) is compatible"
-            )
+            logger.info(f"Existing server process (PID {self.server_process.pid}) is compatible")
             return True
 
-        logger.info(
-            "Existing server process is incompatible. Should start a new server."
-        )
+        logger.info("Existing server process is incompatible. Should start a new server.")
         return False
 
     def _start_new_server(
@@ -400,7 +390,7 @@ class EmbeddingServerManager:
     def _wait_for_server_ready_colab(self, port: int) -> tuple[bool, int]:
         """Wait for the server to be ready with Colab-specific timeout."""
         max_wait, wait_interval = 30, 0.5  # Shorter timeout for Colab
-        
+
         for _ in range(int(max_wait / wait_interval)):
             if _check_port(port):
                 logger.info("Colab embedding server is ready!")
@@ -409,7 +399,7 @@ class EmbeddingServerManager:
             if self.server_process and self.server_process.poll() is not None:
                 # Check for error output
                 stdout, stderr = self.server_process.communicate()
-                logger.error(f"Colab server terminated during startup.")
+                logger.error("Colab server terminated during startup.")
                 logger.error(f"stdout: {stdout}")
                 logger.error(f"stderr: {stderr}")
                 return False, port
