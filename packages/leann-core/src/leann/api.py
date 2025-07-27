@@ -117,8 +117,15 @@ class PassageManager:
             assert source["type"] == "jsonl", "only jsonl is supported"
             passage_file = source["path"]
             index_file = source["index_path"]  # .idx file
+            
+            # Fix path resolution for Colab and other environments
+            if not Path(index_file).is_absolute():
+                # If relative path, try to resolve it properly
+                index_file = str(Path(index_file).resolve())
+            
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
+            
             with open(index_file, "rb") as f:
                 offset_map = pickle.load(f)
                 self.offset_maps[passage_file] = offset_map
@@ -381,6 +388,10 @@ class LeannBuilder:
 
 class LeannSearcher:
     def __init__(self, index_path: str, enable_warmup: bool = False, **backend_kwargs):
+        # Fix path resolution for Colab and other environments
+        if not Path(index_path).is_absolute():
+            index_path = str(Path(index_path).resolve())
+        
         self.meta_path_str = f"{index_path}.meta.json"
         if not Path(self.meta_path_str).exists():
             raise FileNotFoundError(
