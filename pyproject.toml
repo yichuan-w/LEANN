@@ -33,8 +33,8 @@ dependencies = [
     # LlamaIndex core and readers - updated versions
     "llama-index>=0.12.44",
     "llama-index-readers-file>=0.4.0",  # Essential for PDF parsing
-    "llama-index-readers-docling",
-    "llama-index-node-parser-docling",
+    # "llama-index-readers-docling",  # Requires Python >= 3.10
+    # "llama-index-node-parser-docling",  # Requires Python >= 3.10
     "llama-index-vector-stores-faiss>=0.4.0",
     "llama-index-embeddings-huggingface>=0.5.5",
     # Other dependencies
