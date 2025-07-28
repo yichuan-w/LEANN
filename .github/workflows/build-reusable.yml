@@ -224,10 +224,12 @@ jobs:
           HF_HUB_DISABLE_SYMLINKS: 1
           TOKENIZERS_PARALLELISM: false
           PYTORCH_ENABLE_MPS_FALLBACK: 0  # Disable MPS on macOS CI to avoid memory issues
+          OMP_NUM_THREADS: 1  # Disable OpenMP parallelism to avoid libomp crashes
+          MKL_NUM_THREADS: 1  # Single thread for MKL operations
         run: |
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
-
+          
           # Run all tests
           pytest tests/
 
