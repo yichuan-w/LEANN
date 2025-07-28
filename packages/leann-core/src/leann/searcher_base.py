@@ -63,12 +63,19 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         if not self.embedding_model:
             raise ValueError("Cannot use recompute mode without 'embedding_model' in meta.json.")
 
+        # Get distance_metric from meta if not provided in kwargs
+        distance_metric = (
+            kwargs.get("distance_metric")
+            or self.meta.get("backend_kwargs", {}).get("distance_metric")
+            or "mips"
+        )
+
         server_started, actual_port = self.embedding_server_manager.start_server(
             port=port,
             model_name=self.embedding_model,
             embedding_mode=self.embedding_mode,
             passages_file=passages_source_file,
-            distance_metric=kwargs.get("distance_metric"),
+            distance_metric=distance_metric,
             enable_warmup=kwargs.get("enable_warmup", False),
         )
         if not server_started:

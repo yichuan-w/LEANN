@@ -293,6 +293,8 @@ class EmbeddingServerManager:
             command.extend(["--passages-file", str(passages_file)])
         if embedding_mode != "sentence-transformers":
             command.extend(["--embedding-mode", embedding_mode])
+        if kwargs.get("distance_metric"):
+            command.extend(["--distance-metric", kwargs["distance_metric"]])
 
         return command
 

@@ -124,7 +124,9 @@ class HNSWSearcher(BaseSearcher):
         )
         from . import faiss  # type: ignore
 
-        self.distance_metric = self.meta.get("distance_metric", "mips").lower()
+        self.distance_metric = (
+            self.meta.get("backend_kwargs", {}).get("distance_metric", "mips").lower()
+        )
         metric_enum = get_metric_map().get(self.distance_metric)
         if metric_enum is None:
             raise ValueError(f"Unsupported distance_metric '{self.distance_metric}'.")
@@ -199,6 +201,16 @@ class HNSWSearcher(BaseSearcher):
             params.zmq_port = zmq_port  # C++ code won't use this if recompute_embeddings is False
         params.efSearch = complexity
         params.beam_size = beam_width
+
+        # For OpenAI embeddings with cosine distance, disable relative distance check
+        # This prevents early termination when all scores are in a narrow range
+        embedding_model = self.meta.get("embedding_model", "").lower()
+        if self.distance_metric == "cosine" and any(
+            openai_model in embedding_model for openai_model in ["text-embedding", "openai"]
+        ):
+            params.check_relative_distance = False
+        else:
+            params.check_relative_distance = True
 
         # PQ pruning: direct mapping to HNSW's pq_pruning_ratio
         params.pq_pruning_ratio = prune_ratio

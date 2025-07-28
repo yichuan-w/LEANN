@@ -24,6 +24,8 @@ def create_leann_index_from_multiple_chrome_profiles(
     profile_dirs: list[Path],
     index_path: str = "chrome_history_index.leann",
     max_count: int = -1,
+    embedding_model: str = "facebook/contriever",
+    embedding_mode: str = "sentence-transformers",
 ):
     """
     Create LEANN index from multiple Chrome profile data sources.
@@ -32,6 +34,8 @@ def create_leann_index_from_multiple_chrome_profiles(
         profile_dirs: List of Path objects pointing to Chrome profile directories
         index_path: Path to save the LEANN index
         max_count: Maximum number of history entries to process per profile
+        embedding_model: The embedding model to use
+        embedding_mode: The embedding backend mode
     """
     print("Creating LEANN index from multiple Chrome profile data sources...")
 
@@ -106,9 +110,11 @@ def create_leann_index_from_multiple_chrome_profiles(
         print("\n[PHASE 1] Building Leann index...")
 
         # Use HNSW backend for better macOS compatibility
+        # LeannBuilder will automatically detect normalized embeddings and set appropriate distance metric
         builder = LeannBuilder(
             backend_name="hnsw",
-            embedding_model="facebook/contriever",
+            embedding_model=embedding_model,
+            embedding_mode=embedding_mode,
             graph_degree=32,
             complexity=64,
             is_compact=True,
@@ -132,6 +138,8 @@ def create_leann_index(
     profile_path: str | None = None,
     index_path: str = "chrome_history_index.leann",
     max_count: int = 1000,
+    embedding_model: str = "facebook/contriever",
+    embedding_mode: str = "sentence-transformers",
 ):
     """
     Create LEANN index from Chrome history data.
@@ -140,6 +148,8 @@ def create_leann_index(
         profile_path: Path to the Chrome profile directory (optional, uses default if None)
         index_path: Path to save the LEANN index
         max_count: Maximum number of history entries to process
+        embedding_model: The embedding model to use
+        embedding_mode: The embedding backend mode
     """
     print("Creating LEANN index from Chrome history data...")
     INDEX_DIR = Path(index_path).parent
@@ -187,9 +197,11 @@ def create_leann_index(
         print("\n[PHASE 1] Building Leann index...")
 
         # Use HNSW backend for better macOS compatibility
+        # LeannBuilder will automatically detect normalized embeddings and set appropriate distance metric
         builder = LeannBuilder(
             backend_name="hnsw",
-            embedding_model="facebook/contriever",
+            embedding_model=embedding_model,
+            embedding_mode=embedding_mode,
             graph_degree=32,
             complexity=64,
             is_compact=True,
@@ -273,6 +285,24 @@ async def main():
         default=True,
         help="Automatically find all Chrome profiles (default: True)",
     )
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default="facebook/contriever",
+        help="The embedding model to use (e.g., 'facebook/contriever', 'text-embedding-3-small')",
+    )
+    parser.add_argument(
+        "--embedding-mode",
+        type=str,
+        default="sentence-transformers",
+        choices=["sentence-transformers", "openai", "mlx"],
+        help="The embedding backend mode",
+    )
+    parser.add_argument(
+        "--use-existing-index",
+        action="store_true",
+        help="Use existing index without rebuilding",
+    )
 
     args = parser.parse_args()
 
@@ -283,26 +313,34 @@ async def main():
     print(f"Index directory: {INDEX_DIR}")
     print(f"Max entries: {args.max_entries}")
 
-    # Find Chrome profile directories
-    from history_data.history import ChromeHistoryReader
-
-    if args.auto_find_profiles:
-        profile_dirs = ChromeHistoryReader.find_chrome_profiles()
-        if not profile_dirs:
-            print("No Chrome profiles found automatically. Exiting.")
+    if args.use_existing_index:
+        # Use existing index without rebuilding
+        if not Path(INDEX_PATH).exists():
+            print(f"Error: Index file not found at {INDEX_PATH}")
             return
+        print(f"Using existing index at {INDEX_PATH}")
+        index_path = INDEX_PATH
     else:
-        # Use single specified profile
-        profile_path = Path(args.chrome_profile)
-        if not profile_path.exists():
-            print(f"Chrome profile not found: {profile_path}")
-            return
-        profile_dirs = [profile_path]
+        # Find Chrome profile directories
+        from history_data.history import ChromeHistoryReader
 
-    # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_chrome_profiles(
-        profile_dirs, INDEX_PATH, args.max_entries
-    )
+        if args.auto_find_profiles:
+            profile_dirs = ChromeHistoryReader.find_chrome_profiles()
+            if not profile_dirs:
+                print("No Chrome profiles found automatically. Exiting.")
+                return
+        else:
+            # Use single specified profile
+            profile_path = Path(args.chrome_profile)
+            if not profile_path.exists():
+                print(f"Chrome profile not found: {profile_path}")
+                return
+            profile_dirs = [profile_path]
+
+        # Create or load the LEANN index from all sources
+        index_path = create_leann_index_from_multiple_chrome_profiles(
+            profile_dirs, INDEX_PATH, args.max_entries, args.embedding_model, args.embedding_mode
+        )
 
     if index_path:
         if args.query:
