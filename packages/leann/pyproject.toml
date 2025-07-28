@@ -36,7 +36,5 @@ diskann = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/leann"
-Documentation = "https://leann.readthedocs.io"
-Repository = "https://github.com/yourusername/leann"
-Issues = "https://github.com/yourusername/leann/issues"
+Repository = "https://github.com/yichuan-w/LEANN"
+Issues = "https://github.com/yichuan-w/LEANN/issues"

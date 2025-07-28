@@ -114,32 +114,23 @@ Our declarative API makes RAG as easy as writing a config file.
 [Try in this ipynb file →](demo.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb)
 
 ```python
-from leann.api import LeannBuilder, LeannSearcher, LeannChat
+from leann import LeannBuilder, LeannSearcher, LeannChat
+from pathlib import Path
+INDEX_PATH = str(Path("./").resolve() / "demo.leann")
 
-# 1. Build the index (no embeddings stored!)
+# Build an index
 builder = LeannBuilder(backend_name="hnsw")
-builder.add_text("C# is a powerful programming language")
-builder.add_text("Python is a powerful programming language and it is very popular")
-builder.add_text("Machine learning transforms industries")
-builder.add_text("Neural networks process complex data")
-builder.add_text("Leann is a great storage saving engine for RAG on your MacBook")
-builder.build_index("knowledge.leann")
+builder.add_text("LEANN saves 97% storage compared to traditional vector databases.")
+builder.add_text("Tung Tung Tung Sahur called—they need their banana‑crocodile hybrid back")
+builder.build_index(INDEX_PATH)
 
-# 2. Search with real-time embeddings
-searcher = LeannSearcher("knowledge.leann")
-results = searcher.search("programming languages", top_k=2)
+# Search
+searcher = LeannSearcher(INDEX_PATH)
+results = searcher.search("fantastical AI-generated creatures", top_k=1)
 
-# 3. Chat with LEANN using retrieved results
-llm_config = {
-    "type": "ollama",
-    "model": "llama3.2:1b"
-}
-
-chat = LeannChat(index_path="knowledge.leann", llm_config=llm_config)
-response = chat.ask(
-    "Compare the two retrieved programming languages and say which one is more popular today.",
-    top_k=2,
-)
+# Chat with your data
+chat = LeannChat(INDEX_PATH, llm_config={"type": "hf", "model": "Qwen/Qwen3-0.6B"})
+response = chat.ask("How much storage does LEANN save?", top_k=1)
 ```
 
 ## RAG on Everything!
