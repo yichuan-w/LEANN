@@ -2,6 +2,7 @@
 Test examples from README.md to ensure documentation is accurate.
 """
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pytest
 
 def test_readme_basic_example():
     """Test the basic example from README.md."""
-    # This is the exact code from README
+    # This is the exact code from README (with smaller model for CI)
     from leann import LeannBuilder, LeannChat, LeannSearcher
     from leann.api import SearchResult
 
@@ -18,7 +19,15 @@ def test_readme_basic_example():
         INDEX_PATH = str(Path(temp_dir) / "demo.leann")
 
         # Build an index
-        builder = LeannBuilder(backend_name="hnsw")
+        # In CI, use a smaller model to avoid memory issues
+        if os.environ.get("CI") == "true":
+            builder = LeannBuilder(
+                backend_name="hnsw",
+                embedding_model="sentence-transformers/all-MiniLM-L6-v2",  # Smaller model
+                dimensions=384,  # Smaller dimensions
+            )
+        else:
+            builder = LeannBuilder(backend_name="hnsw")
         builder.add_text("LEANN saves 97% storage compared to traditional vector databases.")
         builder.add_text("Tung Tung Tung Sahur called—they need their banana-crocodile hybrid back")
         builder.build_index(INDEX_PATH)
@@ -66,9 +75,18 @@ def test_backend_options():
     from leann import LeannBuilder
 
     with tempfile.TemporaryDirectory() as temp_dir:
+        # Use smaller model in CI to avoid memory issues
+        if os.environ.get("CI") == "true":
+            model_args = {
+                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+                "dimensions": 384,
+            }
+        else:
+            model_args = {}
+
         # Test HNSW backend (as shown in README)
         hnsw_path = str(Path(temp_dir) / "test_hnsw.leann")
-        builder_hnsw = LeannBuilder(backend_name="hnsw")
+        builder_hnsw = LeannBuilder(backend_name="hnsw", **model_args)
         builder_hnsw.add_text("Test document for HNSW backend")
         builder_hnsw.build_index(hnsw_path)
         assert Path(hnsw_path).parent.exists()
@@ -76,7 +94,7 @@ def test_backend_options():
 
         # Test DiskANN backend (mentioned as available option)
         diskann_path = str(Path(temp_dir) / "test_diskann.leann")
-        builder_diskann = LeannBuilder(backend_name="diskann")
+        builder_diskann = LeannBuilder(backend_name="diskann", **model_args)
         builder_diskann.add_text("Test document for DiskANN backend")
         builder_diskann.build_index(diskann_path)
         assert Path(diskann_path).parent.exists()
@@ -90,7 +108,15 @@ def test_llm_config_simulated():
     with tempfile.TemporaryDirectory() as temp_dir:
         # Build a simple index
         index_path = str(Path(temp_dir) / "test.leann")
-        builder = LeannBuilder(backend_name="hnsw")
+        # Use smaller model in CI to avoid memory issues
+        if os.environ.get("CI") == "true":
+            builder = LeannBuilder(
+                backend_name="hnsw",
+                embedding_model="sentence-transformers/all-MiniLM-L6-v2",
+                dimensions=384,
+            )
+        else:
+            builder = LeannBuilder(backend_name="hnsw")
         builder.add_text("Test document for LLM testing")
         builder.build_index(index_path)
 

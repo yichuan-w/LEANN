@@ -214,9 +214,11 @@ jobs:
 
       - name: Run tests with pytest
         env:
+          CI: true  # Mark as CI environment to skip memory-intensive tests
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           HF_HUB_DISABLE_SYMLINKS: 1
           TOKENIZERS_PARALLELISM: false
+          PYTORCH_ENABLE_MPS_FALLBACK: 0  # Disable MPS on macOS CI to avoid memory issues
         run: |
           # Run all tests
           pytest tests/

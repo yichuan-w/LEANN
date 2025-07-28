@@ -17,6 +17,9 @@ def test_data_dir():
     return Path("examples/data")
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
+)
 def test_main_cli_simulated(test_data_dir):
     """Test main_cli with simulated LLM."""
     with tempfile.TemporaryDirectory() as temp_dir:

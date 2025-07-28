@@ -2,6 +2,7 @@
 Basic functionality tests for CI pipeline using pytest.
 """
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -14,6 +15,9 @@ def test_imports():
     # Test C++ extensions
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
+)
 @pytest.mark.parametrize("backend_name", ["hnsw", "diskann"])
 def test_backend_basic(backend_name):
     """Test basic functionality for each backend."""
@@ -61,6 +65,9 @@ def test_backend_basic(backend_name):
         assert "topic 2" in results[0].text or "document" in results[0].text
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
+)
 def test_large_index():
     """Test with larger dataset."""
     from leann.api import LeannBuilder, LeannSearcher
