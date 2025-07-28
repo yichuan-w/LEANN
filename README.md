@@ -94,14 +94,14 @@ uv sync
 
 
 
-## Quick Star
+## Quick Start
 
 Our declarative API makes RAG as easy as writing a config file.
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb) [Try in this ipynb file →](demo.ipynb)
 
 ```python
-from leann import LeannBuilder, LeannSearcher, LeannCha
+from leann import LeannBuilder, LeannSearcher, LeannChat
 from pathlib import Path
 INDEX_PATH = str(Path("./").resolve() / "demo.leann")
 
@@ -268,7 +268,7 @@ The default Chrome profile path is configured for a typical macOS setup. If you 
 1. Open Terminal
 2. Run: `ls ~/Library/Application\ Support/Google/Chrome/`
 3. Look for folders like "Default", "Profile 1", "Profile 2", etc.
-4. Use the full path as your `--chrome-profile` argumen
+4. Use the full path as your `--chrome-profile` argument
 
 **Common Chrome profile locations:**
 - macOS: `~/Library/Application Support/Google/Chrome/Default`
@@ -311,7 +311,7 @@ sudo packages/wechat-exporter/wechattweak-cli install
 
 **Troubleshooting:**
 - **Installation issues**: Check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41)
-- **Export errors**: If you encounter the error below, try restarting WeCha
+- **Export errors**: If you encounter the error below, try restarting WeChat
 ```
 Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
 Failed to find or export WeChat data. Exiting.
@@ -366,7 +366,7 @@ leann search my-docs "machine learning concepts"
 leann ask my-docs --interactive
 
 # List all your indexes
-leann lis
+leann list
 ```
 
 **Key CLI features:**
@@ -451,7 +451,7 @@ Options:
 
 ```bash
 uv pip install -e ".[dev]"  # Install dev dependencies
-python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR datase
+python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
 python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
 ```
 
