@@ -41,11 +41,18 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 ## Installation
 
-> **Prerequisites:** Install uv first if you don't have it:
-> ```bash
-> curl -LsSf https://astral.sh/uv/install.sh | sh
-> ```
-> 📖 [Detailed uv installation methods →](https://docs.astral.sh/uv/getting-started/installation/#installation-methods)
+<details>
+<summary><strong>📦 Prerequisites: Install uv (if you don't have it)</strong></summary>
+
+Install uv first if you don't have it:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+📖 [Detailed uv installation methods →](https://docs.astral.sh/uv/getting-started/installation/#installation-methods)
+
+</details>
 
 
 LEANN provides two installation methods: **pip install** (quick and easy) and **build from source** (recommended for development).
@@ -87,13 +94,14 @@ uv sync
 
 
 
-## Quick Start
+## Quick Star
 
 Our declarative API makes RAG as easy as writing a config file.
-[Try in this ipynb file →](demo.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb) [Try in this ipynb file →](demo.ipynb)
 
 ```python
-from leann import LeannBuilder, LeannSearcher, LeannChat
+from leann import LeannBuilder, LeannSearcher, LeannCha
 from pathlib import Path
 INDEX_PATH = str(Path("./").resolve() / "demo.leann")
 
@@ -260,7 +268,7 @@ The default Chrome profile path is configured for a typical macOS setup. If you 
 1. Open Terminal
 2. Run: `ls ~/Library/Application\ Support/Google/Chrome/`
 3. Look for folders like "Default", "Profile 1", "Profile 2", etc.
-4. Use the full path as your `--chrome-profile` argument
+4. Use the full path as your `--chrome-profile` argumen
 
 **Common Chrome profile locations:**
 - macOS: `~/Library/Application Support/Google/Chrome/Default`
@@ -303,7 +311,7 @@ sudo packages/wechat-exporter/wechattweak-cli install
 
 **Troubleshooting:**
 - **Installation issues**: Check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41)
-- **Export errors**: If you encounter the error below, try restarting WeChat
+- **Export errors**: If you encounter the error below, try restarting WeCha
 ```
 Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
 Failed to find or export WeChat data. Exiting.
@@ -358,7 +366,7 @@ leann search my-docs "machine learning concepts"
 leann ask my-docs --interactive
 
 # List all your indexes
-leann list
+leann lis
 ```
 
 **Key CLI features:**
@@ -443,7 +451,7 @@ Options:
 
 ```bash
 uv pip install -e ".[dev]"  # Install dev dependencies
-python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
+python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR datase
 python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
 ```
 
