@@ -28,6 +28,12 @@ def get_metric_map():
     }
 
 
+def normalize_l2(data: np.ndarray) -> np.ndarray:
+    norms = np.linalg.norm(data, axis=1, keepdims=True)
+    norms[norms == 0] = 1  # Avoid division by zero
+    return data / norms
+
+
 @register_backend("hnsw")
 class HNSWBackend(LeannBackendFactoryInterface):
     @staticmethod
@@ -76,7 +82,7 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         index.hnsw.efConstruction = self.efConstruction
 
         if self.distance_metric.lower() == "cosine":
-            faiss.normalize_L2(data)
+            data = normalize_l2(data)
 
         index.add(data.shape[0], faiss.swig_ptr(data))
         index_file = index_dir / f"{index_prefix}.index"
@@ -186,7 +192,7 @@ class HNSWSearcher(BaseSearcher):
         if query.dtype != np.float32:
             query = query.astype(np.float32)
         if self.distance_metric == "cosine":
-            faiss.normalize_L2(query)
+            query = normalize_l2(query)
 
         params = faiss.SearchParametersHNSW()
         if zmq_port is not None:
