@@ -206,12 +206,13 @@ jobs:
           source .venv/bin/activate || source .venv/Scripts/activate
 
           # Install the built wheels
+          # Use --find-links to let uv choose the correct wheel for the platform
           if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            uv pip install packages/leann-core/dist/*.whl
-            uv pip install packages/leann/dist/*.whl
+            uv pip install leann-core --find-links packages/leann-core/dist
+            uv pip install leann --find-links packages/leann/dist
           fi
-          uv pip install packages/leann-backend-hnsw/dist/*.whl
-          uv pip install packages/leann-backend-diskann/dist/*.whl
+          uv pip install leann-backend-hnsw --find-links packages/leann-backend-hnsw/dist
+          uv pip install leann-backend-diskann --find-links packages/leann-backend-diskann/dist
 
           # Install test dependencies using extras
           uv pip install -e ".[test]"
