@@ -116,6 +116,7 @@ LEANN supports RAG on various data sources including documents (.pdf, .txt, .md)
 
 
 > **Generation Model Setup**
+>
 > LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
 
 <details>
@@ -176,6 +177,7 @@ python ./examples/main_cli_example.py
 
 ### 📧 Your Personal Email Secretary: RAG on Apple Mail!
 
+> **Note:** The examples below currently support macOS only. Windows support coming soon.
 
 
 <p align="center">
@@ -465,7 +467,7 @@ If you find Leann useful, please cite:
 
 ## ✨ [Detailed Features →](docs/features.md)
 
-## 🤝 [Contributing →](docs/CONTRIBUTING.md)
+## 🤝 [Contributing →](docs/contributing.md)
 
 
 ## [FAQ →](docs/faq.md)
