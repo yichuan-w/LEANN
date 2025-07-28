@@ -298,6 +298,11 @@ async def main():
         choices=["sentence-transformers", "openai", "mlx"],
         help="The embedding backend mode",
     )
+    parser.add_argument(
+        "--use-existing-index",
+        action="store_true",
+        help="Use existing index without rebuilding",
+    )
 
     args = parser.parse_args()
 
@@ -308,26 +313,34 @@ async def main():
     print(f"Index directory: {INDEX_DIR}")
     print(f"Max entries: {args.max_entries}")
 
-    # Find Chrome profile directories
-    from history_data.history import ChromeHistoryReader
-
-    if args.auto_find_profiles:
-        profile_dirs = ChromeHistoryReader.find_chrome_profiles()
-        if not profile_dirs:
-            print("No Chrome profiles found automatically. Exiting.")
+    if args.use_existing_index:
+        # Use existing index without rebuilding
+        if not Path(INDEX_PATH).exists():
+            print(f"Error: Index file not found at {INDEX_PATH}")
             return
+        print(f"Using existing index at {INDEX_PATH}")
+        index_path = INDEX_PATH
     else:
-        # Use single specified profile
-        profile_path = Path(args.chrome_profile)
-        if not profile_path.exists():
-            print(f"Chrome profile not found: {profile_path}")
-            return
-        profile_dirs = [profile_path]
+        # Find Chrome profile directories
+        from history_data.history import ChromeHistoryReader
 
-    # Create or load the LEANN index from all sources
-    index_path = create_leann_index_from_multiple_chrome_profiles(
-        profile_dirs, INDEX_PATH, args.max_entries, args.embedding_model, args.embedding_mode
-    )
+        if args.auto_find_profiles:
+            profile_dirs = ChromeHistoryReader.find_chrome_profiles()
+            if not profile_dirs:
+                print("No Chrome profiles found automatically. Exiting.")
+                return
+        else:
+            # Use single specified profile
+            profile_path = Path(args.chrome_profile)
+            if not profile_path.exists():
+                print(f"Chrome profile not found: {profile_path}")
+                return
+            profile_dirs = [profile_path]
+
+        # Create or load the LEANN index from all sources
+        index_path = create_leann_index_from_multiple_chrome_profiles(
+            profile_dirs, INDEX_PATH, args.max_entries, args.embedding_model, args.embedding_mode
+        )
 
     if index_path:
         if args.query:
