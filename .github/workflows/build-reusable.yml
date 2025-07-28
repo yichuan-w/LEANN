@@ -137,7 +137,8 @@ jobs:
             # Use system clang instead of homebrew LLVM for better compatibility
             export CC=clang
             export CXX=clang++
-            export MACOSX_DEPLOYMENT_TARGET=11.0
+            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
+            export MACOSX_DEPLOYMENT_TARGET=13.3
             uv build --wheel --python python
           else
             uv build --wheel --python python
