@@ -58,6 +58,7 @@ Clone the repository to access all examples and install LEANN from [PyPI](https:
 git clone git@github.com:yichuan-w/LEANN.git leann
 cd leann
 uv venv
+source .venv/bin/activate
 uv pip install leann
 ```
 
@@ -82,31 +83,7 @@ uv sync
 ```
 
 
-<!-- **Ollama Setup (Recommended for full privacy):**
 
-> *You can skip this installation if you only want to use OpenAI API for generation.*
-
-
-**macOS:**
-
-First, [download Ollama for macOS](https://ollama.com/download/mac).
-
-```bash
-# Pull a lightweight model (recommended for consumer hardware)
-ollama pull llama3.2:1b
-```
-
-**Linux:**
-```bash
-# Install Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Start Ollama service manually
-ollama serve &
-
-# Pull a lightweight model (recommended for consumer hardware)
-ollama pull llama3.2:1b
-``` -->
 
 ## Quick Start in 30s
 
@@ -137,6 +114,48 @@ response = chat.ask("How much storage does LEANN save?", top_k=1)
 
 LEANN supports RAG on various data sources including documents (.pdf, .txt, .md), Apple Mail, Google Search History, WeChat, and more.
 
+
+> **Generation Model Setup**
+> LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
+
+<details>
+<summary><strong>🔑 OpenAI API Setup (Default)</strong></summary>
+
+Set your OpenAI API key as an environment variable:
+
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+```
+
+</details>
+
+<details>
+<summary><strong>🔧 Ollama Setup (Recommended for full privacy)</strong></summary>
+
+**macOS:**
+
+First, [download Ollama for macOS](https://ollama.com/download/mac).
+
+```bash
+# Pull a lightweight model (recommended for consumer hardware)
+ollama pull llama3.2:1b
+```
+
+**Linux:**
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Start Ollama service manually
+ollama serve &
+
+# Pull a lightweight model (recommended for consumer hardware)
+ollama pull llama3.2:1b
+```
+
+</details>
+
 ### 📄 Personal Data Manager: Process Any Documents (.pdf, .txt, .md)!
 
 Ask questions directly about your personal PDFs, documents, and any directory containing your files!
@@ -146,11 +165,6 @@ Ask questions directly about your personal PDFs, documents, and any directory co
 </p>
 
 The example below asks a question about summarizing two papers (uses default data in `examples/data`):
-
-```bash
-# Drop your PDFs, .txt, .md files into examples/data/
-uv run ./examples/main_cli_example.py
-```
 
 ```
 # Or use python directly
