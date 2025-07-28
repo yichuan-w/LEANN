@@ -97,7 +97,8 @@ jobs:
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install llvm libomp boost protobuf zeromq
+          # Don't install LLVM, use system clang for better compatibility
+          brew install libomp boost protobuf zeromq
 
       - name: Install build dependencies
         run: |
@@ -120,7 +121,11 @@ jobs:
           # Build HNSW backend
           cd packages/leann-backend-hnsw
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build --wheel --python python
+            # Use system clang instead of homebrew LLVM for better compatibility
+            export CC=clang
+            export CXX=clang++
+            export MACOSX_DEPLOYMENT_TARGET=11.0
+            uv build --wheel --python python
           else
             uv build --wheel --python python
           fi
@@ -129,7 +134,11 @@ jobs:
           # Build DiskANN backend
           cd packages/leann-backend-diskann
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build --wheel --python python
+            # Use system clang instead of homebrew LLVM for better compatibility
+            export CC=clang
+            export CXX=clang++
+            export MACOSX_DEPLOYMENT_TARGET=11.0
+            uv build --wheel --python python
           else
             uv build --wheel --python python
           fi
@@ -188,6 +197,43 @@ jobs:
         run: |
           echo "📦 Built packages:"
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
+
+      - name: Install built packages for testing
+        run: |
+          # Install the built wheels
+          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
+            uv pip install --system packages/leann-core/dist/*.whl
+            uv pip install --system packages/leann/dist/*.whl
+          fi
+          uv pip install --system packages/leann-backend-hnsw/dist/*.whl
+          uv pip install --system packages/leann-backend-diskann/dist/*.whl
+          
+          # Install test dependencies
+          uv pip install --system llama-index-core python-dotenv sentence-transformers
+
+      - name: Run basic functionality tests
+        run: |
+          python tests/test_ci_basic.py
+
+      - name: Run main_cli tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python tests/test_main_cli.py
+
+      - name: Run sanity checks (optional)
+        run: |
+          # Run distance function tests if available
+          if [ -f test/sanity_checks/test_distance_functions.py ]; then
+            echo "Running distance function sanity checks..."
+            python test/sanity_checks/test_distance_functions.py || {
+              if [[ "${{ matrix.os }}" == macos-* ]]; then
+                echo "⚠️ Distance function test failed on macOS, continuing..."
+              else
+                echo "⚠️ Distance function test failed, continuing..."
+              fi
+            }
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
