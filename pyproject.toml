@@ -49,11 +49,21 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",  # For parallel test execution
     "black>=23.0",
     "ruff>=0.1.0",
     "matplotlib",
     "huggingface-hub>=0.20.0",
     "pre-commit>=3.5.0",
+]
+
+test = [
+    "pytest>=7.0",
+    "pytest-timeout>=2.0",
+    "llama-index-core>=0.12.0",
+    "llama-index-readers-file>=0.4.0",
+    "python-dotenv>=1.0.0",
+    "sentence-transformers>=2.2.0",
 ]
 
 diskann = [
@@ -122,4 +132,25 @@ line-ending = "auto"
 [dependency-groups]
 dev = [
     "ruff>=0.12.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "openai: marks tests that require OpenAI API key",
+]
+timeout = 600
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings",
+]
+env = [
+    "HF_HUB_DISABLE_SYMLINKS=1",
+    "TOKENIZERS_PARALLELISM=false",
 ]
