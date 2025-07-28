@@ -201,16 +201,20 @@ jobs:
 
       - name: Install built packages for testing
         run: |
+          # Create a virtual environment
+          uv venv
+          source .venv/bin/activate || source .venv/Scripts/activate
+          
           # Install the built wheels
           if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            uv pip install --system packages/leann-core/dist/*.whl
-            uv pip install --system packages/leann/dist/*.whl
+            uv pip install packages/leann-core/dist/*.whl
+            uv pip install packages/leann/dist/*.whl
           fi
-          uv pip install --system packages/leann-backend-hnsw/dist/*.whl
-          uv pip install --system packages/leann-backend-diskann/dist/*.whl
+          uv pip install packages/leann-backend-hnsw/dist/*.whl
+          uv pip install packages/leann-backend-diskann/dist/*.whl
 
           # Install test dependencies using extras
-          uv pip install --system -e ".[test]"
+          uv pip install -e ".[test]"
 
       - name: Run tests with pytest
         env:
@@ -220,11 +224,17 @@ jobs:
           TOKENIZERS_PARALLELISM: false
           PYTORCH_ENABLE_MPS_FALLBACK: 0  # Disable MPS on macOS CI to avoid memory issues
         run: |
+          # Activate virtual environment
+          source .venv/bin/activate || source .venv/Scripts/activate
+          
           # Run all tests
           pytest tests/
 
       - name: Run sanity checks (optional)
         run: |
+          # Activate virtual environment
+          source .venv/bin/activate || source .venv/Scripts/activate
+          
           # Run distance function tests if available
           if [ -f test/sanity_checks/test_distance_functions.py ]; then
             echo "Running distance function sanity checks..."
