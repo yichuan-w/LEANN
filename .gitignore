@@ -86,3 +86,5 @@ packages/leann-backend-diskann/third_party/DiskANN/_deps/
 *.passages.json
 
 batchtest.py
+tests/__pytest_cache__/
+tests/__pycache__/
