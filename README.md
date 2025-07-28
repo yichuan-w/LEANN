@@ -465,7 +465,7 @@ If you find Leann useful, please cite:
 
 ## ✨ [Detailed Features →](docs/features.md)
 
-## 🤝 [Contributing →](docs/contributing.md)
+## 🤝 [Contributing →](docs/CONTRIBUTING.md)
 
 
 ## [FAQ →](docs/faq.md)
