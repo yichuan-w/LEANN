@@ -26,7 +26,7 @@ We welcome contributions! Leann is built by the community, for the community.
    ```
 
 3. **Install system dependencies**:
-   
+
    **macOS:**
    ```bash
    brew install llvm libomp boost protobuf zeromq pkgconf
@@ -42,7 +42,7 @@ We welcome contributions! Leann is built by the community, for the community.
    ```bash
    # macOS
    CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv sync
-   
+
    # Ubuntu/Debian
    uv sync
    ```
@@ -182,7 +182,7 @@ Make sure your code passes these checks locally before pushing!
    ```bash
    git commit -m "feat: add new search algorithm"
    ```
-   
+
    Follow [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat:` for new features
    - `fix:` for bug fixes

@@ -33,6 +33,8 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 🪶 **Lightweight:** Graph-based recomputation eliminates heavy embedding storage, while smart graph pruning and CSR format minimize graph storage overhead. Always less storage, less memory usage!
 
+📦 **Portable:** Transfer your entire knowledge base between devices (even with others) with minimal cost - your personal AI memory travels with you.
+
 📈 **Scalability:** Handle messy personal data that would crash traditional vector DBs, easily managing your growing personalized data and agent generated memory!
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
@@ -85,7 +87,7 @@ uv sync
 
 
 
-## Quick Start in 30s
+## Quick Start
 
 Our declarative API makes RAG as easy as writing a config file.
 [Try in this ipynb file →](demo.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb)
@@ -116,7 +118,6 @@ LEANN supports RAG on various data sources including documents (.pdf, .txt, .md)
 
 
 > **Generation Model Setup**
->
 > LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
 
 <details>
@@ -467,10 +468,10 @@ If you find Leann useful, please cite:
 
 ## ✨ [Detailed Features →](docs/features.md)
 
-## 🤝 [Contributing →](docs/contributing.md)
+## 🤝 [CONTRIBUTING →](docs/CONTRIBUTING.md)
 
 
-## [FAQ →](docs/faq.md)
+## ❓ [FAQ →](docs/faq.md)
 
 
 ## 📈 [Roadmap →](docs/roadmap.md)
