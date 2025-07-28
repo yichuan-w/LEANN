@@ -229,7 +229,7 @@ jobs:
         run: |
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
-          
+
           # Run all tests
           pytest tests/
 

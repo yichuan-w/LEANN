@@ -3,6 +3,7 @@ Test examples from README.md to ensure documentation is accurate.
 """
 
 import os
+import platform
 import tempfile
 from pathlib import Path
 
@@ -11,6 +12,10 @@ import pytest
 
 def test_readme_basic_example():
     """Test the basic example from README.md."""
+    # Skip on macOS CI due to MPS environment issues with all-MiniLM-L6-v2
+    if os.environ.get("CI") == "true" and platform.system() == "Darwin":
+        pytest.skip("Skipping on macOS CI due to MPS environment issues with all-MiniLM-L6-v2")
+
     # This is the exact code from README (with smaller model for CI)
     from leann import LeannBuilder, LeannChat, LeannSearcher
     from leann.api import SearchResult
@@ -72,6 +77,10 @@ def test_readme_imports():
 
 def test_backend_options():
     """Test different backend options mentioned in documentation."""
+    # Skip on macOS CI due to MPS environment issues with all-MiniLM-L6-v2
+    if os.environ.get("CI") == "true" and platform.system() == "Darwin":
+        pytest.skip("Skipping on macOS CI due to MPS environment issues with all-MiniLM-L6-v2")
+
     from leann import LeannBuilder
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -103,6 +112,10 @@ def test_backend_options():
 
 def test_llm_config_simulated():
     """Test simulated LLM configuration option."""
+    # Skip on macOS CI due to MPS environment issues with all-MiniLM-L6-v2
+    if os.environ.get("CI") == "true" and platform.system() == "Darwin":
+        pytest.skip("Skipping on macOS CI due to MPS environment issues with all-MiniLM-L6-v2")
+
     from leann import LeannBuilder, LeannChat
 
     with tempfile.TemporaryDirectory() as temp_dir:
