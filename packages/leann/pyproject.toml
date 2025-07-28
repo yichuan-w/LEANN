@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leann"
-version = "0.1.14"
+version = "0.1.15"
 description = "LEANN - The smallest vector index in the world. RAG Everything with LEANN!"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -36,7 +36,5 @@ diskann = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/leann"
-Documentation = "https://leann.readthedocs.io"
-Repository = "https://github.com/yourusername/leann"
-Issues = "https://github.com/yourusername/leann/issues"
+Repository = "https://github.com/yichuan-w/LEANN"
+Issues = "https://github.com/yichuan-w/LEANN/issues"

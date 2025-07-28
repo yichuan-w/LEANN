@@ -33,17 +33,26 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 🪶 **Lightweight:** Graph-based recomputation eliminates heavy embedding storage, while smart graph pruning and CSR format minimize graph storage overhead. Always less storage, less memory usage!
 
+📦 **Portable:** Transfer your entire knowledge base between devices (even with others) with minimal cost - your personal AI memory travels with you.
+
 📈 **Scalability:** Handle messy personal data that would crash traditional vector DBs, easily managing your growing personalized data and agent generated memory!
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
 ## Installation
 
-> **Prerequisites:** Install uv first if you don't have it:
-> ```bash
-> curl -LsSf https://astral.sh/uv/install.sh | sh
-> ```
-> 📖 [Detailed uv installation methods →](https://docs.astral.sh/uv/getting-started/installation/#installation-methods)
+<details>
+<summary><strong>📦 Prerequisites: Install uv (if you don't have it)</strong></summary>
+
+Install uv first if you don't have it:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+📖 [Detailed uv installation methods →](https://docs.astral.sh/uv/getting-started/installation/#installation-methods)
+
+</details>
 
 
 LEANN provides two installation methods: **pip install** (quick and easy) and **build from source** (recommended for development).
@@ -58,6 +67,7 @@ Clone the repository to access all examples and install LEANN from [PyPI](https:
 git clone git@github.com:yichuan-w/LEANN.git leann
 cd leann
 uv venv
+source .venv/bin/activate
 uv pip install leann
 ```
 
@@ -82,10 +92,55 @@ uv sync
 ```
 
 
-<!-- **Ollama Setup (Recommended for full privacy):**
 
-> *You can skip this installation if you only want to use OpenAI API for generation.*
 
+## Quick Start
+
+Our declarative API makes RAG as easy as writing a config file.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb) [Try in this ipynb file →](demo.ipynb)
+
+```python
+from leann import LeannBuilder, LeannSearcher, LeannChat
+from pathlib import Path
+INDEX_PATH = str(Path("./").resolve() / "demo.leann")
+
+# Build an index
+builder = LeannBuilder(backend_name="hnsw")
+builder.add_text("LEANN saves 97% storage compared to traditional vector databases.")
+builder.add_text("Tung Tung Tung Sahur called—they need their banana‑crocodile hybrid back")
+builder.build_index(INDEX_PATH)
+
+# Search
+searcher = LeannSearcher(INDEX_PATH)
+results = searcher.search("fantastical AI-generated creatures", top_k=1)
+
+# Chat with your data
+chat = LeannChat(INDEX_PATH, llm_config={"type": "hf", "model": "Qwen/Qwen3-0.6B"})
+response = chat.ask("How much storage does LEANN save?", top_k=1)
+```
+
+## RAG on Everything!
+
+LEANN supports RAG on various data sources including documents (.pdf, .txt, .md), Apple Mail, Google Search History, WeChat, and more.
+
+
+> **Generation Model Setup**
+> LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
+
+<details>
+<summary><strong>🔑 OpenAI API Setup (Default)</strong></summary>
+
+Set your OpenAI API key as an environment variable:
+
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+```
+
+</details>
+
+<details>
+<summary><strong>🔧 Ollama Setup (Recommended for full privacy)</strong></summary>
 
 **macOS:**
 
@@ -97,6 +152,7 @@ ollama pull llama3.2:1b
 ```
 
 **Linux:**
+
 ```bash
 # Install Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
@@ -106,45 +162,9 @@ ollama serve &
 
 # Pull a lightweight model (recommended for consumer hardware)
 ollama pull llama3.2:1b
-``` -->
-
-## Quick Start in 30s
-
-Our declarative API makes RAG as easy as writing a config file.
-[Try in this ipynb file →](demo.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb)
-
-```python
-from leann.api import LeannBuilder, LeannSearcher, LeannChat
-
-# 1. Build the index (no embeddings stored!)
-builder = LeannBuilder(backend_name="hnsw")
-builder.add_text("C# is a powerful programming language")
-builder.add_text("Python is a powerful programming language and it is very popular")
-builder.add_text("Machine learning transforms industries")
-builder.add_text("Neural networks process complex data")
-builder.add_text("Leann is a great storage saving engine for RAG on your MacBook")
-builder.build_index("knowledge.leann")
-
-# 2. Search with real-time embeddings
-searcher = LeannSearcher("knowledge.leann")
-results = searcher.search("programming languages", top_k=2)
-
-# 3. Chat with LEANN using retrieved results
-llm_config = {
-    "type": "ollama",
-    "model": "llama3.2:1b"
-}
-
-chat = LeannChat(index_path="knowledge.leann", llm_config=llm_config)
-response = chat.ask(
-    "Compare the two retrieved programming languages and say which one is more popular today.",
-    top_k=2,
-)
 ```
 
-## RAG on Everything!
-
-LEANN supports RAG on various data sources including documents (.pdf, .txt, .md), Apple Mail, Google Search History, WeChat, and more.
+</details>
 
 ### 📄 Personal Data Manager: Process Any Documents (.pdf, .txt, .md)!
 
@@ -156,11 +176,6 @@ Ask questions directly about your personal PDFs, documents, and any directory co
 
 The example below asks a question about summarizing two papers (uses default data in `examples/data`):
 
-```bash
-# Drop your PDFs, .txt, .md files into examples/data/
-uv run ./examples/main_cli_example.py
-```
-
 ```
 # Or use python directly
 source .venv/bin/activate
@@ -171,6 +186,7 @@ python ./examples/main_cli_example.py
 
 ### 📧 Your Personal Email Secretary: RAG on Apple Mail!
 
+> **Note:** The examples below currently support macOS only. Windows support coming soon.
 
 
 <p align="center">
@@ -460,10 +476,10 @@ If you find Leann useful, please cite:
 
 ## ✨ [Detailed Features →](docs/features.md)
 
-## 🤝 [Contributing →](docs/contributing.md)
+## 🤝 [CONTRIBUTING →](docs/CONTRIBUTING.md)
 
 
-## [FAQ →](docs/faq.md)
+## ❓ [FAQ →](docs/faq.md)
 
 
 ## 📈 [Roadmap →](docs/roadmap.md)
