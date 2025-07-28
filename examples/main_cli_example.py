@@ -30,17 +30,22 @@ async def main(args):
         all_texts = []
         for doc in documents:
             nodes = node_parser.get_nodes_from_documents([doc])
-            for node in nodes:
-                all_texts.append(node.get_content())
+            if nodes:
+                all_texts.extend(node.get_content() for node in nodes)
 
         print("--- Index directory not found, building new index ---")
 
         print("\n[PHASE 1] Building Leann index...")
 
+        # LeannBuilder now automatically detects normalized embeddings and sets appropriate distance metric
+        print(f"Using {args.embedding_model} with {args.embedding_mode} mode")
+
         # Use HNSW backend for better macOS compatibility
         builder = LeannBuilder(
             backend_name="hnsw",
-            embedding_model="facebook/contriever",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            # distance_metric is automatically set based on embedding model
             graph_degree=32,
             complexity=64,
             is_compact=True,
@@ -88,6 +93,19 @@ if __name__ == "__main__":
         type=str,
         default="Qwen/Qwen3-0.6B",
         help="The model name to use (e.g., 'llama3:8b' for ollama, 'deepseek-ai/deepseek-llm-7b-chat' for hf, 'gpt-4o' for openai).",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default="facebook/contriever",
+        help="The embedding model to use (e.g., 'facebook/contriever', 'text-embedding-3-small').",
+    )
+    parser.add_argument(
+        "--embedding-mode",
+        type=str,
+        default="sentence-transformers",
+        choices=["sentence-transformers", "openai", "mlx"],
+        help="The embedding backend mode.",
     )
     parser.add_argument(
         "--host",

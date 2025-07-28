@@ -7,6 +7,7 @@ import json
 import logging
 import pickle
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -163,6 +164,76 @@ class LeannBuilder:
         self.embedding_model = embedding_model
         self.dimensions = dimensions
         self.embedding_mode = embedding_mode
+
+        # Check if we need to use cosine distance for normalized embeddings
+        normalized_embeddings_models = {
+            # OpenAI models
+            ("openai", "text-embedding-ada-002"),
+            ("openai", "text-embedding-3-small"),
+            ("openai", "text-embedding-3-large"),
+            # Voyage AI models
+            ("voyage", "voyage-2"),
+            ("voyage", "voyage-3"),
+            ("voyage", "voyage-large-2"),
+            ("voyage", "voyage-multilingual-2"),
+            ("voyage", "voyage-code-2"),
+            # Cohere models
+            ("cohere", "embed-english-v3.0"),
+            ("cohere", "embed-multilingual-v3.0"),
+            ("cohere", "embed-english-light-v3.0"),
+            ("cohere", "embed-multilingual-light-v3.0"),
+        }
+
+        # Also check for patterns in model names
+        is_normalized = False
+        current_model_lower = embedding_model.lower()
+        current_mode_lower = embedding_mode.lower()
+
+        # Check exact matches
+        for mode, model in normalized_embeddings_models:
+            if (current_mode_lower == mode and current_model_lower == model) or (
+                mode in current_mode_lower and model in current_model_lower
+            ):
+                is_normalized = True
+                break
+
+        # Check patterns
+        if not is_normalized:
+            # OpenAI patterns
+            if "openai" in current_mode_lower or "openai" in current_model_lower:
+                if any(
+                    pattern in current_model_lower
+                    for pattern in ["text-embedding", "ada", "3-small", "3-large"]
+                ):
+                    is_normalized = True
+            # Voyage patterns
+            elif "voyage" in current_mode_lower or "voyage" in current_model_lower:
+                is_normalized = True
+            # Cohere patterns
+            elif "cohere" in current_mode_lower or "cohere" in current_model_lower:
+                if "embed" in current_model_lower:
+                    is_normalized = True
+
+        # Handle distance metric
+        if is_normalized and "distance_metric" not in backend_kwargs:
+            backend_kwargs["distance_metric"] = "cosine"
+            warnings.warn(
+                f"Detected normalized embeddings model '{embedding_model}' with mode '{embedding_mode}'. "
+                f"Automatically setting distance_metric='cosine' for optimal performance. "
+                f"Normalized embeddings (L2 norm = 1) should use cosine similarity instead of MIPS.",
+                UserWarning,
+                stacklevel=2,
+            )
+        elif is_normalized and backend_kwargs.get("distance_metric", "").lower() != "cosine":
+            current_metric = backend_kwargs.get("distance_metric", "mips")
+            warnings.warn(
+                f"Warning: Using '{current_metric}' distance metric with normalized embeddings model "
+                f"'{embedding_model}' may lead to suboptimal search results. "
+                f"Consider using 'cosine' distance metric for better performance.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
