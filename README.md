@@ -52,7 +52,7 @@ LEANN provides two installation methods: **pip install** (quick and easy) and **
 
 ### 🚀 Quick Install (Recommended for most users)
 
-Our project provides many **ready-to-use examples**. Clone the repository to access all examples and run them immediately:
+Clone the repository to access all examples and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immediately:
 
 ```bash
 git clone git@github.com:yichuan-w/LEANN.git leann
@@ -61,11 +61,7 @@ uv venv
 uv pip install leann
 ```
 
-> **Note:** This installs LEANN from PyPI and clones the repository to access our examples. Perfect for trying out LEANN or running the examples. For development or to use the latest features, see "Build from Source" below.
-
 ### 🔧 Build from Source (Recommended for development)
-
-For development, we recommend building from source:
 
 ```bash
 git clone git@github.com:yichuan-w/LEANN.git leann
@@ -82,11 +78,8 @@ CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv sync
 **Linux:**
 ```bash
 sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev libmkl-full-dev libaio-dev libzmq3-dev
-# Install with HNSW backend (default, recommended for most users)
 uv sync
 ```
-
-> **Note:** This builds LEANN from source with editable installs. Use this for development, contributing, or to access the latest features and experimental capabilities.
 
 
 <!-- **Ollama Setup (Recommended for full privacy):**
