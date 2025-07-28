@@ -217,25 +217,15 @@ jobs:
           HF_HUB_DISABLE_SYMLINKS: 1
           TOKENIZERS_PARALLELISM: false
         run: |
-          # Run all tests, continue on macOS failures
-          if [[ "${{ matrix.os }}" == macos-* ]]; then
-            pytest tests/ -x || echo "⚠️ Tests failed on macOS, continuing..."
-          else
-            pytest tests/
-          fi
+          # Run all tests
+          pytest tests/
 
       - name: Run sanity checks (optional)
         run: |
           # Run distance function tests if available
           if [ -f test/sanity_checks/test_distance_functions.py ]; then
             echo "Running distance function sanity checks..."
-            python test/sanity_checks/test_distance_functions.py || {
-              if [[ "${{ matrix.os }}" == macos-* ]]; then
-                echo "⚠️ Distance function test failed on macOS, continuing..."
-              else
-                echo "⚠️ Distance function test failed, continuing..."
-              fi
-            }
+            python test/sanity_checks/test_distance_functions.py || echo "⚠️ Distance function test failed, continuing..."
           fi
 
       - name: Upload artifacts

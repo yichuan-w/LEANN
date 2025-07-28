@@ -84,6 +84,4 @@ The `pytest.ini` file configures:
 
 ### Known Issues
 
-- On macOS, tests may fail due to C++ standard library compatibility issues
-- Tests marked with `@pytest.mark.xfail` are expected to fail on macOS
 - OpenAI tests are automatically skipped if no API key is provided
