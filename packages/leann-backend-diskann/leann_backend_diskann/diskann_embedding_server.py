@@ -36,6 +36,7 @@ def create_diskann_embedding_server(
     zmq_port: int = 5555,
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     embedding_mode: str = "sentence-transformers",
+    distance_metric: str = "l2",
 ):
     """
     Create and start a ZMQ-based embedding server for DiskANN backend.
@@ -263,6 +264,13 @@ if __name__ == "__main__":
         choices=["sentence-transformers", "openai", "mlx"],
         help="Embedding backend mode",
     )
+    parser.add_argument(
+        "--distance-metric",
+        type=str,
+        default="l2",
+        choices=["l2", "mips", "cosine"],
+        help="Distance metric for similarity computation",
+    )
 
     args = parser.parse_args()
 
@@ -272,4 +280,5 @@ if __name__ == "__main__":
         zmq_port=args.zmq_port,
         model_name=args.model_name,
         embedding_mode=args.embedding_mode,
+        distance_metric=args.distance_metric,
     )

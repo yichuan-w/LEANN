@@ -20,6 +20,8 @@ def test_data_dir():
 def test_main_cli_simulated(test_data_dir):
     """Test main_cli with simulated LLM."""
     with tempfile.TemporaryDirectory() as temp_dir:
+        # Use a subdirectory that doesn't exist yet to force index creation
+        index_dir = Path(temp_dir) / "test_index"
         cmd = [
             sys.executable,
             "examples/main_cli_example.py",
@@ -30,7 +32,7 @@ def test_main_cli_simulated(test_data_dir):
             "--embedding-mode",
             "sentence-transformers",
             "--index-dir",
-            temp_dir,
+            str(index_dir),
             "--data-dir",
             str(test_data_dir),
             "--query",
@@ -56,6 +58,8 @@ def test_main_cli_simulated(test_data_dir):
 def test_main_cli_openai(test_data_dir):
     """Test main_cli with OpenAI embeddings."""
     with tempfile.TemporaryDirectory() as temp_dir:
+        # Use a subdirectory that doesn't exist yet to force index creation
+        index_dir = Path(temp_dir) / "test_index_openai"
         cmd = [
             sys.executable,
             "examples/main_cli_example.py",
@@ -66,7 +70,7 @@ def test_main_cli_openai(test_data_dir):
             "--embedding-mode",
             "openai",
             "--index-dir",
-            temp_dir,
+            str(index_dir),
             "--data-dir",
             str(test_data_dir),
             "--query",
@@ -92,7 +96,6 @@ def test_main_cli_openai(test_data_dir):
         )
 
 
-@pytest.mark.xfail(sys.platform == "darwin", reason="May fail on macOS due to C++ ABI issues")
 def test_main_cli_error_handling(test_data_dir):
     """Test main_cli with invalid parameters."""
     with tempfile.TemporaryDirectory() as temp_dir:

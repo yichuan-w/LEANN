@@ -17,7 +17,7 @@ def test_imports():
 @pytest.mark.parametrize("backend_name", ["hnsw", "diskann"])
 def test_backend_basic(backend_name):
     """Test basic functionality for each backend."""
-    from leann.api import LeannBuilder, LeannSearcher
+    from leann.api import LeannBuilder, LeannSearcher, SearchResult
 
     # Create temporary directory for index
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -53,17 +53,16 @@ def test_backend_basic(backend_name):
 
         # Test search
         searcher = LeannSearcher(index_path)
-        results = searcher.search(["document about topic 2"], top_k=5)
+        results = searcher.search("document about topic 2", top_k=5)
 
         # Verify results
         assert len(results) > 0
-        assert len(results[0]) > 0
-        assert "topic 2" in results[0][0].text or "document" in results[0][0].text
+        assert isinstance(results[0], SearchResult)
+        assert "topic 2" in results[0].text or "document" in results[0].text
 
 
-@pytest.mark.skipif("sys.platform == 'darwin'", reason="May fail on macOS due to C++ ABI issues")
 def test_large_index():
-    """Test with larger dataset (skip on macOS CI)."""
+    """Test with larger dataset."""
     from leann.api import LeannBuilder, LeannSearcher
 
     with tempfile.TemporaryDirectory() as temp_dir:
