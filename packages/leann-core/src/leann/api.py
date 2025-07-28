@@ -7,12 +7,12 @@ import json
 import logging
 import pickle
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-import warnings
 
 from leann.interface import LeannBackendSearcherInterface
 
