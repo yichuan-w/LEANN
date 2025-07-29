@@ -189,7 +189,17 @@ All RAG examples share these common parameters:
 # LLM Parameters
 --llm TYPE              # openai, ollama, or hf
 --llm-model MODEL       # e.g., gpt-4o, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
+
+# Search Parameters
 --top-k N               # Number of results to retrieve (default: 20)
+--search-complexity N   # Search complexity for graph traversal (default: 64)
+
+# Index Building Parameters
+--backend-name NAME     # Backend to use: hnsw or diskann (default: hnsw)
+--graph-degree N        # Graph degree for index construction (default: 32)
+--build-complexity N    # Build complexity for index construction (default: 64)
+--no-compact           # Disable compact index storage
+--no-recompute         # Disable embedding recomputation
 ```
 
 </details>
@@ -216,7 +226,7 @@ python ./examples/document_rag.py --query "What are the main techniques LEANN ex
 ```bash
 --data-dir DIR           # Directory containing documents to process (default: examples/data)
 --file-types .ext .ext   # File extensions to process (default: .pdf .txt .md)
---chunk-size N          # Size of text chunks (default: 2048)
+--chunk-size N          # Size of text chunks (default: 256)
 --chunk-overlap N       # Overlap between chunks (default: 25)
 ```
 

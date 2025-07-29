@@ -113,6 +113,38 @@ class BaseRAGExample(ABC):
             help="Search complexity for graph traversal (default: 64)",
         )
 
+        # Index building parameters
+        index_group = parser.add_argument_group("Index Building Parameters")
+        index_group.add_argument(
+            "--backend-name",
+            type=str,
+            default="hnsw",
+            choices=["hnsw", "diskann"],
+            help="Backend to use for index (default: hnsw)",
+        )
+        index_group.add_argument(
+            "--graph-degree",
+            type=int,
+            default=32,
+            help="Graph degree for index construction (default: 32)",
+        )
+        index_group.add_argument(
+            "--build-complexity",
+            type=int,
+            default=64,
+            help="Build complexity for index construction (default: 64)",
+        )
+        index_group.add_argument(
+            "--no-compact",
+            action="store_true",
+            help="Disable compact index storage",
+        )
+        index_group.add_argument(
+            "--no-recompute",
+            action="store_true",
+            help="Disable embedding recomputation",
+        )
+
         # Add source-specific parameters
         self._add_specific_arguments(parser)
 
@@ -150,13 +182,13 @@ class BaseRAGExample(ABC):
         print(f"Total text chunks: {len(texts)}")
 
         builder = LeannBuilder(
-            backend_name="hnsw",
+            backend_name=args.backend_name,
             embedding_model=args.embedding_model,
             embedding_mode=args.embedding_mode,
-            graph_degree=32,
-            complexity=64,
-            is_compact=True,
-            is_recompute=True,
+            graph_degree=args.graph_degree,
+            complexity=args.build_complexity,
+            is_compact=not args.no_compact,
+            is_recompute=not args.no_recompute,
             num_threads=1,  # Force single-threaded mode
         )
 
@@ -180,6 +212,7 @@ class BaseRAGExample(ABC):
             index_path,
             llm_config=self.get_llm_config(args),
             system_prompt=f"You are a helpful assistant that answers questions about {self.name} data.",
+            complexity=args.search_complexity,
         )
 
         print(f"\n[Interactive Mode] Chat with your {self.name} data!")
@@ -210,6 +243,7 @@ class BaseRAGExample(ABC):
             index_path,
             llm_config=self.get_llm_config(args),
             system_prompt=f"You are a helpful assistant that answers questions about {self.name} data.",
+            complexity=args.search_complexity,
         )
 
         print(f"\n[Query] {query}")
