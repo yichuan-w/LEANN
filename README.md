@@ -41,7 +41,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 ## Installation
 
-### 📦 Prerequisites: Install uv (if you don't have it)
+### 📦 Prerequisites: Install uv
 
 [Install uv](https://docs.astral.sh/uv/getting-started/installation/#installation-methods) first if you don't have it. Typically, you can install it with:
 
