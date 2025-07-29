@@ -26,11 +26,17 @@ class DocumentRAG(BaseRAGExample):
     def _add_specific_arguments(self, parser):
         """Add document-specific arguments."""
         doc_group = parser.add_argument_group("Document Parameters")
+
+        # Smart default path detection
+        default_data_dir = Path("examples/data")
+        if not default_data_dir.exists() and Path("data").exists():
+            default_data_dir = Path("data")
+
         doc_group.add_argument(
             "--data-dir",
             type=str,
-            default="examples/data",
-            help="Directory containing documents to index (default: examples/data)",
+            default=str(default_data_dir),
+            help=f"Directory containing documents to index (default: {default_data_dir})",
         )
         doc_group.add_argument(
             "--file-types",
