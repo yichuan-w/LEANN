@@ -20,7 +20,7 @@ class DocumentRAG(BaseRAGExample):
         super().__init__(
             name="Document",
             description="Process and query documents (PDF, TXT, MD, etc.) with LEANN",
-            default_index_name="test_doc_files",  # Match original main_cli_example.py default
+            default_index_name="test_doc_files",
         )
 
     def _add_specific_arguments(self, parser):

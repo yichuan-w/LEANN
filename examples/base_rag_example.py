@@ -23,12 +23,10 @@ class BaseRAGExample(ABC):
         name: str,
         description: str,
         default_index_name: str,
-        include_embedding_mode: bool = True,
     ):
         self.name = name
         self.description = description
         self.default_index_name = default_index_name
-        self.include_embedding_mode = include_embedding_mode
         self.parser = self._create_parser()
 
     def _create_parser(self) -> argparse.ArgumentParser:
@@ -73,14 +71,13 @@ class BaseRAGExample(ABC):
             default=embedding_model_default,
             help=f"Embedding model to use (default: {embedding_model_default})",
         )
-        if self.include_embedding_mode:
-            embedding_group.add_argument(
-                "--embedding-mode",
-                type=str,
-                default="sentence-transformers",
-                choices=["sentence-transformers", "openai", "mlx"],
-                help="Embedding backend mode (default: sentence-transformers)",
-            )
+        embedding_group.add_argument(
+            "--embedding-mode",
+            type=str,
+            default="sentence-transformers",
+            choices=["sentence-transformers", "openai", "mlx"],
+            help="Embedding backend mode (default: sentence-transformers)",
+        )
 
         # LLM parameters
         llm_group = parser.add_argument_group("LLM Parameters")
@@ -152,22 +149,16 @@ class BaseRAGExample(ABC):
         print(f"\n[Building Index] Creating {self.name} index...")
         print(f"Total text chunks: {len(texts)}")
 
-        # Build kwargs for LeannBuilder
-        builder_kwargs = {
-            "backend_name": "hnsw",
-            "embedding_model": args.embedding_model,
-            "graph_degree": 32,
-            "complexity": 64,
-            "is_compact": True,
-            "is_recompute": True,
-            "num_threads": 1,  # Force single-threaded mode
-        }
-
-        # Only add embedding_mode if it's not suppressed (for compatibility)
-        if hasattr(args, "embedding_mode") and args.embedding_mode is not None:
-            builder_kwargs["embedding_mode"] = args.embedding_mode
-
-        builder = LeannBuilder(**builder_kwargs)
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            graph_degree=32,
+            complexity=64,
+            is_compact=True,
+            is_recompute=True,
+            num_threads=1,  # Force single-threaded mode
+        )
 
         # Add texts in batches for better progress tracking
         batch_size = 1000

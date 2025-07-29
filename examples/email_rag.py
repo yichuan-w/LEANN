@@ -20,8 +20,7 @@ class EmailRAG(BaseRAGExample):
         super().__init__(
             name="Email",
             description="Process and query Apple Mail emails with LEANN",
-            default_index_name="mail_index",  # Match original: "./mail_index"
-            include_embedding_mode=False,  # Original mail_reader_leann.py doesn't have embedding_mode
+            default_index_name="mail_index",
         )
 
     def _add_specific_arguments(self, parser):

@@ -21,7 +21,7 @@ class BrowserRAG(BaseRAGExample):
         super().__init__(
             name="Browser History",
             description="Process and query Chrome browser history with LEANN",
-            default_index_name="google_history_index",  # Match original: "./google_history_index",
+            default_index_name="google_history_index",
         )
 
     def _add_specific_arguments(self, parser):

@@ -25,8 +25,7 @@ class WeChatRAG(BaseRAGExample):
         super().__init__(
             name="WeChat History",
             description="Process and query WeChat chat history with LEANN",
-            default_index_name="wechat_history_magic_test_11Debug_new",  # Match original default
-            include_embedding_mode=False,  # Original wechat_history_reader_leann.py doesn't have embedding_mode
+            default_index_name="wechat_history_magic_test_11Debug_new",
         )
 
     def _add_specific_arguments(self, parser):

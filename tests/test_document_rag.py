@@ -1,5 +1,5 @@
 """
-Test document_rag (formerly main_cli_example) functionality using pytest.
+Test document_rag functionality using pytest.
 """
 
 import os
