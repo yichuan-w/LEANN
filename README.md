@@ -342,7 +342,13 @@ python examples/wechat_rag.py --query "Show me all group chats about weekend pla
 <details>
 <summary><strong>🔧 Click to expand: Installation Requirements</strong></summary>
 
-First, you need to install the WeChat exporter:
+First, you need to install the [WeChat exporter](https://github.com/sunnyyoung/WeChatTweak-CLI),
+
+```bash
+brew install sunnyyoung/repo/wechattweak-cli
+```
+
+or install it manually (if you have issues with Homebrew):
 
 ```bash
 sudo packages/wechat-exporter/wechattweak-cli install
@@ -351,10 +357,10 @@ sudo packages/wechat-exporter/wechattweak-cli install
 **Troubleshooting:**
 - **Installation issues**: Check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41)
 - **Export errors**: If you encounter the error below, try restarting WeChat
-```
-Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
-Failed to find or export WeChat data. Exiting.
-```
+  ```bash
+  Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
+  Failed to find or export WeChat data. Exiting.
+  ```
 </details>
 
 <details>
@@ -369,10 +375,10 @@ Failed to find or export WeChat data. Exiting.
 #### Example Commands
 ```bash
 # Search for travel plans discussed in group chats
-python examples/wechat_rag.py --query "旅游 travel 机票 酒店" --max-items 10000
+python examples/wechat_rag.py --query "travel plans" --max-items 10000
 
 # Re-export and search recent chats (useful after new messages)
-python examples/wechat_rag.py --force-export --query "最近的工作安排"
+python examples/wechat_rag.py --force-export --query "work schedule"
 ```
 
 </details>
