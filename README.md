@@ -398,6 +398,25 @@ Once the index is built, you can ask questions like:
 
 LEANN includes a powerful CLI for document processing and search. Perfect for quick document indexing and interactive chat.
 
+### Installation
+
+**Option 1: Use from virtual environment (already installed if you followed Quick Start)**
+```bash
+source .venv/bin/activate
+leann --help
+```
+
+**Option 2: Install globally with uv tool (recommended for daily use)**
+```bash
+# Install the LEANN CLI globally
+uv tool install leann
+
+# Now you can use leann from anywhere
+leann --help
+```
+
+### Usage Examples
+
 ```bash
 # Build an index from documents
 leann build my-docs --docs ./documents
