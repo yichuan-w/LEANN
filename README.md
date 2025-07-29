@@ -166,6 +166,27 @@ ollama pull llama3.2:1b
 
 </details>
 
+### Common Parameters (Available in All Examples)
+
+All RAG examples share these common parameters:
+
+```bash
+# Core Parameters
+--index-dir DIR          # Directory to store the index (default: current directory)
+--query "YOUR QUESTION"  # Single query to run (interactive mode if omitted)
+--max-items N           # Max items to process (default: 1000, -1 for all)
+--force-rebuild         # Force rebuild index even if it exists
+
+# Embedding Parameters
+--embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small
+--embedding-mode MODE    # sentence-transformers, openai, or mlx
+
+# LLM Parameters
+--llm TYPE              # openai, ollama, or hf
+--llm-model MODEL       # e.g., gpt-4o, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
+--top-k N               # Number of results to retrieve (default: 20)
+```
+
 ### 📄 Personal Data Manager: Process Any Documents (`.pdf`, `.txt`, `.md`)!
 
 Ask questions directly about your personal PDFs, documents, and any directory containing your files!
@@ -182,26 +203,9 @@ python ./examples/document_rag.py --query "What are the main techniques LEANN ex
 ```
 
 <details>
-<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
+<summary><strong>📋 Click to expand: Document-Specific Arguments</strong></summary>
 
-#### Core Parameters (All Examples Share These)
-```bash
---index-dir DIR          # Directory to store the index
---query "YOUR QUESTION"  # Single query to run (interactive mode if omitted)
---max-items N           # Max items to process (default: 1000, -1 for all)
---force-rebuild         # Force rebuild index even if it exists
-
-# Embedding Parameters
---embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small
---embedding-mode MODE    # sentence-transformers, openai, or mlx
-
-# LLM Parameters
---llm TYPE              # openai, ollama, or hf
---llm-model MODEL       # e.g., gpt-4o, llama3.2:1b
---top-k N               # Number of results to retrieve (default: 20)
-```
-
-#### Document-Specific Parameters
+#### Parameters
 ```bash
 --data-dir DIR           # Directory containing documents to process (default: examples/data)
 --file-types .ext .ext   # File extensions to process (default: .pdf .txt .md)
@@ -237,9 +241,9 @@ python examples/email_rag.py --query "What's the food I ordered by DoorDash or U
 **780K email chunks → 78MB storage.** Finally, search your email like you search Google.
 
 <details>
-<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
+<summary><strong>📋 Click to expand: Email-Specific Arguments</strong></summary>
 
-#### Email-Specific Parameters
+#### Parameters
 ```bash
 --mail-path PATH         # Path to specific mail directory (auto-detects if omitted)
 --include-html          # Include HTML content in processing (useful for newsletters)
@@ -277,9 +281,9 @@ python examples/browser_rag.py --query "Tell me my browser history about machine
 **38K browser entries → 6MB storage.** Your browser history becomes your personal search engine.
 
 <details>
-<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
+<summary><strong>📋 Click to expand: Browser-Specific Arguments</strong></summary>
 
-#### Browser-Specific Parameters
+#### Parameters
 ```bash
 --chrome-profile PATH    # Path to Chrome profile directory (auto-detects if omitted)
 ```
@@ -354,9 +358,9 @@ Failed to find or export WeChat data. Exiting.
 </details>
 
 <details>
-<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
+<summary><strong>📋 Click to expand: WeChat-Specific Arguments</strong></summary>
 
-#### WeChat-Specific Parameters
+#### Parameters
 ```bash
 --export-dir DIR         # Directory to store exported WeChat data (default: wechat_export_direct)
 --force-export          # Force re-export even if data exists
