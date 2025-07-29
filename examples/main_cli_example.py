@@ -64,9 +64,19 @@ async def main(args):
 
     print("\n[PHASE 2] Starting Leann chat session...")
 
-    llm_config = {"type": "hf", "model": "Qwen/Qwen3-4B"}
-    llm_config = {"type": "ollama", "model": "qwen3:8b"}
-    llm_config = {"type": "openai", "model": "gpt-4o"}
+    # Build llm_config based on command line arguments
+    if args.llm == "simulated":
+        llm_config = {"type": "simulated"}
+    elif args.llm == "ollama":
+        llm_config = {"type": "ollama", "model": args.model, "host": args.host}
+    elif args.llm == "hf":
+        llm_config = {"type": "hf", "model": args.model}
+    elif args.llm == "openai":
+        llm_config = {"type": "openai", "model": args.model}
+    else:
+        raise ValueError(f"Unknown LLM type: {args.llm}")
+
+    print(f"Using LLM: {args.llm} with model: {args.model if args.llm != 'simulated' else 'N/A'}")
 
     chat = LeannChat(index_path=INDEX_PATH, llm_config=llm_config)
     # query = (

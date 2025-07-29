@@ -23,6 +23,11 @@ from .registry import BACKEND_REGISTRY
 logger = logging.getLogger(__name__)
 
 
+def get_registered_backends() -> list[str]:
+    """Get list of registered backend names."""
+    return list(BACKEND_REGISTRY.keys())
+
+
 def compute_embeddings(
     chunks: list[str],
     model_name: str,

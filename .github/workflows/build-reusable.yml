@@ -97,7 +97,8 @@ jobs:
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install llvm libomp boost protobuf zeromq
+          # Don't install LLVM, use system clang for better compatibility
+          brew install libomp boost protobuf zeromq
 
       - name: Install build dependencies
         run: |
@@ -120,7 +121,11 @@ jobs:
           # Build HNSW backend
           cd packages/leann-backend-hnsw
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build --wheel --python python
+            # Use system clang instead of homebrew LLVM for better compatibility
+            export CC=clang
+            export CXX=clang++
+            export MACOSX_DEPLOYMENT_TARGET=11.0
+            uv build --wheel --python python
           else
             uv build --wheel --python python
           fi
@@ -129,7 +134,12 @@ jobs:
           # Build DiskANN backend
           cd packages/leann-backend-diskann
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv build --wheel --python python
+            # Use system clang instead of homebrew LLVM for better compatibility
+            export CC=clang
+            export CXX=clang++
+            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
+            export MACOSX_DEPLOYMENT_TARGET=13.3
+            uv build --wheel --python python
           else
             uv build --wheel --python python
           fi
@@ -188,6 +198,51 @@ jobs:
         run: |
           echo "📦 Built packages:"
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
+
+      - name: Install built packages for testing
+        run: |
+          # Create a virtual environment
+          uv venv
+          source .venv/bin/activate || source .venv/Scripts/activate
+
+          # Install the built wheels
+          # Use --find-links to let uv choose the correct wheel for the platform
+          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
+            uv pip install leann-core --find-links packages/leann-core/dist
+            uv pip install leann --find-links packages/leann/dist
+          fi
+          uv pip install leann-backend-hnsw --find-links packages/leann-backend-hnsw/dist
+          uv pip install leann-backend-diskann --find-links packages/leann-backend-diskann/dist
+
+          # Install test dependencies using extras
+          uv pip install -e ".[test]"
+
+      - name: Run tests with pytest
+        env:
+          CI: true  # Mark as CI environment to skip memory-intensive tests
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HF_HUB_DISABLE_SYMLINKS: 1
+          TOKENIZERS_PARALLELISM: false
+          PYTORCH_ENABLE_MPS_FALLBACK: 0  # Disable MPS on macOS CI to avoid memory issues
+          OMP_NUM_THREADS: 1  # Disable OpenMP parallelism to avoid libomp crashes
+          MKL_NUM_THREADS: 1  # Single thread for MKL operations
+        run: |
+          # Activate virtual environment
+          source .venv/bin/activate || source .venv/Scripts/activate
+
+          # Run all tests
+          pytest tests/
+
+      - name: Run sanity checks (optional)
+        run: |
+          # Activate virtual environment
+          source .venv/bin/activate || source .venv/Scripts/activate
+
+          # Run distance function tests if available
+          if [ -f test/sanity_checks/test_distance_functions.py ]; then
+            echo "Running distance function sanity checks..."
+            python test/sanity_checks/test_distance_functions.py || echo "⚠️ Distance function test failed, continuing..."
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
