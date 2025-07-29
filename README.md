@@ -178,21 +178,39 @@ The example below asks a question about summarizing two papers (uses default dat
 
 ```bash
 source .venv/bin/activate
-python ./examples/main_cli_example.py
+python ./examples/document_rag.py --query "What are the main techniques LEANN explores?"
 ```
 
 <details>
 <summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
+#### Core Parameters (All Examples Share These)
 ```bash
-# Use custom index directory
-python examples/main_cli_example.py --index-dir "./my_custom_index"
+--index-dir DIR          # Directory to store the index
+--query "YOUR QUESTION"  # Single query to run (interactive mode if omitted)
+--max-items N           # Max items to process (default: 1000, -1 for all)
+--force-rebuild         # Force rebuild index even if it exists
 
-# Use custom data directory
-python examples/main_cli_example.py --data-dir "./my_documents"
+# Embedding Parameters
+--embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small
+--embedding-mode MODE    # sentence-transformers, openai, or mlx
 
-# Ask a specific question
-python examples/main_cli_example.py --query "What are the main findings in these papers?"
+# LLM Parameters  
+--llm TYPE              # openai, ollama, or hf
+--llm-model MODEL       # e.g., gpt-4o, llama3.2:1b
+--top-k N               # Number of results to retrieve (default: 20)
+```
+
+#### Document-Specific Parameters
+```bash
+# Process custom documents
+python examples/document_rag.py --data-dir "./my_documents" --file-types .pdf .txt .md
+
+# Process with custom chunking
+python examples/document_rag.py --chunk-size 512 --chunk-overlap 256
+
+# Use different LLM
+python examples/document_rag.py --llm ollama --llm-model llama3.2:1b
 ```
 
 </details>
@@ -208,28 +226,29 @@ python examples/main_cli_example.py --query "What are the main findings in these
 
 **Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 ```bash
-python examples/mail_reader_leann.py --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
+python examples/email_rag.py --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
 ```
 **780K email chunks → 78MB storage.** Finally, search your email like you search Google.
 
 <details>
 <summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
+#### Email-Specific Parameters
 ```bash
-# Use default mail path (works for most macOS setups)
-python examples/mail_reader_leann.py
+# Auto-detect and process all Apple Mail accounts
+python examples/email_rag.py
 
-# Run with custom index directory
-python examples/mail_reader_leann.py --index-dir "./my_mail_index"
+# Process specific mail directory
+python examples/email_rag.py --mail-path "~/Library/Mail/V10/..."
 
-# Process all emails (may take time but indexes everything)
-python examples/mail_reader_leann.py --max-emails -1
+# Process all emails (may take time)
+python examples/email_rag.py --max-items -1
 
-# Limit number of emails processed (useful for testing)
-python examples/mail_reader_leann.py --max-emails 1000
+# Include HTML content
+python examples/email_rag.py --include-html
 
-# Run a single query
-python examples/mail_reader_leann.py --query "What did my boss say about deadlines?"
+# Use different embedding model
+python examples/email_rag.py --embedding-model text-embedding-3-small --embedding-mode openai
 ```
 
 </details>
@@ -250,25 +269,29 @@ Once the index is built, you can ask questions like:
 </p>
 
 ```bash
-python examples/google_history_reader_leann.py --query "Tell me my browser history about machine learning?"
+python examples/browser_rag.py --query "Tell me my browser history about machine learning?"
 ```
 **38K browser entries → 6MB storage.** Your browser history becomes your personal search engine.
 
 <details>
 <summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
+#### Browser-Specific Parameters
 ```bash
-# Use default Chrome profile (auto-finds all profiles)
-python examples/google_history_reader_leann.py
+# Auto-detect and process all Chrome profiles
+python examples/browser_rag.py
 
-# Run with custom index directory
-python examples/google_history_reader_leann.py --index-dir "./my_chrome_index"
+# Process specific Chrome profile
+python examples/browser_rag.py --chrome-profile "~/Library/Application Support/Google/Chrome/Default"
 
-# Limit number of history entries processed (useful for testing)
-python examples/google_history_reader_leann.py --max-entries 500
+# Limit history entries for testing
+python examples/browser_rag.py --max-items 500
 
-# Run a single query
-python examples/google_history_reader_leann.py --query "What websites did I visit about machine learning?"
+# Interactive search mode
+python examples/browser_rag.py  # Without --query for interactive mode
+
+# Use local LLM for privacy
+python examples/browser_rag.py --llm ollama --llm-model llama3.2:1b
 ```
 
 </details>
@@ -308,7 +331,7 @@ Once the index is built, you can ask questions like:
 </p>
 
 ```bash
-python examples/wechat_history_reader_leann.py --query "Show me all group chats about weekend plans"
+python examples/wechat_rag.py --query "Show me all group chats about weekend plans"
 ```
 **400K messages → 64MB storage** Search years of chat history in any language.
 
@@ -334,21 +357,22 @@ Failed to find or export WeChat data. Exiting.
 <details>
 <summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
+#### WeChat-Specific Parameters
 ```bash
-# Use default settings (recommended for first run)
-python examples/wechat_history_reader_leann.py
+# Auto-export and index WeChat data
+python examples/wechat_rag.py
 
-# Run with custom export directory and wehn we run the first time, LEANN will export all chat history automatically for you
-python examples/wechat_history_reader_leann.py --export-dir "./my_wechat_exports"
+# Use custom export directory
+python examples/wechat_rag.py --export-dir "./my_wechat_exports"
 
-# Run with custom index directory
-python examples/wechat_history_reader_leann.py --index-dir "./my_wechat_index"
+# Force re-export even if data exists
+python examples/wechat_rag.py --force-export
 
-# Limit number of chat entries processed (useful for testing)
-python examples/wechat_history_reader_leann.py --max-entries 1000
+# Limit chat entries for testing
+python examples/wechat_rag.py --max-items 1000
 
-# Run a single query
-python examples/wechat_history_reader_leann.py --query "Show me conversations about travel plans"
+# Use HuggingFace model for Chinese support
+python examples/wechat_rag.py --llm hf --llm-model Qwen/Qwen2.5-1.5B-Instruct
 ```
 
 </details>
