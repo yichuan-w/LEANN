@@ -94,14 +94,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--llm",
         type=str,
-        default="hf",
+        default="openai",
         choices=["simulated", "ollama", "hf", "openai"],
         help="The LLM backend to use.",
     )
     parser.add_argument(
         "--model",
         type=str,
-        default="Qwen/Qwen3-0.6B",
+        default="gpt-4o",
         help="The model name to use (e.g., 'llama3:8b' for ollama, 'deepseek-ai/deepseek-llm-7b-chat' for hf, 'gpt-4o' for openai).",
     )
     parser.add_argument(
