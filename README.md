@@ -203,25 +203,19 @@ python ./examples/document_rag.py --query "What are the main techniques LEANN ex
 
 #### Document-Specific Parameters
 ```bash
---data-dir DIR           # Directory containing documents to process
---file-types .ext .ext   # File extensions to process (e.g., .pdf .txt .md)
+--data-dir DIR           # Directory containing documents to process (default: examples/data)
+--file-types .ext .ext   # File extensions to process (default: .pdf .txt .md)
 --chunk-size N          # Size of text chunks (default: 2048)
 --chunk-overlap N       # Overlap between chunks (default: 25)
 ```
 
 #### Example Commands
 ```bash
-# Process custom documents
-python examples/document_rag.py --data-dir "./my_documents" --file-types .pdf .txt .md
+# Process your research papers folder
+python examples/document_rag.py --data-dir "~/Documents/Papers" --file-types .pdf
 
-# Process with custom chunking
-python examples/document_rag.py --chunk-size 512 --chunk-overlap 256
-
-# Use local LLM for privacy
-python examples/document_rag.py --llm ollama --llm-model llama3.2:1b
-
-# Use OpenAI embeddings
-python examples/document_rag.py --embedding-model text-embedding-3-small --embedding-mode openai
+# Process code documentation with smaller chunks
+python examples/document_rag.py --data-dir "./docs" --chunk-size 512 --file-types .md .rst
 ```
 
 </details>
@@ -248,28 +242,16 @@ python examples/email_rag.py --query "What's the food I ordered by DoorDash or U
 #### Email-Specific Parameters
 ```bash
 --mail-path PATH         # Path to specific mail directory (auto-detects if omitted)
---include-html          # Include HTML content in processing
+--include-html          # Include HTML content in processing (useful for newsletters)
 ```
 
 #### Example Commands
 ```bash
-# Auto-detect and process all Apple Mail accounts
-python examples/email_rag.py
+# Search work emails from a specific account
+python examples/email_rag.py --mail-path "~/Library/Mail/V10/WORK_ACCOUNT"
 
-# Process specific mail directory
-python examples/email_rag.py --mail-path "~/Library/Mail/V10/..."
-
-# Process all emails (may take time)
-python examples/email_rag.py --max-items -1
-
-# Include HTML content
-python examples/email_rag.py --include-html
-
-# Use OpenAI embeddings for better results
-python examples/email_rag.py --embedding-model text-embedding-3-small --embedding-mode openai
-
-# Use local LLM for privacy
-python examples/email_rag.py --llm ollama --llm-model llama3.2:1b
+# Find all receipts and order confirmations (includes HTML)
+python examples/email_rag.py --query "receipt order confirmation invoice" --include-html
 ```
 
 </details>
@@ -304,23 +286,11 @@ python examples/browser_rag.py --query "Tell me my browser history about machine
 
 #### Example Commands
 ```bash
-# Auto-detect and process all Chrome profiles
-python examples/browser_rag.py
+# Search work-related browsing in your work profile
+python examples/browser_rag.py --chrome-profile "~/Library/Application Support/Google/Chrome/Profile 1"
 
-# Process specific Chrome profile
-python examples/browser_rag.py --chrome-profile "~/Library/Application Support/Google/Chrome/Default"
-
-# Limit history entries for testing
-python examples/browser_rag.py --max-items 500
-
-# Interactive search mode
-python examples/browser_rag.py  # Without --query for interactive mode
-
-# Use local LLM for privacy
-python examples/browser_rag.py --llm ollama --llm-model llama3.2:1b
-
-# Use better embeddings
-python examples/browser_rag.py --embedding-model text-embedding-3-small --embedding-mode openai
+# Interactive mode to explore your research history
+python examples/browser_rag.py --query "machine learning papers arxiv"
 ```
 
 </details>
@@ -388,29 +358,17 @@ Failed to find or export WeChat data. Exiting.
 
 #### WeChat-Specific Parameters
 ```bash
---export-dir DIR         # Directory to store exported WeChat data
+--export-dir DIR         # Directory to store exported WeChat data (default: wechat_export_direct)
 --force-export          # Force re-export even if data exists
 ```
 
 #### Example Commands
 ```bash
-# Auto-export and index WeChat data
-python examples/wechat_rag.py
+# Search for travel plans discussed in group chats
+python examples/wechat_rag.py --query "旅游 travel 机票 酒店" --max-items 10000
 
-# Use custom export directory
-python examples/wechat_rag.py --export-dir "./my_wechat_exports"
-
-# Force re-export even if data exists
-python examples/wechat_rag.py --force-export
-
-# Limit chat entries for testing
-python examples/wechat_rag.py --max-items 1000
-
-# Use HuggingFace model for Chinese support
-python examples/wechat_rag.py --llm hf --llm-model Qwen/Qwen2.5-1.5B-Instruct
-
-# Use Qwen embedding model (better for Chinese)
-python examples/wechat_rag.py --embedding-model Qwen/Qwen3-Embedding-0.6B
+# Re-export and search recent chats (useful after new messages)
+python examples/wechat_rag.py --force-export --query "最近的工作安排"
 ```
 
 </details>
