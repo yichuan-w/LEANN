@@ -400,19 +400,22 @@ LEANN includes a powerful CLI for document processing and search. Perfect for qu
 
 ### Installation
 
-**Option 1: Use from virtual environment (already installed if you followed Quick Start)**
+If you followed the Quick Start, `leann` is already installed in your virtual environment:
 ```bash
 source .venv/bin/activate
 leann --help
 ```
 
-**Option 2: Install globally with uv tool (recommended for daily use)**
+**To make it globally available (recommended for daily use):**
 ```bash
-# Install the LEANN CLI globally
+# Install the LEANN CLI globally using uv tool
 uv tool install leann
 
-# Now you can use leann from anywhere
+# Now you can use leann from anywhere without activating venv
 leann --help
+
+# To update the global installation later
+uv tool upgrade leann
 ```
 
 ### Usage Examples
