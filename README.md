@@ -166,6 +166,10 @@ ollama pull llama3.2:1b
 
 </details>
 
+### Flexible Configuration
+
+LEANN provides flexible parameters for embedding models, search strategies, and data processing to fit your specific needs.
+
 <details>
 <summary><strong>📋 Click to expand: Common Parameters (Available in All Examples)</strong></summary>
 
