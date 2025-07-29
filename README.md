@@ -43,17 +43,15 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 ### 📦 Prerequisites: Install uv (if you don't have it)
 
-Install uv first if you don't have it:
+[Install uv](https://docs.astral.sh/uv/getting-started/installation/#installation-methods) first if you don't have it. Typically, you can install it with:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-📖 [Detailed uv installation methods →](https://docs.astral.sh/uv/getting-started/installation/#installation-methods)
-
 ### 🚀 Quick Install
 
-Clone the repository to access all examples,
+Clone the repository to access all examples and try amazing applications,
 
 ```bash
 git clone https://github.com/yichuan-w/LEANN.git leann
@@ -71,6 +69,8 @@ uv pip install leann
 <details>
 <summary>
 <h3>🔧 Build from Source (Recommended for development)</h3>
+</summary>
+
 
 
 ```bash
@@ -398,7 +398,8 @@ Once the index is built, you can ask questions like:
 
 LEANN includes a powerful CLI for document processing and search. Perfect for quick document indexing and interactive chat.
 
-### Installation
+<details>
+<summary><strong>🔧 Click to expand: Installation Options</strong></summary>
 
 If you followed the Quick Start, `leann` is already installed in your virtual environment:
 ```bash
@@ -413,10 +414,11 @@ uv tool install leann
 
 # Now you can use leann from anywhere without activating venv
 leann --help
-
-# To update the global installation later
-uv tool upgrade leann
 ```
+
+</details>
+
+
 
 ### Usage Examples
 
