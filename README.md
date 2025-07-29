@@ -174,15 +174,28 @@ Ask questions directly about your personal PDFs, documents, and any directory co
   <img src="videos/paper_clear.gif" alt="LEANN Document Search Demo" width="600">
 </p>
 
-The example below asks a question about summarizing two papers (uses default data in `examples/data`):
+The example below asks a question about summarizing two papers (uses default data in `examples/data`) and this is the easiest example to run here:
 
-```
-# Or use python directly
+```bash
 source .venv/bin/activate
 python ./examples/main_cli_example.py
 ```
 
+<details>
+<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
+```bash
+# Use custom index directory
+python examples/main_cli_example.py --index-dir "./my_custom_index"
+
+# Use custom data directory
+python examples/main_cli_example.py --data-dir "./my_documents"
+
+# Ask a specific question
+python examples/main_cli_example.py --query "What are the main findings in these papers?"
+```
+
+</details>
 
 ### 📧 Your Personal Email Secretary: RAG on Apple Mail!
 
@@ -195,12 +208,12 @@ python ./examples/main_cli_example.py
 
 **Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 ```bash
-python examples/mail_reader_leann.py --query "What's the food I ordered by doordash or Uber eat mostly?"
+python examples/mail_reader_leann.py --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
 ```
-**780K email chunks → 78MB storage** Finally, search your email like you search Google.
+**780K email chunks → 78MB storage.** Finally, search your email like you search Google.
 
 <details>
-<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
 ```bash
 # Use default mail path (works for most macOS setups)
@@ -242,7 +255,7 @@ python examples/google_history_reader_leann.py --query "Tell me my browser histo
 **38K browser entries → 6MB storage.** Your browser history becomes your personal search engine.
 
 <details>
-<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
 ```bash
 # Use default Chrome profile (auto-finds all profiles)
@@ -319,7 +332,7 @@ Failed to find or export WeChat data. Exiting.
 </details>
 
 <details>
-<summary><strong>📋 Click to expand: Command Examples</strong></summary>
+<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
 ```bash
 # Use default settings (recommended for first run)
