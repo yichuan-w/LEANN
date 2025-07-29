@@ -41,8 +41,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 ## Installation
 
-<details>
-<summary><strong>📦 Prerequisites: Install uv (if you don't have it)</strong></summary>
+### 📦 Prerequisites: Install uv (if you don't have it)
 
 Install uv first if you don't have it:
 
@@ -52,29 +51,30 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 📖 [Detailed uv installation methods →](https://docs.astral.sh/uv/getting-started/installation/#installation-methods)
 
-</details>
+### 🚀 Quick Install
 
-
-LEANN provides two installation methods: **pip install** (quick and easy) and **build from source** (recommended for development).
-
-
-
-### 🚀 Quick Install (Recommended for most users)
-
-Clone the repository to access all examples and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immediately:
+Clone the repository to access all examples,
 
 ```bash
-git clone git@github.com:yichuan-w/LEANN.git leann
+git clone https://github.com/yichuan-w/LEANN.git leann
 cd leann
+```
+
+and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immediately:
+
+```bash
 uv venv
 source .venv/bin/activate
 uv pip install leann
 ```
 
-### 🔧 Build from Source (Recommended for development)
+<details>
+<summary>
+<h3>🔧 Build from Source (Recommended for development)</h3>
+
 
 ```bash
-git clone git@github.com:yichuan-w/LEANN.git leann
+git clone https://github.com/yichuan-w/LEANN.git leann
 cd leann
 git submodule update --init --recursive
 ```
@@ -91,14 +91,14 @@ sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev l
 uv sync
 ```
 
-
+</details>
 
 
 ## Quick Start
 
 Our declarative API makes RAG as easy as writing a config file.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb) [Try in this ipynb file →](demo.ipynb)
+Check out [demo.ipynb](demo.ipynb) or [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb)
 
 ```python
 from leann import LeannBuilder, LeannSearcher, LeannChat
@@ -122,11 +122,11 @@ response = chat.ask("How much storage does LEANN save?", top_k=1)
 
 ## RAG on Everything!
 
-LEANN supports RAG on various data sources including documents (.pdf, .txt, .md), Apple Mail, Google Search History, WeChat, and more.
+LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, `.md`), Apple Mail, Google Search History, WeChat, and more.
 
+### Generation Model Setup
 
-> **Generation Model Setup**
-> LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
+LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
 
 <details>
 <summary><strong>🔑 OpenAI API Setup (Default)</strong></summary>
@@ -166,7 +166,7 @@ ollama pull llama3.2:1b
 
 </details>
 
-### 📄 Personal Data Manager: Process Any Documents (.pdf, .txt, .md)!
+### 📄 Personal Data Manager: Process Any Documents (`.pdf`, `.txt`, `.md`)!
 
 Ask questions directly about your personal PDFs, documents, and any directory containing your files!
 
@@ -177,7 +177,7 @@ Ask questions directly about your personal PDFs, documents, and any directory co
 The example below asks a question about summarizing two papers (uses default data in `examples/data`) and this is the easiest example to run here:
 
 ```bash
-source .venv/bin/activate
+source .venv/bin/activate # Don't forget to activate the virtual environment
 python ./examples/document_rag.py --query "What are the main techniques LEANN explores?"
 ```
 
@@ -203,14 +203,25 @@ python ./examples/document_rag.py --query "What are the main techniques LEANN ex
 
 #### Document-Specific Parameters
 ```bash
+--data-dir DIR           # Directory containing documents to process
+--file-types .ext .ext   # File extensions to process (e.g., .pdf .txt .md)
+--chunk-size N          # Size of text chunks (default: 2048)
+--chunk-overlap N       # Overlap between chunks (default: 25)
+```
+
+#### Example Commands
+```bash
 # Process custom documents
 python examples/document_rag.py --data-dir "./my_documents" --file-types .pdf .txt .md
 
 # Process with custom chunking
 python examples/document_rag.py --chunk-size 512 --chunk-overlap 256
 
-# Use different LLM
+# Use local LLM for privacy
 python examples/document_rag.py --llm ollama --llm-model llama3.2:1b
+
+# Use OpenAI embeddings
+python examples/document_rag.py --embedding-model text-embedding-3-small --embedding-mode openai
 ```
 
 </details>
@@ -224,7 +235,8 @@ python examples/document_rag.py --llm ollama --llm-model llama3.2:1b
   <img src="videos/mail_clear.gif" alt="LEANN Email Search Demo" width="600">
 </p>
 
-**Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
+Before running the example below, you need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
+
 ```bash
 python examples/email_rag.py --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
 ```
@@ -234,6 +246,12 @@ python examples/email_rag.py --query "What's the food I ordered by DoorDash or U
 <summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
 
 #### Email-Specific Parameters
+```bash
+--mail-path PATH         # Path to specific mail directory (auto-detects if omitted)
+--include-html          # Include HTML content in processing
+```
+
+#### Example Commands
 ```bash
 # Auto-detect and process all Apple Mail accounts
 python examples/email_rag.py
@@ -247,8 +265,11 @@ python examples/email_rag.py --max-items -1
 # Include HTML content
 python examples/email_rag.py --include-html
 
-# Use different embedding model
+# Use OpenAI embeddings for better results
 python examples/email_rag.py --embedding-model text-embedding-3-small --embedding-mode openai
+
+# Use local LLM for privacy
+python examples/email_rag.py --llm ollama --llm-model llama3.2:1b
 ```
 
 </details>
@@ -278,6 +299,11 @@ python examples/browser_rag.py --query "Tell me my browser history about machine
 
 #### Browser-Specific Parameters
 ```bash
+--chrome-profile PATH    # Path to Chrome profile directory (auto-detects if omitted)
+```
+
+#### Example Commands
+```bash
 # Auto-detect and process all Chrome profiles
 python examples/browser_rag.py
 
@@ -292,6 +318,9 @@ python examples/browser_rag.py  # Without --query for interactive mode
 
 # Use local LLM for privacy
 python examples/browser_rag.py --llm ollama --llm-model llama3.2:1b
+
+# Use better embeddings
+python examples/browser_rag.py --embedding-model text-embedding-3-small --embedding-mode openai
 ```
 
 </details>
@@ -359,6 +388,12 @@ Failed to find or export WeChat data. Exiting.
 
 #### WeChat-Specific Parameters
 ```bash
+--export-dir DIR         # Directory to store exported WeChat data
+--force-export          # Force re-export even if data exists
+```
+
+#### Example Commands
+```bash
 # Auto-export and index WeChat data
 python examples/wechat_rag.py
 
@@ -373,6 +408,9 @@ python examples/wechat_rag.py --max-items 1000
 
 # Use HuggingFace model for Chinese support
 python examples/wechat_rag.py --llm hf --llm-model Qwen/Qwen2.5-1.5B-Instruct
+
+# Use Qwen embedding model (better for Chinese)
+python examples/wechat_rag.py --embedding-model Qwen/Qwen3-Embedding-0.6B
 ```
 
 </details>
@@ -473,8 +511,8 @@ Options:
 ## Benchmarks
 
 
-📊 **[Simple Example: Compare LEANN vs FAISS →](examples/compare_faiss_vs_leann.py)**
-### Storage Comparison
+**[Simple Example: Compare LEANN vs FAISS →](examples/compare_faiss_vs_leann.py)**
+### 📊 Storage Comparison
 
 | System | DPR (2.1M) | Wiki (60M) | Chat (400K) | Email (780K) | Browser (38K) |
 |--------|-------------|------------|-------------|--------------|---------------|
