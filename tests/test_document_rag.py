@@ -1,5 +1,5 @@
 """
-Test main_cli_example functionality using pytest.
+Test document_rag (formerly main_cli_example) functionality using pytest.
 """
 
 import os
@@ -20,14 +20,14 @@ def test_data_dir():
 @pytest.mark.skipif(
     os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
 )
-def test_main_cli_simulated(test_data_dir):
-    """Test main_cli with simulated LLM."""
+def test_document_rag_simulated(test_data_dir):
+    """Test document_rag with simulated LLM."""
     with tempfile.TemporaryDirectory() as temp_dir:
         # Use a subdirectory that doesn't exist yet to force index creation
         index_dir = Path(temp_dir) / "test_index"
         cmd = [
             sys.executable,
-            "examples/main_cli_example.py",
+            "examples/document_rag.py",
             "--llm",
             "simulated",
             "--embedding-model",
@@ -58,14 +58,14 @@ def test_main_cli_simulated(test_data_dir):
 
 
 @pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="OpenAI API key not available")
-def test_main_cli_openai(test_data_dir):
-    """Test main_cli with OpenAI embeddings."""
+def test_document_rag_openai(test_data_dir):
+    """Test document_rag with OpenAI embeddings."""
     with tempfile.TemporaryDirectory() as temp_dir:
         # Use a subdirectory that doesn't exist yet to force index creation
         index_dir = Path(temp_dir) / "test_index_openai"
         cmd = [
             sys.executable,
-            "examples/main_cli_example.py",
+            "examples/document_rag.py",
             "--llm",
             "simulated",  # Use simulated LLM to avoid GPT-4 costs
             "--embedding-model",
@@ -99,12 +99,12 @@ def test_main_cli_openai(test_data_dir):
         )
 
 
-def test_main_cli_error_handling(test_data_dir):
-    """Test main_cli with invalid parameters."""
+def test_document_rag_error_handling(test_data_dir):
+    """Test document_rag with invalid parameters."""
     with tempfile.TemporaryDirectory() as temp_dir:
         cmd = [
             sys.executable,
-            "examples/main_cli_example.py",
+            "examples/document_rag.py",
             "--llm",
             "invalid_llm_type",
             "--index-dir",

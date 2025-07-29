@@ -18,8 +18,8 @@ Basic functionality tests that verify:
 - Basic index building and searching works for both HNSW and DiskANN backends
 - Uses parametrized tests to test both backends
 
-### `test_main_cli.py`
-Tests the main CLI example functionality:
+### `test_document_rag.py`
+Tests the document RAG example functionality (formerly main_cli_example):
 - Tests with facebook/contriever embeddings
 - Tests with OpenAI embeddings (if API key is available)
 - Tests error handling with invalid parameters
