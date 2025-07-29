@@ -195,9 +195,7 @@ class BaseRAGExample(ABC):
                 if not query:
                     continue
 
-                response = await chat.ask(
-                    query, top_k=args.top_k, complexity=args.search_complexity
-                )
+                response = chat.ask(query, top_k=args.top_k, complexity=args.search_complexity)
                 print(f"\nAssistant: {response}\n")
 
             except KeyboardInterrupt:
@@ -215,7 +213,7 @@ class BaseRAGExample(ABC):
         )
 
         print(f"\n[Query] {query}")
-        response = await chat.ask(query, top_k=args.top_k, complexity=args.search_complexity)
+        response = chat.ask(query, top_k=args.top_k, complexity=args.search_complexity)
         print(f"\n[Response] {response}\n")
 
     async def run(self):
