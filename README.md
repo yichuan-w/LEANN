@@ -68,7 +68,7 @@ uv pip install leann
 
 <details>
 <summary>
-<h3>🔧 Build from Source (Recommended for development)</h3>
+<strong>🔧 Build from Source (Recommended for development)</strong>
 </summary>
 
 
@@ -166,7 +166,8 @@ ollama pull llama3.2:1b
 
 </details>
 
-### Common Parameters (Available in All Examples)
+<details>
+<summary><strong>📋 Click to expand: Common Parameters (Available in All Examples)</strong></summary>
 
 All RAG examples share these common parameters:
 
@@ -186,6 +187,8 @@ All RAG examples share these common parameters:
 --llm-model MODEL       # e.g., gpt-4o, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
 --top-k N               # Number of results to retrieve (default: 20)
 ```
+
+</details>
 
 ### 📄 Personal Data Manager: Process Any Documents (`.pdf`, `.txt`, `.md`)!
 
@@ -398,8 +401,7 @@ Once the index is built, you can ask questions like:
 
 LEANN includes a powerful CLI for document processing and search. Perfect for quick document indexing and interactive chat.
 
-<details>
-<summary><strong>🔧 Click to expand: Installation Options</strong></summary>
+### Installation
 
 If you followed the Quick Start, `leann` is already installed in your virtual environment:
 ```bash
@@ -415,8 +417,6 @@ uv tool install leann
 # Now you can use leann from anywhere without activating venv
 leann --help
 ```
-
-</details>
 
 
 
