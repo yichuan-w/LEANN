@@ -3,10 +3,8 @@ Email RAG example using the unified interface.
 Supports Apple Mail on macOS.
 """
 
-import os
 import sys
 from pathlib import Path
-from typing import List
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -39,7 +37,7 @@ class EmailRAG(BaseRAGExample):
             "--include-html", action="store_true", help="Include HTML content in email processing"
         )
 
-    def _find_mail_directories(self) -> List[Path]:
+    def _find_mail_directories(self) -> list[Path]:
         """Auto-detect all Apple Mail directories."""
         mail_base = Path.home() / "Library" / "Mail"
         if not mail_base.exists():
@@ -53,7 +51,7 @@ class EmailRAG(BaseRAGExample):
 
         return messages_dirs
 
-    async def load_data(self, args) -> List[str]:
+    async def load_data(self, args) -> list[str]:
         """Load emails and convert to text chunks."""
         # Determine mail directories
         if args.mail_path:

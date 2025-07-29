@@ -195,7 +195,7 @@ python ./examples/document_rag.py --query "What are the main techniques LEANN ex
 --embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small
 --embedding-mode MODE    # sentence-transformers, openai, or mlx
 
-# LLM Parameters  
+# LLM Parameters
 --llm TYPE              # openai, ollama, or hf
 --llm-model MODEL       # e.g., gpt-4o, llama3.2:1b
 --top-k N               # Number of results to retrieve (default: 20)

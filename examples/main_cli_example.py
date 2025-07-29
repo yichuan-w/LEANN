@@ -5,7 +5,6 @@ This file is kept for backward compatibility.
 """
 
 import sys
-import os
 
 print("=" * 70)
 print("NOTICE: This script has been replaced!")

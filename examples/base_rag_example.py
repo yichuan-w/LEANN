@@ -4,14 +4,12 @@ Provides common parameters and functionality for all RAG examples.
 """
 
 import argparse
-import asyncio
-import os
-from pathlib import Path
-from typing import Optional, List, Dict, Any
 from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any
 
 import dotenv
-from leann.api import LeannBuilder, LeannSearcher, LeannChat
+from leann.api import LeannBuilder, LeannChat
 from llama_index.core.node_parser import SentenceSplitter
 
 dotenv.load_dotenv()
@@ -129,11 +127,11 @@ class BaseRAGExample(ABC):
         pass
 
     @abstractmethod
-    async def load_data(self, args) -> List[str]:
+    async def load_data(self, args) -> list[str]:
         """Load data from the source. Returns list of text chunks."""
         pass
 
-    def get_llm_config(self, args) -> Dict[str, Any]:
+    def get_llm_config(self, args) -> dict[str, Any]:
         """Get LLM configuration based on arguments."""
         config = {"type": args.llm}
 
@@ -147,7 +145,7 @@ class BaseRAGExample(ABC):
 
         return config
 
-    async def build_index(self, args, texts: List[str]) -> str:
+    async def build_index(self, args, texts: list[str]) -> str:
         """Build LEANN index from texts."""
         index_path = str(Path(args.index_dir) / f"{self.default_index_name}.leann")
 
@@ -256,7 +254,7 @@ class BaseRAGExample(ABC):
             await self.run_interactive_chat(args, index_path)
 
 
-def create_text_chunks(documents, chunk_size=256, chunk_overlap=25) -> List[str]:
+def create_text_chunks(documents, chunk_size=256, chunk_overlap=25) -> list[str]:
     """Helper function to create text chunks from documents."""
     node_parser = SentenceSplitter(
         chunk_size=chunk_size,

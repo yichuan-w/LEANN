@@ -61,4 +61,4 @@ This document ensures that the new unified interface maintains exact parameter c
 
 5. **Special Cases**:
    - WeChat uses a specific Chinese embedding model
-   - Email reader includes HTML processing option 
+   - Email reader includes HTML processing option
