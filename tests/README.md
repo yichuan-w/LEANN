@@ -19,7 +19,7 @@ Basic functionality tests that verify:
 - Uses parametrized tests to test both backends
 
 ### `test_document_rag.py`
-Tests the document RAG example functionality (formerly main_cli_example):
+Tests the document RAG example functionality:
 - Tests with facebook/contriever embeddings
 - Tests with OpenAI embeddings (if API key is available)
 - Tests error handling with invalid parameters

@@ -118,15 +118,3 @@ def test_document_rag_error_handling(test_data_dir):
         # Should fail with invalid LLM type
         assert result.returncode != 0
         assert "invalid choice" in result.stderr or "invalid_llm_type" in result.stderr
-
-
-def test_main_cli_backward_compatibility():
-    """Test that main_cli_example.py shows migration message."""
-    cmd = [sys.executable, "examples/main_cli_example.py", "--help"]
-
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
-    # Should exit with error code and show migration message
-    assert result.returncode != 0
-    assert "This script has been replaced" in result.stdout
-    assert "document_rag.py" in result.stdout

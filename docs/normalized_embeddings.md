@@ -72,4 +72,4 @@ Using the wrong distance metric with normalized embeddings can lead to:
 - **Incorrect ranking** of search results
 - **Suboptimal performance** compared to using the correct metric
 
-For more details on why this happens, see our analysis of [OpenAI embeddings with MIPS](../examples/main_cli_example.py).
+For more details on why this happens, see our analysis of [OpenAI embeddings with MIPS](../examples/document_rag.py).
