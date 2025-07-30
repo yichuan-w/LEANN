@@ -35,8 +35,8 @@ class DocumentRAG(BaseRAGExample):
         doc_group.add_argument(
             "--file-types",
             nargs="+",
-            default=[".pdf", ".txt", ".md"],
-            help="File types to process (default: .pdf .txt .md)",
+            default=None,
+            help="Filter by file types (e.g., .pdf .txt .md). If not specified, all supported types are processed",
         )
         doc_group.add_argument(
             "--chunk-size", type=int, default=256, help="Text chunk size (default: 256)"
@@ -48,7 +48,10 @@ class DocumentRAG(BaseRAGExample):
     async def load_data(self, args) -> list[str]:
         """Load documents and convert to text chunks."""
         print(f"Loading documents from: {args.data_dir}")
-        print(f"File types: {args.file_types}")
+        if args.file_types:
+            print(f"Filtering by file types: {args.file_types}")
+        else:
+            print("Processing all supported file types")
 
         # Check if data directory exists
         data_path = Path(args.data_dir)
@@ -56,12 +59,16 @@ class DocumentRAG(BaseRAGExample):
             raise ValueError(f"Data directory not found: {args.data_dir}")
 
         # Load documents
-        documents = SimpleDirectoryReader(
-            args.data_dir,
-            recursive=True,
-            encoding="utf-8",
-            required_exts=args.file_types,
-        ).load_data(show_progress=True)
+        reader_kwargs = {
+            "recursive": True,
+            "encoding": "utf-8",
+        }
+        if args.file_types:
+            reader_kwargs["required_exts"] = args.file_types
+
+        documents = SimpleDirectoryReader(args.data_dir, **reader_kwargs).load_data(
+            show_progress=True
+        )
 
         if not documents:
             print(f"No documents found in {args.data_dir} with extensions {args.file_types}")

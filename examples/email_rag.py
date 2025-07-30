@@ -35,6 +35,12 @@ class EmailRAG(BaseRAGExample):
         email_group.add_argument(
             "--include-html", action="store_true", help="Include HTML content in email processing"
         )
+        email_group.add_argument(
+            "--chunk-size", type=int, default=256, help="Text chunk size (default: 256)"
+        )
+        email_group.add_argument(
+            "--chunk-overlap", type=int, default=25, help="Text chunk overlap (default: 25)"
+        )
 
     def _find_mail_directories(self) -> list[Path]:
         """Auto-detect all Apple Mail directories."""
@@ -113,7 +119,9 @@ class EmailRAG(BaseRAGExample):
 
         # Convert to text chunks
         # Email reader uses chunk_overlap=25 as in original
-        all_texts = create_text_chunks(all_documents, chunk_overlap=25)
+        all_texts = create_text_chunks(
+            all_documents, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
+        )
 
         return all_texts
 

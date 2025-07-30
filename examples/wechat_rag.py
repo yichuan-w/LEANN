@@ -42,6 +42,12 @@ class WeChatRAG(BaseRAGExample):
             action="store_true",
             help="Force re-export of WeChat data even if exports exist",
         )
+        wechat_group.add_argument(
+            "--chunk-size", type=int, default=192, help="Text chunk size (default: 192)"
+        )
+        wechat_group.add_argument(
+            "--chunk-overlap", type=int, default=64, help="Text chunk overlap (default: 64)"
+        )
 
     def _export_wechat_data(self, export_dir: Path) -> bool:
         """Export WeChat data using wechattweak-cli."""
@@ -120,7 +126,9 @@ class WeChatRAG(BaseRAGExample):
             print(f"Loaded {len(documents)} chat entries")
 
             # Convert to text chunks
-            all_texts = create_text_chunks(documents)
+            all_texts = create_text_chunks(
+                documents, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
+            )
 
             return all_texts
 

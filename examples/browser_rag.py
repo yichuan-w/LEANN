@@ -39,6 +39,12 @@ class BrowserRAG(BaseRAGExample):
             default=True,
             help="Automatically find all Chrome profiles (default: True)",
         )
+        browser_group.add_argument(
+            "--chunk-size", type=int, default=256, help="Text chunk size (default: 256)"
+        )
+        browser_group.add_argument(
+            "--chunk-overlap", type=int, default=128, help="Text chunk overlap (default: 128)"
+        )
 
     def _get_chrome_base_path(self) -> Path:
         """Get the base Chrome profile path based on OS."""
@@ -134,7 +140,9 @@ class BrowserRAG(BaseRAGExample):
         print(f"\nTotal history entries processed: {len(all_documents)}")
 
         # Convert to text chunks
-        all_texts = create_text_chunks(all_documents)
+        all_texts = create_text_chunks(
+            all_documents, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
+        )
 
         return all_texts
 

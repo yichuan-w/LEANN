@@ -173,22 +173,22 @@ LEANN provides flexible parameters for embedding models, search strategies, and 
 <details>
 <summary><strong>📋 Click to expand: Common Parameters (Available in All Examples)</strong></summary>
 
-All RAG examples share these common parameters:
+All RAG examples share these common parameters. **Interactive mode** is available in all examples - simply run without `--query` to start a continuous Q&A session where you can ask multiple questions. Type 'quit' to exit.
 
 ```bash
-# Core Parameters
+# Core Parameters (General preprocessing for all examples)
 --index-dir DIR          # Directory to store the index (default: current directory)
---query "YOUR QUESTION"  # Single query to run (interactive mode if omitted)
---max-items N           # Max items to process (default: 1000, -1 for all)
+--query "YOUR QUESTION"  # Single query mode. Omit for interactive chat (type 'quit' to exit)
+--max-items N           # Limit data preprocessing (default: 1000 items, use -1 to process all data)
 --force-rebuild         # Force rebuild index even if it exists
 
 # Embedding Parameters
 --embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small
 --embedding-mode MODE    # sentence-transformers, openai, or mlx
 
-# LLM Parameters
---llm TYPE              # openai, ollama, or hf
---llm-model MODEL       # e.g., gpt-4o, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
+# LLM Parameters (Text generation models)
+--llm TYPE              # LLM backend: openai, ollama, or hf (default: openai)
+--llm-model MODEL       # Model name (default: gpt-4o) e.g., gpt-4o-mini, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
 
 # Search Parameters
 --top-k N               # Number of results to retrieve (default: 20)
@@ -198,8 +198,8 @@ All RAG examples share these common parameters:
 --backend-name NAME     # Backend to use: hnsw or diskann (default: hnsw)
 --graph-degree N        # Graph degree for index construction (default: 32)
 --build-complexity N    # Build complexity for index construction (default: 64)
---no-compact           # Disable compact index storage
---no-recompute         # Disable embedding recomputation
+--no-compact           # Disable compact index storage (compact storage IS enabled to save storage by default)
+--no-recompute         # Disable embedding recomputation (recomputation IS enabled to save storage by default)
 ```
 
 </details>
@@ -225,18 +225,18 @@ python ./examples/document_rag.py --query "What are the main techniques LEANN ex
 #### Parameters
 ```bash
 --data-dir DIR           # Directory containing documents to process (default: examples/data)
---file-types .ext .ext   # File extensions to process (default: .pdf .txt .md)
---chunk-size N          # Size of text chunks (default: 256)
---chunk-overlap N       # Overlap between chunks (default: 25)
+--file-types .ext .ext   # Filter by specific file types (optional - all LlamaIndex supported types if omitted)
+--chunk-size N          # Size of text chunks (default: 256) - larger for papers, smaller for code
+--chunk-overlap N       # Overlap between chunks (default: 128)
 ```
 
 #### Example Commands
 ```bash
-# Process your research papers folder
-python examples/document_rag.py --data-dir "~/Documents/Papers" --file-types .pdf
+# Process all documents with larger chunks for academic papers
+python examples/document_rag.py --data-dir "~/Documents/Papers" --chunk-size 1024
 
-# Process code documentation with smaller chunks
-python examples/document_rag.py --data-dir "./docs" --chunk-size 512 --file-types .md .rst
+# Filter only markdown and Python files with smaller chunks
+python examples/document_rag.py --data-dir "./docs" --chunk-size 256 --file-types .md .py
 ```
 
 </details>
@@ -307,11 +307,11 @@ python examples/browser_rag.py --query "Tell me my browser history about machine
 
 #### Example Commands
 ```bash
-# Search work-related browsing in your work profile
-python examples/browser_rag.py --chrome-profile "~/Library/Application Support/Google/Chrome/Profile 1"
+# Search academic research from your browsing history
+python examples/browser_rag.py --query "arxiv papers machine learning transformer architecture"
 
-# Interactive mode to explore your research history
-python examples/browser_rag.py --query "machine learning papers arxiv"
+# Track competitor analysis across work profile
+python examples/browser_rag.py --chrome-profile "~/Library/Application Support/Google/Chrome/Work Profile" --max-items 5000
 ```
 
 </details>
