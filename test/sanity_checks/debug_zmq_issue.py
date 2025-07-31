@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Debug script to test ZMQ communication with the exact same setup as main_cli_example.py
+Debug script to test ZMQ communication with embedding models.
 """
 
 import sys
@@ -13,9 +13,9 @@ from leann_backend_diskann import embedding_pb2
 
 
 def test_zmq_with_same_model():
-    print("=== Testing ZMQ with same model as main_cli_example.py ===")
+    print("=== Testing ZMQ with embedding model ===")
 
-    # Test the exact same model that main_cli_example.py uses
+    # Test with a common embedding model
     model_name = "sentence-transformers/all-mpnet-base-v2"
 
     # Start server with the same model
