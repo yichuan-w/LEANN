@@ -183,8 +183,8 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 --force-rebuild         # Force rebuild index even if it exists
 
 # Embedding Parameters
---embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small
---embedding-mode MODE    # sentence-transformers, openai, or mlx (e.g., use with mlx-community/multilingual-e5-base-mlx)
+--embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small or mlx-community/multilingual-e5-base-mlx
+--embedding-mode MODE    # sentence-transformers, openai, or mlx
 
 # LLM Parameters (Text generation models)
 --llm TYPE              # LLM backend: openai, ollama, or hf (default: openai)
@@ -216,7 +216,7 @@ Ask questions directly about your personal PDFs, documents, and any directory co
   <img src="videos/paper_clear.gif" alt="LEANN Document Search Demo" width="600">
 </p>
 
-The example below asks a question about summarizing our paper (uses default data in `examples/data`, which contains two papers, Pride and Prejudice, and a README in Chinese) and this is the easiest example to run here:
+The example below asks a question about summarizing our paper (uses default data in `examples/data`, which is a directory with diverse data sources: two papers, Pride and Prejudice, and a README in Chinese) and this is the easiest example to run here:
 
 ```bash
 source .venv/bin/activate # Don't forget to activate the virtual environment
