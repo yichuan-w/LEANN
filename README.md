@@ -184,7 +184,7 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 
 # Embedding Parameters
 --embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small
---embedding-mode MODE    # sentence-transformers, openai, or mlx
+--embedding-mode MODE    # sentence-transformers, openai, or mlx (e.g., use with mlx-community/multilingual-e5-base-mlx)
 
 # LLM Parameters (Text generation models)
 --llm TYPE              # LLM backend: openai, ollama, or hf (default: openai)
@@ -193,6 +193,10 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 # Search Parameters
 --top-k N               # Number of results to retrieve (default: 20)
 --search-complexity N   # Search complexity for graph traversal (default: 64)
+
+# Chunking Parameters
+--chunk-size N          # Size of text chunks (default varies by source: 256 for most, 192 for WeChat)
+--chunk-overlap N       # Overlap between chunks (default varies: 25-128 depending on source)
 
 # Index Building Parameters
 --backend-name NAME     # Backend to use: hnsw or diskann (default: hnsw)
@@ -212,7 +216,7 @@ Ask questions directly about your personal PDFs, documents, and any directory co
   <img src="videos/paper_clear.gif" alt="LEANN Document Search Demo" width="600">
 </p>
 
-The example below asks a question about summarizing two papers (uses default data in `examples/data`) and this is the easiest example to run here:
+The example below asks a question about summarizing our paper (uses default data in `examples/data`, which contains two papers, Pride and Prejudice, and a README in Chinese) and this is the easiest example to run here:
 
 ```bash
 source .venv/bin/activate # Don't forget to activate the virtual environment
@@ -226,8 +230,6 @@ python ./examples/document_rag.py --query "What are the main techniques LEANN ex
 ```bash
 --data-dir DIR           # Directory containing documents to process (default: examples/data)
 --file-types .ext .ext   # Filter by specific file types (optional - all LlamaIndex supported types if omitted)
---chunk-size N          # Size of text chunks (default: 256) - larger for papers, smaller for code
---chunk-overlap N       # Overlap between chunks (default: 128)
 ```
 
 #### Example Commands
