@@ -17,6 +17,11 @@ class EmailRAG(BaseRAGExample):
     """RAG example for Apple Mail processing."""
 
     def __init__(self):
+        # Set default values BEFORE calling super().__init__
+        self.embedding_model_default = (
+            "sentence-transformers/all-MiniLM-L6-v2"  # Fast 384-dim model
+        )
+
         super().__init__(
             name="Email",
             description="Process and query Apple Mail emails with LEANN",

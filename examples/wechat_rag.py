@@ -20,7 +20,9 @@ class WeChatRAG(BaseRAGExample):
     def __init__(self):
         # Set default values BEFORE calling super().__init__
         self.max_items_default = 50  # Match original default
-        self.embedding_model_default = "Qwen/Qwen3-Embedding-0.6B"  # Match original default
+        self.embedding_model_default = (
+            "sentence-transformers/all-MiniLM-L6-v2"  # Fast 384-dim model
+        )
 
         super().__init__(
             name="WeChat History",

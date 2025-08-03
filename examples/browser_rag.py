@@ -18,6 +18,11 @@ class BrowserRAG(BaseRAGExample):
     """RAG example for Chrome browser history."""
 
     def __init__(self):
+        # Set default values BEFORE calling super().__init__
+        self.embedding_model_default = (
+            "sentence-transformers/all-MiniLM-L6-v2"  # Fast 384-dim model
+        )
+
         super().__init__(
             name="Browser History",
             description="Process and query Chrome browser history with LEANN",
