@@ -10,7 +10,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from base_rag_example import BaseRAGExample, create_text_chunks
+from base_rag_example import BaseRAGExample
 from history_data.wechat_history import WeChatHistoryReader
 
 
@@ -92,51 +92,77 @@ class WeChatRAG(BaseRAGExample):
 
     async def load_data(self, args) -> list[str]:
         """Load WeChat history and convert to text chunks."""
-        export_path = Path(args.export_dir)
-
-        # Check if we need to export
-        need_export = (
-            args.force_export or not export_path.exists() or not any(export_path.iterdir())
-        )
-
-        if need_export:
-            if sys.platform != "darwin":
-                print("\n⚠️  Error: WeChat export is only supported on macOS")
-                return []
-
-            success = self._export_wechat_data(export_path)
-            if not success:
-                print("Failed to export WeChat data")
-                return []
-        else:
-            print(f"Using existing WeChat export: {export_path}")
-
-        # Load WeChat data
+        # Initialize WeChat reader with export capabilities
         reader = WeChatHistoryReader()
 
-        try:
-            print("\nLoading WeChat history...")
-            documents = reader.load_data(
-                wechat_export_dir=str(export_path),
-                max_count=args.max_items if args.max_items > 0 else -1,
-            )
-
-            if not documents:
-                print("No WeChat data found!")
+        # Find existing exports or create new ones using the centralized method
+        export_dirs = reader.find_or_export_wechat_data(args.export_dir)
+        if not export_dirs:
+            print("Failed to find or export WeChat data. Trying to find any existing exports...")
+            # Try to find any existing exports in common locations
+            export_dirs = reader.find_wechat_export_dirs()
+            if not export_dirs:
+                print("No WeChat data found. Please ensure WeChat exports exist.")
                 return []
 
-            print(f"Loaded {len(documents)} chat entries")
+        # Load documents from all found export directories
+        all_documents = []
+        total_processed = 0
 
-            # Convert to text chunks
-            all_texts = create_text_chunks(
-                documents, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
-            )
+        for i, export_dir in enumerate(export_dirs):
+            print(f"\nProcessing WeChat export {i + 1}/{len(export_dirs)}: {export_dir}")
 
-            return all_texts
+            try:
+                # Apply max_items limit per export
+                max_per_export = -1
+                if args.max_items > 0:
+                    remaining = args.max_items - total_processed
+                    if remaining <= 0:
+                        break
+                    max_per_export = remaining
 
-        except Exception as e:
-            print(f"Error loading WeChat data: {e}")
+                documents = reader.load_data(
+                    wechat_export_dir=str(export_dir),
+                    max_count=max_per_export,
+                    concatenate_messages=True,  # Enable message concatenation for better context
+                )
+
+                if documents:
+                    print(f"Loaded {len(documents)} chat documents from {export_dir}")
+                    all_documents.extend(documents)
+                    total_processed += len(documents)
+                else:
+                    print(f"No documents loaded from {export_dir}")
+
+            except Exception as e:
+                print(f"Error processing {export_dir}: {e}")
+                continue
+
+        if not all_documents:
+            print("No documents loaded from any source. Exiting.")
             return []
+
+        print(f"\nTotal loaded {len(all_documents)} chat documents from {len(export_dirs)} exports")
+
+        # Convert to text chunks with contact information
+        all_texts = []
+        for doc in all_documents:
+            # Split the document into chunks
+            from llama_index.core.node_parser import SentenceSplitter
+
+            text_splitter = SentenceSplitter(
+                chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
+            )
+            nodes = text_splitter.get_nodes_from_documents([doc])
+
+            for node in nodes:
+                # Add contact information to each chunk
+                contact_name = doc.metadata.get("contact_name", "Unknown")
+                text = f"[Contact] means the message is from: {contact_name}\n" + node.get_content()
+                all_texts.append(text)
+
+        print(f"Created {len(all_texts)} text chunks from {len(all_documents)} documents")
+        return all_texts
 
 
 if __name__ == "__main__":
