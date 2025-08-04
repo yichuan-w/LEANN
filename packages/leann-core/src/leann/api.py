@@ -459,7 +459,14 @@ class LeannSearcher:
 
         self.meta_path_str = f"{index_path}.meta.json"
         if not Path(self.meta_path_str).exists():
-            raise FileNotFoundError(f"Leann metadata file not found at {self.meta_path_str}")
+            parent_dir = Path(index_path).parent
+            print(
+                f"Leann metadata file not found at {self.meta_path_str}, and you may need to rm -rf {parent_dir}"
+            )
+            # highlight in red the filenotfound error
+            raise FileNotFoundError(
+                f"Leann metadata file not found at {self.meta_path_str}, \033[91m you may need to rm -rf {parent_dir}\033[0m"
+            )
         with open(self.meta_path_str, encoding="utf-8") as f:
             self.meta_data = json.load(f)
         backend_name = self.meta_data["backend_name"]
@@ -492,6 +499,16 @@ class LeannSearcher:
         logger.info(f"  Query: '{query}'")
         logger.info(f"  Top_k: {top_k}")
         logger.info(f"  Additional kwargs: {kwargs}")
+
+        # Smart top_k detection and adjustment
+        total_docs = len(self.passage_manager.global_offset_map)
+        original_top_k = top_k
+        if top_k > total_docs:
+            top_k = total_docs
+            logger.warning(
+                f"  ⚠️  Requested top_k ({original_top_k}) exceeds total documents ({total_docs})"
+            )
+            logger.warning(f"  ✅ Auto-adjusted top_k to {top_k} to match available documents")
 
         zmq_port = None
 

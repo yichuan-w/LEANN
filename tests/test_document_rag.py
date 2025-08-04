@@ -1,5 +1,5 @@
 """
-Test main_cli_example functionality using pytest.
+Test document_rag functionality using pytest.
 """
 
 import os
@@ -14,20 +14,20 @@ import pytest
 @pytest.fixture
 def test_data_dir():
     """Return the path to test data directory."""
-    return Path("examples/data")
+    return Path("data")
 
 
 @pytest.mark.skipif(
     os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
 )
-def test_main_cli_simulated(test_data_dir):
-    """Test main_cli with simulated LLM."""
+def test_document_rag_simulated(test_data_dir):
+    """Test document_rag with simulated LLM."""
     with tempfile.TemporaryDirectory() as temp_dir:
         # Use a subdirectory that doesn't exist yet to force index creation
         index_dir = Path(temp_dir) / "test_index"
         cmd = [
             sys.executable,
-            "examples/main_cli_example.py",
+            "apps/document_rag.py",
             "--llm",
             "simulated",
             "--embedding-model",
@@ -53,19 +53,19 @@ def test_main_cli_simulated(test_data_dir):
 
         # Verify output
         output = result.stdout + result.stderr
-        assert "Leann index built at" in output or "Using existing index" in output
+        assert "Index saved to" in output or "Using existing index" in output
         assert "This is a simulated answer" in output
 
 
 @pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="OpenAI API key not available")
-def test_main_cli_openai(test_data_dir):
-    """Test main_cli with OpenAI embeddings."""
+def test_document_rag_openai(test_data_dir):
+    """Test document_rag with OpenAI embeddings."""
     with tempfile.TemporaryDirectory() as temp_dir:
         # Use a subdirectory that doesn't exist yet to force index creation
         index_dir = Path(temp_dir) / "test_index_openai"
         cmd = [
             sys.executable,
-            "examples/main_cli_example.py",
+            "apps/document_rag.py",
             "--llm",
             "simulated",  # Use simulated LLM to avoid GPT-4 costs
             "--embedding-model",
@@ -99,12 +99,12 @@ def test_main_cli_openai(test_data_dir):
         )
 
 
-def test_main_cli_error_handling(test_data_dir):
-    """Test main_cli with invalid parameters."""
+def test_document_rag_error_handling(test_data_dir):
+    """Test document_rag with invalid parameters."""
     with tempfile.TemporaryDirectory() as temp_dir:
         cmd = [
             sys.executable,
-            "examples/main_cli_example.py",
+            "apps/document_rag.py",
             "--llm",
             "invalid_llm_type",
             "--index-dir",
@@ -117,4 +117,4 @@ def test_main_cli_error_handling(test_data_dir):
 
         # Should fail with invalid LLM type
         assert result.returncode != 0
-        assert "Unknown LLM type" in result.stderr or "invalid_llm_type" in result.stderr
+        assert "invalid choice" in result.stderr or "invalid_llm_type" in result.stderr

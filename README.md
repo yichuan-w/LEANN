@@ -41,40 +41,40 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 ## Installation
 
-<details>
-<summary><strong>📦 Prerequisites: Install uv (if you don't have it)</strong></summary>
+### 📦 Prerequisites: Install uv
 
-Install uv first if you don't have it:
+[Install uv](https://docs.astral.sh/uv/getting-started/installation/#installation-methods) first if you don't have it. Typically, you can install it with:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-📖 [Detailed uv installation methods →](https://docs.astral.sh/uv/getting-started/installation/#installation-methods)
+### 🚀 Quick Install
 
-</details>
-
-
-LEANN provides two installation methods: **pip install** (quick and easy) and **build from source** (recommended for development).
-
-
-
-### 🚀 Quick Install (Recommended for most users)
-
-Clone the repository to access all examples and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immediately:
+Clone the repository to access all examples and try amazing applications,
 
 ```bash
-git clone git@github.com:yichuan-w/LEANN.git leann
+git clone https://github.com/yichuan-w/LEANN.git leann
 cd leann
+```
+
+and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immediately:
+
+```bash
 uv venv
 source .venv/bin/activate
 uv pip install leann
 ```
 
-### 🔧 Build from Source (Recommended for development)
+<details>
+<summary>
+<strong>🔧 Build from Source (Recommended for development)</strong>
+</summary>
+
+
 
 ```bash
-git clone git@github.com:yichuan-w/LEANN.git leann
+git clone https://github.com/yichuan-w/LEANN.git leann
 cd leann
 git submodule update --init --recursive
 ```
@@ -91,14 +91,14 @@ sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler libabsl-dev l
 uv sync
 ```
 
-
+</details>
 
 
 ## Quick Start
 
 Our declarative API makes RAG as easy as writing a config file.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb) [Try in this ipynb file →](demo.ipynb)
+Check out [demo.ipynb](demo.ipynb) or [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yichuan-w/LEANN/blob/main/demo.ipynb)
 
 ```python
 from leann import LeannBuilder, LeannSearcher, LeannChat
@@ -122,11 +122,11 @@ response = chat.ask("How much storage does LEANN save?", top_k=1)
 
 ## RAG on Everything!
 
-LEANN supports RAG on various data sources including documents (.pdf, .txt, .md), Apple Mail, Google Search History, WeChat, and more.
+LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, `.md`), Apple Mail, Google Search History, WeChat, and more.
 
+### Generation Model Setup
 
-> **Generation Model Setup**
-> LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
+LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
 
 <details>
 <summary><strong>🔑 OpenAI API Setup (Default)</strong></summary>
@@ -166,7 +166,49 @@ ollama pull llama3.2:1b
 
 </details>
 
-### 📄 Personal Data Manager: Process Any Documents (.pdf, .txt, .md)!
+### Flexible Configuration
+
+LEANN provides flexible parameters for embedding models, search strategies, and data processing to fit your specific needs.
+
+<details>
+<summary><strong>📋 Click to expand: Common Parameters (Available in All Examples)</strong></summary>
+
+All RAG examples share these common parameters. **Interactive mode** is available in all examples - simply run without `--query` to start a continuous Q&A session where you can ask multiple questions. Type 'quit' to exit.
+
+```bash
+# Core Parameters (General preprocessing for all examples)
+--index-dir DIR          # Directory to store the index (default: current directory)
+--query "YOUR QUESTION"  # Single query mode. Omit for interactive chat (type 'quit' to exit), and now you can play with your index interactively
+--max-items N           # Limit data preprocessing (default: -1, process all data)
+--force-rebuild         # Force rebuild index even if it exists
+
+# Embedding Parameters
+--embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small or mlx-community/multilingual-e5-base-mlx
+--embedding-mode MODE    # sentence-transformers, openai, or mlx
+
+# LLM Parameters (Text generation models)
+--llm TYPE              # LLM backend: openai, ollama, or hf (default: openai)
+--llm-model MODEL       # Model name (default: gpt-4o) e.g., gpt-4o-mini, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
+
+# Search Parameters
+--top-k N               # Number of results to retrieve (default: 20)
+--search-complexity N   # Search complexity for graph traversal (default: 32)
+
+# Chunking Parameters
+--chunk-size N          # Size of text chunks (default varies by source: 256 for most, 192 for WeChat)
+--chunk-overlap N       # Overlap between chunks (default varies: 25-128 depending on source)
+
+# Index Building Parameters
+--backend-name NAME     # Backend to use: hnsw or diskann (default: hnsw)
+--graph-degree N        # Graph degree for index construction (default: 32)
+--build-complexity N    # Build complexity for index construction (default: 64)
+--no-compact           # Disable compact index storage (compact storage IS enabled to save storage by default)
+--no-recompute         # Disable embedding recomputation (recomputation IS enabled to save storage by default)
+```
+
+</details>
+
+### 📄 Personal Data Manager: Process Any Documents (`.pdf`, `.txt`, `.md`)!
 
 Ask questions directly about your personal PDFs, documents, and any directory containing your files!
 
@@ -174,25 +216,29 @@ Ask questions directly about your personal PDFs, documents, and any directory co
   <img src="videos/paper_clear.gif" alt="LEANN Document Search Demo" width="600">
 </p>
 
-The example below asks a question about summarizing two papers (uses default data in `examples/data`) and this is the easiest example to run here:
+The example below asks a question about summarizing our paper (uses default data in `data/`, which is a directory with diverse data sources: two papers, Pride and Prejudice, and a README in Chinese) and this is the **easiest example** to run here:
 
 ```bash
-source .venv/bin/activate
-python ./examples/main_cli_example.py
+source .venv/bin/activate # Don't forget to activate the virtual environment
+python -m apps.document_rag --query "What are the main techniques LEANN explores?"
 ```
 
 <details>
-<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
+<summary><strong>📋 Click to expand: Document-Specific Arguments</strong></summary>
 
+#### Parameters
 ```bash
-# Use custom index directory
-python examples/main_cli_example.py --index-dir "./my_custom_index"
+--data-dir DIR           # Directory containing documents to process (default: data)
+--file-types .ext .ext   # Filter by specific file types (optional - all LlamaIndex supported types if omitted)
+```
 
-# Use custom data directory
-python examples/main_cli_example.py --data-dir "./my_documents"
+#### Example Commands
+```bash
+# Process all documents with larger chunks for academic papers
+python -m apps.document_rag --data-dir "~/Documents/Papers" --chunk-size 1024
 
-# Ask a specific question
-python examples/main_cli_example.py --query "What are the main findings in these papers?"
+# Filter only markdown and Python files with smaller chunks
+python -m apps.document_rag --data-dir "./docs" --chunk-size 256 --file-types .md .py
 ```
 
 </details>
@@ -206,30 +252,29 @@ python examples/main_cli_example.py --query "What are the main findings in these
   <img src="videos/mail_clear.gif" alt="LEANN Email Search Demo" width="600">
 </p>
 
-**Note:** You need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
+Before running the example below, you need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
+
 ```bash
-python examples/mail_reader_leann.py --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
+python -m apps.email_rag --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
 ```
 **780K email chunks → 78MB storage.** Finally, search your email like you search Google.
 
 <details>
-<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
+<summary><strong>📋 Click to expand: Email-Specific Arguments</strong></summary>
 
+#### Parameters
 ```bash
-# Use default mail path (works for most macOS setups)
-python examples/mail_reader_leann.py
+--mail-path PATH         # Path to specific mail directory (auto-detects if omitted)
+--include-html          # Include HTML content in processing (useful for newsletters)
+```
 
-# Run with custom index directory
-python examples/mail_reader_leann.py --index-dir "./my_mail_index"
+#### Example Commands
+```bash
+# Search work emails from a specific account
+python -m apps.email_rag --mail-path "~/Library/Mail/V10/WORK_ACCOUNT"
 
-# Process all emails (may take time but indexes everything)
-python examples/mail_reader_leann.py --max-emails -1
-
-# Limit number of emails processed (useful for testing)
-python examples/mail_reader_leann.py --max-emails 1000
-
-# Run a single query
-python examples/mail_reader_leann.py --query "What did my boss say about deadlines?"
+# Find all receipts and order confirmations (includes HTML)
+python -m apps.email_rag --query "receipt order confirmation invoice" --include-html
 ```
 
 </details>
@@ -250,25 +295,25 @@ Once the index is built, you can ask questions like:
 </p>
 
 ```bash
-python examples/google_history_reader_leann.py --query "Tell me my browser history about machine learning?"
+python -m apps.browser_rag --query "Tell me my browser history about machine learning?"
 ```
 **38K browser entries → 6MB storage.** Your browser history becomes your personal search engine.
 
 <details>
-<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
+<summary><strong>📋 Click to expand: Browser-Specific Arguments</strong></summary>
 
+#### Parameters
 ```bash
-# Use default Chrome profile (auto-finds all profiles)
-python examples/google_history_reader_leann.py
+--chrome-profile PATH    # Path to Chrome profile directory (auto-detects if omitted)
+```
 
-# Run with custom index directory
-python examples/google_history_reader_leann.py --index-dir "./my_chrome_index"
+#### Example Commands
+```bash
+# Search academic research from your browsing history
+python -m apps.browser_rag --query "arxiv papers machine learning transformer architecture"
 
-# Limit number of history entries processed (useful for testing)
-python examples/google_history_reader_leann.py --max-entries 500
-
-# Run a single query
-python examples/google_history_reader_leann.py --query "What websites did I visit about machine learning?"
+# Track competitor analysis across work profile
+python -m apps.browser_rag --chrome-profile "~/Library/Application Support/Google/Chrome/Work Profile" --max-items 5000
 ```
 
 </details>
@@ -308,7 +353,7 @@ Once the index is built, you can ask questions like:
 </p>
 
 ```bash
-python examples/wechat_history_reader_leann.py --query "Show me all group chats about weekend plans"
+python -m apps.wechat_rag --query "Show me all group chats about weekend plans"
 ```
 **400K messages → 64MB storage** Search years of chat history in any language.
 
@@ -316,7 +361,13 @@ python examples/wechat_history_reader_leann.py --query "Show me all group chats 
 <details>
 <summary><strong>🔧 Click to expand: Installation Requirements</strong></summary>
 
-First, you need to install the WeChat exporter:
+First, you need to install the [WeChat exporter](https://github.com/sunnyyoung/WeChatTweak-CLI),
+
+```bash
+brew install sunnyyoung/repo/wechattweak-cli
+```
+
+or install it manually (if you have issues with Homebrew):
 
 ```bash
 sudo packages/wechat-exporter/wechattweak-cli install
@@ -325,30 +376,28 @@ sudo packages/wechat-exporter/wechattweak-cli install
 **Troubleshooting:**
 - **Installation issues**: Check the [WeChatTweak-CLI issues page](https://github.com/sunnyyoung/WeChatTweak-CLI/issues/41)
 - **Export errors**: If you encounter the error below, try restarting WeChat
-```
-Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
-Failed to find or export WeChat data. Exiting.
-```
+  ```bash
+  Failed to export WeChat data. Please ensure WeChat is running and WeChatTweak is installed.
+  Failed to find or export WeChat data. Exiting.
+  ```
 </details>
 
 <details>
-<summary><strong>📋 Click to expand: User Configurable Arguments</strong></summary>
+<summary><strong>📋 Click to expand: WeChat-Specific Arguments</strong></summary>
 
+#### Parameters
 ```bash
-# Use default settings (recommended for first run)
-python examples/wechat_history_reader_leann.py
+--export-dir DIR         # Directory to store exported WeChat data (default: wechat_export_direct)
+--force-export          # Force re-export even if data exists
+```
 
-# Run with custom export directory and wehn we run the first time, LEANN will export all chat history automatically for you
-python examples/wechat_history_reader_leann.py --export-dir "./my_wechat_exports"
+#### Example Commands
+```bash
+# Search for travel plans discussed in group chats
+python -m apps.wechat_rag --query "travel plans" --max-items 10000
 
-# Run with custom index directory
-python examples/wechat_history_reader_leann.py --index-dir "./my_wechat_index"
-
-# Limit number of chat entries processed (useful for testing)
-python examples/wechat_history_reader_leann.py --max-entries 1000
-
-# Run a single query
-python examples/wechat_history_reader_leann.py --query "Show me conversations about travel plans"
+# Re-export and search recent chats (useful after new messages)
+python -m apps.wechat_rag --force-export --query "work schedule"
 ```
 
 </details>
@@ -367,6 +416,27 @@ Once the index is built, you can ask questions like:
 ## 🖥️ Command Line Interface
 
 LEANN includes a powerful CLI for document processing and search. Perfect for quick document indexing and interactive chat.
+
+### Installation
+
+If you followed the Quick Start, `leann` is already installed in your virtual environment:
+```bash
+source .venv/bin/activate
+leann --help
+```
+
+**To make it globally available (recommended for daily use):**
+```bash
+# Install the LEANN CLI globally using uv tool
+uv tool install leann
+
+# Now you can use leann from anywhere without activating venv
+leann --help
+```
+
+
+
+### Usage Examples
 
 ```bash
 # Build an index from documents
@@ -449,8 +519,8 @@ Options:
 ## Benchmarks
 
 
-📊 **[Simple Example: Compare LEANN vs FAISS →](examples/compare_faiss_vs_leann.py)**
-### Storage Comparison
+**[Simple Example: Compare LEANN vs FAISS →](benchmarks/compare_faiss_vs_leann.py)**
+### 📊 Storage Comparison
 
 | System | DPR (2.1M) | Wiki (60M) | Chat (400K) | Email (780K) | Browser (38K) |
 |--------|-------------|------------|-------------|--------------|---------------|
@@ -464,8 +534,8 @@ Options:
 
 ```bash
 uv pip install -e ".[dev]"  # Install dev dependencies
-python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
-python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
+python benchmarks/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
+python benchmarks/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
 ```
 
 The evaluation script downloads data automatically on first run. The last three results were tested with partial personal data, and you can reproduce them with your own data!
@@ -503,7 +573,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.edu/)
+This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.edu/).
+
+
 ---
 
 <p align="center">

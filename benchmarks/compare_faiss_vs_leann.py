@@ -62,7 +62,7 @@ def test_faiss_hnsw():
 
     try:
         result = subprocess.run(
-            [sys.executable, "examples/faiss_only.py"],
+            [sys.executable, "benchmarks/faiss_only.py"],
             capture_output=True,
             text=True,
             timeout=300,
@@ -115,7 +115,7 @@ def test_leann_hnsw():
 
     # Load and parse documents
     documents = SimpleDirectoryReader(
-        "examples/data",
+        "data",
         recursive=True,
         encoding="utf-8",
         required_exts=[".pdf", ".txt", ".md"],

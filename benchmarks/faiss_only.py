@@ -65,7 +65,7 @@ def main():
     tracker.checkpoint("After Faiss index creation")
 
     documents = SimpleDirectoryReader(
-        "examples/data",
+        "data",
         recursive=True,
         encoding="utf-8",
         required_exts=[".pdf", ".txt", ".md"],

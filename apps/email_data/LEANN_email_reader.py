@@ -52,6 +52,11 @@ class EmlxReader(BaseReader):
         docs: list[Document] = []
         max_count = load_kwargs.get("max_count", 1000)
         count = 0
+        total_files = 0
+        successful_files = 0
+        failed_files = 0
+
+        print(f"Starting to process directory: {input_dir}")
 
         # Walk through the directory recursively
         for dirpath, dirnames, filenames in os.walk(input_dir):
@@ -59,10 +64,12 @@ class EmlxReader(BaseReader):
             dirnames[:] = [d for d in dirnames if not d.startswith(".")]
 
             for filename in filenames:
-                if count >= max_count:
+                # Check if we've reached the max count (skip if max_count == -1)
+                if max_count > 0 and count >= max_count:
                     break
 
                 if filename.endswith(".emlx"):
+                    total_files += 1
                     filepath = os.path.join(dirpath, filename)
                     try:
                         # Read the .emlx file
@@ -98,17 +105,26 @@ class EmlxReader(BaseReader):
                                                 and not self.include_html
                                             ):
                                                 continue
-                                            body += part.get_payload(decode=True).decode(
-                                                "utf-8", errors="ignore"
-                                            )
-                                            # break
+                                            try:
+                                                payload = part.get_payload(decode=True)
+                                                if payload:
+                                                    body += payload.decode("utf-8", errors="ignore")
+                                            except Exception as e:
+                                                print(f"Error decoding payload: {e}")
+                                                continue
                                 else:
-                                    body = msg.get_payload(decode=True).decode(
-                                        "utf-8", errors="ignore"
-                                    )
+                                    try:
+                                        payload = msg.get_payload(decode=True)
+                                        if payload:
+                                            body = payload.decode("utf-8", errors="ignore")
+                                    except Exception as e:
+                                        print(f"Error decoding single part payload: {e}")
+                                        body = ""
 
-                                # Create document content with metadata embedded in text
-                                doc_content = f"""
+                                # Only create document if we have some content
+                                if body.strip() or subject != "No Subject":
+                                    # Create document content with metadata embedded in text
+                                    doc_content = f"""
 [File]: {filename}
 [From]: {from_addr}
 [To]: {to_addr}
@@ -118,18 +134,34 @@ class EmlxReader(BaseReader):
 {body}
 """
 
-                                # No separate metadata - everything is in the text
-                                doc = Document(text=doc_content, metadata={})
-                                docs.append(doc)
-                                count += 1
+                                    # No separate metadata - everything is in the text
+                                    doc = Document(text=doc_content, metadata={})
+                                    docs.append(doc)
+                                    count += 1
+                                    successful_files += 1
+
+                                    # Print first few successful files for debugging
+                                    if successful_files <= 3:
+                                        print(
+                                            f"Successfully loaded: {filename} - Subject: {subject[:50]}..."
+                                        )
 
                             except Exception as e:
-                                print(f"Error parsing email from {filepath}: {e}")
+                                failed_files += 1
+                                if failed_files <= 5:  # Only print first few errors
+                                    print(f"Error parsing email from {filepath}: {e}")
                                 continue
 
                     except Exception as e:
-                        print(f"Error reading file {filepath}: {e}")
+                        failed_files += 1
+                        if failed_files <= 5:  # Only print first few errors
+                            print(f"Error reading file {filepath}: {e}")
                         continue
 
-        print(f"Loaded {len(docs)} email documents")
+        print("Processing summary:")
+        print(f"  Total .emlx files found: {total_files}")
+        print(f"  Successfully loaded: {successful_files}")
+        print(f"  Failed to load: {failed_files}")
+        print(f"  Final documents: {len(docs)}")
+
         return docs
