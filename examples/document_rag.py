@@ -97,8 +97,9 @@ if __name__ == "__main__":
     print("=" * 50)
     print("\nExample queries you can try:")
     print("- 'What are the main techniques LEANN uses?'")
-    print("- 'Summarize the key findings in these papers'")
-    print("- 'What is the storage reduction achieved by LEANN?'")
+    print("- 'What is the technique DLPM?'")
+    print("- 'Who does Elizabeth Bennet marry?'")
+    print("- 'What is the problem of developing pan gu model? (盘古大模型开发中遇到什么问题?)'")
     print("\nOr run without --query for interactive mode\n")
 
     rag = DocumentRAG()
