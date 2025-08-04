@@ -29,8 +29,8 @@ class DocumentRAG(BaseRAGExample):
         doc_group.add_argument(
             "--data-dir",
             type=str,
-            default="examples/data",
-            help="Directory containing documents to index (default: examples/data)",
+            default="data",
+            help="Directory containing documents to index (default: data)",
         )
         doc_group.add_argument(
             "--file-types",

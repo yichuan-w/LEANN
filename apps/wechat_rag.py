@@ -11,7 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from base_rag_example import BaseRAGExample
-from history_data.wechat_history import WeChatHistoryReader
+
+from .history_data.wechat_history import WeChatHistoryReader
 
 
 class WeChatRAG(BaseRAGExample):

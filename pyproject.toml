@@ -134,6 +134,14 @@ dev = [
     "ruff>=0.12.4",
 ]
 
+[tool.lychee]
+accept = ["200", "403", "429", "503"]
+timeout = 20
+max_retries = 2
+exclude = ["localhost", "127.0.0.1", "example.com"]
+exclude_path = [".git/", ".venv/", "__pycache__/", "third_party/"]
+scheme = ["https", "http"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

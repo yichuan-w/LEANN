@@ -34,11 +34,15 @@ build/
 nprobe_logs/
 micro/results
 micro/contriever-INT8
-examples/data/*
-!examples/data/2501.14312v1 (1).pdf
-!examples/data/2506.08276v1.pdf
-!examples/data/PrideandPrejudice.txt
-!examples/data/README.md
+data/*
+!data/2501.14312v1 (1).pdf
+!data/2506.08276v1.pdf
+!data/PrideandPrejudice.txt
+!data/README.md
+!data/ground_truth/
+!data/indices/
+!data/queries/
+!data/.gitattributes
 *.qdstrm
 benchmark_results/
 results/
