@@ -459,7 +459,13 @@ class LeannSearcher:
 
         self.meta_path_str = f"{index_path}.meta.json"
         if not Path(self.meta_path_str).exists():
-            raise FileNotFoundError(f"Leann metadata file not found at {self.meta_path_str}")
+            parent_dir = Path(index_path).parent
+            print(
+                f"Leann metadata file not found at {self.meta_path_str}, and you may need to rm -rf {parent_dir}"
+            )
+            raise FileNotFoundError(
+                f"Leann metadata file not found at {self.meta_path_str}, you may need to rm -rf {parent_dir}"
+            )
         with open(self.meta_path_str, encoding="utf-8") as f:
             self.meta_data = json.load(f)
         backend_name = self.meta_data["backend_name"]

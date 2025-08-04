@@ -78,7 +78,7 @@ class EmailRAG(BaseRAGExample):
         print(f"Found {len(messages_dirs)} mail directories")
 
         # Create reader
-        reader = EmlxReader()
+        reader = EmlxReader(include_html=args.include_html)
 
         # Process each directory
         all_documents = []
@@ -93,18 +93,18 @@ class EmailRAG(BaseRAGExample):
                 print(f"Found {len(emlx_files)} email files")
 
                 # Apply max_items limit per directory
-                max_per_dir = -1
+                max_per_dir = -1  # Default to process all
                 if args.max_items > 0:
                     remaining = args.max_items - total_processed
                     if remaining <= 0:
                         break
                     max_per_dir = remaining
+                # If args.max_items == -1, max_per_dir stays -1 (process all)
 
-                # Load emails
+                # Load emails - fix the parameter passing
                 documents = reader.load_data(
-                    file_path=str(messages_dir),
+                    input_dir=str(messages_dir),
                     max_count=max_per_dir,
-                    include_html=args.include_html,
                 )
 
                 if documents:
@@ -121,6 +121,7 @@ class EmailRAG(BaseRAGExample):
             return []
 
         print(f"\nTotal emails processed: {len(all_documents)}")
+        print("now starting to split into text chunks ... take some time")
 
         # Convert to text chunks
         # Email reader uses chunk_overlap=25 as in original

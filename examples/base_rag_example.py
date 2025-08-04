@@ -109,7 +109,7 @@ class BaseRAGExample(ABC):
         search_group.add_argument(
             "--search-complexity",
             type=int,
-            default=64,
+            default=32,
             help="Search complexity for graph traversal (default: 64)",
         )
 

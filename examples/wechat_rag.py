@@ -107,6 +107,10 @@ class WeChatRAG(BaseRAGExample):
             success = self._export_wechat_data(export_path)
             if not success:
                 print("Failed to export WeChat data")
+                # add red: you may nned to restart your wechat to make the database file available
+                print(
+                    "\033[91mYou may need to restart/quit your WeChat to make the database file available\033[0m"
+                )
                 return []
         else:
             print(f"Using existing WeChat export: {export_path}")

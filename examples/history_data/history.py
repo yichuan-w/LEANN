@@ -97,6 +97,11 @@ class ChromeHistoryReader(BaseReader):
 
         except Exception as e:
             print(f"Error reading Chrome history: {e}")
+            # add you may need to close your browser to make the database file available
+            # also highlight in red
+            print(
+                "\033[91mYou may need to close your browser to make the database file available\033[0m"
+            )
             return docs
 
         return docs
