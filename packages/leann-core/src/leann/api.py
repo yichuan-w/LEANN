@@ -499,6 +499,16 @@ class LeannSearcher:
         logger.info(f"  Top_k: {top_k}")
         logger.info(f"  Additional kwargs: {kwargs}")
 
+        # Smart top_k detection and adjustment
+        total_docs = len(self.passage_manager.global_offset_map)
+        original_top_k = top_k
+        if top_k > total_docs:
+            top_k = total_docs
+            logger.warning(
+                f"  ⚠️  Requested top_k ({original_top_k}) exceeds total documents ({total_docs})"
+            )
+            logger.warning(f"  ✅ Auto-adjusted top_k to {top_k} to match available documents")
+
         zmq_port = None
 
         start_time = time.time()

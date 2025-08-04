@@ -411,8 +411,8 @@ Messages ({len(messages)} messages, {message_group["total_length"]} chars):
         wechat_export_dir = load_kwargs.get("wechat_export_dir", None)
         include_non_text = load_kwargs.get("include_non_text", False)
         concatenate_messages = load_kwargs.get("concatenate_messages", False)
-        load_kwargs.get("max_length", 1000)
-        load_kwargs.get("time_window_minutes", 30)
+        max_length = load_kwargs.get("max_length", 1000)
+        time_window_minutes = load_kwargs.get("time_window_minutes", 30)
 
         # Default WeChat export path
         if wechat_export_dir is None:
@@ -460,9 +460,9 @@ Messages ({len(messages)} messages, {message_group["total_length"]} chars):
                         # Concatenate messages based on rules
                         message_groups = self._concatenate_messages(
                             readable_messages,
-                            max_length=-1,
-                            time_window_minutes=-1,
-                            overlap_messages=0,  # Keep 2 messages overlap between groups
+                            max_length=max_length,
+                            time_window_minutes=time_window_minutes,
+                            overlap_messages=0,  # No overlap between groups
                         )
 
                         # Create documents from concatenated groups
@@ -532,7 +532,9 @@ Message: {readable_text if readable_text else message_text}
 """
 
                             # Create document with embedded metadata
-                            doc = Document(text=doc_content, metadata={})
+                            doc = Document(
+                                text=doc_content, metadata={"contact_name": contact_name}
+                            )
                             docs.append(doc)
                             count += 1
 
@@ -560,8 +562,8 @@ Message: {readable_text if readable_text else message_text}
 
         # Look for common export directory names
         possible_dirs = [
-            Path("./wechat_export_test"),
             Path("./wechat_export"),
+            Path("./wechat_export_direct"),
             Path("./wechat_chat_history"),
             Path("./chat_export"),
         ]
