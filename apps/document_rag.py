@@ -99,7 +99,9 @@ if __name__ == "__main__":
     print("- 'What are the main techniques LEANN uses?'")
     print("- 'What is the technique DLPM?'")
     print("- 'Who does Elizabeth Bennet marry?'")
-    print("- 'What is the problem of developing pan gu model? (盘古大模型开发中遇到什么问题?)'")
+    print(
+        "- 'What is the problem of developing pan gu model Huawei meets? (盘古大模型开发中遇到什么问题?)'"
+    )
     print("\nOr run without --query for interactive mode\n")
 
     rag = DocumentRAG()

@@ -358,7 +358,11 @@ def validate_model_and_suggest(model_name: str, llm_type: str) -> str | None:
                 error_msg += f"\n\nModel '{model_name}' was not found in Ollama's library."
 
                 if suggestions:
-                    error_msg += "\n\nDid you mean one of these installed models?\n"
+                    error_msg += (
+                        "\n\nDid you mean one of these installed models?\n"
+                        + "\nTry to use ollama pull to install the model you need\n"
+                    )
+
                     for i, suggestion in enumerate(suggestions, 1):
                         error_msg += f"  {i}. {suggestion}\n"
                 else:

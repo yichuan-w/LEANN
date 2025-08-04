@@ -636,7 +636,10 @@ class LeannChat:
             "Please provide the best answer you can based on this context and your knowledge."
         )
 
+        ask_time = time.time()
         ans = self.llm.ask(prompt, **llm_kwargs)
+        ask_time = time.time() - ask_time
+        logger.info(f"  Ask time: {ask_time} seconds")
         return ans
 
     def start_interactive(self):
