@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
+import psutil
 from leann.interface import (
     LeannBackendBuilderInterface,
     LeannBackendFactoryInterface,
@@ -84,6 +85,43 @@ def _write_vectors_to_bin(data: np.ndarray, file_path: Path):
         f.write(data.tobytes())
 
 
+def _calculate_smart_memory_config(data: np.ndarray) -> tuple[float, float]:
+    """
+    Calculate smart memory configuration for DiskANN based on data size and system specs.
+
+    Args:
+        data: The embedding data array
+
+    Returns:
+        tuple: (search_memory_maximum, build_memory_maximum) in GB
+    """
+    num_vectors, dim = data.shape
+
+    # Calculate embedding storage size
+    embedding_size_bytes = num_vectors * dim * 4  # float32 = 4 bytes
+    embedding_size_gb = embedding_size_bytes / (1024**3)
+
+    # search_memory_maximum: 1/10 of embedding size for optimal PQ compression
+    # This controls Product Quantization size - smaller means more compression
+    search_memory_gb = max(0.1, embedding_size_gb / 10)  # At least 100MB
+
+    # build_memory_maximum: Based on available system RAM for sharding control
+    # This controls how much memory DiskANN uses during index construction
+    available_memory_gb = psutil.virtual_memory().available / (1024**3)
+    total_memory_gb = psutil.virtual_memory().total / (1024**3)
+
+    # Use 50% of available memory, but at least 2GB and at most 75% of total
+    build_memory_gb = max(2.0, min(available_memory_gb * 0.5, total_memory_gb * 0.75))
+
+    logger.info(
+        f"Smart memory config - Data: {embedding_size_gb:.2f}GB, "
+        f"Search mem: {search_memory_gb:.2f}GB (PQ control), "
+        f"Build mem: {build_memory_gb:.2f}GB (sharding control)"
+    )
+
+    return search_memory_gb, build_memory_gb
+
+
 @register_backend("diskann")
 class DiskannBackend(LeannBackendFactoryInterface):
     @staticmethod
@@ -121,6 +159,16 @@ class DiskannBuilder(LeannBackendBuilderInterface):
                 f"Unsupported distance_metric '{build_kwargs.get('distance_metric', 'unknown')}'."
             )
 
+        # Calculate smart memory configuration if not explicitly provided
+        if (
+            "search_memory_maximum" not in build_kwargs
+            or "build_memory_maximum" not in build_kwargs
+        ):
+            smart_search_mem, smart_build_mem = _calculate_smart_memory_config(data)
+        else:
+            smart_search_mem = build_kwargs.get("search_memory_maximum", 4.0)
+            smart_build_mem = build_kwargs.get("build_memory_maximum", 8.0)
+
         try:
             from . import _diskannpy as diskannpy  # type: ignore
 
@@ -131,8 +179,8 @@ class DiskannBuilder(LeannBackendBuilderInterface):
                     index_prefix,
                     build_kwargs.get("complexity", 64),
                     build_kwargs.get("graph_degree", 32),
-                    build_kwargs.get("search_memory_maximum", 4.0),
-                    build_kwargs.get("build_memory_maximum", 8.0),
+                    build_kwargs.get("search_memory_maximum", smart_search_mem),
+                    build_kwargs.get("build_memory_maximum", smart_build_mem),
                     build_kwargs.get("num_threads", 8),
                     build_kwargs.get("pq_disk_bytes", 0),
                     "",
