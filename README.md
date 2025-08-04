@@ -216,7 +216,7 @@ Ask questions directly about your personal PDFs, documents, and any directory co
   <img src="videos/paper_clear.gif" alt="LEANN Document Search Demo" width="600">
 </p>
 
-The example below asks a question about summarizing our paper (uses default data in `examples/data`, which is a directory with diverse data sources: two papers, Pride and Prejudice, and a README in Chinese) and this is the easiest example to run here:
+The example below asks a question about summarizing our paper (uses default data in `examples/data`, which is a directory with diverse data sources: two papers, Pride and Prejudice, and a README in Chinese) and this is the **easiest example** to run here:
 
 ```bash
 source .venv/bin/activate # Don't forget to activate the virtual environment

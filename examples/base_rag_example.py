@@ -246,9 +246,9 @@ class BaseRAGExample(ABC):
             complexity=args.search_complexity,
         )
 
-        print(f"\n[Query] {query}")
+        print(f"\n[Query]: \033[36m{query}\033[0m")
         response = chat.ask(query, top_k=args.top_k, complexity=args.search_complexity)
-        print(f"\n[Response] {response}\n")
+        print(f"\n[Response]: \033[36m{response}\033[0m")
 
     async def run(self):
         """Main entry point for the example."""
@@ -268,6 +268,7 @@ class BaseRAGExample(ABC):
                 return
 
             index_path = await self.build_index(args, texts)
+            print(f"Index saved to: {index_path}")
         else:
             print(f"\nUsing existing index: {index_path}")
 
