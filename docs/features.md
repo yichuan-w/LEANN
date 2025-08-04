@@ -13,7 +13,7 @@
 - **🚀 High-throughput Embedding Pipeline** - Optimized batched processing for maximum efficiency
 - **🎯 Two-level Search** - Novel coarse-to-fine search overlap for accelerated query processing (optional)
 - **💾 Memory-mapped Indices** - Fast startup with raw text mapping to reduce memory overhead
-- **🚀 MLX Support** - Ultra-fast recompute/build with quantized embedding models, accelerating building and search ([minimal example](test/build_mlx_index.py))
+- **🚀 MLX Support** - Ultra-fast recompute/build with quantized embedding models, accelerating building and search ([minimal example](../examples/mlx_demo.py))
 
 ## 🎨 Developer Experience
 

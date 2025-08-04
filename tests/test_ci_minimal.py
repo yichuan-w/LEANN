@@ -20,7 +20,7 @@ def test_package_imports():
 def test_cli_help():
     """Test that CLI example shows help."""
     result = subprocess.run(
-        [sys.executable, "examples/document_rag.py", "--help"], capture_output=True, text=True
+        [sys.executable, "apps/document_rag.py", "--help"], capture_output=True, text=True
     )
 
     assert result.returncode == 0

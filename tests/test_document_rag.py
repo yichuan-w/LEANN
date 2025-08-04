@@ -14,7 +14,7 @@ import pytest
 @pytest.fixture
 def test_data_dir():
     """Return the path to test data directory."""
-    return Path("examples/data")
+    return Path("data")
 
 
 @pytest.mark.skipif(
@@ -27,7 +27,7 @@ def test_document_rag_simulated(test_data_dir):
         index_dir = Path(temp_dir) / "test_index"
         cmd = [
             sys.executable,
-            "examples/document_rag.py",
+            "apps/document_rag.py",
             "--llm",
             "simulated",
             "--embedding-model",
@@ -65,7 +65,7 @@ def test_document_rag_openai(test_data_dir):
         index_dir = Path(temp_dir) / "test_index_openai"
         cmd = [
             sys.executable,
-            "examples/document_rag.py",
+            "apps/document_rag.py",
             "--llm",
             "simulated",  # Use simulated LLM to avoid GPT-4 costs
             "--embedding-model",
@@ -104,7 +104,7 @@ def test_document_rag_error_handling(test_data_dir):
     with tempfile.TemporaryDirectory() as temp_dir:
         cmd = [
             sys.executable,
-            "examples/document_rag.py",
+            "apps/document_rag.py",
             "--llm",
             "invalid_llm_type",
             "--index-dir",

@@ -200,10 +200,10 @@ def main():
     args = parser.parse_args()
 
     # --- Path Configuration ---
-    # Assumes a project structure where the script is in 'examples/'
-    # and data is in 'data/' at the project root.
-    project_root = Path(__file__).resolve().parent.parent
-    data_root = project_root / "data"
+    # Assumes a project structure where the script is in 'benchmarks/'
+    # and evaluation data is in 'benchmarks/data/'.
+    script_dir = Path(__file__).resolve().parent
+    data_root = script_dir / "data"
 
     # Download data based on mode
     if args.mode == "build":
@@ -279,7 +279,9 @@ def main():
 
             if not args.index_path:
                 print("No indices found. The data download should have included pre-built indices.")
-                print("Please check the data/indices/ directory or provide --index-path manually.")
+                print(
+                    "Please check the benchmarks/data/indices/ directory or provide --index-path manually."
+                )
                 sys.exit(1)
 
     # Detect dataset type from index path to select the correct ground truth

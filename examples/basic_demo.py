@@ -1,6 +1,6 @@
 """
 Simple demo showing basic leann usage
-Run: uv run python examples/simple_demo.py
+Run: uv run python examples/basic_demo.py
 """
 
 import argparse
@@ -81,7 +81,7 @@ def main():
         print()
 
     print("Demo completed! Try running:")
-    print("   uv run python examples/document_search.py")
+    print("   uv run python apps/document_rag.py")
 
 
 if __name__ == "__main__":

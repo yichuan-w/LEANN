@@ -216,11 +216,11 @@ Ask questions directly about your personal PDFs, documents, and any directory co
   <img src="videos/paper_clear.gif" alt="LEANN Document Search Demo" width="600">
 </p>
 
-The example below asks a question about summarizing our paper (uses default data in `examples/data`, which is a directory with diverse data sources: two papers, Pride and Prejudice, and a README in Chinese) and this is the **easiest example** to run here:
+The example below asks a question about summarizing our paper (uses default data in `data/`, which is a directory with diverse data sources: two papers, Pride and Prejudice, and a README in Chinese) and this is the **easiest example** to run here:
 
 ```bash
 source .venv/bin/activate # Don't forget to activate the virtual environment
-python ./examples/document_rag.py --query "What are the main techniques LEANN explores?"
+python ./apps/document_rag.py --query "What are the main techniques LEANN explores?"
 ```
 
 <details>
@@ -228,17 +228,17 @@ python ./examples/document_rag.py --query "What are the main techniques LEANN ex
 
 #### Parameters
 ```bash
---data-dir DIR           # Directory containing documents to process (default: examples/data)
+--data-dir DIR           # Directory containing documents to process (default: data)
 --file-types .ext .ext   # Filter by specific file types (optional - all LlamaIndex supported types if omitted)
 ```
 
 #### Example Commands
 ```bash
 # Process all documents with larger chunks for academic papers
-python examples/document_rag.py --data-dir "~/Documents/Papers" --chunk-size 1024
+python apps/document_rag.py --data-dir "~/Documents/Papers" --chunk-size 1024
 
 # Filter only markdown and Python files with smaller chunks
-python examples/document_rag.py --data-dir "./docs" --chunk-size 256 --file-types .md .py
+python apps/document_rag.py --data-dir "./docs" --chunk-size 256 --file-types .md .py
 ```
 
 </details>
@@ -255,7 +255,7 @@ python examples/document_rag.py --data-dir "./docs" --chunk-size 256 --file-type
 Before running the example below, you need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 
 ```bash
-python examples/email_rag.py --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
+python apps/email_rag.py --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
 ```
 **780K email chunks → 78MB storage.** Finally, search your email like you search Google.
 
@@ -271,10 +271,10 @@ python examples/email_rag.py --query "What's the food I ordered by DoorDash or U
 #### Example Commands
 ```bash
 # Search work emails from a specific account
-python examples/email_rag.py --mail-path "~/Library/Mail/V10/WORK_ACCOUNT"
+python apps/email_rag.py --mail-path "~/Library/Mail/V10/WORK_ACCOUNT"
 
 # Find all receipts and order confirmations (includes HTML)
-python examples/email_rag.py --query "receipt order confirmation invoice" --include-html
+python apps/email_rag.py --query "receipt order confirmation invoice" --include-html
 ```
 
 </details>
@@ -295,7 +295,7 @@ Once the index is built, you can ask questions like:
 </p>
 
 ```bash
-python examples/browser_rag.py --query "Tell me my browser history about machine learning?"
+python apps/browser_rag.py --query "Tell me my browser history about machine learning?"
 ```
 **38K browser entries → 6MB storage.** Your browser history becomes your personal search engine.
 
@@ -310,10 +310,10 @@ python examples/browser_rag.py --query "Tell me my browser history about machine
 #### Example Commands
 ```bash
 # Search academic research from your browsing history
-python examples/browser_rag.py --query "arxiv papers machine learning transformer architecture"
+python apps/browser_rag.py --query "arxiv papers machine learning transformer architecture"
 
 # Track competitor analysis across work profile
-python examples/browser_rag.py --chrome-profile "~/Library/Application Support/Google/Chrome/Work Profile" --max-items 5000
+python apps/browser_rag.py --chrome-profile "~/Library/Application Support/Google/Chrome/Work Profile" --max-items 5000
 ```
 
 </details>
@@ -353,7 +353,7 @@ Once the index is built, you can ask questions like:
 </p>
 
 ```bash
-python examples/wechat_rag.py --query "Show me all group chats about weekend plans"
+python apps/wechat_rag.py --query "Show me all group chats about weekend plans"
 ```
 **400K messages → 64MB storage** Search years of chat history in any language.
 
@@ -394,10 +394,10 @@ sudo packages/wechat-exporter/wechattweak-cli install
 #### Example Commands
 ```bash
 # Search for travel plans discussed in group chats
-python examples/wechat_rag.py --query "travel plans" --max-items 10000
+python apps/wechat_rag.py --query "travel plans" --max-items 10000
 
 # Re-export and search recent chats (useful after new messages)
-python examples/wechat_rag.py --force-export --query "work schedule"
+python apps/wechat_rag.py --force-export --query "work schedule"
 ```
 
 </details>
@@ -519,7 +519,7 @@ Options:
 ## Benchmarks
 
 
-**[Simple Example: Compare LEANN vs FAISS →](examples/compare_faiss_vs_leann.py)**
+**[Simple Example: Compare LEANN vs FAISS →](benchmarks/compare_faiss_vs_leann.py)**
 ### 📊 Storage Comparison
 
 | System | DPR (2.1M) | Wiki (60M) | Chat (400K) | Email (780K) | Browser (38K) |
@@ -534,8 +534,8 @@ Options:
 
 ```bash
 uv pip install -e ".[dev]"  # Install dev dependencies
-python examples/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
-python examples/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
+python benchmarks/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
+python benchmarks/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
 ```
 
 The evaluation script downloads data automatically on first run. The last three results were tested with partial personal data, and you can reproduce them with your own data!
