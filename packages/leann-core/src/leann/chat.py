@@ -542,14 +542,41 @@ class HFChat(LLMInterface):
             self.device = "cpu"
             logger.info("No GPU detected. Using CPU.")
 
-        # Load tokenizer and model
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
-            device_map="auto" if self.device != "cpu" else None,
-            trust_remote_code=True,
-        )
+        # Load tokenizer and model with timeout protection
+        try:
+            import signal
+
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Model download/loading timed out")
+
+            # Set timeout for model loading (60 seconds)
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(60)
+
+            try:
+                logger.info(f"Loading tokenizer for {model_name}...")
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+                logger.info(f"Loading model {model_name}...")
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
+                    device_map="auto" if self.device != "cpu" else None,
+                    trust_remote_code=True,
+                )
+                logger.info(f"Successfully loaded {model_name}")
+            finally:
+                signal.alarm(0)  # Cancel the alarm
+                signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
+
+        except TimeoutError:
+            logger.error(f"Model loading timed out for {model_name}")
+            raise RuntimeError(
+                f"Model loading timed out for {model_name}. Please check your internet connection or try a smaller model."
+            )
+        except Exception as e:
+            logger.error(f"Failed to load model {model_name}: {e}")
+            raise
 
         # Move model to device if not using device_map
         if self.device != "cpu" and "device_map" not in str(self.model):

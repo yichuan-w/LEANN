@@ -354,13 +354,21 @@ class EmbeddingServerManager:
         self.server_process.terminate()
 
         try:
-            self.server_process.wait(timeout=5)
+            self.server_process.wait(timeout=3)
             logger.info(f"Server process {self.server_process.pid} terminated.")
         except subprocess.TimeoutExpired:
             logger.warning(
-                f"Server process {self.server_process.pid} did not terminate gracefully, killing it."
+                f"Server process {self.server_process.pid} did not terminate gracefully within 3 seconds, killing it."
             )
             self.server_process.kill()
+            try:
+                self.server_process.wait(timeout=2)
+                logger.info(f"Server process {self.server_process.pid} killed successfully.")
+            except subprocess.TimeoutExpired:
+                logger.error(
+                    f"Failed to kill server process {self.server_process.pid} - it may be hung"
+                )
+                # Don't hang indefinitely
 
         # Clean up process resources to prevent resource tracker warnings
         try:
