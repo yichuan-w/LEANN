@@ -463,8 +463,9 @@ class LeannSearcher:
             print(
                 f"Leann metadata file not found at {self.meta_path_str}, and you may need to rm -rf {parent_dir}"
             )
+            # highlight in red the filenotfound error
             raise FileNotFoundError(
-                f"Leann metadata file not found at {self.meta_path_str}, you may need to rm -rf {parent_dir}"
+                f"Leann metadata file not found at {self.meta_path_str}, \033[91m you may need to rm -rf {parent_dir}\033[0m"
             )
         with open(self.meta_path_str, encoding="utf-8") as f:
             self.meta_data = json.load(f)

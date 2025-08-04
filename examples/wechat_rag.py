@@ -19,7 +19,7 @@ class WeChatRAG(BaseRAGExample):
 
     def __init__(self):
         # Set default values BEFORE calling super().__init__
-        self.max_items_default = 50  # Match original default
+        self.max_items_default = -1  # Match original default
         self.embedding_model_default = (
             "sentence-transformers/all-MiniLM-L6-v2"  # Fast 384-dim model
         )
@@ -143,6 +143,7 @@ class WeChatRAG(BaseRAGExample):
             return []
 
         print(f"\nTotal loaded {len(all_documents)} chat documents from {len(export_dirs)} exports")
+        print("now starting to split into text chunks ... take some time")
 
         # Convert to text chunks with contact information
         all_texts = []

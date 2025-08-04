@@ -192,7 +192,7 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 
 # Search Parameters
 --top-k N               # Number of results to retrieve (default: 20)
---search-complexity N   # Search complexity for graph traversal (default: 64)
+--search-complexity N   # Search complexity for graph traversal (default: 32)
 
 # Chunking Parameters
 --chunk-size N          # Size of text chunks (default varies by source: 256 for most, 192 for WeChat)

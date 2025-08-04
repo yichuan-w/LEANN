@@ -18,6 +18,7 @@ class EmailRAG(BaseRAGExample):
 
     def __init__(self):
         # Set default values BEFORE calling super().__init__
+        self.max_items_default = -1  # Process all emails by default
         self.embedding_model_default = (
             "sentence-transformers/all-MiniLM-L6-v2"  # Fast 384-dim model
         )
