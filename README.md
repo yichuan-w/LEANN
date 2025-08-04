@@ -220,7 +220,7 @@ The example below asks a question about summarizing our paper (uses default data
 
 ```bash
 source .venv/bin/activate # Don't forget to activate the virtual environment
-python ./apps/document_rag.py --query "What are the main techniques LEANN explores?"
+python -m apps.document_rag --query "What are the main techniques LEANN explores?"
 ```
 
 <details>
@@ -235,10 +235,10 @@ python ./apps/document_rag.py --query "What are the main techniques LEANN explor
 #### Example Commands
 ```bash
 # Process all documents with larger chunks for academic papers
-python apps/document_rag.py --data-dir "~/Documents/Papers" --chunk-size 1024
+python -m apps.document_rag --data-dir "~/Documents/Papers" --chunk-size 1024
 
 # Filter only markdown and Python files with smaller chunks
-python apps/document_rag.py --data-dir "./docs" --chunk-size 256 --file-types .md .py
+python -m apps.document_rag --data-dir "./docs" --chunk-size 256 --file-types .md .py
 ```
 
 </details>
@@ -255,7 +255,7 @@ python apps/document_rag.py --data-dir "./docs" --chunk-size 256 --file-types .m
 Before running the example below, you need to grant full disk access to your terminal/VS Code in System Preferences → Privacy & Security → Full Disk Access.
 
 ```bash
-python apps/email_rag.py --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
+python -m apps.email_rag --query "What's the food I ordered by DoorDash or Uber Eats mostly?"
 ```
 **780K email chunks → 78MB storage.** Finally, search your email like you search Google.
 
@@ -271,10 +271,10 @@ python apps/email_rag.py --query "What's the food I ordered by DoorDash or Uber 
 #### Example Commands
 ```bash
 # Search work emails from a specific account
-python apps/email_rag.py --mail-path "~/Library/Mail/V10/WORK_ACCOUNT"
+python -m apps.email_rag --mail-path "~/Library/Mail/V10/WORK_ACCOUNT"
 
 # Find all receipts and order confirmations (includes HTML)
-python apps/email_rag.py --query "receipt order confirmation invoice" --include-html
+python -m apps.email_rag --query "receipt order confirmation invoice" --include-html
 ```
 
 </details>
@@ -295,7 +295,7 @@ Once the index is built, you can ask questions like:
 </p>
 
 ```bash
-python apps/browser_rag.py --query "Tell me my browser history about machine learning?"
+python -m apps.browser_rag --query "Tell me my browser history about machine learning?"
 ```
 **38K browser entries → 6MB storage.** Your browser history becomes your personal search engine.
 
@@ -310,10 +310,10 @@ python apps/browser_rag.py --query "Tell me my browser history about machine lea
 #### Example Commands
 ```bash
 # Search academic research from your browsing history
-python apps/browser_rag.py --query "arxiv papers machine learning transformer architecture"
+python -m apps.browser_rag --query "arxiv papers machine learning transformer architecture"
 
 # Track competitor analysis across work profile
-python apps/browser_rag.py --chrome-profile "~/Library/Application Support/Google/Chrome/Work Profile" --max-items 5000
+python -m apps.browser_rag --chrome-profile "~/Library/Application Support/Google/Chrome/Work Profile" --max-items 5000
 ```
 
 </details>
@@ -353,7 +353,7 @@ Once the index is built, you can ask questions like:
 </p>
 
 ```bash
-python apps/wechat_rag.py --query "Show me all group chats about weekend plans"
+python -m apps.wechat_rag --query "Show me all group chats about weekend plans"
 ```
 **400K messages → 64MB storage** Search years of chat history in any language.
 
@@ -394,10 +394,10 @@ sudo packages/wechat-exporter/wechattweak-cli install
 #### Example Commands
 ```bash
 # Search for travel plans discussed in group chats
-python apps/wechat_rag.py --query "travel plans" --max-items 10000
+python -m apps.wechat_rag --query "travel plans" --max-items 10000
 
 # Re-export and search recent chats (useful after new messages)
-python apps/wechat_rag.py --force-export --query "work schedule"
+python -m apps.wechat_rag --force-export --query "work schedule"
 ```
 
 </details>
