@@ -50,12 +50,12 @@ class BaseRAGExample(ABC):
             help="Query to run (if not provided, will run in interactive mode)",
         )
         # Allow subclasses to override default max_items
-        max_items_default = getattr(self, "max_items_default", 1000)
+        max_items_default = getattr(self, "max_items_default", -1)
         core_group.add_argument(
             "--max-items",
             type=int,
             default=max_items_default,
-            help=f"Maximum number of items to process (default: {max_items_default}, -1 for all)",
+            help="Maximum number of items to process  -1 for all, means index all documents, and you should set it to a reasonable number if you have a large dataset and try at the first time)",
         )
         core_group.add_argument(
             "--force-rebuild", action="store_true", help="Force rebuild index even if it exists"
@@ -256,7 +256,7 @@ class BaseRAGExample(ABC):
 
         # Check if index exists
         index_path = str(Path(args.index_dir) / f"{self.default_index_name}.leann")
-        index_exists = Path(index_path).exists()
+        index_exists = Path(args.index_dir).exists()
 
         if not index_exists or args.force_rebuild:
             # Load data and build index
@@ -268,9 +268,8 @@ class BaseRAGExample(ABC):
                 return
 
             index_path = await self.build_index(args, texts)
-            print(f"Index saved to: {index_path}")
         else:
-            print(f"\nUsing existing index: {index_path}")
+            print(f"\nUsing existing index in {args.index_dir}")
 
         # Run query or interactive mode
         if args.query:

@@ -179,7 +179,7 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 # Core Parameters (General preprocessing for all examples)
 --index-dir DIR          # Directory to store the index (default: current directory)
 --query "YOUR QUESTION"  # Single query mode. Omit for interactive chat (type 'quit' to exit)
---max-items N           # Limit data preprocessing (default: 1000 items, use -1 to process all data)
+--max-items N           # Limit data preprocessing (default: -1, process all data)
 --force-rebuild         # Force rebuild index even if it exists
 
 # Embedding Parameters
