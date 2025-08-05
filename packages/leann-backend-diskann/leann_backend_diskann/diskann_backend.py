@@ -312,6 +312,8 @@ class DiskannSearcher(BaseSearcher):
             use_global_pruning = True
 
         # Perform search with suppressed C++ output based on log level
+        use_deferred_fetch = kwargs.get("USE_DEFERRED_FETCH", True)
+        recompute_neighors = False
         with suppress_cpp_output_if_needed():
             labels, distances = self._index.batch_search(
                 query,
@@ -320,9 +322,9 @@ class DiskannSearcher(BaseSearcher):
                 complexity,
                 beam_width,
                 self.num_threads,
-                kwargs.get("USE_DEFERRED_FETCH", False),
+                use_deferred_fetch,
                 kwargs.get("skip_search_reorder", False),
-                recompute_embeddings,
+                recompute_neighors,
                 dedup_node_dis,
                 prune_ratio,
                 batch_recompute,
