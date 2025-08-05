@@ -125,6 +125,13 @@ Examples:
             choices=["global", "local", "proportional"],
             default="global",
         )
+        ask_parser.add_argument(
+            "--thinking-budget",
+            type=str,
+            choices=["low", "medium", "high"],
+            default=None,
+            help="Thinking budget for reasoning models (low/medium/high). Supported by GPT-Oss:20b and other reasoning models.",
+        )
 
         # List command
         subparsers.add_parser("list", help="List all indexes")
@@ -308,6 +315,11 @@ Examples:
                 if not user_input:
                     continue
 
+                # Prepare LLM kwargs with thinking budget if specified
+                llm_kwargs = {}
+                if args.thinking_budget:
+                    llm_kwargs["thinking_budget"] = args.thinking_budget
+
                 response = chat.ask(
                     user_input,
                     top_k=args.top_k,
@@ -316,11 +328,17 @@ Examples:
                     prune_ratio=args.prune_ratio,
                     recompute_embeddings=args.recompute_embeddings,
                     pruning_strategy=args.pruning_strategy,
+                    llm_kwargs=llm_kwargs,
                 )
                 print(f"LEANN: {response}")
         else:
             query = input("Enter your question: ").strip()
             if query:
+                # Prepare LLM kwargs with thinking budget if specified
+                llm_kwargs = {}
+                if args.thinking_budget:
+                    llm_kwargs["thinking_budget"] = args.thinking_budget
+
                 response = chat.ask(
                     query,
                     top_k=args.top_k,
@@ -329,6 +347,7 @@ Examples:
                     prune_ratio=args.prune_ratio,
                     recompute_embeddings=args.recompute_embeddings,
                     pruning_strategy=args.pruning_strategy,
+                    llm_kwargs=llm_kwargs,
                 )
                 print(f"LEANN: {response}")
 

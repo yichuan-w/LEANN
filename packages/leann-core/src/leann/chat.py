@@ -489,11 +489,35 @@ class OllamaChat(LLMInterface):
         import requests
 
         full_url = f"{self.host}/api/generate"
+
+        # Handle thinking budget for reasoning models
+        options = kwargs.copy()
+        thinking_budget = kwargs.get("thinking_budget")
+        if thinking_budget:
+            # Remove thinking_budget from options as it's not a standard Ollama option
+            options.pop("thinking_budget", None)
+            # Only apply reasoning parameters to models that support it
+            reasoning_supported_models = [
+                "gpt-oss:20b",
+                "gpt-oss:120b",
+                "deepseek-r1",
+                "deepseek-coder",
+            ]
+
+            if thinking_budget in ["low", "medium", "high"]:
+                if any(model in self.model.lower() for model in reasoning_supported_models):
+                    options["reasoning"] = {"effort": thinking_budget, "exclude": False}
+                    logger.info(f"Applied reasoning effort={thinking_budget} to model {self.model}")
+                else:
+                    logger.warning(
+                        f"Thinking budget '{thinking_budget}' requested but model '{self.model}' may not support reasoning parameters. Proceeding without reasoning."
+                    )
+
         payload = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,  # Keep it simple for now
-            "options": kwargs,
+            "options": options,
         }
         logger.debug(f"Sending request to Ollama: {payload}")
         try:
@@ -684,10 +708,37 @@ class OpenAIChat(LLMInterface):
         params = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": kwargs.get("max_tokens", 1000),
             "temperature": kwargs.get("temperature", 0.7),
-            **{k: v for k, v in kwargs.items() if k not in ["max_tokens", "temperature"]},
         }
+
+        # Handle max_tokens vs max_completion_tokens based on model
+        max_tokens = kwargs.get("max_tokens", 1000)
+        if "o3" in self.model or "o4" in self.model or "o1" in self.model:
+            # o-series models use max_completion_tokens
+            params["max_completion_tokens"] = max_tokens
+            params["temperature"] = 1.0
+        else:
+            # Other models use max_tokens
+            params["max_tokens"] = max_tokens
+
+        # Handle thinking budget for reasoning models
+        thinking_budget = kwargs.get("thinking_budget")
+        if thinking_budget and thinking_budget in ["low", "medium", "high"]:
+            # Check if this is an o-series model (partial match for model names)
+            o_series_models = ["o3", "o3-mini", "o4-mini", "o1", "o3-pro", "o3-deep-research"]
+            if any(model in self.model for model in o_series_models):
+                # Use the correct OpenAI reasoning parameter format
+                params["reasoning_effort"] = thinking_budget
+                logger.info(f"Applied reasoning_effort={thinking_budget} to model {self.model}")
+            else:
+                logger.warning(
+                    f"Thinking budget '{thinking_budget}' requested but model '{self.model}' may not support reasoning parameters. Proceeding without reasoning."
+                )
+
+        # Add other kwargs (excluding thinking_budget as it's handled above)
+        for k, v in kwargs.items():
+            if k not in ["max_tokens", "temperature", "thinking_budget"]:
+                params[k] = v
 
         logger.info(f"Sending request to OpenAI with model {self.model}")
 

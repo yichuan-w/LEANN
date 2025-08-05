@@ -103,13 +103,15 @@ For immediate testing without local model downloads:
 **OpenAI** (`--llm openai`)
 - **Pros**: Best quality, consistent performance, no local resources needed
 - **Cons**: Costs money ($0.15-2.5 per million tokens), requires internet, data privacy concerns
-- **Models**: `gpt-4o-mini` (fast, cheap), `gpt-4o` (best quality), `o3-mini` (reasoning, not so expensive)
+- **Models**: `gpt-4o-mini` (fast, cheap), `gpt-4o` (best quality), `o3` (reasoning), `o3-mini` (reasoning, cheaper)
+- **Thinking Budget**: Use `--thinking-budget low/medium/high` for o-series reasoning models (o3, o3-mini, o4-mini)
 - **Note**: Our current default, but we recommend switching to Ollama for most use cases
 
 **Ollama** (`--llm ollama`)
 - **Pros**: Fully local, free, privacy-preserving, good model variety
 - **Cons**: Requires local GPU/CPU resources, slower than cloud APIs, need to install extra [ollama app](https://github.com/ollama/ollama?tab=readme-ov-file#ollama) and pre-download models by `ollama pull`
 - **Models**: `qwen3:0.6b` (ultra-fast), `qwen3:1.7b` (balanced), `qwen3:4b` (good quality), `qwen3:7b` (high quality), `deepseek-r1:1.5b` (reasoning)
+- **Thinking Budget**: Use `--thinking-budget low/medium/high` for reasoning models like GPT-Oss:20b
 
 **HuggingFace** (`--llm hf`)
 - **Pros**: Free tier available, huge model selection, direct model loading (vs Ollama's server-based approach)
@@ -150,6 +152,36 @@ For immediate testing without local model downloads:
 - Retrieval time ∝ log(n) × search_complexity
 - LLM processing time ∝ top_k × chunk_size
 - Total context = top_k × chunk_size tokens
+
+### Thinking Budget for Reasoning Models
+
+**`--thinking-budget`** (reasoning effort level)
+- Controls the computational effort for reasoning models
+- Options: `low`, `medium`, `high`
+- Guidelines:
+  - `low`: Fast responses, basic reasoning (default for simple queries)
+  - `medium`: Balanced speed and reasoning depth
+  - `high`: Maximum reasoning effort, best for complex analytical questions
+- **Supported Models**:
+  - **Ollama**: `gpt-oss:20b`, `gpt-oss:120b`
+  - **OpenAI**: `o3`, `o3-mini`, `o4-mini`, `o1` (o-series reasoning models)
+- **Note**: Models without reasoning support will show a warning and proceed without reasoning parameters
+- **Example**: `--thinking-budget high` for complex analytical questions
+
+**📖 For detailed usage examples and implementation details, check out [Thinking Budget Documentation](THINKING_BUDGET_FEATURE.md)**
+
+**💡 Quick Examples:**
+```bash
+# OpenAI o-series reasoning model
+python apps/document_rag.py --query "What are the main techniques LEANN explores?" \
+  --index-dir hnswbuild --backend hnsw \
+  --llm openai --llm-model o3 --thinking-budget medium
+
+# Ollama reasoning model
+python apps/document_rag.py --query "What are the main techniques LEANN explores?" \
+  --index-dir hnswbuild --backend hnsw \
+  --llm ollama --llm-model gpt-oss:20b --thinking-budget high
+```
 
 ### Graph Degree (HNSW/DiskANN)
 
