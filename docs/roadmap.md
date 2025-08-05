@@ -2,8 +2,8 @@
 
 ## 🎯 Q2 2025
 
-- [X] DiskANN backend with MIPS/L2/Cosine support
 - [X] HNSW backend integration
+- [X] DiskANN backend with MIPS/L2/Cosine support
 - [X] Real-time embedding pipeline
 - [X] Memory-efficient graph pruning
 

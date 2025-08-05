@@ -170,6 +170,8 @@ ollama pull llama3.2:1b
 
 LEANN provides flexible parameters for embedding models, search strategies, and data processing to fit your specific needs.
 
+📚 **Need configuration best practices?** Check our [Configuration Guide](docs/configuration-guide.md) for detailed optimization tips, model selection advice, and solutions to common issues like slow embeddings or poor search quality.
+
 <details>
 <summary><strong>📋 Click to expand: Common Parameters (Available in All Examples)</strong></summary>
 
@@ -514,7 +516,7 @@ Options:
 - **Dynamic batching:** Efficiently batch embedding computations for GPU utilization
 - **Two-level search:** Smart graph traversal that prioritizes promising nodes
 
-**Backends:** DiskANN or HNSW - pick what works for your data size.
+**Backends:** HNSW (default) for most use cases, with optional DiskANN support for billion-scale datasets.
 
 ## Benchmarks
 
@@ -534,8 +536,7 @@ Options:
 
 ```bash
 uv pip install -e ".[dev]"  # Install dev dependencies
-python benchmarks/run_evaluation.py data/indices/dpr/dpr_diskann      # DPR dataset
-python benchmarks/run_evaluation.py data/indices/rpj_wiki/rpj_wiki.index  # Wikipedia
+python benchmarks/run_evaluation.py    # Will auto-download evaluation data and run benchmarks
 ```
 
 The evaluation script downloads data automatically on first run. The last three results were tested with partial personal data, and you can reproduce them with your own data!
