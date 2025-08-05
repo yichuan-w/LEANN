@@ -108,7 +108,7 @@ For immediate testing without local model downloads:
 
 **Ollama** (`--llm ollama`)
 - **Pros**: Fully local, free, privacy-preserving, good model variety
-- **Cons**: Requires local GPU/CPU resources, slower than cloud APIs, need to install extra software and pre-download models by `ollama pull`
+- **Cons**: Requires local GPU/CPU resources, slower than cloud APIs, need to install extra [ollama app](https://github.com/ollama/ollama?tab=readme-ov-file#ollama) and pre-download models by `ollama pull`
 - **Models**: `qwen3:0.6b` (ultra-fast), `qwen3:1.7b` (balanced), `qwen3:4b` (good quality), `qwen3:7b` (high quality), `deepseek-r1:1.5b` (reasoning)
 
 **HuggingFace** (`--llm hf`)
