@@ -4,11 +4,23 @@ This guide helps you optimize LEANN for different use cases and understand the t
 
 ## Getting Started: Simple is Better
 
-When first trying LEANN, start with a small dataset to quickly validate your approach. Use the default `data/` directory which contains just a few files - this lets you test the full pipeline in minutes rather than hours.
+When first trying LEANN, start with a small dataset to quickly validate your approach:
 
+**For document RAG**: The default `data/` directory works perfectly - just a few PDFs let you test in minutes
 ```bash
-# Quick test with minimal data
-python -m apps.document_rag --max-items 100 --query "What techniques does LEANN use?"
+python -m apps.document_rag --query "What techniques does LEANN use?"
+```
+
+**For other data sources**: Limit the dataset size for quick testing
+```bash
+# WeChat: Test with recent messages only
+python -m apps.wechat_rag --max-items 100 --query "昨天聊了什么"
+
+# Browser history: Last few days
+python -m apps.browser_rag --max-items 500 --query "AI papers I read"
+
+# Email: Recent inbox
+python -m apps.email_rag --max-items 200 --query "meeting schedules"
 ```
 
 Once validated, scale up gradually:
@@ -19,23 +31,23 @@ Once validated, scale up gradually:
 
 Based on our experience developing LEANN, embedding models fall into three categories:
 
-### Small Models (384-768 dims)
-**Example**: `sentence-transformers/all-MiniLM-L6-v2`
-- **Pros**: Fast inference (10-50ms, 384 dims), good for real-time applications
+### Small Models (< 100M parameters)
+**Example**: `sentence-transformers/all-MiniLM-L6-v2` (22M params)
+- **Pros**: Lightweight, fast for both indexing and inference
 - **Cons**: Lower semantic understanding, may miss nuanced relationships
-- **Use when**: Speed is critical, handling simple queries
+- **Use when**: Speed is critical, handling simple queries, on interactive mode or just experimenting with LEANN
 
-### Medium Models (768-1024 dims)
-**Example**: `facebook/contriever`
+### Medium Models (100M-500M parameters)
+**Example**: `facebook/contriever` (110M params), `BAAI/bge-base-en-v1.5` (110M params)
 - **Pros**: Balanced performance, good multilingual support, reasonable speed
 - **Cons**: Requires more compute than small models
-- **Use when**: Need quality results without extreme compute requirements
+- **Use when**: Need quality results without extreme compute requirements, general-purpose RAG applications
 
-### Large Models (1024+ dims)
-**Example**: `Qwen/Qwen3-Embedding`
+### Large Models (500M+ parameters)
+**Example**: `Qwen/Qwen3-Embedding-0.6B` (600M params), `intfloat/multilingual-e5-large` (560M params)
 - **Pros**: Best semantic understanding, captures complex relationships, excellent multilingual support
-- **Cons**: Slow inference, high memory usage, may overfit on small datasets
-- **Use when**: Quality is paramount and you have sufficient compute
+- **Cons**: Slower inference, longer index build times
+- **Use when**: Quality is paramount and you have sufficient compute resources
 
 ### Cloud vs Local Trade-offs
 
@@ -45,16 +57,15 @@ Based on our experience developing LEANN, embedding models fall into three categ
 - **When to use**: Prototyping, non-sensitive data, need immediate results
 
 **Local Embeddings**
-- **Pros**: Complete privacy, no ongoing costs, full control
-- **Cons**: Requires GPU for good performance, setup complexity
+- **Pros**: Complete privacy, no ongoing costs, full control, can sometimes outperform OpenAI embeddings
+- **Cons**: Slower than cloud APIs, requires local compute resources
 - **When to use**: Production systems, sensitive data, cost-sensitive applications
 
 ## Index Selection: Matching Your Scale
 
 ### HNSW (Hierarchical Navigable Small World)
 **Best for**: Small to medium datasets (< 10M vectors)
-- Fast search (1-10ms latency)
-- Full recomputation required (no double queue optimization)
+- Full recomputation required
 - High memory usage during build phase
 - Excellent recall (95%+)
 
@@ -65,8 +76,8 @@ Based on our experience developing LEANN, embedding models fall into three categ
 
 ### DiskANN
 **Best for**: Large datasets (> 10M vectors, 10GB+ index size)
-- Uses Product Quantization (PQ) for coarse filtering in double queue architecture
-- Extremely fast search through selective recomputation
+- Uses Product Quantization (PQ) for coarse filtering during graph traversal
+- Recomputes only top candidates for exact distance calculation
 
 ```bash
 # For billion-scale deployments
@@ -84,23 +95,13 @@ Based on our experience developing LEANN, embedding models fall into three categ
 
 **Ollama** (`--llm ollama`)
 - **Pros**: Fully local, free, privacy-preserving, good model variety
-- **Cons**: Requires local GPU/CPU resources, slower than cloud
+- **Cons**: Requires local GPU/CPU resources, slower than cloud APIs, need to pre-download models by `ollama pull`
 - **Models**: `qwen3:1.7b` (best general quality), `deepseek-r1:1.5b` (reasoning)
 
 **HuggingFace** (`--llm hf`)
 - **Pros**: Free tier available, huge model selection, direct model loading (vs Ollama's server-based approach)
-- **Cons**: API rate limits, local mode needs significant resources, more complex setup
+- **Cons**: More complex initial setup
 - **Models**: `Qwen/Qwen3-1.7B-FP8`
-
-
-### Model Size Trade-offs
-
-| Model Size | Speed | Quality | Memory | Use Case |
-|------------|-------|---------|---------|----------|
-| 1B params | 50-100 tok/s | Basic | 2-4GB | Quick answers, simple queries |
-| 3B params | 20-50 tok/s | Good | 4-8GB | General purpose RAG |
-| 7B params | 10-20 tok/s | Excellent | 8-16GB | Complex reasoning |
-| 13B+ params | 5-10 tok/s | Best | 16-32GB+ | Research, detailed analysis |
 
 ## Parameter Tuning Guide
 
@@ -146,44 +147,6 @@ Based on our experience developing LEANN, embedding models fall into three categ
 - HNSW: 16-32 (default: 32)
 - DiskANN: 32-128 (default: 64)
 
-## Common Configurations by Use Case
-
-### 1. Quick Experimentation
-```bash
-python -m apps.document_rag \
-  --max-items 1000 \
-  --embedding-model sentence-transformers/all-MiniLM-L6-v2 \
-  --backend-name hnsw \
-  --llm ollama --llm-model llama3.2:1b
-```
-
-### 2. Personal Knowledge Base
-```bash
-python -m apps.document_rag \
-  --embedding-model facebook/contriever \
-  --chunk-size 512 --chunk-overlap 128 \
-  --backend-name hnsw \
-  --llm ollama --llm-model llama3.2:3b
-```
-
-### 3. Production RAG System
-```bash
-python -m apps.document_rag \
-  --embedding-model BAAI/bge-base-en-v1.5 \
-  --chunk-size 256 --chunk-overlap 64 \
-  --backend-name diskann \
-  --llm openai --llm-model gpt-4o-mini \
-  --top-k 20 --search-complexity 64
-```
-
-### 4. Multi-lingual Support (e.g., WeChat)
-```bash
-python -m apps.wechat_rag \
-  --embedding-model intfloat/multilingual-e5-base \
-  --chunk-size 192 --chunk-overlap 48 \
-  --backend-name hnsw \
-  --llm ollama --llm-model qwen3:8b
-```
 
 ## Performance Optimization Checklist
 
@@ -202,9 +165,9 @@ python -m apps.wechat_rag \
    --embedding-mode mlx --embedding-model mlx-community/multilingual-e5-base-mlx
    ```
 
-3. **Process in batches**:
+3. **Limit dataset size for testing**:
    ```bash
-   --max-items 10000  # Process incrementally
+   --max-items 1000  # Process first 1k items only
    ```
 
 ### If Search Quality is Poor
@@ -233,10 +196,10 @@ Every configuration choice involves trade-offs:
 
 | Factor | Small/Fast | Large/Quality |
 |--------|------------|---------------|
-| Embedding Model | all-MiniLM-L6-v2 | BAAI/bge-large |
-| Chunk Size | 128 tokens | 512 tokens |
+| Embedding Model | `all-MiniLM-L6-v2` | `Qwen/Qwen3-Embedding-0.6B` |
+| Chunk Size | 512 tokens | 128 tokens |
 | Index Type | HNSW | DiskANN |
-| LLM | llama3.2:1b | gpt-4o |
+| LLM | `qwen3:1.7b` | `gpt-4o` |
 
 The key is finding the right balance for your specific use case. Start small and simple, measure performance, then scale up only where needed.
 
@@ -251,22 +214,13 @@ LEANN's recomputation feature provides exact distance calculations but can be di
 ```
 
 **Trade-offs**:
-- **With recomputation** (default): Exact distances, best quality, higher latency
-- **Without recomputation**: Approximate distances via PQ, 2-5x faster, significantly lower memory and storage usage
+- **With recomputation** (default): Exact distances, best quality, higher latency, minimal storage (only stores metadata, recomputes embeddings on-demand)
+- **Without recomputation**: Must store full embeddings, significantly higher memory and storage usage (10-100x more), but faster search
 
 **Disable when**:
-- QPS requirements > 1000/sec
-- Slight accuracy loss is acceptable
-- Running on resource-constrained hardware
-
-## Performance Monitoring
-
-Key metrics to watch:
-- Index build time
-- Query latency (p50, p95, p99)
-- Memory usage during build and search
-- Disk I/O patterns (for DiskANN)
-- Recomputation ratio (% of candidates recomputed)
+- You have abundant storage and memory
+- Need extremely low latency (< 100ms)
+- Running a read-heavy workload where storage cost is acceptable
 
 ## Further Reading
 

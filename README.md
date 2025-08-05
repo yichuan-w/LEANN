@@ -170,12 +170,7 @@ ollama pull llama3.2:1b
 
 LEANN provides flexible parameters for embedding models, search strategies, and data processing to fit your specific needs.
 
-📚 **Having trouble with configuration?** Check our [Configuration Guide](docs/configuration-guide.md) for:
-- Quick start configurations for each use case
-- Solutions for "embedding too slow" issues
-- How to choose the right chat model
-- Fixing poor search quality
-- Performance optimization tips
+📚 **Having trouble with configuration?** Check our [Configuration Guide](docs/configuration-guide.md) for detailed optimization tips, model selection advice, and solutions to common issues like slow embeddings or poor search quality.
 
 <details>
 <summary><strong>📋 Click to expand: Common Parameters (Available in All Examples)</strong></summary>
