@@ -35,7 +35,7 @@ Based on our experience developing LEANN, embedding models fall into three categ
 **Example**: `sentence-transformers/all-MiniLM-L6-v2` (22M params)
 - **Pros**: Lightweight, fast for both indexing and inference
 - **Cons**: Lower semantic understanding, may miss nuanced relationships
-- **Use when**: Speed is critical, handling simple queries, interactive mode or just experimenting with LEANN. If time expense is not large, consider using a larger/better embedding model
+- **Use when**: Speed is critical, handling simple queries, interactive mode, or just experimenting with LEANN. If time is not a constraint, consider using a larger/better embedding model
 
 ### Medium Models (100M-500M parameters)
 **Example**: `facebook/contriever` (110M params), `BAAI/bge-base-en-v1.5` (110M params)
@@ -45,11 +45,20 @@ Based on our experience developing LEANN, embedding models fall into three categ
 
 ### Large Models (500M+ parameters)
 **Example**: `Qwen/Qwen3-Embedding-0.6B` (600M params), `intfloat/multilingual-e5-large` (560M params)
-- **Pros**: Best semantic understanding, captures complex relationships, excellent multilingual support
+- **Pros**: Best semantic understanding, captures complex relationships, excellent multilingual support. **Qwen3-Embedding-0.6B achieves nearly OpenAI API performance!**
 - **Cons**: Slower inference, longer index build times
-- **Use when**: Quality is paramount and you have sufficient compute resources
+- **Use when**: Quality is paramount and you have sufficient compute resources. **Highly recommended** for production use
 
-### Cloud vs Local Trade-offs
+### Quick Start: OpenAI Embeddings (Fastest Setup)
+
+For immediate testing without local model downloads:
+```bash
+# Set OpenAI embeddings (requires OPENAI_API_KEY)
+--embedding-mode openai --embedding-model text-embedding-3-small
+```
+
+<details>
+<summary><strong>Cloud vs Local Trade-offs</strong></summary>
 
 **OpenAI Embeddings** (`text-embedding-3-small/large`)
 - **Pros**: No local compute needed, consistently fast, high quality
@@ -61,10 +70,12 @@ Based on our experience developing LEANN, embedding models fall into three categ
 - **Cons**: Slower than cloud APIs, requires local compute resources
 - **When to use**: Production systems, sensitive data, cost-sensitive applications
 
+</details>
+
 ## Index Selection: Matching Your Scale
 
 ### HNSW (Hierarchical Navigable Small World)
-**Best for**: Small to medium datasets (< 10M vectors)
+**Best for**: Small to medium datasets (< 10M vectors) - **Default and recommended for extreme low storage**
 - Full recomputation required
 - High memory usage during build phase
 - Excellent recall (95%+)
@@ -75,9 +86,10 @@ Based on our experience developing LEANN, embedding models fall into three categ
 ```
 
 ### DiskANN
-**Best for**: Large datasets (> 10M vectors, 10GB+ index size)
+**Best for**: Large datasets (> 10M vectors, 10GB+ index size) - **⚠️ Beta version, still in active development**
 - Uses Product Quantization (PQ) for coarse filtering during graph traversal
-- Recomputes only top candidates for exact distance calculation
+- Novel approach: stores only PQ codes, performs rerank with exact computation in final step
+- Implements a corner case of double-queue: prunes all neighbors and recomputes at the end
 
 ```bash
 # For billion-scale deployments
@@ -92,11 +104,12 @@ Based on our experience developing LEANN, embedding models fall into three categ
 - **Pros**: Best quality, consistent performance, no local resources needed
 - **Cons**: Costs money ($0.15-2.5 per million tokens), requires internet, data privacy concerns
 - **Models**: `gpt-4o-mini` (fast, cheap), `gpt-4o` (best quality), `o3-mini` (reasoning, not so expensive)
+- **Note**: Our current default, but we recommend switching to Ollama for most use cases
 
 **Ollama** (`--llm ollama`)
 - **Pros**: Fully local, free, privacy-preserving, good model variety
-- **Cons**: Requires local GPU/CPU resources, slower than cloud APIs, need to pre-download models by `ollama pull`
-- **Models**: `qwen3:1.7b` (best general quality), `deepseek-r1:1.5b` (reasoning)
+- **Cons**: Requires local GPU/CPU resources, slower than cloud APIs, need to install extra software and pre-download models by `ollama pull`
+- **Models**: `qwen3:0.6b` (ultra-fast), `qwen3:1.7b` (balanced), `qwen3:4b` (good quality), `qwen3:7b` (high quality), `deepseek-r1:1.5b` (reasoning)
 
 **HuggingFace** (`--llm hf`)
 - **Pros**: Free tier available, huge model selection, direct model loading (vs Ollama's server-based approach)
@@ -120,9 +133,9 @@ Based on our experience developing LEANN, embedding models fall into three categ
 - Controls search thoroughness
 - Higher = better results but slower
 - Recommendations:
-  - 16: Fast/Interactive search (500-1000ms on consumer hardware)
-  - 32: High quality with diversity (1000-2000ms)
-  - 64+: Maximum accuracy (2000ms+)
+  - 16: Fast/Interactive search
+  - 32: High quality with diversity
+  - 64+: Maximum accuracy
 
 ### Top-K Selection
 
