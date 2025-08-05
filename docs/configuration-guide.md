@@ -6,7 +6,7 @@ This guide helps you optimize LEANN for different use cases and understand the t
 
 When first trying LEANN, start with a small dataset to quickly validate your approach:
 
-**For document RAG**: The default `data/` directory works perfectly - just a few PDFs let you test in minutes
+**For document RAG**: The default `data/` directory works perfectly - includes 2 AI research papers, Pride and Prejudice literature, and a technical report
 ```bash
 python -m apps.document_rag --query "What techniques does LEANN use?"
 ```
@@ -14,17 +14,17 @@ python -m apps.document_rag --query "What techniques does LEANN use?"
 **For other data sources**: Limit the dataset size for quick testing
 ```bash
 # WeChat: Test with recent messages only
-python -m apps.wechat_rag --max-items 100 --query "昨天聊了什么"
+python -m apps.wechat_rag --max-items 100 --query "What did we discuss about the project timeline?"
 
 # Browser history: Last few days
-python -m apps.browser_rag --max-items 500 --query "AI papers I read"
+python -m apps.browser_rag --max-items 500 --query "Find documentation about vector databases"
 
 # Email: Recent inbox
-python -m apps.email_rag --max-items 200 --query "meeting schedules"
+python -m apps.email_rag --max-items 200 --query "Who sent updates about the deployment status?"
 ```
 
 Once validated, scale up gradually:
-- 100 documents → 1,000 → 10,000 → full dataset
+- 100 documents → 1,000 → 10,000 → full dataset (`--max-items -1`)
 - This helps identify issues early before committing to long processing times
 
 ## Embedding Model Selection: Understanding the Trade-offs
@@ -35,7 +35,7 @@ Based on our experience developing LEANN, embedding models fall into three categ
 **Example**: `sentence-transformers/all-MiniLM-L6-v2` (22M params)
 - **Pros**: Lightweight, fast for both indexing and inference
 - **Cons**: Lower semantic understanding, may miss nuanced relationships
-- **Use when**: Speed is critical, handling simple queries, on interactive mode or just experimenting with LEANN
+- **Use when**: Speed is critical, handling simple queries, interactive mode or just experimenting with LEANN. If time expense is not large, consider using a larger/better embedding model
 
 ### Medium Models (100M-500M parameters)
 **Example**: `facebook/contriever` (110M params), `BAAI/bge-base-en-v1.5` (110M params)
@@ -130,9 +130,8 @@ Based on our experience developing LEANN, embedding models fall into three categ
 - More chunks = better context but slower LLM processing
 - Should be always smaller than `--search-complexity`
 - Guidelines:
-  - 3-5: Simple factual queries
-  - 5-10: General questions (default)
-  - 10+: Complex multi-hop reasoning
+  - 10-20: General questions (default: 20)
+  - 30+: Complex multi-hop reasoning requiring comprehensive context
 
 **Trade-off formula**:
 - Retrieval time ∝ log(n) × search_complexity
@@ -155,19 +154,19 @@ Based on our experience developing LEANN, embedding models fall into three categ
 1. **Switch to smaller model**:
    ```bash
    # From large model
-   --embedding-model Qwen/Qwen3-Embedding
+   --embedding-model Qwen/Qwen3-Embedding-0.6B
    # To small model
    --embedding-model sentence-transformers/all-MiniLM-L6-v2
    ```
 
-2. **Use MLX on Apple Silicon**:
-   ```bash
-   --embedding-mode mlx --embedding-model mlx-community/multilingual-e5-base-mlx
-   ```
-
-3. **Limit dataset size for testing**:
+2. **Limit dataset size for testing**:
    ```bash
    --max-items 1000  # Process first 1k items only
+   ```
+
+3. **Use MLX on Apple Silicon** (optional optimization):
+   ```bash
+   --embedding-mode mlx --embedding-model mlx-community/multilingual-e5-base-mlx
    ```
 
 ### If Search Quality is Poor
@@ -177,12 +176,7 @@ Based on our experience developing LEANN, embedding models fall into three categ
    --top-k 30  # Retrieve more candidates
    ```
 
-2. **Tune chunk size for your content**:
-   - Technical docs: `--chunk-size 512`
-   - Chat messages: `--chunk-size 128`
-   - Mixed content: `--chunk-size 256`
-
-3. **Upgrade embedding model**:
+2. **Upgrade embedding model**:
    ```bash
    # For English
    --embedding-model BAAI/bge-base-en-v1.5
