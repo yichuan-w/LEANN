@@ -1,204 +1,69 @@
-# LEANN MCP Server
+# LEANN Claude Code Integration
 
-**Transform Claude Code into a RAG-Powered Development Assistant**
+Intelligent code assistance using LEANN's vector search directly in Claude Code.
 
-This package provides a Model Context Protocol (MCP) server that integrates LEANN's vector search and RAG capabilities directly into Claude Code, enabling intelligent code analysis, documentation Q&A, and knowledge-driven development.
+## Prerequisites
 
-## 🚀 Quick Start
-
-### 1. Install
+First, install LEANN CLI globally:
 
 ```bash
-# Install dependencies
-pip install leann mcp
-
-# Clone or download this package
-git clone https://github.com/yichuan-w/LEANN.git
-cd LEANN-RAG/packages/leann-mcp
+uv tool install leann
 ```
 
-### 2. Configure Claude Code
+This makes the `leann` command available system-wide, which `leann_mcp` requires.
 
-Add to your `~/.claude/mcp.json`:
+## Quick Setup
 
-```json
-{
-  "mcpServers": {
-    "leann-rag": {
-      "command": "python",
-      "args": ["/absolute/path/to/leann_mcp_server.py"]
-    }
-  }
-}
-```
-
-### 3. Start Using
+Add the LEANN MCP server to Claude Code:
 
 ```bash
+claude mcp add leann-server -- leann_mcp
+```
+
+## Available Tools
+
+- **`leann_list`** - List available indexes across all projects
+- **`leann_search`** - Search code and documents with semantic queries
+- **`leann_ask`** - Ask questions and get AI-powered answers from your codebase
+
+## Quick Start
+
+```bash
+# Build an index for your project
+leann build my-project
+
 # Start Claude Code
 claude
-
-# In Claude, use LEANN tools:
-# "Build an index from my codebase and help me understand the architecture"
 ```
 
-## 🛠️ Available Tools
-
-### `leann_build`
-Build a vector index from documents or code
-```python
-leann_build(
-    index_name="my-project",
-    data_path="./src",
-    backend="hnsw",  # or "diskann"
-    embedding_model="facebook/contriever"
-)
+Then in Claude Code:
+```
+Help me understand this codebase. List available indexes and search for authentication patterns.
 ```
 
-### `leann_search`
-Search through an index for relevant passages
-```python
-leann_search(
-    query="authentication middleware",
-    index_name="my-project",
-    top_k=10,
-    complexity=64
-)
+<p align="center">
+  <img src="../../assets/claude_code_leann.png" alt="LEANN in Claude Code" width="80%">
+</p>
+
+
+## How It Works
+
+- **`leann`** - Core CLI tool for indexing and searching (installed globally)
+- **`leann_mcp`** - MCP server that wraps `leann` commands for Claude Code integration
+- Claude Code calls `leann_mcp`, which executes `leann` commands and returns results
+
+## File Support
+
+Python, JavaScript, TypeScript, Java, Go, Rust, SQL, YAML, JSON, and 30+ more file types.
+
+## Storage
+
+- Project indexes in `.leann/` directory (like `.git`)
+- Global project registry at `~/.leann/projects.json`
+- Multi-project support built-in
+
+## Removing
+
+```bash
+claude mcp remove leann-server
 ```
-
-### `leann_ask`
-Ask questions using RAG with LLM responses
-```python
-leann_ask(
-    question="How does user authentication work?",
-    index_name="my-project",
-    llm_config={"type": "ollama", "model": "qwen3:7b"}
-)
-```
-
-### `leann_list_indexes`
-List all available indexes
-
-### `leann_delete_index`
-Delete an index (with confirmation)
-
-## 💡 Use Cases
-
-### 📚 **Code Understanding**
-```
-"Build an index from my codebase and explain the authentication flow"
-```
-
-### 🔍 **Smart Code Search**
-```
-"Search for error handling patterns in our API endpoints"
-```
-
-### 📖 **Documentation Q&A**
-```
-"Create an index from our docs and answer: What are the deployment requirements?"
-```
-
-### 🏗️ **Architecture Analysis**
-```
-"Analyze our system architecture and suggest improvements"
-```
-
-### 🔧 **Development Assistance**
-```
-"Based on existing code patterns, help me implement user permissions"
-```
-
-## 🎯 Key Features
-
-- **🔌 Zero-Config Integration**: Works out of the box with Claude Code
-- **🧠 Smart Indexing**: Automatically handles multiple file formats
-- **⚡ High Performance**: LEANN's 97% storage savings + fast search
-- **🔄 Real-Time**: Build and query indexes during development
-- **🎨 Flexible**: Support for multiple backends and embedding models
-- **💬 Conversational**: Natural language interface for complex queries
-
-## 📁 Project Structure
-
-```
-packages/leann-mcp/
-├── leann_mcp_server.py          # Main MCP server implementation
-├── requirements.txt             # Python dependencies
-├── package.json                 # NPM package metadata
-├── claude-config-examples/      # Configuration examples
-│   ├── claude-mcp-config.json   # Basic Claude configuration
-│   └── usage-examples.md        # Detailed usage examples
-└── README.md                    # This file
-```
-
-## 🔧 Advanced Configuration
-
-### Custom Index Directory
-```python
-# In your environment or server config
-DEFAULT_CONFIG = {
-    "indexes_dir": "/custom/path/to/indexes",
-    "embedding_model": "BAAI/bge-base-en-v1.5",
-    "backend": "diskann"
-}
-```
-
-### Hook Integration
-Automatically reindex when files change:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Write.*\\.(py|js|ts)$",
-        "hooks": [{"type": "mcp_call", "server": "leann-rag", "tool": "leann_build"}]
-      }
-    ]
-  }
-}
-```
-
-### Sub-Agent Templates
-Create specialized RAG agents in `.claude/agents/`:
-
-```markdown
----
-name: code-analyst
-description: Code analysis using LEANN RAG
-tools: leann_build, leann_search, leann_ask
----
-
-You are a senior code analyst with access to LEANN RAG.
-When analyzing code, always:
-1. Build indexes of relevant code sections
-2. Search for patterns and anti-patterns
-3. Provide evidence-based recommendations
-```
-
-## 🚀 Performance & Scaling
-
-- **Small Projects** (<1K files): Use HNSW backend
-- **Large Codebases** (>10K files): Use DiskANN backend
-- **Memory Usage**: ~100MB per index (vs ~10GB traditional)
-- **Build Time**: 2-5 minutes for typical project
-- **Search Time**: <100ms for most queries
-
-## 🤝 Contributing
-
-This MCP server is part of the larger LEANN project. See the main README for contribution guidelines.
-
-## 📄 License
-
-MIT License - see the main LEANN project for details.
-
-## 🔗 Links
-
-- [LEANN Main Project](../../README.md)
-- [Claude Code Documentation](https://docs.anthropic.com/claude/docs/claude-code)
-- [MCP Specification](https://modelcontextprotocol.io/)
-- [Usage Examples](claude-config-examples/usage-examples.md)
-
----
-
-**Built with ❤️ by the LEANN team for the Claude Code community**

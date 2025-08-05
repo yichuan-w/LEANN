@@ -41,11 +41,21 @@ def extract_pdf_text_with_pdfplumber(file_path: str) -> str:
 
 class LeannCLI:
     def __init__(self):
-        self.indexes_dir = Path.home() / ".leann" / "indexes"
+        # Always use project-local .leann directory (like .git)
+        self.indexes_dir = Path.cwd() / ".leann" / "indexes"
         self.indexes_dir.mkdir(parents=True, exist_ok=True)
 
+        # Default parser for documents
         self.node_parser = SentenceSplitter(
             chunk_size=256, chunk_overlap=128, separator=" ", paragraph_separator="\n\n"
+        )
+
+        # Code-optimized parser
+        self.code_parser = SentenceSplitter(
+            chunk_size=512,  # Larger chunks for code context
+            chunk_overlap=50,  # Less overlap to preserve function boundaries
+            separator="\n",  # Split by lines for code
+            paragraph_separator="\n\n",  # Preserve logical code blocks
         )
 
     def get_index_path(self, index_name: str) -> str:
@@ -76,7 +86,9 @@ Examples:
         # Build command
         build_parser = subparsers.add_parser("build", help="Build document index")
         build_parser.add_argument("index_name", help="Index name")
-        build_parser.add_argument("--docs", type=str, required=True, help="Documents directory")
+        build_parser.add_argument(
+            "--docs", type=str, default=".", help="Documents directory (default: current directory)"
+        )
         build_parser.add_argument(
             "--backend", type=str, default="hnsw", choices=["hnsw", "diskann"]
         )
@@ -131,37 +143,109 @@ Examples:
 
         return parser
 
+    def register_project_dir(self):
+        """Register current project directory in global registry"""
+        global_registry = Path.home() / ".leann" / "projects.json"
+        global_registry.parent.mkdir(exist_ok=True)
+
+        current_dir = str(Path.cwd())
+
+        # Load existing registry
+        projects = []
+        if global_registry.exists():
+            try:
+                import json
+
+                with open(global_registry) as f:
+                    projects = json.load(f)
+            except Exception:
+                projects = []
+
+        # Add current directory if not already present
+        if current_dir not in projects:
+            projects.append(current_dir)
+
+        # Save registry
+        import json
+
+        with open(global_registry, "w") as f:
+            json.dump(projects, f, indent=2)
+
     def list_indexes(self):
         print("Stored LEANN indexes:")
 
-        if not self.indexes_dir.exists():
+        # Get all project directories with .leann
+        global_registry = Path.home() / ".leann" / "projects.json"
+        all_projects = []
+
+        if global_registry.exists():
+            try:
+                import json
+
+                with open(global_registry) as f:
+                    all_projects = json.load(f)
+            except Exception:
+                pass
+
+        # Filter to only existing directories with .leann
+        valid_projects = []
+        for project_dir in all_projects:
+            project_path = Path(project_dir)
+            if project_path.exists() and (project_path / ".leann" / "indexes").exists():
+                valid_projects.append(project_path)
+
+        # Add current project if it has .leann but not in registry
+        current_path = Path.cwd()
+        if (current_path / ".leann" / "indexes").exists() and current_path not in valid_projects:
+            valid_projects.append(current_path)
+
+        if not valid_projects:
             print("No indexes found. Use 'leann build <name> --docs <dir>' to create one.")
             return
 
-        index_dirs = [d for d in self.indexes_dir.iterdir() if d.is_dir()]
+        total_indexes = 0
+        current_dir = Path.cwd()
 
-        if not index_dirs:
-            print("No indexes found. Use 'leann build <name> --docs <dir>' to create one.")
-            return
+        for project_path in valid_projects:
+            indexes_dir = project_path / ".leann" / "indexes"
+            if not indexes_dir.exists():
+                continue
 
-        print(f"Found {len(index_dirs)} indexes:")
-        for i, index_dir in enumerate(index_dirs, 1):
-            index_name = index_dir.name
-            status = "✓" if self.index_exists(index_name) else "✗"
+            index_dirs = [d for d in indexes_dir.iterdir() if d.is_dir()]
+            if not index_dirs:
+                continue
 
-            print(f"  {i}. {index_name} [{status}]")
-            if self.index_exists(index_name):
-                index_dir / "documents.leann.meta.json"
-                size_mb = sum(f.stat().st_size for f in index_dir.iterdir() if f.is_file()) / (
-                    1024 * 1024
-                )
-                print(f"     Size: {size_mb:.1f} MB")
+            # Show project header
+            if project_path == current_dir:
+                print(f"\n📁 Current project ({project_path}):")
+            else:
+                print(f"\n📂 {project_path}:")
 
-        if index_dirs:
-            example_name = index_dirs[0].name
-            print("\nUsage:")
-            print(f'  leann search {example_name} "your query"')
-            print(f"  leann ask {example_name} --interactive")
+            for index_dir in index_dirs:
+                total_indexes += 1
+                index_name = index_dir.name
+                meta_file = index_dir / "documents.leann.meta.json"
+                status = "✓" if meta_file.exists() else "✗"
+
+                print(f"  {total_indexes}. {index_name} [{status}]")
+                if status == "✓":
+                    size_mb = sum(f.stat().st_size for f in index_dir.iterdir() if f.is_file()) / (
+                        1024 * 1024
+                    )
+                    print(f"     Size: {size_mb:.1f} MB")
+
+        if total_indexes > 0:
+            print(f"\nTotal: {total_indexes} indexes across {len(valid_projects)} projects")
+            print("\nUsage (current project only):")
+
+            # Show example from current project
+            current_indexes_dir = current_dir / ".leann" / "indexes"
+            if current_indexes_dir.exists():
+                current_index_dirs = [d for d in current_indexes_dir.iterdir() if d.is_dir()]
+                if current_index_dirs:
+                    example_name = current_index_dirs[0].name
+                    print(f'  leann search {example_name} "your query"')
+                    print(f"  leann ask {example_name} --interactive")
 
     def load_documents(self, docs_dir: str):
         print(f"Loading documents from {docs_dir}...")
@@ -196,17 +280,125 @@ Examples:
                 documents.extend(default_docs)
 
         # Load other file types with default reader
+        code_extensions = [
+            # Original document types
+            ".txt",
+            ".md",
+            ".docx",
+            # Code files for Claude Code integration
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".cpp",
+            ".c",
+            ".h",
+            ".hpp",
+            ".cs",
+            ".go",
+            ".rs",
+            ".rb",
+            ".php",
+            ".swift",
+            ".kt",
+            ".scala",
+            ".r",
+            ".sql",
+            ".sh",
+            ".bash",
+            ".zsh",
+            ".fish",
+            ".ps1",
+            ".bat",
+            # Config and markup files
+            ".json",
+            ".yaml",
+            ".yml",
+            ".xml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".conf",
+            ".html",
+            ".css",
+            ".scss",
+            ".less",
+            ".vue",
+            ".svelte",
+            # Data science
+            ".ipynb",
+            ".R",
+            ".py",
+            ".jl",
+        ]
         other_docs = SimpleDirectoryReader(
             docs_dir,
             recursive=True,
             encoding="utf-8",
-            required_exts=[".txt", ".md", ".docx"],
+            required_exts=code_extensions,
         ).load_data(show_progress=True)
         documents.extend(other_docs)
 
         all_texts = []
+
+        # Define code file extensions for intelligent chunking
+        code_file_exts = {
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".cpp",
+            ".c",
+            ".h",
+            ".hpp",
+            ".cs",
+            ".go",
+            ".rs",
+            ".rb",
+            ".php",
+            ".swift",
+            ".kt",
+            ".scala",
+            ".r",
+            ".sql",
+            ".sh",
+            ".bash",
+            ".zsh",
+            ".fish",
+            ".ps1",
+            ".bat",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".xml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".conf",
+            ".html",
+            ".css",
+            ".scss",
+            ".less",
+            ".vue",
+            ".svelte",
+            ".ipynb",
+            ".R",
+            ".jl",
+        }
+
         for doc in documents:
-            nodes = self.node_parser.get_nodes_from_documents([doc])
+            # Check if this is a code file based on source path
+            source_path = doc.metadata.get("source", "")
+            is_code_file = any(source_path.endswith(ext) for ext in code_file_exts)
+
+            # Use appropriate parser based on file type
+            parser = self.code_parser if is_code_file else self.node_parser
+            nodes = parser.get_nodes_from_documents([doc])
+
             for node in nodes:
                 all_texts.append(node.get_content())
 
@@ -218,6 +410,8 @@ Examples:
         index_name = args.index_name
         index_dir = self.indexes_dir / index_name
         index_path = self.get_index_path(index_name)
+
+        print(f"📂 Indexing: {Path(docs_dir).resolve()}")
 
         if index_dir.exists() and not args.force:
             print(f"Index '{index_name}' already exists. Use --force to rebuild.")
@@ -247,6 +441,9 @@ Examples:
 
         builder.build_index(index_path)
         print(f"Index built at {index_path}")
+
+        # Register this project directory in global registry
+        self.register_project_dir()
 
     async def search_documents(self, args):
         index_name = args.index_name

@@ -18,6 +18,8 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 **Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)**, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
+> **🚀 NEW: Claude Code Integration!** LEANN now provides native MCP integration for Claude Code users. Index your codebase and get intelligent code assistance directly in Claude Code. [Setup Guide →](packages/leann-mcp/README.md)
+
 
 
 ## Why LEANN?
@@ -427,7 +429,7 @@ source .venv/bin/activate
 leann --help
 ```
 
-**To make it globally available (recommended for daily use):**
+**To make it globally available:**
 ```bash
 # Install the LEANN CLI globally using uv tool
 uv tool install leann
@@ -436,12 +438,17 @@ uv tool install leann
 leann --help
 ```
 
+> **Note**: Global installation is required for Claude Code integration. The `leann_mcp` server depends on the globally available `leann` command.
+
 
 
 ### Usage Examples
 
 ```bash
-# Build an index from documents
+# Build an index from current directory (default)
+leann build my-docs
+
+# Or from specific directory
 leann build my-docs --docs ./documents
 
 # Search your documents
