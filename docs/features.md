@@ -5,7 +5,7 @@
 - **🔄 Real-time Embeddings** - Eliminate heavy embedding storage with dynamic computation using optimized ZMQ servers and highly optimized search paradigm (overlapping and batching) with highly optimized embedding engine
 - **📈 Scalable Architecture** - Handles millions of documents on consumer hardware; the larger your dataset, the more LEANN can save
 - **🎯 Graph Pruning** - Advanced techniques to minimize the storage overhead of vector search to a limited footprint
-- **🏗️ Pluggable Backends** - DiskANN, HNSW/FAISS with unified API
+- **🏗️ Pluggable Backends** - HNSW/FAISS (default), with optional DiskANN for large-scale deployments
 
 ## 🛠️ Technical Highlights
 - **🔄 Recompute Mode** - Highest accuracy scenarios while eliminating vector storage overhead
