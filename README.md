@@ -574,7 +574,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-Contributors: [Yichuan Wang](https://yichuan-wang.github.io) & [Zhifei Li](https://github.com/andylizf).
+Core Contributors: [Yichuan Wang](https://yichuan-w.github.io/) & [Zhifei Li](https://github.com/andylizf).
+
+We welcome more contributors! Feel free to open issues or submit PRs.
 
 This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.edu/).
 
