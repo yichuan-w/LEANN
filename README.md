@@ -168,7 +168,7 @@ ollama pull llama3.2:1b
 
 </details>
 
-### Flexible Configuration
+### ⭐ Flexible Configuration
 
 LEANN provides flexible parameters for embedding models, search strategies, and data processing to fit your specific needs.
 
@@ -193,6 +193,7 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 # LLM Parameters (Text generation models)
 --llm TYPE              # LLM backend: openai, ollama, or hf (default: openai)
 --llm-model MODEL       # Model name (default: gpt-4o) e.g., gpt-4o-mini, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
+--thinking-budget LEVEL # Thinking budget for reasoning models: low/medium/high (supported by o3, o3-mini, GPT-Oss:20b, and other reasoning models)
 
 # Search Parameters
 --top-k N               # Number of results to retrieve (default: 20)
@@ -581,8 +582,11 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.edu/).
+Core Contributors: [Yichuan Wang](https://yichuan-w.github.io/) & [Zhifei Li](https://github.com/andylizf).
 
+We welcome more contributors! Feel free to open issues or submit PRs.
+
+This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.edu/).
 
 ---
 

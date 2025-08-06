@@ -100,6 +100,13 @@ class BaseRAGExample(ABC):
             default="http://localhost:11434",
             help="Host for Ollama API (default: http://localhost:11434)",
         )
+        llm_group.add_argument(
+            "--thinking-budget",
+            type=str,
+            choices=["low", "medium", "high"],
+            default=None,
+            help="Thinking budget for reasoning models (low/medium/high). Supported by GPT-Oss:20b and other reasoning models.",
+        )
 
         # Search parameters
         search_group = parser.add_argument_group("Search Parameters")
@@ -228,7 +235,17 @@ class BaseRAGExample(ABC):
                 if not query:
                     continue
 
-                response = chat.ask(query, top_k=args.top_k, complexity=args.search_complexity)
+                # Prepare LLM kwargs with thinking budget if specified
+                llm_kwargs = {}
+                if hasattr(args, "thinking_budget") and args.thinking_budget:
+                    llm_kwargs["thinking_budget"] = args.thinking_budget
+
+                response = chat.ask(
+                    query,
+                    top_k=args.top_k,
+                    complexity=args.search_complexity,
+                    llm_kwargs=llm_kwargs,
+                )
                 print(f"\nAssistant: {response}\n")
 
             except KeyboardInterrupt:
@@ -247,7 +264,15 @@ class BaseRAGExample(ABC):
         )
 
         print(f"\n[Query]: \033[36m{query}\033[0m")
-        response = chat.ask(query, top_k=args.top_k, complexity=args.search_complexity)
+
+        # Prepare LLM kwargs with thinking budget if specified
+        llm_kwargs = {}
+        if hasattr(args, "thinking_budget") and args.thinking_budget:
+            llm_kwargs["thinking_budget"] = args.thinking_budget
+
+        response = chat.ask(
+            query, top_k=args.top_k, complexity=args.search_complexity, llm_kwargs=llm_kwargs
+        )
         print(f"\n[Response]: \033[36m{response}\033[0m")
 
     async def run(self):
