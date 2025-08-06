@@ -123,6 +123,9 @@ class GraphPartitioner:
         if output_dir is None:
             output_dir = str(Path(index_prefix_path).parent)
 
+        # Create output directory if it doesn't exist
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
         # Get executable paths
         partitioner_path = self._get_executable_path("partitioner")
         relayout_path = self._get_executable_path("index_relayout")
