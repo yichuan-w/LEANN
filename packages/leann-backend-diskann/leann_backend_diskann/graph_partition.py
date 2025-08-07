@@ -86,7 +86,11 @@ class GraphPartitioner:
             os.chdir(original_dir)
 
     def partition_graph(
-        self, index_prefix_path: str, output_dir: str | None = None, **kwargs
+        self,
+        index_prefix_path: str,
+        output_dir: str | None = None,
+        partition_prefix: str | None = None,
+        **kwargs,
     ) -> tuple[str, str]:
         """
         Partition a disk-based index for improved performance.
@@ -94,6 +98,7 @@ class GraphPartitioner:
         Args:
             index_prefix_path: Path to the index prefix (e.g., "/path/to/index")
             output_dir: Output directory for results (defaults to parent of index_prefix_path)
+            partition_prefix: Prefix for output files (defaults to basename of index_prefix_path)
             **kwargs: Additional parameters for graph partitioning:
                 - gp_times: Number of LDG partition iterations (default: 10)
                 - lock_nums: Number of lock nodes (default: 10)
@@ -125,6 +130,10 @@ class GraphPartitioner:
 
         # Create output directory if it doesn't exist
         Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        # Determine partition prefix
+        if partition_prefix is None:
+            partition_prefix = Path(index_prefix_path).name
 
         # Get executable paths
         partitioner_path = self._get_executable_path("partitioner")
@@ -216,8 +225,8 @@ class GraphPartitioner:
                     )
 
                 # Copy results to output directory
-                disk_graph_path = Path(output_dir) / "_disk_graph.index"
-                partition_bin_path = Path(output_dir) / "_partition.bin"
+                disk_graph_path = Path(output_dir) / f"{partition_prefix}_disk_graph.index"
+                partition_bin_path = Path(output_dir) / f"{partition_prefix}_partition.bin"
 
                 shutil.copy2(part_tmp_index, disk_graph_path)
                 shutil.copy2(gp_file_path, partition_bin_path)
@@ -252,7 +261,11 @@ class GraphPartitioner:
 
 
 def partition_graph(
-    index_prefix_path: str, output_dir: str | None = None, build_type: str = "release", **kwargs
+    index_prefix_path: str,
+    output_dir: str | None = None,
+    partition_prefix: str | None = None,
+    build_type: str = "release",
+    **kwargs,
 ) -> tuple[str, str]:
     """
     Convenience function to partition a graph index.
@@ -260,6 +273,7 @@ def partition_graph(
     Args:
         index_prefix_path: Path to the index prefix
         output_dir: Output directory (defaults to parent of index_prefix_path)
+        partition_prefix: Prefix for output files (defaults to basename of index_prefix_path)
         build_type: Build type for executables ("debug" or "release")
         **kwargs: Additional parameters for graph partitioning
 
@@ -267,7 +281,7 @@ def partition_graph(
         Tuple of (disk_graph_index_path, partition_bin_path)
     """
     partitioner = GraphPartitioner(build_type=build_type)
-    return partitioner.partition_graph(index_prefix_path, output_dir, **kwargs)
+    return partitioner.partition_graph(index_prefix_path, output_dir, partition_prefix, **kwargs)
 
 
 # Example usage:
