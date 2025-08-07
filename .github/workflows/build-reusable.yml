@@ -213,7 +213,7 @@ jobs:
           FIND_LINKS="$FIND_LINKS --find-links packages/leann-backend-hnsw/dist --find-links packages/leann-backend-diskann/dist"
 
           uv pip install leann-core leann leann-backend-hnsw leann-backend-diskann \
-            $FIND_LINKS --force-reinstall --no-index
+            $FIND_LINKS --force-reinstall
 
           # Install test dependencies using extras
           uv pip install -e ".[test]"
