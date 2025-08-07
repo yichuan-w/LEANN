@@ -433,7 +433,7 @@ leann --help
 **To make it globally available:**
 ```bash
 # Install the LEANN CLI globally using uv tool
-uv tool install leann
+uv tool install leann-core
 
 # Now you can use leann from anywhere without activating venv
 leann --help
