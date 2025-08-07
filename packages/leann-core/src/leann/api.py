@@ -572,8 +572,9 @@ class LeannSearcher:
         enriched_results = []
         if "labels" in results and "distances" in results:
             logger.info(f"  Processing {len(results['labels'][0])} passage IDs:")
+            # Python 3.9 does not support zip(strict=...); lengths are expected to match
             for i, (string_id, dist) in enumerate(
-                zip(results["labels"][0], results["distances"][0], strict=False)
+                zip(results["labels"][0], results["distances"][0])
             ):
                 try:
                     passage_data = self.passage_manager.get_passage(string_id)
