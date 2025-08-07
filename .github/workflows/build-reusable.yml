@@ -135,9 +135,8 @@ jobs:
             # Use system clang instead of homebrew LLVM for better compatibility
             export CC=clang
             export CXX=clang++
-            # Consider broader compatibility while keeping LAPACK availability
-            # macOS 12 (Monterey) is still widely used and maintained by Apple
-            export MACOSX_DEPLOYMENT_TARGET=12.0
+            # sgesdd_ is only available on macOS 13.3+
+            export MACOSX_DEPLOYMENT_TARGET=13.3
             uv build --wheel --python python
           else
             uv build --wheel --python python
