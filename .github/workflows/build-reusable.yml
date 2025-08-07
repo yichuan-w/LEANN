@@ -211,13 +211,25 @@ jobs:
           source .venv/bin/activate || source .venv/Scripts/activate
 
           # Install the built wheels directly to ensure we use locally built packages
-          # Use find-links to let uv select the correct wheel for current Python version
           if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            uv pip install leann-core --find-links packages/leann-core/dist --force-reinstall --no-index
-            uv pip install leann --find-links packages/leann/dist --force-reinstall --no-index
+            # On Ubuntu, we have all packages built locally
+            FIND_LINKS="--find-links packages/leann-core/dist --find-links packages/leann/dist"
+            FIND_LINKS="$FIND_LINKS --find-links packages/leann-backend-hnsw/dist --find-links packages/leann-backend-diskann/dist"
+
+            # Install everything from local builds only
+            uv pip install leann-core leann leann-backend-hnsw leann-backend-diskann \
+              $FIND_LINKS --force-reinstall --no-index
+          else
+            # On macOS, core packages come from PyPI, backends from local builds
+            # First install core packages from PyPI
+            uv pip install leann-core==0.2.1 leann==0.2.1 --force-reinstall
+
+            # Then install backends from local builds, prefer local but allow deps from PyPI
+            uv pip install leann-backend-hnsw leann-backend-diskann \
+              --find-links packages/leann-backend-hnsw/dist \
+              --find-links packages/leann-backend-diskann/dist \
+              --force-reinstall
           fi
-          uv pip install leann-backend-hnsw --find-links packages/leann-backend-hnsw/dist --force-reinstall --no-index
-          uv pip install leann-backend-diskann --find-links packages/leann-backend-diskann/dist --force-reinstall --no-index
 
           # Install test dependencies using extras
           uv pip install -e ".[test]"
