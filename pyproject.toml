@@ -52,7 +52,7 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-xdist>=3.0",  # For parallel test execution
     "black>=23.0",
-    "ruff>=0.1.0",
+    "ruff==0.12.7",  # Fixed version to ensure consistent formatting across all environments
     "matplotlib",
     "huggingface-hub>=0.20.0",
     "pre-commit>=3.5.0",

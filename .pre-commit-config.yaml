@@ -10,7 +10,7 @@ repos:
       - id: debug-statements
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.7
+    rev: v0.12.7  # Fixed version to match pyproject.toml
     hooks:
       - id: ruff
       - id: ruff-format
