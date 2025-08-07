@@ -524,12 +524,16 @@ Options:
 - **Dynamic batching:** Efficiently batch embedding computations for GPU utilization
 - **Two-level search:** Smart graph traversal that prioritizes promising nodes
 
-**Backends:** HNSW (default) for most use cases, with optional DiskANN support for billion-scale datasets.
+**Backends:**
+- **HNSW** (default): Ideal for most datasets with maximum storage savings through full recomputation
+- **DiskANN**: Advanced option with superior search performance, using PQ-based graph traversal with real-time reranking for the best speed-accuracy trade-off
 
 ## Benchmarks
 
+**[DiskANN vs HNSW Performance Comparison →](benchmarks/diskann_vs_hnsw_speed_comparison.py)** - Compare search performance between both backends
 
-**[Simple Example: Compare LEANN vs FAISS →](benchmarks/compare_faiss_vs_leann.py)**
+**[Simple Example: Compare LEANN vs FAISS →](benchmarks/compare_faiss_vs_leann.py)** - See storage savings in action
+
 ### 📊 Storage Comparison
 
 | System | DPR (2.1M) | Wiki (60M) | Chat (400K) | Email (780K) | Browser (38K) |
