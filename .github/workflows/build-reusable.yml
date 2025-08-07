@@ -164,10 +164,15 @@ jobs:
           fi
           cd ../..
 
-          # Repair DiskANN wheel
+          # Repair DiskANN wheel - use show first to debug
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
-            auditwheel repair dist/*.whl -w dist_repaired
+            echo "Checking DiskANN wheel contents before repair:"
+            unzip -l dist/*.whl | grep -E "\.so|\.pyd|_diskannpy" || echo "No .so files found"
+            auditwheel show dist/*.whl || echo "auditwheel show failed"
+            auditwheel repair dist/*.whl -w dist_repaired --plat linux_x86_64
+            echo "Checking DiskANN wheel contents after repair:"
+            unzip -l dist_repaired/*.whl | grep -E "\.so|\.pyd|_diskannpy" || echo "No .so files found after repair"
             rm -rf dist
             mv dist_repaired dist
           fi
@@ -216,6 +221,12 @@ jobs:
 
           # Install test dependencies using extras
           uv pip install -e ".[test]"
+
+          # Debug: Check if _diskannpy module is installed correctly
+          echo "Checking installed DiskANN module structure:"
+          python -c "import leann_backend_diskann; print('leann_backend_diskann location:', leann_backend_diskann.__file__)" || echo "Failed to import leann_backend_diskann"
+          python -c "from leann_backend_diskann import _diskannpy; print('_diskannpy imported successfully')" || echo "Failed to import _diskannpy"
+          ls -la $(python -c "import leann_backend_diskann; import os; print(os.path.dirname(leann_backend_diskann.__file__))" 2>/dev/null) 2>/dev/null || echo "Failed to list module directory"
 
       - name: Run tests with pytest
         env:
