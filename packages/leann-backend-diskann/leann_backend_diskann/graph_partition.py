@@ -263,8 +263,8 @@ class GraphPartitioner:
 
 def partition_graph(
     index_prefix_path: str,
-    output_dir: str | None = None,
-    partition_prefix: str | None = None,
+    output_dir: Optional[str] = None,
+    partition_prefix: Optional[str] = None,
     build_type: str = "release",
     **kwargs,
 ) -> tuple[str, str]:
