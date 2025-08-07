@@ -116,7 +116,7 @@ class SearchResult:
 
 class PassageManager:
     def __init__(
-        self, passage_sources: list[dict[str, Any]], metadata_file_path: str | None = None
+        self, passage_sources: list[dict[str, Any]], metadata_file_path: Optional[str] = None
     ):
         self.offset_maps = {}
         self.passage_files = {}
@@ -180,7 +180,7 @@ class LeannBuilder:
         **backend_kwargs,
     ):
         self.backend_name = backend_name
-        backend_factory: LeannBackendFactoryInterface | None = BACKEND_REGISTRY.get(backend_name)
+        backend_factory: Optional[LeannBackendFactoryInterface] = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found or not registered.")
         self.backend_factory = backend_factory
@@ -260,7 +260,7 @@ class LeannBuilder:
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
-    def add_text(self, text: str, metadata: dict[str, Any] | None = None):
+    def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
         passage_id = metadata.get("id", str(len(self.chunks)))
@@ -611,7 +611,7 @@ class LeannChat:
     def __init__(
         self,
         index_path: str,
-        llm_config: dict[str, Any] | None = None,
+        llm_config: Optional[dict[str, Any]] = None,
         enable_warmup: bool = False,
         **kwargs,
     ):
@@ -627,7 +627,7 @@ class LeannChat:
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        llm_kwargs: dict[str, Any] | None = None,
+        llm_kwargs: Optional[dict[str, Any]] = None,
         expected_zmq_port: int = 5557,
         **search_kwargs,
     ):

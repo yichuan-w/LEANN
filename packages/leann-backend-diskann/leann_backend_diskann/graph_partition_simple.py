@@ -10,10 +10,11 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 
 def partition_graph_simple(
-    index_prefix_path: str, output_dir: str | None = None, **kwargs
+    index_prefix_path: str, output_dir: Optional[str] = None, **kwargs
 ) -> tuple[str, str]:
     """
     Simple function to partition a graph index.

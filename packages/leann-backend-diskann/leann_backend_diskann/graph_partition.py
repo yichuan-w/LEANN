@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 
 class GraphPartitioner:
@@ -88,8 +89,8 @@ class GraphPartitioner:
     def partition_graph(
         self,
         index_prefix_path: str,
-        output_dir: str | None = None,
-        partition_prefix: str | None = None,
+        output_dir: Optional[str] = None,
+        partition_prefix: Optional[str] = None,
         **kwargs,
     ) -> tuple[str, str]:
         """
