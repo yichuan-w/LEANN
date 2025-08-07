@@ -53,9 +53,9 @@ def test_readme_basic_example(backend_name):
         # Verify search results
         assert len(results) > 0
         assert isinstance(results[0], SearchResult)
-        assert results[0].score != float(
-            "-inf"
-        ), f"should return valid scores, got {results[0].score}"
+        assert results[0].score != float("-inf"), (
+            f"should return valid scores, got {results[0].score}"
+        )
         # The second text about banana-crocodile should be more relevant
         assert "banana" in results[0].text or "crocodile" in results[0].text
 

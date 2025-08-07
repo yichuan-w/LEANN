@@ -71,9 +71,9 @@ def test_diskann_without_partition():
 
         for partition_file in partition_files:
             file_path = index_dir / partition_file
-            assert (
-                not file_path.exists()
-            ), f"Partition file {partition_file} should not exist in non-partition mode"
+            assert not file_path.exists(), (
+                f"Partition file {partition_file} should not exist in non-partition mode"
+            )
 
         # Test search functionality
         searcher = LeannSearcher(index_path)
@@ -137,9 +137,9 @@ def test_diskann_with_partition():
 
         for large_file in large_files:
             file_path = index_dir / large_file
-            assert (
-                not file_path.exists()
-            ), f"Large file {large_file} should have been deleted for storage saving"
+            assert not file_path.exists(), (
+                f"Large file {large_file} should have been deleted for storage saving"
+            )
 
         # Verify required auxiliary files for partition mode exist
         required_files = [
@@ -149,9 +149,9 @@ def test_diskann_with_partition():
 
         for req_file in required_files:
             file_path = index_dir / req_file
-            assert (
-                file_path.exists()
-            ), f"Required auxiliary file {req_file} missing for partition mode"
+            assert file_path.exists(), (
+                f"Required auxiliary file {req_file} missing for partition mode"
+            )
 
 
 @pytest.mark.skipif(
@@ -203,21 +203,21 @@ def test_diskann_partition_search_functionality():
 
             # Verify search results
             assert len(results) == top_k, f"Expected {top_k} results for query '{query}'"
-            assert all(
-                result.score is not None for result in results
-            ), "All results should have scores"
-            assert all(
-                result.score != float("-inf") for result in results
-            ), "No result should have -inf score"
-            assert all(
-                result.text is not None for result in results
-            ), "All results should have text"
+            assert all(result.score is not None for result in results), (
+                "All results should have scores"
+            )
+            assert all(result.score != float("-inf") for result in results), (
+                "No result should have -inf score"
+            )
+            assert all(result.text is not None for result in results), (
+                "All results should have text"
+            )
 
             # Scores should be in descending order (higher similarity first)
             scores = [result.score for result in results]
-            assert scores == sorted(
-                scores, reverse=True
-            ), "Results should be sorted by score descending"
+            assert scores == sorted(scores, reverse=True), (
+                "Results should be sorted by score descending"
+            )
 
 
 @pytest.mark.skipif(
@@ -286,9 +286,9 @@ def test_diskann_medoid_and_norm_files():
 
         # Verify that scores are not -inf (which indicates norm file was loaded correctly)
         assert len(results) > 0
-        assert all(
-            result.score != float("-inf") for result in results
-        ), "Scores should not be -inf when norm file is correct"
+        assert all(result.score != float("-inf") for result in results), (
+            "Scores should not be -inf when norm file is correct"
+        )
 
 
 @pytest.mark.skipif(
