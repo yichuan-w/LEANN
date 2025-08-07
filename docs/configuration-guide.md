@@ -97,6 +97,7 @@ For immediate testing without local model downloads:
 - ✅ **Faster search latency** (typically 2-8x speedup)
 - ✅ **Better scaling** for large datasets
 - ✅ **Smart storage management** with automatic partitioning
+- ✅ **Better graph locality** with `--ldg-times` parameter for SSD optimization
 - ⚠️ **Slightly larger index size** due to PQ tables and graph metadata
 
 ```bash
@@ -279,3 +280,4 @@ LEANN's recomputation feature provides exact distance calculations but can be di
 - [Lessons Learned Developing LEANN](https://yichuan-w.github.io/blog/lessons_learned_in_dev_leann/)
 - [LEANN Technical Paper](https://arxiv.org/abs/2506.08276)
 - [DiskANN Original Paper](https://papers.nips.cc/paper/2019/file/09853c7fb1d3f8ee67a61b6bf4a7f8e6-Paper.pdf)
+- [SSD-based Graph Partitioning](https://github.com/SonglinLife/SSD_BASED_PLAN)

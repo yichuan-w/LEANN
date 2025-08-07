@@ -18,7 +18,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 **Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)**, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
-> **🚀 NEW: Claude Code Integration!** LEANN now provides native MCP integration for Claude Code users. Index your codebase and get intelligent code assistance directly in Claude Code. [Setup Guide →](packages/leann-mcp/README.md)
+> **🚀 Claude Code Integration!** LEANN now provides native MCP integration for Claude Code users. Index your codebase and get intelligent code assistance directly in Claude Code. [Setup Guide →](packages/leann-mcp/README.md)
 
 
 
