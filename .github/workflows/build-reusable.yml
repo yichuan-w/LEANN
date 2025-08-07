@@ -111,12 +111,10 @@ jobs:
 
       - name: Build packages
         run: |
-          # Build core (platform independent)
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            cd packages/leann-core
-            uv build
-            cd ../..
-          fi
+          # Build core (platform independent) on all platforms for consistency
+          cd packages/leann-core
+          uv build
+          cd ../..
 
           # Build HNSW backend
           cd packages/leann-backend-hnsw
@@ -137,20 +135,19 @@ jobs:
             # Use system clang instead of homebrew LLVM for better compatibility
             export CC=clang
             export CXX=clang++
-            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
-            export MACOSX_DEPLOYMENT_TARGET=13.3
+            # Consider broader compatibility while keeping LAPACK availability
+            # macOS 12 (Monterey) is still widely used and maintained by Apple
+            export MACOSX_DEPLOYMENT_TARGET=12.0
             uv build --wheel --python python
           else
             uv build --wheel --python python
           fi
           cd ../..
 
-          # Build meta package (platform independent)
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            cd packages/leann
-            uv build
-            cd ../..
-          fi
+          # Build meta package (platform independent) on all platforms
+          cd packages/leann
+          uv build
+          cd ../..
 
       - name: Repair wheels (Linux)
         if: runner.os == 'Linux'
@@ -211,25 +208,12 @@ jobs:
           source .venv/bin/activate || source .venv/Scripts/activate
 
           # Install the built wheels directly to ensure we use locally built packages
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            # On Ubuntu, we have all packages built locally
-            FIND_LINKS="--find-links packages/leann-core/dist --find-links packages/leann/dist"
-            FIND_LINKS="$FIND_LINKS --find-links packages/leann-backend-hnsw/dist --find-links packages/leann-backend-diskann/dist"
+          # Use only locally built wheels on all platforms for full consistency
+          FIND_LINKS="--find-links packages/leann-core/dist --find-links packages/leann/dist"
+          FIND_LINKS="$FIND_LINKS --find-links packages/leann-backend-hnsw/dist --find-links packages/leann-backend-diskann/dist"
 
-            # Install everything from local builds only
-            uv pip install leann-core leann leann-backend-hnsw leann-backend-diskann \
-              $FIND_LINKS --force-reinstall --no-index
-          else
-            # On macOS, core packages come from PyPI, backends from local builds
-            # First install core packages from PyPI
-            uv pip install leann-core==0.2.1 leann==0.2.1 --force-reinstall
-
-            # Then install backends from local builds, prefer local but allow deps from PyPI
-            uv pip install leann-backend-hnsw leann-backend-diskann \
-              --find-links packages/leann-backend-hnsw/dist \
-              --find-links packages/leann-backend-diskann/dist \
-              --force-reinstall
-          fi
+          uv pip install leann-core leann leann-backend-hnsw leann-backend-diskann \
+            $FIND_LINKS --force-reinstall --no-index
 
           # Install test dependencies using extras
           uv pip install -e ".[test]"
