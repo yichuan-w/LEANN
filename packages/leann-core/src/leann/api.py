@@ -10,7 +10,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import numpy as np
 
@@ -33,7 +33,7 @@ def compute_embeddings(
     model_name: str,
     mode: str = "sentence-transformers",
     use_server: bool = True,
-    port: int | None = None,
+    port: Optional[int] = None,
     is_build=False,
 ) -> np.ndarray:
     """
@@ -175,7 +175,7 @@ class LeannBuilder:
         self,
         backend_name: str,
         embedding_model: str = "facebook/contriever",
-        dimensions: int | None = None,
+        dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
         **backend_kwargs,
     ):

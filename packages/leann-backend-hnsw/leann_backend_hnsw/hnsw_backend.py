@@ -2,7 +2,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import numpy as np
 from leann.interface import (
@@ -152,7 +152,7 @@ class HNSWSearcher(BaseSearcher):
         self,
         query: np.ndarray,
         top_k: int,
-        zmq_port: int | None = None,
+        zmq_port: Optional[int] = None,
         complexity: int = 64,
         beam_width: int = 1,
         prune_ratio: float = 0.0,
