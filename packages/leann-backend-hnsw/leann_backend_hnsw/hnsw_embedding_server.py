@@ -81,19 +81,8 @@ def create_hnsw_embedding_server(
     with open(passages_file) as f:
         meta = json.load(f)
 
-    # Convert relative paths to absolute paths based on metadata file location
-    metadata_dir = Path(passages_file).parent.parent  # Go up one level from the metadata file
-    passage_sources = []
-    for source in meta["passage_sources"]:
-        source_copy = source.copy()
-        # Convert relative paths to absolute paths
-        if not Path(source_copy["path"]).is_absolute():
-            source_copy["path"] = str(metadata_dir / source_copy["path"])
-        if not Path(source_copy["index_path"]).is_absolute():
-            source_copy["index_path"] = str(metadata_dir / source_copy["index_path"])
-        passage_sources.append(source_copy)
-
-    passages = PassageManager(passage_sources)
+    # Let PassageManager handle path resolution uniformly
+    passages = PassageManager(meta["passage_sources"], metadata_file_path=passages_file)
     logger.info(
         f"Loaded PassageManager with {len(passages.global_offset_map)} passages from metadata"
     )

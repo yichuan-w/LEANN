@@ -115,7 +115,9 @@ class SearchResult:
 
 
 class PassageManager:
-    def __init__(self, passage_sources: list[dict[str, Any]]):
+    def __init__(
+        self, passage_sources: list[dict[str, Any]], metadata_file_path: str | None = None
+    ):
         self.offset_maps = {}
         self.passage_files = {}
         self.global_offset_map = {}  # Combined map for fast lookup
@@ -125,10 +127,17 @@ class PassageManager:
             passage_file = source["path"]
             index_file = source["index_path"]  # .idx file
 
-            # Fix path resolution for Colab and other environments
+            # Fix path resolution - relative paths should be relative to metadata file directory
             if not Path(index_file).is_absolute():
-                # If relative path, try to resolve it properly
-                index_file = str(Path(index_file).resolve())
+                if metadata_file_path:
+                    # Resolve relative to metadata file directory
+                    metadata_dir = Path(metadata_file_path).parent
+                    index_file = str((metadata_dir / index_file).resolve())
+                    passage_file = str((metadata_dir / passage_file).resolve())
+                else:
+                    # Fallback to current directory resolution (legacy behavior)
+                    index_file = str(Path(index_file).resolve())
+                    passage_file = str(Path(passage_file).resolve())
 
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
@@ -314,8 +323,8 @@ class LeannBuilder:
             "passage_sources": [
                 {
                     "type": "jsonl",
-                    "path": str(passages_file),
-                    "index_path": str(offset_file),
+                    "path": passages_file.name,  # Use relative path (just filename)
+                    "index_path": offset_file.name,  # Use relative path (just filename)
                 }
             ],
         }
@@ -430,8 +439,8 @@ class LeannBuilder:
             "passage_sources": [
                 {
                     "type": "jsonl",
-                    "path": str(passages_file),
-                    "index_path": str(offset_file),
+                    "path": passages_file.name,  # Use relative path (just filename)
+                    "index_path": offset_file.name,  # Use relative path (just filename)
                 }
             ],
             "built_from_precomputed_embeddings": True,
@@ -473,7 +482,9 @@ class LeannSearcher:
         self.embedding_model = self.meta_data["embedding_model"]
         # Support both old and new format
         self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
-        self.passage_manager = PassageManager(self.meta_data.get("passage_sources", []))
+        self.passage_manager = PassageManager(
+            self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
+        )
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
@@ -546,7 +557,6 @@ class LeannSearcher:
             zmq_port=zmq_port,
             **kwargs,
         )
-        time.time() - start_time
         # logger.info(f"  Search time: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
