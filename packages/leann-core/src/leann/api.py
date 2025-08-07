@@ -132,12 +132,21 @@ class PassageManager:
                 if metadata_file_path:
                     # Resolve relative to metadata file directory
                     metadata_dir = Path(metadata_file_path).parent
+                    logger.debug(
+                        f"PassageManager: Resolving relative paths from metadata_dir: {metadata_dir}"
+                    )
                     index_file = str((metadata_dir / index_file).resolve())
                     passage_file = str((metadata_dir / passage_file).resolve())
+                    logger.debug(f"PassageManager: Resolved index_file: {index_file}")
                 else:
                     # Fallback to current directory resolution (legacy behavior)
+                    logger.warning(
+                        "PassageManager: No metadata_file_path provided, using fallback resolution from cwd"
+                    )
+                    logger.debug(f"PassageManager: Current working directory: {Path.cwd()}")
                     index_file = str(Path(index_file).resolve())
                     passage_file = str(Path(passage_file).resolve())
+                    logger.debug(f"PassageManager: Fallback resolved index_file: {index_file}")
 
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")

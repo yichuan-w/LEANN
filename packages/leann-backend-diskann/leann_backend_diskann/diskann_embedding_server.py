@@ -80,6 +80,7 @@ def create_diskann_embedding_server(
     with open(passages_file) as f:
         meta = json.load(f)
 
+    logger.info(f"Loading PassageManager with metadata_file_path: {passages_file}")
     passages = PassageManager(meta["passage_sources"], metadata_file_path=passages_file)
     logger.info(
         f"Loaded PassageManager with {len(passages.global_offset_map)} passages from metadata"
