@@ -467,11 +467,8 @@ leann --help
 ### Usage Examples
 
 ```bash
-# Build an index from current directory (default)
-leann build my-docs
-
-# Or from specific directory
-leann build my-docs --docs ./documents
+# build from a specific directory, and my_docs is the index name
+leann build my-docs --docs ./your_documents
 
 # Search your documents
 leann search my-docs "machine learning concepts"
