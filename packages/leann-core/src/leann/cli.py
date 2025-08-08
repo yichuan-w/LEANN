@@ -114,7 +114,12 @@ Examples:
         search_parser.add_argument("--complexity", type=int, default=64)
         search_parser.add_argument("--beam-width", type=int, default=1)
         search_parser.add_argument("--prune-ratio", type=float, default=0.0)
-        search_parser.add_argument("--recompute-embeddings", action="store_true")
+        search_parser.add_argument(
+            "--recompute-embeddings",
+            action="store_true",
+            default=True,
+            help="Recompute embeddings (default: True)",
+        )
         search_parser.add_argument(
             "--pruning-strategy",
             choices=["global", "local", "proportional"],
@@ -137,7 +142,12 @@ Examples:
         ask_parser.add_argument("--complexity", type=int, default=32)
         ask_parser.add_argument("--beam-width", type=int, default=1)
         ask_parser.add_argument("--prune-ratio", type=float, default=0.0)
-        ask_parser.add_argument("--recompute-embeddings", action="store_true")
+        ask_parser.add_argument(
+            "--recompute-embeddings",
+            action="store_true",
+            default=True,
+            help="Recompute embeddings (default: True)",
+        )
         ask_parser.add_argument(
             "--pruning-strategy",
             choices=["global", "local", "proportional"],
