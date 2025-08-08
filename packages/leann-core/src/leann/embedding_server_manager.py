@@ -305,15 +305,23 @@ class EmbeddingServerManager:
         project_root = Path(__file__).parent.parent.parent.parent.parent
         logger.info(f"Command: {' '.join(command)}")
 
-        # Let server output go directly to console
-        # The server will respect LEANN_LOG_LEVEL environment variable
-        # IMPORTANT: Use a new session so we can manage the whole process group reliably,
-        # and detach stdio to avoid lingering output keeping CI steps noisy/alive.
+        # In CI environment, redirect output to avoid buffer deadlock
+        # Embedding servers use many print statements that can fill buffers
+        is_ci = os.environ.get("CI") == "true"
+        if is_ci:
+            stdout_target = subprocess.DEVNULL
+            stderr_target = subprocess.DEVNULL
+            logger.info("CI environment detected, redirecting embedding server output to DEVNULL")
+        else:
+            stdout_target = None  # Direct to console for visible logs
+            stderr_target = None  # Direct to console for visible logs
+
+        # IMPORTANT: Use a new session so we can manage the whole process group reliably
         self.server_process = subprocess.Popen(
             command,
             cwd=project_root,
-            stdout=None,  # Direct to console for visible logs
-            stderr=None,  # Direct to console for visible logs
+            stdout=stdout_target,
+            stderr=stderr_target,
             start_new_session=True,
         )
         self.server_port = port
