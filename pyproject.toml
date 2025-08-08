@@ -48,9 +48,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "pytest-xdist>=3.0",  # For parallel test execution
+    "pytest>=8.3.0",  # Minimum version for Python 3.13 support
+"pytest-cov>=5.0",
+"pytest-xdist>=3.5",  # For parallel test execution
     "black>=23.0",
     "ruff==0.12.7",  # Fixed version to ensure consistent formatting across all environments
     "matplotlib",
@@ -59,8 +59,9 @@ dev = [
 ]
 
 test = [
-    "pytest>=7.0",
-    "pytest-timeout>=2.0",
+    "pytest>=8.3.0",  # Minimum version for Python 3.13 support
+"pytest-timeout>=2.3",
+"pytest-anyio>=4.0",  # For async test support with Python 3.13
     "llama-index-core>=0.12.0",
     "llama-index-readers-file>=0.4.0",
     "python-dotenv>=1.0.0",
