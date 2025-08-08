@@ -7,7 +7,7 @@ Intelligent code assistance using LEANN's vector search directly in Claude Code.
 First, install LEANN CLI globally:
 
 ```bash
-uv tool install leann
+uv tool install leann-core
 ```
 
 This makes the `leann` command available system-wide, which `leann_mcp` requires.

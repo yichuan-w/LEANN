@@ -16,9 +16,7 @@ LEANN is an innovative vector database that democratizes personal AI. Transform 
 
 LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration Fig →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
-**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)**, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
-
-> **🚀 NEW: Claude Code Integration!** LEANN now provides native MCP integration for Claude Code users. Index your codebase and get intelligent code assistance directly in Claude Code. [Setup Guide →](packages/leann-mcp/README.md)
+**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can search your **[codebase](#-claude-code-integration-transform-your-development-workflow)**, **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)**, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
 
 
@@ -212,6 +210,30 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 ```
 
 </details>
+
+### 🚀 Claude Code Integration: Transform Your Development Workflow!
+
+**The future of code assistance is here.** Transform your development workflow with LEANN's native MCP integration for Claude Code. Index your entire codebase and get intelligent code assistance directly in your IDE.
+
+<p align="center">
+  <img src="https://img.shields.io/badge/MCP-Native%20Integration-blue?style=flat-square" alt="MCP Integration">
+  <a href="https://github.com/yichuan-w/LEANN/tree/feature/graph-partition-support?tab=readme-ov-file#rag-on-everything"><img src="https://img.shields.io/twitter/url?url=https%3A%2F%2Fgithub.com%2Fyichuan-w%2FLEANN&style=social" alt="Twitter"></a>
+</p>
+
+**Key features:**
+- 🔍 **Semantic code search** across your entire project
+- 📚 **Context-aware assistance** for debugging and development
+- 🚀 **Zero-config setup** with automatic language detection
+- 🔒 **Complete privacy** - your code never leaves your machine
+
+```bash
+# Install LEANN globally for MCP integration
+uv tool install leann-core
+
+# Setup is automatic - just start using Claude Code!
+```
+
+**Ready to supercharge your coding?** [Complete Setup Guide →](packages/leann-mcp/README.md)
 
 ### 📄 Personal Data Manager: Process Any Documents (`.pdf`, `.txt`, `.md`)!
 
@@ -415,7 +437,6 @@ Once the index is built, you can ask questions like:
 - "我想买魔术师约翰逊的球衣，给我一些对应聊天记录?" (Chinese: Show me chat records about buying Magic Johnson's jersey)
 
 </details>
-
 
 
 ## 🖥️ Command Line Interface
