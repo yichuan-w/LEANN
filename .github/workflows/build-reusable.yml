@@ -233,11 +233,21 @@ jobs:
             echo "Pytest version:"
             python -m pytest --version
 
-            echo "Testing basic pytest collection with timeout:"
-            timeout --signal=INT 10 python -m pytest --collect-only tests/test_ci_minimal.py -v || echo "Collection timed out or failed"
+            echo "Testing basic pytest collection:"
+            if [[ "$RUNNER_OS" == "Linux" ]]; then
+              timeout --signal=INT 10 python -m pytest --collect-only tests/test_ci_minimal.py -v || echo "Collection timed out or failed"
+            else
+              # No timeout on macOS/Windows
+              python -m pytest --collect-only tests/test_ci_minimal.py -v || echo "Collection failed"
+            fi
 
-            echo "Testing single simple test with timeout:"
-            timeout --signal=INT 10 python -m pytest tests/test_ci_minimal.py::test_package_imports --full-trace -v || echo "Simple test timed out or failed"
+            echo "Testing single simple test:"
+            if [[ "$RUNNER_OS" == "Linux" ]]; then
+              timeout --signal=INT 10 python -m pytest tests/test_ci_minimal.py::test_package_imports --full-trace -v || echo "Simple test timed out or failed"
+            else
+              # No timeout on macOS/Windows
+              python -m pytest tests/test_ci_minimal.py::test_package_imports --full-trace -v || echo "Simple test failed"
+            fi
           fi
 
       - name: Run tests with pytest
@@ -254,9 +264,9 @@ jobs:
           source .venv/bin/activate || source .venv/Scripts/activate
 
           # Run all tests with timeout to debug Python 3.13 hanging issue
-          # Using timeout with INT signal to get full traceback when hanging
-          if [[ "${{ matrix.python }}" == "3.13" ]]; then
-            echo "Running tests with timeout for Python 3.13 debugging..."
+          # Using timeout with INT signal to get full traceback when hanging (Linux only)
+          if [[ "${{ matrix.python }}" == "3.13" ]] && [[ "$RUNNER_OS" == "Linux" ]]; then
+            echo "Running tests with timeout for Python 3.13 debugging (Linux)..."
             timeout --signal=INT 120 pytest tests/ --full-trace -v || {
               EXIT_CODE=$?
               if [ $EXIT_CODE -eq 124 ]; then
@@ -265,6 +275,10 @@ jobs:
               fi
               exit $EXIT_CODE
             }
+          elif [[ "${{ matrix.python }}" == "3.13" ]]; then
+            # For macOS/Windows, run with verbose output but no timeout
+            echo "Running tests for Python 3.13 (no timeout on $RUNNER_OS)..."
+            pytest tests/ --full-trace -v
           else
             # Normal test run for other Python versions
             pytest tests/
