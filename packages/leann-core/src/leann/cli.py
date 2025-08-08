@@ -74,10 +74,11 @@ class LeannCLI:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
-  leann build my-docs --docs ./documents    # Build index named my-docs
-  leann search my-docs "query"             # Search in my-docs index
-  leann ask my-docs "question"             # Ask my-docs index
-  leann list                              # List all stored indexes
+  leann build my-docs --docs ./documents                    # Build index named my-docs
+  leann build my-ppts --docs ./ --file-types .pptx,.pdf    # Index only PowerPoint and PDF files
+  leann search my-docs "query"                             # Search in my-docs index
+  leann ask my-docs "question"                             # Ask my-docs index
+  leann list                                              # List all stored indexes
             """,
         )
 
@@ -99,6 +100,11 @@ Examples:
         build_parser.add_argument("--num-threads", type=int, default=1)
         build_parser.add_argument("--compact", action="store_true", default=True)
         build_parser.add_argument("--recompute", action="store_true", default=True)
+        build_parser.add_argument(
+            "--file-types",
+            type=str,
+            help="Comma-separated list of file extensions to include (e.g., '.txt,.pdf,.pptx'). If not specified, uses default supported types.",
+        )
 
         # Search command
         search_parser = subparsers.add_parser("search", help="Search documents")
@@ -254,8 +260,10 @@ Examples:
                     print(f'  leann search {example_name} "your query"')
                     print(f"  leann ask {example_name} --interactive")
 
-    def load_documents(self, docs_dir: str):
+    def load_documents(self, docs_dir: str, custom_file_types: str | None = None):
         print(f"Loading documents from {docs_dir}...")
+        if custom_file_types:
+            print(f"Using custom file types: {custom_file_types}")
 
         # Try to use better PDF parsers first
         documents = []
@@ -287,59 +295,67 @@ Examples:
                 documents.extend(default_docs)
 
         # Load other file types with default reader
-        code_extensions = [
-            # Original document types
-            ".txt",
-            ".md",
-            ".docx",
-            # Code files for Claude Code integration
-            ".py",
-            ".js",
-            ".ts",
-            ".jsx",
-            ".tsx",
-            ".java",
-            ".cpp",
-            ".c",
-            ".h",
-            ".hpp",
-            ".cs",
-            ".go",
-            ".rs",
-            ".rb",
-            ".php",
-            ".swift",
-            ".kt",
-            ".scala",
-            ".r",
-            ".sql",
-            ".sh",
-            ".bash",
-            ".zsh",
-            ".fish",
-            ".ps1",
-            ".bat",
-            # Config and markup files
-            ".json",
-            ".yaml",
-            ".yml",
-            ".xml",
-            ".toml",
-            ".ini",
-            ".cfg",
-            ".conf",
-            ".html",
-            ".css",
-            ".scss",
-            ".less",
-            ".vue",
-            ".svelte",
-            # Data science
-            ".ipynb",
-            ".R",
-            ".py",
-            ".jl",
-        ]
+        if custom_file_types:
+            # Parse custom file types from comma-separated string
+            code_extensions = [ext.strip() for ext in custom_file_types.split(",") if ext.strip()]
+            # Ensure extensions start with a dot
+            code_extensions = [ext if ext.startswith(".") else f".{ext}" for ext in code_extensions]
+        else:
+            # Use default supported file types
+            code_extensions = [
+                # Original document types
+                ".txt",
+                ".md",
+                ".docx",
+                ".pptx",
+                # Code files for Claude Code integration
+                ".py",
+                ".js",
+                ".ts",
+                ".jsx",
+                ".tsx",
+                ".java",
+                ".cpp",
+                ".c",
+                ".h",
+                ".hpp",
+                ".cs",
+                ".go",
+                ".rs",
+                ".rb",
+                ".php",
+                ".swift",
+                ".kt",
+                ".scala",
+                ".r",
+                ".sql",
+                ".sh",
+                ".bash",
+                ".zsh",
+                ".fish",
+                ".ps1",
+                ".bat",
+                # Config and markup files
+                ".json",
+                ".yaml",
+                ".yml",
+                ".xml",
+                ".toml",
+                ".ini",
+                ".cfg",
+                ".conf",
+                ".html",
+                ".css",
+                ".scss",
+                ".less",
+                ".vue",
+                ".svelte",
+                # Data science
+                ".ipynb",
+                ".R",
+                ".py",
+                ".jl",
+            ]
         other_docs = SimpleDirectoryReader(
             docs_dir,
             recursive=True,
@@ -424,7 +440,7 @@ Examples:
             print(f"Index '{index_name}' already exists. Use --force to rebuild.")
             return
 
-        all_texts = self.load_documents(docs_dir)
+        all_texts = self.load_documents(docs_dir, args.file_types)
         if not all_texts:
             print("No documents found")
             return
