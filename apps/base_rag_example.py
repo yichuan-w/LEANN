@@ -85,7 +85,7 @@ class BaseRAGExample(ABC):
             "--llm",
             type=str,
             default="openai",
-            choices=["openai", "ollama", "hf"],
+            choices=["openai", "ollama", "hf", "simulated"],
             help="LLM backend to use (default: openai)",
         )
         llm_group.add_argument(
@@ -178,6 +178,9 @@ class BaseRAGExample(ABC):
             config["host"] = args.llm_host
         elif args.llm == "hf":
             config["model"] = args.llm_model or "Qwen/Qwen2.5-1.5B-Instruct"
+        elif args.llm == "simulated":
+            # Simulated LLM doesn't need additional configuration
+            pass
 
         return config
 
