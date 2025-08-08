@@ -393,17 +393,9 @@ class EmbeddingServerManager:
                 )
                 # Don't hang indefinitely
 
-        # Clean up process resources to prevent resource tracker warnings
-        try:
-            self.server_process.wait(timeout=1)  # Give it one final chance with timeout
-        except subprocess.TimeoutExpired:
-            logger.warning(
-                f"Process {self.server_process.pid} still hanging after all kill attempts"
-            )
-            # Don't wait indefinitely - just abandon it
-        except Exception:
-            pass
-
+        # Clean up process resources without waiting
+        # The process should already be terminated/killed above
+        # Don't wait here as it can hang CI indefinitely
         self.server_process = None
 
     def _launch_server_process_colab(self, command: list, port: int) -> None:

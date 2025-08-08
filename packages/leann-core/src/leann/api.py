@@ -600,12 +600,25 @@ class LeannSearcher:
                     )
                 except KeyError:
                     RED = "\033[91m"
+                    RESET = "\033[0m"
                     logger.error(
                         f"   {RED}✗{RESET} [{i + 1:2d}] ID: '{string_id}' -> {RED}ERROR: Passage not found!{RESET}"
                     )
 
+        # Define color codes outside the loop for final message
+        GREEN = "\033[92m"
+        RESET = "\033[0m"
         logger.info(f"  {GREEN}✓ Final enriched results: {len(enriched_results)} passages{RESET}")
         return enriched_results
+
+    def cleanup(self):
+        """Explicitly cleanup embedding server resources.
+
+        This method should be called after you're done using the searcher,
+        especially in test environments or batch processing scenarios.
+        """
+        if hasattr(self.backend_impl, "embedding_server_manager"):
+            self.backend_impl.embedding_server_manager.stop_server()
 
 
 class LeannChat:
@@ -676,3 +689,12 @@ class LeannChat:
             except (KeyboardInterrupt, EOFError):
                 print("\nGoodbye!")
                 break
+
+    def cleanup(self):
+        """Explicitly cleanup embedding server resources.
+
+        This method should be called after you're done using the chat interface,
+        especially in test environments or batch processing scenarios.
+        """
+        if hasattr(self.searcher, "cleanup"):
+            self.searcher.cleanup()
