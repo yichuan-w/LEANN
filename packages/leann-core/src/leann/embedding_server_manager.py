@@ -1,6 +1,7 @@
 import atexit
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -306,11 +307,14 @@ class EmbeddingServerManager:
 
         # Let server output go directly to console
         # The server will respect LEANN_LOG_LEVEL environment variable
+        # IMPORTANT: Use a new session so we can manage the whole process group reliably,
+        # and detach stdio to avoid lingering output keeping CI steps noisy/alive.
         self.server_process = subprocess.Popen(
             command,
             cwd=project_root,
-            stdout=None,  # Direct to console
-            stderr=None,  # Direct to console
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
         self.server_port = port
         logger.info(f"Server process started with PID: {self.server_process.pid}")
@@ -352,7 +356,13 @@ class EmbeddingServerManager:
         logger.info(
             f"Terminating server process (PID: {self.server_process.pid}) for backend {self.backend_module_name}..."
         )
-        self.server_process.terminate()
+        # Try terminating the whole process group first (POSIX)
+        try:
+            pgid = os.getpgid(self.server_process.pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            # Fallback to terminating just the process
+            self.server_process.terminate()
 
         try:
             self.server_process.wait(timeout=3)
@@ -361,7 +371,11 @@ class EmbeddingServerManager:
             logger.warning(
                 f"Server process {self.server_process.pid} did not terminate gracefully within 3 seconds, killing it."
             )
-            self.server_process.kill()
+            try:
+                pgid = os.getpgid(self.server_process.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                self.server_process.kill()
             try:
                 self.server_process.wait(timeout=2)
                 logger.info(f"Server process {self.server_process.pid} killed successfully.")
