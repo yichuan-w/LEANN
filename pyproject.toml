@@ -152,7 +152,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "openai: marks tests that require OpenAI API key",
 ]
-timeout = 600
+timeout = 300  # Reduced from 600s (10min) to 300s (5min) for CI safety
 addopts = [
     "-v",
     "--tb=short",

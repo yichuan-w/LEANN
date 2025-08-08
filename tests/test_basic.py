@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from test_timeout import ci_timeout
 
 
 def test_imports():
@@ -19,6 +20,7 @@ def test_imports():
     os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
 )
 @pytest.mark.parametrize("backend_name", ["hnsw", "diskann"])
+@ci_timeout(120)  # 2 minute timeout for backend tests
 def test_backend_basic(backend_name):
     """Test basic functionality for each backend."""
     from leann.api import LeannBuilder, LeannSearcher, SearchResult
@@ -68,6 +70,7 @@ def test_backend_basic(backend_name):
 @pytest.mark.skipif(
     os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
 )
+@ci_timeout(180)  # 3 minute timeout for large index test
 def test_large_index():
     """Test with larger dataset."""
     from leann.api import LeannBuilder, LeannSearcher
