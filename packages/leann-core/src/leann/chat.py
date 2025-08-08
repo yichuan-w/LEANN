@@ -590,7 +590,7 @@ class HFChat(LLMInterface):
                 logger.info(f"Loading model {model_name}...")
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_name,
-                    torch_dtype=(torch.float16 if self.device != "cpu" else torch.float32),
+                    torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
                     device_map="auto" if self.device != "cpu" else None,
                     trust_remote_code=True,
                 )
@@ -727,14 +727,7 @@ class OpenAIChat(LLMInterface):
         thinking_budget = kwargs.get("thinking_budget")
         if thinking_budget and thinking_budget in ["low", "medium", "high"]:
             # Check if this is an o-series model (partial match for model names)
-            o_series_models = [
-                "o3",
-                "o3-mini",
-                "o4-mini",
-                "o1",
-                "o3-pro",
-                "o3-deep-research",
-            ]
+            o_series_models = ["o3", "o3-mini", "o4-mini", "o1", "o3-pro", "o3-deep-research"]
             if any(model in self.model for model in o_series_models):
                 # Use the correct OpenAI reasoning parameter format
                 params["reasoning_effort"] = thinking_budget
