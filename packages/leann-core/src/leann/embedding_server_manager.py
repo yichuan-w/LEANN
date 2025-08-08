@@ -387,7 +387,12 @@ class EmbeddingServerManager:
 
         # Clean up process resources to prevent resource tracker warnings
         try:
-            self.server_process.wait()  # Ensure process is fully cleaned up
+            self.server_process.wait(timeout=1)  # Give it one final chance with timeout
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                f"Process {self.server_process.pid} still hanging after all kill attempts"
+            )
+            # Don't wait indefinitely - just abandon it
         except Exception:
             pass
 
