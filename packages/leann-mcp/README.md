@@ -30,7 +30,7 @@ claude mcp add leann-server -- leann_mcp
 
 ```bash
 # Build an index for your project
-leann build my-project
+leann build my-project --docs ./ #change to your doc PATH
 
 # Start Claude Code
 claude
