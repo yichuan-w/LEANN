@@ -132,10 +132,13 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         import msgpack
         import zmq
 
+        context = None
+        socket = None
         try:
             context = zmq.Context()
             socket = context.socket(zmq.REQ)
             socket.setsockopt(zmq.RCVTIMEO, 30000)  # 30 second timeout
+            socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
             socket.connect(f"tcp://localhost:{zmq_port}")
 
             # Send embedding request
@@ -147,9 +150,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             response_bytes = socket.recv()
             response = msgpack.unpackb(response_bytes)
 
-            socket.close()
-            context.term()
-
             # Convert response to numpy array
             if isinstance(response, list) and len(response) > 0:
                 return np.array(response, dtype=np.float32)
@@ -158,6 +158,11 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         except Exception as e:
             raise RuntimeError(f"Failed to compute embeddings via server: {e}")
+        finally:
+            if socket:
+                socket.close(linger=0)
+            if context:
+                context.term()
 
     @abstractmethod
     def search(

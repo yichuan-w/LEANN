@@ -92,6 +92,7 @@ def create_hnsw_embedding_server(
         """ZMQ server thread"""
         context = zmq.Context()
         socket = context.socket(zmq.REP)
+        socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
         socket.bind(f"tcp://*:{zmq_port}")
         logger.info(f"HNSW ZMQ server listening on port {zmq_port}")
 

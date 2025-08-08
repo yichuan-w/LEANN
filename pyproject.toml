@@ -60,8 +60,9 @@ dev = [
 
 test = [
     "pytest>=8.3.0",  # Minimum version for Python 3.13 support
-"pytest-timeout>=2.3",
-"anyio>=4.0",  # For async test support (includes pytest plugin)
+    "pytest-timeout>=2.3",
+    "anyio>=4.0",  # For async test support (includes pytest plugin)
+    "psutil>=5.9.0",  # For process cleanup in tests
     "llama-index-core>=0.12.0",
     "llama-index-readers-file>=0.4.0",
     "python-dotenv>=1.0.0",

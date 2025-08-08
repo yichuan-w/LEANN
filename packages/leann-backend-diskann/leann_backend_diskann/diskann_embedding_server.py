@@ -100,6 +100,7 @@ def create_diskann_embedding_server(
         socket = context.socket(
             zmq.REP
         )  # REP socket for both BaseSearcher and DiskANN C++ REQ clients
+        socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
         socket.bind(f"tcp://*:{zmq_port}")
         logger.info(f"DiskANN ZMQ REP server listening on port {zmq_port}")
 
