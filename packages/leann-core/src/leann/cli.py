@@ -356,13 +356,20 @@ Examples:
                 ".py",
                 ".jl",
             ]
-        other_docs = SimpleDirectoryReader(
-            docs_dir,
-            recursive=True,
-            encoding="utf-8",
-            required_exts=code_extensions,
-        ).load_data(show_progress=True)
-        documents.extend(other_docs)
+        # Try to load other file types, but don't fail if none are found
+        try:
+            other_docs = SimpleDirectoryReader(
+                docs_dir,
+                recursive=True,
+                encoding="utf-8",
+                required_exts=code_extensions,
+            ).load_data(show_progress=True)
+            documents.extend(other_docs)
+        except ValueError as e:
+            if "No files found" in str(e):
+                print("No additional files found for other supported types.")
+            else:
+                raise e
 
         all_texts = []
 
