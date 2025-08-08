@@ -312,8 +312,8 @@ class EmbeddingServerManager:
         self.server_process = subprocess.Popen(
             command,
             cwd=project_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=None,  # Direct to console for visible logs
+            stderr=None,  # Direct to console for visible logs
             start_new_session=True,
         )
         self.server_port = port
