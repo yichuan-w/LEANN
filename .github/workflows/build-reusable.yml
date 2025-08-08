@@ -223,6 +223,23 @@ jobs:
           python -c "from leann_backend_diskann import _diskannpy; print('_diskannpy imported successfully')" || echo "Failed to import _diskannpy"
           ls -la $(python -c "import leann_backend_diskann; import os; print(os.path.dirname(leann_backend_diskann.__file__))" 2>/dev/null) 2>/dev/null || echo "Failed to list module directory"
 
+          # Extra debugging for Python 3.13
+          if [[ "${{ matrix.python }}" == "3.13" ]]; then
+            echo "=== Python 3.13 Debug Info ==="
+            echo "Python version details:"
+            python --version
+            python -c "import sys; print(f'sys.version_info: {sys.version_info}')"
+
+            echo "Pytest version:"
+            python -m pytest --version
+
+            echo "Testing basic pytest collection with timeout:"
+            timeout --signal=INT 10 python -m pytest --collect-only tests/test_ci_minimal.py -v || echo "Collection timed out or failed"
+
+            echo "Testing single simple test with timeout:"
+            timeout --signal=INT 10 python -m pytest tests/test_ci_minimal.py::test_package_imports --full-trace -v || echo "Simple test timed out or failed"
+          fi
+
       - name: Run tests with pytest
         env:
           CI: true  # Mark as CI environment to skip memory-intensive tests
@@ -236,8 +253,22 @@ jobs:
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Run all tests
-          pytest tests/
+          # Run all tests with timeout to debug Python 3.13 hanging issue
+          # Using timeout with INT signal to get full traceback when hanging
+          if [[ "${{ matrix.python }}" == "3.13" ]]; then
+            echo "Running tests with timeout for Python 3.13 debugging..."
+            timeout --signal=INT 120 pytest tests/ --full-trace -v || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 124 ]; then
+                echo "⚠️ Tests timed out after 120 seconds - likely hanging during collection"
+                echo "This is a known issue with Python 3.13 - see traceback above for details"
+              fi
+              exit $EXIT_CODE
+            }
+          else
+            # Normal test run for other Python versions
+            pytest tests/
+          fi
 
       - name: Run sanity checks (optional)
         run: |
