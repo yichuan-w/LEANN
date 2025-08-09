@@ -155,6 +155,7 @@ markers = [
     "openai: marks tests that require OpenAI API key",
 ]
 timeout = 300  # Reduced from 600s (10min) to 300s (5min) for CI safety
+timeout_method = "thread"  # Use thread method to avoid non-daemon thread issues
 addopts = [
     "-v",
     "--tb=short",

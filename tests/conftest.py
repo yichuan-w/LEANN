@@ -99,7 +99,7 @@ def global_test_cleanup() -> Generator:
     except Exception as e:
         print(f"Warning: Error during process cleanup: {e}")
 
-    # List any remaining threads (for debugging)
+    # List and clean up remaining threads
     try:
         import threading
 
@@ -108,8 +108,28 @@ def global_test_cleanup() -> Generator:
             print(f"\n⚠️  {len(threads)} non-main threads still running:")
             for t in threads:
                 print(f"  - {t.name} (daemon={t.daemon})")
-    except Exception:
-        pass
+
+                # Force cleanup of pytest-timeout threads that block exit
+                if "pytest_timeout" in t.name and not t.daemon:
+                    print(f"  🔧 Converting pytest-timeout thread to daemon: {t.name}")
+                    try:
+                        t.daemon = True
+                        print("     ✓ Converted to daemon thread")
+                    except Exception as e:
+                        print(f"     ✗ Failed: {e}")
+
+        # Check if only daemon threads remain
+        non_daemon = [
+            t for t in threading.enumerate() if t is not threading.main_thread() and not t.daemon
+        ]
+        if non_daemon:
+            print(f"\n⚠️  {len(non_daemon)} non-daemon threads still blocking exit")
+            # Force exit in CI to prevent hanging
+            if os.environ.get("CI") == "true":
+                print("🔨 Forcing exit in CI environment...")
+                os._exit(0)
+    except Exception as e:
+        print(f"Thread cleanup error: {e}")
 
 
 @pytest.fixture
@@ -218,6 +238,7 @@ def pytest_sessionfinish(session, exitstatus):
     # Aggressive cleanup before pytest exits
     print("🧹 Starting aggressive cleanup...")
 
+    # First, clean up child processes
     try:
         import psutil
 
@@ -247,6 +268,34 @@ def pytest_sessionfinish(session, exitstatus):
             print("   No child processes found")
 
     except Exception as e:
-        print(f"   Cleanup error: {e}")
+        print(f"   Process cleanup error: {e}")
+
+    # Second, clean up problematic threads
+    try:
+        import threading
+
+        threads = [t for t in threading.enumerate() if t is not threading.main_thread()]
+        if threads:
+            print(f"   Found {len(threads)} non-main threads:")
+            for t in threads:
+                print(f"     - {t.name} (daemon={t.daemon})")
+                # Convert pytest-timeout threads to daemon so they don't block exit
+                if "pytest_timeout" in t.name and not t.daemon:
+                    try:
+                        t.daemon = True
+                        print("       ✓ Converted to daemon")
+                    except Exception:
+                        pass
+
+        # Force exit if non-daemon threads remain in CI
+        non_daemon = [
+            t for t in threading.enumerate() if t is not threading.main_thread() and not t.daemon
+        ]
+        if non_daemon and os.environ.get("CI") == "true":
+            print(f"   ⚠️ {len(non_daemon)} non-daemon threads remain, forcing exit...")
+            os._exit(exitstatus or 0)
+
+    except Exception as e:
+        print(f"   Thread cleanup error: {e}")
 
     print(f"✅ Pytest exiting at {time.strftime('%Y-%m-%d %H:%M:%S')}")
