@@ -10,7 +10,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import numpy as np
 
@@ -33,7 +33,7 @@ def compute_embeddings(
     model_name: str,
     mode: str = "sentence-transformers",
     use_server: bool = True,
-    port: int | None = None,
+    port: Optional[int] = None,
     is_build=False,
 ) -> np.ndarray:
     """
@@ -87,21 +87,26 @@ def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int)
     # Connect to embedding server
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
+    socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
+    socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1s timeout on receive
+    socket.setsockopt(zmq.SNDTIMEO, 1000)  # 1s timeout on send
+    socket.setsockopt(zmq.IMMEDIATE, 1)  # Don't wait for connection
     socket.connect(f"tcp://localhost:{port}")
 
-    # Send chunks to server for embedding computation
-    request = chunks
-    socket.send(msgpack.packb(request))
+    try:
+        # Send chunks to server for embedding computation
+        request = chunks
+        socket.send(msgpack.packb(request))
 
-    # Receive embeddings from server
-    response = socket.recv()
-    embeddings_list = msgpack.unpackb(response)
+        # Receive embeddings from server
+        response = socket.recv()
+        embeddings_list = msgpack.unpackb(response)
 
-    # Convert back to numpy array
-    embeddings = np.array(embeddings_list, dtype=np.float32)
-
-    socket.close()
-    context.term()
+        # Convert back to numpy array
+        embeddings = np.array(embeddings_list, dtype=np.float32)
+    finally:
+        socket.close(linger=0)
+        context.term()
 
     return embeddings
 
@@ -115,7 +120,9 @@ class SearchResult:
 
 
 class PassageManager:
-    def __init__(self, passage_sources: list[dict[str, Any]]):
+    def __init__(
+        self, passage_sources: list[dict[str, Any]], metadata_file_path: Optional[str] = None
+    ):
         self.offset_maps = {}
         self.passage_files = {}
         self.global_offset_map = {}  # Combined map for fast lookup
@@ -125,10 +132,26 @@ class PassageManager:
             passage_file = source["path"]
             index_file = source["index_path"]  # .idx file
 
-            # Fix path resolution for Colab and other environments
+            # Fix path resolution - relative paths should be relative to metadata file directory
             if not Path(index_file).is_absolute():
-                # If relative path, try to resolve it properly
-                index_file = str(Path(index_file).resolve())
+                if metadata_file_path:
+                    # Resolve relative to metadata file directory
+                    metadata_dir = Path(metadata_file_path).parent
+                    logger.debug(
+                        f"PassageManager: Resolving relative paths from metadata_dir: {metadata_dir}"
+                    )
+                    index_file = str((metadata_dir / index_file).resolve())
+                    passage_file = str((metadata_dir / passage_file).resolve())
+                    logger.debug(f"PassageManager: Resolved index_file: {index_file}")
+                else:
+                    # Fallback to current directory resolution (legacy behavior)
+                    logger.warning(
+                        "PassageManager: No metadata_file_path provided, using fallback resolution from cwd"
+                    )
+                    logger.debug(f"PassageManager: Current working directory: {Path.cwd()}")
+                    index_file = str(Path(index_file).resolve())
+                    passage_file = str(Path(passage_file).resolve())
+                    logger.debug(f"PassageManager: Fallback resolved index_file: {index_file}")
 
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
@@ -157,12 +180,12 @@ class LeannBuilder:
         self,
         backend_name: str,
         embedding_model: str = "facebook/contriever",
-        dimensions: int | None = None,
+        dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
         **backend_kwargs,
     ):
         self.backend_name = backend_name
-        backend_factory: LeannBackendFactoryInterface | None = BACKEND_REGISTRY.get(backend_name)
+        backend_factory: Optional[LeannBackendFactoryInterface] = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found or not registered.")
         self.backend_factory = backend_factory
@@ -242,7 +265,7 @@ class LeannBuilder:
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
-    def add_text(self, text: str, metadata: dict[str, Any] | None = None):
+    def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
         passage_id = metadata.get("id", str(len(self.chunks)))
@@ -314,8 +337,8 @@ class LeannBuilder:
             "passage_sources": [
                 {
                     "type": "jsonl",
-                    "path": str(passages_file),
-                    "index_path": str(offset_file),
+                    "path": passages_file.name,  # Use relative path (just filename)
+                    "index_path": offset_file.name,  # Use relative path (just filename)
                 }
             ],
         }
@@ -430,8 +453,8 @@ class LeannBuilder:
             "passage_sources": [
                 {
                     "type": "jsonl",
-                    "path": str(passages_file),
-                    "index_path": str(offset_file),
+                    "path": passages_file.name,  # Use relative path (just filename)
+                    "index_path": offset_file.name,  # Use relative path (just filename)
                 }
             ],
             "built_from_precomputed_embeddings": True,
@@ -473,7 +496,9 @@ class LeannSearcher:
         self.embedding_model = self.meta_data["embedding_model"]
         # Support both old and new format
         self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
-        self.passage_manager = PassageManager(self.meta_data.get("passage_sources", []))
+        self.passage_manager = PassageManager(
+            self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
+        )
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
@@ -546,15 +571,15 @@ class LeannSearcher:
             zmq_port=zmq_port,
             **kwargs,
         )
-        time.time() - start_time
         # logger.info(f"  Search time: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
         enriched_results = []
         if "labels" in results and "distances" in results:
             logger.info(f"  Processing {len(results['labels'][0])} passage IDs:")
+            # Python 3.9 does not support zip(strict=...); lengths are expected to match
             for i, (string_id, dist) in enumerate(
-                zip(results["labels"][0], results["distances"][0], strict=False)
+                zip(results["labels"][0], results["distances"][0])
             ):
                 try:
                     passage_data = self.passage_manager.get_passage(string_id)
@@ -580,19 +605,45 @@ class LeannSearcher:
                     )
                 except KeyError:
                     RED = "\033[91m"
+                    RESET = "\033[0m"
                     logger.error(
                         f"   {RED}✗{RESET} [{i + 1:2d}] ID: '{string_id}' -> {RED}ERROR: Passage not found!{RESET}"
                     )
 
+        # Define color codes outside the loop for final message
+        GREEN = "\033[92m"
+        RESET = "\033[0m"
         logger.info(f"  {GREEN}✓ Final enriched results: {len(enriched_results)} passages{RESET}")
         return enriched_results
+
+    def cleanup(self):
+        """Explicitly cleanup embedding server and ZMQ resources.
+
+        This method should be called after you're done using the searcher,
+        especially in test environments or batch processing scenarios.
+        """
+        # Stop embedding server
+        if hasattr(self.backend_impl, "embedding_server_manager"):
+            self.backend_impl.embedding_server_manager.stop_server()
+
+        # Set ZMQ linger but don't terminate global context
+        try:
+            import zmq
+
+            # Just set linger on the global instance
+            ctx = zmq.Context.instance()
+            ctx.linger = 0
+            # NEVER call ctx.term() or destroy() on the global instance
+            # That would block waiting for all sockets to close
+        except Exception:
+            pass
 
 
 class LeannChat:
     def __init__(
         self,
         index_path: str,
-        llm_config: dict[str, Any] | None = None,
+        llm_config: Optional[dict[str, Any]] = None,
         enable_warmup: bool = False,
         **kwargs,
     ):
@@ -608,7 +659,7 @@ class LeannChat:
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        llm_kwargs: dict[str, Any] | None = None,
+        llm_kwargs: Optional[dict[str, Any]] = None,
         expected_zmq_port: int = 5557,
         **search_kwargs,
     ):
@@ -656,3 +707,12 @@ class LeannChat:
             except (KeyboardInterrupt, EOFError):
                 print("\nGoodbye!")
                 break
+
+    def cleanup(self):
+        """Explicitly cleanup embedding server resources.
+
+        This method should be called after you're done using the chat interface,
+        especially in test environments or batch processing scenarios.
+        """
+        if hasattr(self.searcher, "cleanup"):
+            self.searcher.cleanup()

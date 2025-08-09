@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: ''
+      debug_enabled:
+        description: 'Enable tmate debugging session for troubleshooting'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   lint:
@@ -28,7 +33,7 @@ jobs:
 
       - name: Install ruff
         run: |
-          uv tool install ruff
+          uv tool install ruff==0.12.7
 
       - name: Run ruff check
         run: |
@@ -111,12 +116,10 @@ jobs:
 
       - name: Build packages
         run: |
-          # Build core (platform independent)
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            cd packages/leann-core
-            uv build
-            cd ../..
-          fi
+          # Build core (platform independent) on all platforms for consistency
+          cd packages/leann-core
+          uv build
+          cd ../..
 
           # Build HNSW backend
           cd packages/leann-backend-hnsw
@@ -137,7 +140,7 @@ jobs:
             # Use system clang instead of homebrew LLVM for better compatibility
             export CC=clang
             export CXX=clang++
-            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
+            # sgesdd_ is only available on macOS 13.3+
             export MACOSX_DEPLOYMENT_TARGET=13.3
             uv build --wheel --python python
           else
@@ -145,12 +148,10 @@ jobs:
           fi
           cd ../..
 
-          # Build meta package (platform independent)
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            cd packages/leann
-            uv build
-            cd ../..
-          fi
+          # Build meta package (platform independent) on all platforms
+          cd packages/leann
+          uv build
+          cd ../..
 
       - name: Repair wheels (Linux)
         if: runner.os == 'Linux'
@@ -164,10 +165,15 @@ jobs:
           fi
           cd ../..
 
-          # Repair DiskANN wheel
+          # Repair DiskANN wheel - use show first to debug
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
+            echo "Checking DiskANN wheel contents before repair:"
+            unzip -l dist/*.whl | grep -E "\.so|\.pyd|_diskannpy" || echo "No .so files found"
+            auditwheel show dist/*.whl || echo "auditwheel show failed"
             auditwheel repair dist/*.whl -w dist_repaired
+            echo "Checking DiskANN wheel contents after repair:"
+            unzip -l dist_repaired/*.whl | grep -E "\.so|\.pyd|_diskannpy" || echo "No .so files found after repair"
             rm -rf dist
             mv dist_repaired dist
           fi
@@ -201,23 +207,69 @@ jobs:
 
       - name: Install built packages for testing
         run: |
-          # Create a virtual environment
-          uv venv
+          # Create a virtual environment with the correct Python version
+          uv venv --python python${{ matrix.python }}
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Install the built wheels
-          # Use --find-links to let uv choose the correct wheel for the platform
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            uv pip install leann-core --find-links packages/leann-core/dist
-            uv pip install leann --find-links packages/leann/dist
-          fi
-          uv pip install leann-backend-hnsw --find-links packages/leann-backend-hnsw/dist
-          uv pip install leann-backend-diskann --find-links packages/leann-backend-diskann/dist
+          # Install the built wheels directly to ensure we use locally built packages
+          # Use only locally built wheels on all platforms for full consistency
+          FIND_LINKS="--find-links packages/leann-core/dist --find-links packages/leann/dist"
+          FIND_LINKS="$FIND_LINKS --find-links packages/leann-backend-hnsw/dist --find-links packages/leann-backend-diskann/dist"
+
+          uv pip install leann-core leann leann-backend-hnsw leann-backend-diskann \
+            $FIND_LINKS --force-reinstall
 
           # Install test dependencies using extras
           uv pip install -e ".[test]"
 
+          # Debug: Check if _diskannpy module is installed correctly
+          echo "Checking installed DiskANN module structure:"
+          python -c "import leann_backend_diskann; print('leann_backend_diskann location:', leann_backend_diskann.__file__)" || echo "Failed to import leann_backend_diskann"
+          python -c "from leann_backend_diskann import _diskannpy; print('_diskannpy imported successfully')" || echo "Failed to import _diskannpy"
+          ls -la $(python -c "import leann_backend_diskann; import os; print(os.path.dirname(leann_backend_diskann.__file__))" 2>/dev/null) 2>/dev/null || echo "Failed to list module directory"
+
+          # Extra debugging for Python 3.13
+          if [[ "${{ matrix.python }}" == "3.13" ]]; then
+            echo "=== Python 3.13 Debug Info ==="
+            echo "Python version details:"
+            python --version
+            python -c "import sys; print(f'sys.version_info: {sys.version_info}')"
+
+            echo "Pytest version:"
+            python -m pytest --version
+
+            echo "Testing basic pytest collection:"
+            if [[ "$RUNNER_OS" == "Linux" ]]; then
+              timeout --signal=INT 10 python -m pytest --collect-only tests/test_ci_minimal.py -v || echo "Collection timed out or failed"
+            else
+              # No timeout on macOS/Windows
+              python -m pytest --collect-only tests/test_ci_minimal.py -v || echo "Collection failed"
+            fi
+
+            echo "Testing single simple test:"
+            if [[ "$RUNNER_OS" == "Linux" ]]; then
+              timeout --signal=INT 10 python -m pytest tests/test_ci_minimal.py::test_package_imports --full-trace -v || echo "Simple test timed out or failed"
+            else
+              # No timeout on macOS/Windows
+              python -m pytest tests/test_ci_minimal.py::test_package_imports --full-trace -v || echo "Simple test failed"
+            fi
+          fi
+
+      # Enable tmate debugging session if requested
+      - name: Setup tmate session for debugging
+        if: ${{ inputs.debug_enabled }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          detached: true
+          timeout-minutes: 30
+          limit-access-to-actor: true
+
       - name: Run tests with pytest
+        # Timeout hierarchy:
+        # 1. Individual test timeout: 20s (see pyproject.toml markers)
+        # 2. Pytest session timeout: 300s (see pyproject.toml [tool.pytest.ini_options])
+        # 3. Outer shell timeout: 360s (300s + 60s buffer for cleanup)
+        # 4. GitHub Actions job timeout: 6 hours (default)
         env:
           CI: true  # Mark as CI environment to skip memory-intensive tests
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -230,8 +282,165 @@ jobs:
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Run all tests
-          pytest tests/
+          # Define comprehensive diagnostic function
+          diag() {
+            echo "===== COMPREHENSIVE DIAGNOSTICS BEGIN ====="
+            date
+            echo ""
+            echo "### Current Shell Info ###"
+            echo "Shell PID: $$"
+            echo "Shell PPID: $PPID"
+            echo "Current directory: $(pwd)"
+            echo ""
+
+            echo "### Process Tree (full) ###"
+            pstree -ap 2>/dev/null || ps auxf || true
+            echo ""
+
+            echo "### All Python/Pytest Processes ###"
+            ps -ef | grep -E 'python|pytest' | grep -v grep || true
+            echo ""
+
+            echo "### Embedding Server Processes ###"
+            ps -ef | grep -E 'embedding|zmq|diskann' | grep -v grep || true
+            echo ""
+
+            echo "### Network Listeners ###"
+            ss -ltnp 2>/dev/null || netstat -ltn 2>/dev/null || true
+            echo ""
+
+            echo "### Open File Descriptors (lsof) ###"
+            lsof -p $$ 2>/dev/null | head -20 || true
+            echo ""
+
+            echo "### Zombie Processes ###"
+            ps aux | grep '<defunct>' || echo "No zombie processes"
+            echo ""
+
+            echo "### Current Jobs ###"
+            jobs -l || true
+            echo ""
+
+            echo "### /proc/PID/fd for current shell ###"
+            ls -la /proc/$$/fd 2>/dev/null || true
+            echo ""
+
+            echo "===== COMPREHENSIVE DIAGNOSTICS END ====="
+          }
+
+                    # Enable verbose logging for debugging
+          export PYTHONUNBUFFERED=1
+          export PYTEST_CURRENT_TEST=1
+
+          # Run all tests with extensive logging
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            echo "🚀 Starting Linux test execution with timeout..."
+            echo "Current time: $(date)"
+            echo "Shell PID: $$"
+            echo "Python: $(python --version)"
+            echo "Pytest: $(pytest --version)"
+
+            # Show environment variables for debugging
+            echo "📦 Environment variables:"
+            env | grep -E "PYTHON|PYTEST|CI|RUNNER" | sort
+
+            # Set trap for diagnostics
+            trap diag INT TERM EXIT
+
+            echo "📋 Pre-test diagnostics:"
+            ps -ef | grep -E 'python|pytest' | grep -v grep || echo "No python/pytest processes before test"
+
+            # Check for any listening ports before test
+            echo "🔌 Pre-test network state:"
+            ss -ltn 2>/dev/null | grep -E "555[0-9]|556[0-9]" || echo "No embedding server ports open"
+
+            # Set timeouts - outer must be larger than pytest's internal timeout
+            # IMPORTANT: Keep PYTEST_TIMEOUT_SEC in sync with pyproject.toml [tool.pytest.ini_options] timeout
+            PYTEST_TIMEOUT_SEC=${PYTEST_TIMEOUT_SEC:-300}  # Default 300s, matches pyproject.toml
+            BUFFER_SEC=${TIMEOUT_BUFFER_SEC:-60}  # Buffer for cleanup after pytest timeout
+            OUTER_TIMEOUT_SEC=${OUTER_TIMEOUT_SEC:-$((PYTEST_TIMEOUT_SEC + BUFFER_SEC))}
+
+            echo "⏰ Timeout configuration:"
+            echo "   - Pytest internal timeout: ${PYTEST_TIMEOUT_SEC}s (from pyproject.toml)"
+            echo "   - Cleanup buffer: ${BUFFER_SEC}s"
+            echo "   - Outer shell timeout: ${OUTER_TIMEOUT_SEC}s (${PYTEST_TIMEOUT_SEC}s + ${BUFFER_SEC}s buffer)"
+            echo "   - This ensures pytest can complete its own timeout handling and cleanup"
+
+            echo "🏃 Running pytest with ${OUTER_TIMEOUT_SEC}s outer timeout..."
+
+            # Export for inner shell
+            export PYTEST_TIMEOUT_SEC OUTER_TIMEOUT_SEC BUFFER_SEC
+
+            timeout --preserve-status --signal=INT --kill-after=10 ${OUTER_TIMEOUT_SEC} bash -c '
+              echo "⏱️ Pytest starting at: $(date)"
+              echo "Running command: pytest tests/ -vv --maxfail=3 --tb=short --capture=no"
+
+              # Run pytest with maximum verbosity and no output capture
+              pytest tests/ -vv --maxfail=3 --tb=short --capture=no --log-cli-level=DEBUG 2>&1 | tee pytest.log
+              PYTEST_EXIT=${PIPESTATUS[0]}
+
+              echo "✅ Pytest finished at: $(date) with exit code: $PYTEST_EXIT"
+              echo "Last 20 lines of pytest output:"
+              tail -20 pytest.log || true
+
+              # Immediately check for leftover processes
+              echo "🔍 Post-pytest process check:"
+              ps -ef | grep -E "python|pytest|embedding" | grep -v grep || echo "No leftover processes"
+
+              # Clean up any children before exit
+              echo "🧹 Cleaning up child processes..."
+              pkill -TERM -P $$ 2>/dev/null || true
+              sleep 0.5
+              pkill -KILL -P $$ 2>/dev/null || true
+
+              echo "📊 Final check before exit:"
+              ps -ef | grep -E "python|pytest|embedding" | grep -v grep || echo "All clean"
+
+              exit $PYTEST_EXIT
+            '
+
+            EXIT_CODE=$?
+            echo "🔚 Timeout command exited with code: $EXIT_CODE"
+
+                        if [ $EXIT_CODE -eq 124 ]; then
+              echo "⚠️ TIMEOUT TRIGGERED - Tests took more than ${OUTER_TIMEOUT_SEC} seconds!"
+              echo "📸 Capturing full diagnostics..."
+              diag
+
+              # Run diagnostic script if available
+              if [ -f scripts/diagnose_hang.sh ]; then
+                echo "🔍 Running diagnostic script..."
+                bash scripts/diagnose_hang.sh || true
+              fi
+
+              # More aggressive cleanup
+              echo "💀 Killing all Python processes owned by runner..."
+              pkill -9 -u runner python || true
+              pkill -9 -u runner pytest || true
+            elif [ $EXIT_CODE -ne 0 ]; then
+              echo "❌ Tests failed with exit code: $EXIT_CODE"
+            else
+              echo "✅ All tests passed!"
+            fi
+
+                        # Always show final state
+            echo "📍 Final state check:"
+            ps -ef | grep -E 'python|pytest|embedding' | grep -v grep || echo "No Python processes remaining"
+
+            exit $EXIT_CODE
+          else
+            # For macOS/Windows, run without GNU timeout
+            echo "🚀 Running tests on $RUNNER_OS..."
+            pytest tests/ -vv --maxfail=3 --tb=short --capture=no --log-cli-level=INFO
+          fi
+
+      # Provide tmate session on test failure for debugging
+      - name: Setup tmate session on failure
+        if: ${{ failure() && (inputs.debug_enabled || contains(github.event.head_commit.message, '[debug]')) }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          timeout-minutes: 30
+          limit-access-to-actor: true
 
       - name: Run sanity checks (optional)
         run: |

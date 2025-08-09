@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 import msgpack
 import numpy as np
@@ -33,7 +34,7 @@ if not logger.handlers:
 
 
 def create_hnsw_embedding_server(
-    passages_file: str | None = None,
+    passages_file: Optional[str] = None,
     zmq_port: int = 5555,
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     distance_metric: str = "mips",
@@ -81,19 +82,8 @@ def create_hnsw_embedding_server(
     with open(passages_file) as f:
         meta = json.load(f)
 
-    # Convert relative paths to absolute paths based on metadata file location
-    metadata_dir = Path(passages_file).parent.parent  # Go up one level from the metadata file
-    passage_sources = []
-    for source in meta["passage_sources"]:
-        source_copy = source.copy()
-        # Convert relative paths to absolute paths
-        if not Path(source_copy["path"]).is_absolute():
-            source_copy["path"] = str(metadata_dir / source_copy["path"])
-        if not Path(source_copy["index_path"]).is_absolute():
-            source_copy["index_path"] = str(metadata_dir / source_copy["index_path"])
-        passage_sources.append(source_copy)
-
-    passages = PassageManager(passage_sources)
+    # Let PassageManager handle path resolution uniformly
+    passages = PassageManager(meta["passage_sources"], metadata_file_path=passages_file)
     logger.info(
         f"Loaded PassageManager with {len(passages.global_offset_map)} passages from metadata"
     )
@@ -102,6 +92,7 @@ def create_hnsw_embedding_server(
         """ZMQ server thread"""
         context = zmq.Context()
         socket = context.socket(zmq.REP)
+        socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
         socket.bind(f"tcp://*:{zmq_port}")
         logger.info(f"HNSW ZMQ server listening on port {zmq_port}")
 

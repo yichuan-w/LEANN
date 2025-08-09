@@ -1,7 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import numpy as np
 
@@ -132,10 +132,15 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         import msgpack
         import zmq
 
+        context = None
+        socket = None
         try:
             context = zmq.Context()
             socket = context.socket(zmq.REQ)
-            socket.setsockopt(zmq.RCVTIMEO, 30000)  # 30 second timeout
+            socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
+            socket.setsockopt(zmq.RCVTIMEO, 5000)  # 5 second timeout
+            socket.setsockopt(zmq.SNDTIMEO, 5000)  # 5 second timeout
+            socket.setsockopt(zmq.IMMEDIATE, 1)  # Don't wait for connection
             socket.connect(f"tcp://localhost:{zmq_port}")
 
             # Send embedding request
@@ -147,9 +152,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             response_bytes = socket.recv()
             response = msgpack.unpackb(response_bytes)
 
-            socket.close()
-            context.term()
-
             # Convert response to numpy array
             if isinstance(response, list) and len(response) > 0:
                 return np.array(response, dtype=np.float32)
@@ -158,6 +160,11 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         except Exception as e:
             raise RuntimeError(f"Failed to compute embeddings via server: {e}")
+        finally:
+            if socket:
+                socket.close(linger=0)
+            if context:
+                context.term()
 
     @abstractmethod
     def search(
@@ -169,7 +176,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: int | None = None,
+        zmq_port: Optional[int] = None,
         **kwargs,
     ) -> dict[str, Any]:
         """
@@ -191,7 +198,27 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         """
         pass
 
-    def __del__(self):
-        """Ensures the embedding server is stopped when the searcher is destroyed."""
+    def cleanup(self):
+        """Cleanup resources including embedding server and ZMQ connections."""
+        # Stop embedding server
         if hasattr(self, "embedding_server_manager"):
             self.embedding_server_manager.stop_server()
+
+        # Set ZMQ linger but don't terminate global context
+        try:
+            import zmq
+
+            # Just set linger on the global instance
+            ctx = zmq.Context.instance()
+            ctx.linger = 0
+            # NEVER call ctx.term() on the global instance
+        except Exception:
+            pass
+
+    def __del__(self):
+        """Ensures resources are cleaned up when the searcher is destroyed."""
+        try:
+            self.cleanup()
+        except Exception:
+            # Ignore errors during destruction
+            pass

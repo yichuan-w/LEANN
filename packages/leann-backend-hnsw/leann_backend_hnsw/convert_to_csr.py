@@ -1,11 +1,18 @@
 import argparse
 import gc  # Import garbage collector interface
+import logging
 import os
 import struct
 import sys
 import time
 
 import numpy as np
+
+# Set up logging to avoid print buffer issues
+logger = logging.getLogger(__name__)
+LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
+log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
+logger.setLevel(log_level)
 
 # --- FourCCs (add more if needed) ---
 INDEX_HNSW_FLAT_FOURCC = int.from_bytes(b"IHNf", "little")
@@ -243,6 +250,12 @@ def convert_hnsw_graph_to_csr(input_filename, output_filename, prune_embeddings=
         output_filename: Output CSR index file
         prune_embeddings: Whether to prune embedding storage (write NULL storage marker)
     """
+    # Disable buffering for print statements to avoid deadlock in CI/pytest
+    import functools
+
+    global print
+    print = functools.partial(print, flush=True)
+
     print(f"Starting conversion: {input_filename} -> {output_filename}")
     start_time = time.time()
     original_hnsw_data = {}

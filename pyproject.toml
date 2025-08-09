@@ -32,7 +32,7 @@ dependencies = [
     "pypdfium2>=4.30.0",
     # LlamaIndex core and readers - updated versions
     "llama-index>=0.12.44",
-    "llama-index-readers-file>=0.4.0",  # Essential for PDF parsing
+    "llama-index-readers-file>=0.4.0", # Essential for PDF parsing
     # "llama-index-readers-docling",  # Requires Python >= 3.10
     # "llama-index-node-parser-docling",  # Requires Python >= 3.10
     "llama-index-vector-stores-faiss>=0.4.0",
@@ -43,23 +43,26 @@ dependencies = [
     "mlx>=0.26.3; sys_platform == 'darwin'",
     "mlx-lm>=0.26.0; sys_platform == 'darwin'",
     "psutil>=5.8.0",
+    "pybind11>=3.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "pytest-xdist>=3.0",  # For parallel test execution
+    "pytest>=8.3.0",  # Minimum version for Python 3.13 support
+"pytest-cov>=5.0",
+"pytest-xdist>=3.5",  # For parallel test execution
     "black>=23.0",
-    "ruff>=0.1.0",
+    "ruff==0.12.7",  # Fixed version to ensure consistent formatting across all environments
     "matplotlib",
     "huggingface-hub>=0.20.0",
     "pre-commit>=3.5.0",
 ]
 
 test = [
-    "pytest>=7.0",
-    "pytest-timeout>=2.0",
+    "pytest>=8.3.0",  # Minimum version for Python 3.13 support
+    "pytest-timeout>=2.3",
+    "anyio>=4.0",  # For async test support (includes pytest plugin)
+    "psutil>=5.9.0",  # For process cleanup in tests
     "llama-index-core>=0.12.0",
     "llama-index-readers-file>=0.4.0",
     "python-dotenv>=1.0.0",
@@ -88,7 +91,7 @@ leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = tr
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py39"
 line-length = 100
 extend-exclude = [
     "third_party",
@@ -151,7 +154,8 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "openai: marks tests that require OpenAI API key",
 ]
-timeout = 600
+timeout = 300  # Reduced from 600s (10min) to 300s (5min) for CI safety
+timeout_method = "thread"  # Use thread method to avoid non-daemon thread issues
 addopts = [
     "-v",
     "--tb=short",

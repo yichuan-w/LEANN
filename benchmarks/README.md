@@ -1,8 +1,23 @@
-# 🧪 Leann Sanity Checks
+# 🧪 LEANN Benchmarks & Testing
 
-This directory contains comprehensive sanity checks for the Leann system, ensuring all components work correctly across different configurations.
+This directory contains performance benchmarks and comprehensive tests for the LEANN system, including backend comparisons and sanity checks across different configurations.
 
 ## 📁 Test Files
+
+### `diskann_vs_hnsw_speed_comparison.py`
+Performance comparison between DiskANN and HNSW backends:
+- ✅ **Search latency** comparison with both backends using recompute
+- ✅ **Index size** and **build time** measurements
+- ✅ **Score validity** testing (ensures no -inf scores)
+- ✅ **Configurable dataset sizes** for different scales
+
+```bash
+# Quick comparison with 500 docs, 10 queries
+python benchmarks/diskann_vs_hnsw_speed_comparison.py
+
+# Large-scale comparison with 2000 docs, 20 queries
+python benchmarks/diskann_vs_hnsw_speed_comparison.py 2000 20
+```
 
 ### `test_distance_functions.py`
 Tests all supported distance functions across DiskANN backend:

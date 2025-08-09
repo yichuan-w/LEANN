@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import zmq
@@ -32,7 +33,7 @@ if not logger.handlers:
 
 
 def create_diskann_embedding_server(
-    passages_file: str | None = None,
+    passages_file: Optional[str] = None,
     zmq_port: int = 5555,
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     embedding_mode: str = "sentence-transformers",
@@ -80,7 +81,8 @@ def create_diskann_embedding_server(
     with open(passages_file) as f:
         meta = json.load(f)
 
-    passages = PassageManager(meta["passage_sources"])
+    logger.info(f"Loading PassageManager with metadata_file_path: {passages_file}")
+    passages = PassageManager(meta["passage_sources"], metadata_file_path=passages_file)
     logger.info(
         f"Loaded PassageManager with {len(passages.global_offset_map)} passages from metadata"
     )
@@ -98,6 +100,7 @@ def create_diskann_embedding_server(
         socket = context.socket(
             zmq.REP
         )  # REP socket for both BaseSearcher and DiskANN C++ REQ clients
+        socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
         socket.bind(f"tcp://*:{zmq_port}")
         logger.info(f"DiskANN ZMQ REP server listening on port {zmq_port}")
 

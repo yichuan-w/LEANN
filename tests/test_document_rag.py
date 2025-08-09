@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from test_timeout import ci_timeout
 
 
 @pytest.fixture
@@ -58,6 +59,10 @@ def test_document_rag_simulated(test_data_dir):
 
 
 @pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="OpenAI API key not available")
+@pytest.mark.skipif(
+    os.environ.get("CI") == "true", reason="Skip OpenAI embedding tests in CI to avoid hanging"
+)
+@ci_timeout(60)  # 60 second timeout to avoid hanging on OpenAI API calls
 def test_document_rag_openai(test_data_dir):
     """Test document_rag with OpenAI embeddings."""
     with tempfile.TemporaryDirectory() as temp_dir:

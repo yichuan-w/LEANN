@@ -6,10 +6,11 @@ This directory contains automated tests for the LEANN project using pytest.
 
 ### `test_readme_examples.py`
 Tests the examples shown in README.md:
-- The basic example code that users see first
+- The basic example code that users see first (parametrized for both HNSW and DiskANN backends)
 - Import statements work correctly
 - Different backend options (HNSW, DiskANN)
-- Different LLM configuration options
+- Different LLM configuration options (parametrized for both backends)
+- **All main README examples are tested with both HNSW and DiskANN backends using pytest parametrization**
 
 ### `test_basic.py`
 Basic functionality tests that verify:
@@ -24,6 +25,16 @@ Tests the document RAG example functionality:
 - Tests with OpenAI embeddings (if API key is available)
 - Tests error handling with invalid parameters
 - Verifies that normalized embeddings are detected and cosine distance is used
+
+### `test_diskann_partition.py`
+Tests DiskANN graph partitioning functionality:
+- Tests DiskANN index building without partitioning (baseline)
+- Tests automatic graph partitioning with `is_recompute=True`
+- Verifies that partition files are created and large files are cleaned up for storage saving
+- Tests search functionality with partitioned indices
+- Validates medoid and max_base_norm file generation and usage
+- Includes performance comparison between DiskANN (with partition) and HNSW
+- **Note**: These tests are skipped in CI due to hardware requirements and computation time
 
 ## Running Tests
 
@@ -54,15 +65,23 @@ pytest tests/ -m "not openai"
 
 # Skip slow tests
 pytest tests/ -m "not slow"
+
+# Run DiskANN partition tests (requires local machine, not CI)
+pytest tests/test_diskann_partition.py
 ```
 
 ### Run with specific backend:
 ```bash
 # Test only HNSW backend
 pytest tests/test_basic.py::test_backend_basic[hnsw]
+pytest tests/test_readme_examples.py::test_readme_basic_example[hnsw]
 
 # Test only DiskANN backend
 pytest tests/test_basic.py::test_backend_basic[diskann]
+pytest tests/test_readme_examples.py::test_readme_basic_example[diskann]
+
+# All DiskANN tests (parametrized + specialized partition tests)
+pytest tests/ -k diskann
 ```
 
 ## CI/CD Integration

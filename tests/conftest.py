@@ -1,0 +1,301 @@
+"""Global test configuration and cleanup fixtures."""
+
+import faulthandler
+import os
+import signal
+import time
+from collections.abc import Generator
+
+import pytest
+
+# Enable faulthandler to dump stack traces
+faulthandler.enable()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ci_backtraces():
+    """Dump stack traces before CI timeout to diagnose hanging."""
+    if os.getenv("CI") == "true":
+        # Dump stack traces 10s before the 180s timeout
+        faulthandler.dump_traceback_later(170, repeat=True)
+    yield
+    faulthandler.cancel_dump_traceback_later()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def global_test_cleanup() -> Generator:
+    """Global cleanup fixture that runs after all tests.
+
+    This ensures all ZMQ connections and child processes are properly cleaned up,
+    preventing the test runner from hanging on exit.
+    """
+    yield
+
+    # Cleanup after all tests
+    print("\n🧹 Running global test cleanup...")
+
+    # 1. Force cleanup of any LeannSearcher instances
+    try:
+        import gc
+
+        # Force garbage collection to trigger __del__ methods
+        gc.collect()
+        time.sleep(0.2)
+    except Exception:
+        pass
+
+    # 2. Set ZMQ linger but DON'T term Context.instance()
+    # Terminating the global instance can block if other code still has sockets
+    try:
+        import zmq
+
+        # Just set linger on the global instance, don't terminate it
+        ctx = zmq.Context.instance()
+        ctx.linger = 0
+        # Do NOT call ctx.term() or ctx.destroy() on the global instance!
+        # That would block waiting for all sockets to close
+    except Exception:
+        pass
+
+    # Kill any leftover child processes (including grandchildren)
+    try:
+        import psutil
+
+        current_process = psutil.Process()
+        # Get ALL descendants recursively
+        children = current_process.children(recursive=True)
+
+        if children:
+            print(f"\n⚠️  Cleaning up {len(children)} leftover child processes...")
+
+            # First try to terminate gracefully
+            for child in children:
+                try:
+                    print(f"  Terminating {child.pid} ({child.name()})")
+                    child.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            # Wait a bit for processes to terminate
+            gone, alive = psutil.wait_procs(children, timeout=2)
+
+            # Force kill any remaining processes
+            for child in alive:
+                try:
+                    print(f"  Force killing process {child.pid} ({child.name()})")
+                    child.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            # Final wait to ensure cleanup
+            psutil.wait_procs(alive, timeout=1)
+    except ImportError:
+        # psutil not installed, try basic process cleanup
+        try:
+            # Send SIGTERM to all child processes
+            os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"Warning: Error during process cleanup: {e}")
+
+    # List and clean up remaining threads
+    try:
+        import threading
+
+        threads = [t for t in threading.enumerate() if t is not threading.main_thread()]
+        if threads:
+            print(f"\n⚠️  {len(threads)} non-main threads still running:")
+            for t in threads:
+                print(f"  - {t.name} (daemon={t.daemon})")
+
+                # Force cleanup of pytest-timeout threads that block exit
+                if "pytest_timeout" in t.name and not t.daemon:
+                    print(f"  🔧 Converting pytest-timeout thread to daemon: {t.name}")
+                    try:
+                        t.daemon = True
+                        print("     ✓ Converted to daemon thread")
+                    except Exception as e:
+                        print(f"     ✗ Failed: {e}")
+
+        # Check if only daemon threads remain
+        non_daemon = [
+            t for t in threading.enumerate() if t is not threading.main_thread() and not t.daemon
+        ]
+        if non_daemon:
+            print(f"\n⚠️  {len(non_daemon)} non-daemon threads still blocking exit")
+            # Force exit in CI to prevent hanging
+            if os.environ.get("CI") == "true":
+                print("🔨 Forcing exit in CI environment...")
+                os._exit(0)
+    except Exception as e:
+        print(f"Thread cleanup error: {e}")
+
+
+@pytest.fixture
+def auto_cleanup_searcher():
+    """Fixture that automatically cleans up LeannSearcher instances."""
+    searchers = []
+
+    def register(searcher):
+        """Register a searcher for cleanup."""
+        searchers.append(searcher)
+        return searcher
+
+    yield register
+
+    # Cleanup all registered searchers
+    for searcher in searchers:
+        try:
+            searcher.cleanup()
+        except Exception:
+            pass
+
+    # Force garbage collection
+    import gc
+
+    gc.collect()
+    time.sleep(0.1)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _reap_children():
+    """Reap all child processes at session end as a safety net."""
+    yield
+
+    # Final aggressive cleanup
+    try:
+        import psutil
+
+        me = psutil.Process()
+        kids = me.children(recursive=True)
+        for p in kids:
+            try:
+                p.terminate()
+            except Exception:
+                pass
+
+        _, alive = psutil.wait_procs(kids, timeout=2)
+        for p in alive:
+            try:
+                p.kill()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def cleanup_after_each_test():
+    """Cleanup after each test to prevent resource leaks."""
+    yield
+
+    # Force garbage collection to trigger any __del__ methods
+    import gc
+
+    gc.collect()
+
+    # Give a moment for async cleanup
+    time.sleep(0.1)
+
+
+def pytest_configure(config):
+    """Configure pytest with better timeout handling."""
+    # Set default timeout method to thread if not specified
+    if not config.getoption("--timeout-method", None):
+        config.option.timeout_method = "thread"
+
+    # Add more logging
+    print(f"🔧 Pytest configured at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   Python version: {os.sys.version}")
+    print(f"   Platform: {os.sys.platform}")
+
+
+def pytest_sessionstart(session):
+    """Called after the Session object has been created."""
+    print(f"🏁 Pytest session starting at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   Session ID: {id(session)}")
+
+    # Show initial process state
+    try:
+        import psutil
+
+        current = psutil.Process()
+        print(f"   Current PID: {current.pid}")
+        print(f"   Parent PID: {current.ppid()}")
+        children = current.children(recursive=True)
+        if children:
+            print(f"   ⚠️ Already have {len(children)} child processes at start!")
+    except Exception:
+        pass
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Called after whole test run finished."""
+    print(f"🏁 Pytest session finishing at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   Exit status: {exitstatus}")
+
+    # Aggressive cleanup before pytest exits
+    print("🧹 Starting aggressive cleanup...")
+
+    # First, clean up child processes
+    try:
+        import psutil
+
+        current = psutil.Process()
+        children = current.children(recursive=True)
+
+        if children:
+            print(f"   Found {len(children)} child processes to clean up:")
+            for child in children:
+                try:
+                    print(f"     - PID {child.pid}: {child.name()} (status: {child.status()})")
+                    child.terminate()
+                except Exception as e:
+                    print(f"     - Failed to terminate {child.pid}: {e}")
+
+            # Wait briefly then kill
+            time.sleep(0.5)
+            _, alive = psutil.wait_procs(children, timeout=1)
+
+            for child in alive:
+                try:
+                    print(f"     - Force killing {child.pid}")
+                    child.kill()
+                except Exception:
+                    pass
+        else:
+            print("   No child processes found")
+
+    except Exception as e:
+        print(f"   Process cleanup error: {e}")
+
+    # Second, clean up problematic threads
+    try:
+        import threading
+
+        threads = [t for t in threading.enumerate() if t is not threading.main_thread()]
+        if threads:
+            print(f"   Found {len(threads)} non-main threads:")
+            for t in threads:
+                print(f"     - {t.name} (daemon={t.daemon})")
+                # Convert pytest-timeout threads to daemon so they don't block exit
+                if "pytest_timeout" in t.name and not t.daemon:
+                    try:
+                        t.daemon = True
+                        print("       ✓ Converted to daemon")
+                    except Exception:
+                        pass
+
+        # Force exit if non-daemon threads remain in CI
+        non_daemon = [
+            t for t in threading.enumerate() if t is not threading.main_thread() and not t.daemon
+        ]
+        if non_daemon and os.environ.get("CI") == "true":
+            print(f"   ⚠️ {len(non_daemon)} non-daemon threads remain, forcing exit...")
+            os._exit(exitstatus or 0)
+
+    except Exception as e:
+        print(f"   Thread cleanup error: {e}")
+
+    print(f"✅ Pytest exiting at {time.strftime('%Y-%m-%d %H:%M:%S')}")

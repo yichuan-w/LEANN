@@ -1,11 +1,13 @@
 import atexit
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 import psutil
 
@@ -182,8 +184,8 @@ class EmbeddingServerManager:
                                        e.g., "leann_backend_diskann.embedding_server"
         """
         self.backend_module_name = backend_module_name
-        self.server_process: subprocess.Popen | None = None
-        self.server_port: int | None = None
+        self.server_process: Optional[subprocess.Popen] = None
+        self.server_port: Optional[int] = None
         self._atexit_registered = False
 
     def start_server(
@@ -303,13 +305,24 @@ class EmbeddingServerManager:
         project_root = Path(__file__).parent.parent.parent.parent.parent
         logger.info(f"Command: {' '.join(command)}")
 
-        # Let server output go directly to console
-        # The server will respect LEANN_LOG_LEVEL environment variable
+        # In CI environment, redirect output to avoid buffer deadlock
+        # Embedding servers use many print statements that can fill buffers
+        is_ci = os.environ.get("CI") == "true"
+        if is_ci:
+            stdout_target = subprocess.DEVNULL
+            stderr_target = subprocess.DEVNULL
+            logger.info("CI environment detected, redirecting embedding server output to DEVNULL")
+        else:
+            stdout_target = None  # Direct to console for visible logs
+            stderr_target = None  # Direct to console for visible logs
+
+        # IMPORTANT: Use a new session so we can manage the whole process group reliably
         self.server_process = subprocess.Popen(
             command,
             cwd=project_root,
-            stdout=None,  # Direct to console
-            stderr=None,  # Direct to console
+            stdout=stdout_target,
+            stderr=stderr_target,
+            start_new_session=True,
         )
         self.server_port = port
         logger.info(f"Server process started with PID: {self.server_process.pid}")
@@ -351,7 +364,13 @@ class EmbeddingServerManager:
         logger.info(
             f"Terminating server process (PID: {self.server_process.pid}) for backend {self.backend_module_name}..."
         )
-        self.server_process.terminate()
+        # Try terminating the whole process group first (POSIX)
+        try:
+            pgid = os.getpgid(self.server_process.pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            # Fallback to terminating just the process
+            self.server_process.terminate()
 
         try:
             self.server_process.wait(timeout=3)
@@ -360,7 +379,11 @@ class EmbeddingServerManager:
             logger.warning(
                 f"Server process {self.server_process.pid} did not terminate gracefully within 3 seconds, killing it."
             )
-            self.server_process.kill()
+            try:
+                pgid = os.getpgid(self.server_process.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                self.server_process.kill()
             try:
                 self.server_process.wait(timeout=2)
                 logger.info(f"Server process {self.server_process.pid} killed successfully.")
@@ -370,23 +393,21 @@ class EmbeddingServerManager:
                 )
                 # Don't hang indefinitely
 
-        # Clean up process resources to prevent resource tracker warnings
-        try:
-            self.server_process.wait()  # Ensure process is fully cleaned up
-        except Exception:
-            pass
-
+        # Clean up process resources without waiting
+        # The process should already be terminated/killed above
+        # Don't wait here as it can hang CI indefinitely
         self.server_process = None
 
     def _launch_server_process_colab(self, command: list, port: int) -> None:
         """Launch the server process with Colab-specific settings."""
         logger.info(f"Colab Command: {' '.join(command)}")
 
-        # In Colab, we need to be more careful about process management
+        # In Colab, redirect to DEVNULL to avoid pipe blocking
+        # PIPE without reading can cause hangs
         self.server_process = subprocess.Popen(
             command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             text=True,
         )
         self.server_port = port
