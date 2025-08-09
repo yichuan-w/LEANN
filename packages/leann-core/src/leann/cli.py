@@ -94,6 +94,13 @@ Examples:
             "--backend", type=str, default="hnsw", choices=["hnsw", "diskann"]
         )
         build_parser.add_argument("--embedding-model", type=str, default="facebook/contriever")
+        build_parser.add_argument(
+            "--embedding-mode",
+            type=str,
+            default="sentence-transformers",
+            choices=["sentence-transformers", "openai", "mlx", "ollama"],
+            help="Embedding backend mode (default: sentence-transformers)",
+        )
         build_parser.add_argument("--force", "-f", action="store_true", help="Force rebuild")
         build_parser.add_argument("--graph-degree", type=int, default=32)
         build_parser.add_argument("--complexity", type=int, default=64)
@@ -469,6 +476,7 @@ Examples:
         builder = LeannBuilder(
             backend_name=args.backend,
             embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
             graph_degree=args.graph_degree,
             complexity=args.complexity,
             is_compact=args.compact,

@@ -97,7 +97,6 @@ uv sync
 
 </details>
 
-
 ## Quick Start
 
 Our declarative API makes RAG as easy as writing a config file.
@@ -189,8 +188,8 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 --force-rebuild         # Force rebuild index even if it exists
 
 # Embedding Parameters
---embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small or mlx-community/multilingual-e5-base-mlx
---embedding-mode MODE    # sentence-transformers, openai, or mlx
+--embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small, nomic-embed-text, or mlx-community/multilingual-e5-base-mlx
+--embedding-mode MODE    # sentence-transformers, openai, mlx, or ollama
 
 # LLM Parameters (Text generation models)
 --llm TYPE              # LLM backend: openai, ollama, or hf (default: openai)

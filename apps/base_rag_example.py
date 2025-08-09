@@ -75,7 +75,7 @@ class BaseRAGExample(ABC):
             "--embedding-mode",
             type=str,
             default="sentence-transformers",
-            choices=["sentence-transformers", "openai", "mlx"],
+            choices=["sentence-transformers", "openai", "mlx", "ollama"],
             help="Embedding backend mode (default: sentence-transformers)",
         )
 
@@ -85,7 +85,7 @@ class BaseRAGExample(ABC):
             "--llm",
             type=str,
             default="openai",
-            choices=["openai", "ollama", "hf"],
+            choices=["openai", "ollama", "hf", "simulated"],
             help="LLM backend to use (default: openai)",
         )
         llm_group.add_argument(
