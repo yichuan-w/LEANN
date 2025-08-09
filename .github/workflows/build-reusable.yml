@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: ''
+      debug_enabled:
+        description: 'Enable tmate debugging session for troubleshooting'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   lint:
@@ -250,6 +255,15 @@ jobs:
             fi
           fi
 
+      # Enable tmate debugging session if requested
+      - name: Setup tmate session for debugging
+        if: ${{ inputs.debug_enabled }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          detached: true
+          timeout-minutes: 30
+          limit-access-to-actor: true
+
       - name: Run tests with pytest
         env:
           CI: true  # Mark as CI environment to skip memory-intensive tests
@@ -309,11 +323,21 @@ jobs:
             echo "===== COMPREHENSIVE DIAGNOSTICS END ====="
           }
 
+                    # Enable verbose logging for debugging
+          export PYTHONUNBUFFERED=1
+          export PYTEST_CURRENT_TEST=1
+
           # Run all tests with extensive logging
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             echo "🚀 Starting Linux test execution with timeout..."
             echo "Current time: $(date)"
             echo "Shell PID: $$"
+            echo "Python: $(python --version)"
+            echo "Pytest: $(pytest --version)"
+
+            # Show environment variables for debugging
+            echo "📦 Environment variables:"
+            env | grep -E "PYTHON|PYTEST|CI|RUNNER" | sort
 
             # Set trap for diagnostics
             trap diag INT TERM EXIT
@@ -321,12 +345,22 @@ jobs:
             echo "📋 Pre-test diagnostics:"
             ps -ef | grep -E 'python|pytest' | grep -v grep || echo "No python/pytest processes before test"
 
+            # Check for any listening ports before test
+            echo "🔌 Pre-test network state:"
+            ss -ltn 2>/dev/null | grep -E "555[0-9]|556[0-9]" || echo "No embedding server ports open"
+
             echo "🏃 Running pytest with 180s timeout..."
             timeout --preserve-status --signal=INT --kill-after=10 180 bash -c '
               echo "⏱️ Pytest starting at: $(date)"
-              pytest tests/ -vv --maxfail=3
-              PYTEST_EXIT=$?
+              echo "Running command: pytest tests/ -vv --maxfail=3 --tb=short --capture=no"
+
+              # Run pytest with maximum verbosity and no output capture
+              pytest tests/ -vv --maxfail=3 --tb=short --capture=no --log-cli-level=DEBUG 2>&1 | tee pytest.log
+              PYTEST_EXIT=${PIPESTATUS[0]}
+
               echo "✅ Pytest finished at: $(date) with exit code: $PYTEST_EXIT"
+              echo "Last 20 lines of pytest output:"
+              tail -20 pytest.log || true
 
               # Immediately check for leftover processes
               echo "🔍 Post-pytest process check:"
@@ -347,10 +381,16 @@ jobs:
             EXIT_CODE=$?
             echo "🔚 Timeout command exited with code: $EXIT_CODE"
 
-            if [ $EXIT_CODE -eq 124 ]; then
+                        if [ $EXIT_CODE -eq 124 ]; then
               echo "⚠️ TIMEOUT TRIGGERED - Tests took more than 180 seconds!"
               echo "📸 Capturing full diagnostics..."
               diag
+
+              # Run diagnostic script if available
+              if [ -f scripts/diagnose_hang.sh ]; then
+                echo "🔍 Running diagnostic script..."
+                bash scripts/diagnose_hang.sh || true
+              fi
 
               # More aggressive cleanup
               echo "💀 Killing all Python processes owned by runner..."
@@ -362,7 +402,7 @@ jobs:
               echo "✅ All tests passed!"
             fi
 
-            # Always show final state
+                        # Always show final state
             echo "📍 Final state check:"
             ps -ef | grep -E 'python|pytest|embedding' | grep -v grep || echo "No Python processes remaining"
 
@@ -370,8 +410,16 @@ jobs:
           else
             # For macOS/Windows, run without GNU timeout
             echo "🚀 Running tests on $RUNNER_OS..."
-            pytest tests/ -vv --maxfail=3
+            pytest tests/ -vv --maxfail=3 --tb=short --capture=no --log-cli-level=INFO
           fi
+
+      # Provide tmate session on test failure for debugging
+      - name: Setup tmate session on failure
+        if: ${{ failure() && (inputs.debug_enabled || contains(github.event.head_commit.message, '[debug]')) }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          timeout-minutes: 30
+          limit-access-to-actor: true
 
       - name: Run sanity checks (optional)
         run: |
