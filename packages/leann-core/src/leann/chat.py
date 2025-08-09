@@ -17,12 +17,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def check_ollama_models() -> list[str]:
+def check_ollama_models(host: str) -> list[str]:
     """Check available Ollama models and return a list"""
     try:
         import requests
 
-        response = requests.get("http://localhost:11434/api/tags", timeout=5)
+        response = requests.get(f"{host}/api/tags", timeout=5)
         if response.status_code == 200:
             data = response.json()
             return [model["name"] for model in data.get("models", [])]
@@ -309,10 +309,12 @@ def search_hf_models(query: str, limit: int = 10) -> list[str]:
     return search_hf_models_fuzzy(query, limit)
 
 
-def validate_model_and_suggest(model_name: str, llm_type: str) -> Optional[str]:
+def validate_model_and_suggest(
+    model_name: str, llm_type: str, host: str = "http://localhost:11434"
+) -> str | None:
     """Validate model name and provide suggestions if invalid"""
     if llm_type == "ollama":
-        available_models = check_ollama_models()
+        available_models = check_ollama_models(host)
         if available_models and model_name not in available_models:
             error_msg = f"Model '{model_name}' not found in your local Ollama installation."
 
@@ -469,7 +471,7 @@ class OllamaChat(LLMInterface):
                 requests.get(host)
 
             # Pre-check model availability with helpful suggestions
-            model_error = validate_model_and_suggest(model, "ollama")
+            model_error = validate_model_and_suggest(model, "ollama", host)
             if model_error:
                 raise ValueError(model_error)
 

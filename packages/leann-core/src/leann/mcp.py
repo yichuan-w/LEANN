@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import json
-import os
 import subprocess
 import sys
 
@@ -62,10 +61,6 @@ def handle_request(request):
         tool_name = request["params"]["name"]
         args = request["params"].get("arguments", {})
 
-        # Set working directory and environment
-        env = os.environ.copy()
-        cwd = "/Users/andyl/Projects/LEANN-RAG"
-
         try:
             if tool_name == "leann_search":
                 cmd = [
@@ -76,18 +71,14 @@ def handle_request(request):
                     "--recompute-embeddings",
                     f"--top-k={args.get('top_k', 5)}",
                 ]
-                result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, env=env)
+                result = subprocess.run(cmd, capture_output=True, text=True)
 
             elif tool_name == "leann_ask":
                 cmd = f'echo "{args["question"]}" | leann ask {args["index_name"]} --recompute-embeddings --llm ollama --model qwen3:8b'
-                result = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, cwd=cwd, env=env
-                )
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
             elif tool_name == "leann_list":
-                result = subprocess.run(
-                    ["leann", "list"], capture_output=True, text=True, cwd=cwd, env=env
-                )
+                result = subprocess.run(["leann", "list"], capture_output=True, text=True)
 
             return {
                 "jsonrpc": "2.0",
