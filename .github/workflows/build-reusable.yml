@@ -64,6 +64,16 @@ jobs:
             python: '3.12'
           - os: macos-latest
             python: '3.13'
+          - os: macos-13
+            python: '3.9'
+          - os: macos-13
+            python: '3.10'
+          - os: macos-13
+            python: '3.11'
+          - os: macos-13
+            python: '3.12'
+          - os: macos-13
+            python: '3.13'
     runs-on: ${{ matrix.os }}
 
     steps:
