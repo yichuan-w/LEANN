@@ -184,3 +184,69 @@ def pytest_configure(config):
     # Set default timeout method to thread if not specified
     if not config.getoption("--timeout-method", None):
         config.option.timeout_method = "thread"
+
+    # Add more logging
+    print(f"🔧 Pytest configured at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   Python version: {os.sys.version}")
+    print(f"   Platform: {os.sys.platform}")
+
+
+def pytest_sessionstart(session):
+    """Called after the Session object has been created."""
+    print(f"🏁 Pytest session starting at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   Session ID: {id(session)}")
+
+    # Show initial process state
+    try:
+        import psutil
+
+        current = psutil.Process()
+        print(f"   Current PID: {current.pid}")
+        print(f"   Parent PID: {current.ppid()}")
+        children = current.children(recursive=True)
+        if children:
+            print(f"   ⚠️ Already have {len(children)} child processes at start!")
+    except Exception:
+        pass
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Called after whole test run finished."""
+    print(f"🏁 Pytest session finishing at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   Exit status: {exitstatus}")
+
+    # Aggressive cleanup before pytest exits
+    print("🧹 Starting aggressive cleanup...")
+
+    try:
+        import psutil
+
+        current = psutil.Process()
+        children = current.children(recursive=True)
+
+        if children:
+            print(f"   Found {len(children)} child processes to clean up:")
+            for child in children:
+                try:
+                    print(f"     - PID {child.pid}: {child.name()} (status: {child.status()})")
+                    child.terminate()
+                except Exception as e:
+                    print(f"     - Failed to terminate {child.pid}: {e}")
+
+            # Wait briefly then kill
+            time.sleep(0.5)
+            _, alive = psutil.wait_procs(children, timeout=1)
+
+            for child in alive:
+                try:
+                    print(f"     - Force killing {child.pid}")
+                    child.kill()
+                except Exception:
+                    pass
+        else:
+            print("   No child processes found")
+
+    except Exception as e:
+        print(f"   Cleanup error: {e}")
+
+    print(f"✅ Pytest exiting at {time.strftime('%Y-%m-%d %H:%M:%S')}")

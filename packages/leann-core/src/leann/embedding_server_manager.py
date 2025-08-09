@@ -402,11 +402,12 @@ class EmbeddingServerManager:
         """Launch the server process with Colab-specific settings."""
         logger.info(f"Colab Command: {' '.join(command)}")
 
-        # In Colab, we need to be more careful about process management
+        # In Colab, redirect to DEVNULL to avoid pipe blocking
+        # PIPE without reading can cause hangs
         self.server_process = subprocess.Popen(
             command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             text=True,
         )
         self.server_port = port

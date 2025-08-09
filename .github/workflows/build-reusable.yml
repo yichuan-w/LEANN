@@ -263,42 +263,113 @@ jobs:
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Define diagnostic function for debugging hangs
+          # Define comprehensive diagnostic function
           diag() {
-            echo "===== DIAG BEGIN ====="
+            echo "===== COMPREHENSIVE DIAGNOSTICS BEGIN ====="
             date
-            echo "# pstree (current shell group)"
-            pstree -ap $$ 2>/dev/null || true
-            echo "# python/pytest processes"
-            ps -ef | grep -E 'python|pytest|embedding|zmq|diskann' | grep -v grep || true
-            echo "# network listeners"
+            echo ""
+            echo "### Current Shell Info ###"
+            echo "Shell PID: $$"
+            echo "Shell PPID: $PPID"
+            echo "Current directory: $(pwd)"
+            echo ""
+
+            echo "### Process Tree (full) ###"
+            pstree -ap 2>/dev/null || ps auxf || true
+            echo ""
+
+            echo "### All Python/Pytest Processes ###"
+            ps -ef | grep -E 'python|pytest' | grep -v grep || true
+            echo ""
+
+            echo "### Embedding Server Processes ###"
+            ps -ef | grep -E 'embedding|zmq|diskann' | grep -v grep || true
+            echo ""
+
+            echo "### Network Listeners ###"
             ss -ltnp 2>/dev/null || netstat -ltn 2>/dev/null || true
-            echo "# pytest PIDs"
-            pgrep -fa pytest || true
-            echo "===== DIAG END ====="
+            echo ""
+
+            echo "### Open File Descriptors (lsof) ###"
+            lsof -p $$ 2>/dev/null | head -20 || true
+            echo ""
+
+            echo "### Zombie Processes ###"
+            ps aux | grep '<defunct>' || echo "No zombie processes"
+            echo ""
+
+            echo "### Current Jobs ###"
+            jobs -l || true
+            echo ""
+
+            echo "### /proc/PID/fd for current shell ###"
+            ls -la /proc/$$/fd 2>/dev/null || true
+            echo ""
+
+            echo "===== COMPREHENSIVE DIAGNOSTICS END ====="
           }
 
-          # Run all tests with timeout on Linux to prevent hanging
+          # Run all tests with extensive logging
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            echo "Running tests with timeout (Linux)..."
-            # Set trap for diagnostics
-            trap diag INT TERM
+            echo "🚀 Starting Linux test execution with timeout..."
+            echo "Current time: $(date)"
+            echo "Shell PID: $$"
 
-            timeout --signal=INT 180 pytest tests/ -vv --maxfail=3 || {
-              EXIT_CODE=$?
-              if [ $EXIT_CODE -eq 124 ]; then
-                echo "⚠️ Tests timed out after 180 seconds - dumping diagnostics..."
-                diag
-                # Try to clean up any leftover processes
-                pkill -TERM -P $$ || true
-                sleep 1
-                pkill -KILL -P $$ || true
-              fi
-              exit $EXIT_CODE
-            }
+            # Set trap for diagnostics
+            trap diag INT TERM EXIT
+
+            echo "📋 Pre-test diagnostics:"
+            ps -ef | grep -E 'python|pytest' | grep -v grep || echo "No python/pytest processes before test"
+
+            echo "🏃 Running pytest with 180s timeout..."
+            timeout --preserve-status --signal=INT --kill-after=10 180 bash -c '
+              echo "⏱️ Pytest starting at: $(date)"
+              pytest tests/ -vv --maxfail=3
+              PYTEST_EXIT=$?
+              echo "✅ Pytest finished at: $(date) with exit code: $PYTEST_EXIT"
+
+              # Immediately check for leftover processes
+              echo "🔍 Post-pytest process check:"
+              ps -ef | grep -E "python|pytest|embedding" | grep -v grep || echo "No leftover processes"
+
+              # Clean up any children before exit
+              echo "🧹 Cleaning up child processes..."
+              pkill -TERM -P $$ 2>/dev/null || true
+              sleep 0.5
+              pkill -KILL -P $$ 2>/dev/null || true
+
+              echo "📊 Final check before exit:"
+              ps -ef | grep -E "python|pytest|embedding" | grep -v grep || echo "All clean"
+
+              exit $PYTEST_EXIT
+            '
+
+            EXIT_CODE=$?
+            echo "🔚 Timeout command exited with code: $EXIT_CODE"
+
+            if [ $EXIT_CODE -eq 124 ]; then
+              echo "⚠️ TIMEOUT TRIGGERED - Tests took more than 180 seconds!"
+              echo "📸 Capturing full diagnostics..."
+              diag
+
+              # More aggressive cleanup
+              echo "💀 Killing all Python processes owned by runner..."
+              pkill -9 -u runner python || true
+              pkill -9 -u runner pytest || true
+            elif [ $EXIT_CODE -ne 0 ]; then
+              echo "❌ Tests failed with exit code: $EXIT_CODE"
+            else
+              echo "✅ All tests passed!"
+            fi
+
+            # Always show final state
+            echo "📍 Final state check:"
+            ps -ef | grep -E 'python|pytest|embedding' | grep -v grep || echo "No Python processes remaining"
+
+            exit $EXIT_CODE
           else
             # For macOS/Windows, run without GNU timeout
-            echo "Running tests ($RUNNER_OS)..."
+            echo "🚀 Running tests on $RUNNER_OS..."
             pytest tests/ -vv --maxfail=3
           fi
 
