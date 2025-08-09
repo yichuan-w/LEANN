@@ -39,3 +39,4 @@ def cleanup_session():
     except Exception:
         # Don't fail tests due to cleanup errors
         pass
+
