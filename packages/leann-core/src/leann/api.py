@@ -614,13 +614,25 @@ class LeannSearcher:
         return enriched_results
 
     def cleanup(self):
-        """Explicitly cleanup embedding server resources.
+        """Explicitly cleanup embedding server and ZMQ resources.
 
         This method should be called after you're done using the searcher,
         especially in test environments or batch processing scenarios.
         """
+        # Stop embedding server
         if hasattr(self.backend_impl, "embedding_server_manager"):
             self.backend_impl.embedding_server_manager.stop_server()
+
+        # Force cleanup of ZMQ connections (especially for C++ side)
+        try:
+            import zmq
+
+            # Aggressively terminate all ZMQ contexts to prevent hanging
+            ctx = zmq.Context.instance()
+            ctx.linger = 0
+            # Don't call destroy() here as it might affect other components
+        except Exception:
+            pass
 
 
 class LeannChat:

@@ -18,13 +18,37 @@ def global_test_cleanup() -> Generator:
     yield
 
     # Cleanup after all tests
+    print("\n🧹 Running global test cleanup...")
+
+    # 1. Force cleanup of any LeannSearcher instances
+    try:
+        import gc
+
+        # Force garbage collection to trigger __del__ methods
+        gc.collect()
+        time.sleep(0.2)
+    except Exception:
+        pass
+
+    # 2. Terminate ZMQ contexts more aggressively
     try:
         import zmq
 
-        # Set a very short linger on any remaining contexts
-        # This prevents blocking on context termination
+        # Get the global instance and destroy it
         ctx = zmq.Context.instance()
         ctx.linger = 0
+
+        # Force termination - this is aggressive but needed for CI
+        try:
+            ctx.destroy(linger=0)
+        except Exception:
+            pass
+
+        # Also try to terminate the default context
+        try:
+            zmq.Context.term(zmq.Context.instance())
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -76,6 +100,32 @@ def global_test_cleanup() -> Generator:
                 print(f"  - {t.name} (daemon={t.daemon})")
     except Exception:
         pass
+
+
+@pytest.fixture
+def auto_cleanup_searcher():
+    """Fixture that automatically cleans up LeannSearcher instances."""
+    searchers = []
+
+    def register(searcher):
+        """Register a searcher for cleanup."""
+        searchers.append(searcher)
+        return searcher
+
+    yield register
+
+    # Cleanup all registered searchers
+    for searcher in searchers:
+        try:
+            searcher.cleanup()
+        except Exception:
+            pass
+
+    # Force garbage collection
+    import gc
+
+    gc.collect()
+    time.sleep(0.1)
 
 
 @pytest.fixture(autouse=True)

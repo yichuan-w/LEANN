@@ -245,3 +245,25 @@ class HNSWSearcher(BaseSearcher):
         string_labels = [[str(int_label) for int_label in batch_labels] for batch_labels in labels]
 
         return {"labels": string_labels, "distances": distances}
+
+    def cleanup(self):
+        """Cleanup HNSW-specific resources including C++ ZMQ connections."""
+        # Call parent cleanup first
+        super().cleanup()
+
+        # Additional cleanup for C++ side ZMQ connections
+        # The ZmqDistanceComputer in C++ uses ZMQ connections that need cleanup
+        try:
+            # Delete the index to trigger C++ destructors
+            if hasattr(self, "index"):
+                del self.index
+        except Exception:
+            pass
+
+        # Force garbage collection to ensure C++ objects are destroyed
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass

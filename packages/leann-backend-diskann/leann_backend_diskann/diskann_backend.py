@@ -459,3 +459,25 @@ class DiskannSearcher(BaseSearcher):
         string_labels = [[str(int_label) for int_label in batch_labels] for batch_labels in labels]
 
         return {"labels": string_labels, "distances": distances}
+
+    def cleanup(self):
+        """Cleanup DiskANN-specific resources including C++ index."""
+        # Call parent cleanup first
+        super().cleanup()
+
+        # Delete the C++ index to trigger destructors
+        try:
+            if hasattr(self, "_index") and self._index is not None:
+                del self._index
+                self._index = None
+                self._current_zmq_port = None
+        except Exception:
+            pass
+
+        # Force garbage collection to ensure C++ objects are destroyed
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass

@@ -196,7 +196,26 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         """
         pass
 
-    def __del__(self):
-        """Ensures the embedding server is stopped when the searcher is destroyed."""
+    def cleanup(self):
+        """Cleanup resources including embedding server and ZMQ connections."""
+        # Stop embedding server
         if hasattr(self, "embedding_server_manager"):
             self.embedding_server_manager.stop_server()
+
+        # Force cleanup of ZMQ connections (especially for C++ side in HNSW/DiskANN)
+        try:
+            import zmq
+
+            # Set short linger to prevent blocking
+            ctx = zmq.Context.instance()
+            ctx.linger = 0
+        except Exception:
+            pass
+
+    def __del__(self):
+        """Ensures resources are cleaned up when the searcher is destroyed."""
+        try:
+            self.cleanup()
+        except Exception:
+            # Ignore errors during destruction
+            pass
