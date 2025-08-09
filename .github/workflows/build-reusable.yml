@@ -265,6 +265,11 @@ jobs:
           limit-access-to-actor: true
 
       - name: Run tests with pytest
+        # Timeout hierarchy:
+        # 1. Individual test timeout: 20s (see pyproject.toml markers)
+        # 2. Pytest session timeout: 300s (see pyproject.toml [tool.pytest.ini_options])
+        # 3. Outer shell timeout: 360s (300s + 60s buffer for cleanup)
+        # 4. GitHub Actions job timeout: 6 hours (default)
         env:
           CI: true  # Mark as CI environment to skip memory-intensive tests
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -349,8 +354,24 @@ jobs:
             echo "🔌 Pre-test network state:"
             ss -ltn 2>/dev/null | grep -E "555[0-9]|556[0-9]" || echo "No embedding server ports open"
 
-            echo "🏃 Running pytest with 180s timeout..."
-            timeout --preserve-status --signal=INT --kill-after=10 180 bash -c '
+            # Set timeouts - outer must be larger than pytest's internal timeout
+            # IMPORTANT: Keep PYTEST_TIMEOUT_SEC in sync with pyproject.toml [tool.pytest.ini_options] timeout
+            PYTEST_TIMEOUT_SEC=${PYTEST_TIMEOUT_SEC:-300}  # Default 300s, matches pyproject.toml
+            BUFFER_SEC=${TIMEOUT_BUFFER_SEC:-60}  # Buffer for cleanup after pytest timeout
+            OUTER_TIMEOUT_SEC=${OUTER_TIMEOUT_SEC:-$((PYTEST_TIMEOUT_SEC + BUFFER_SEC))}
+
+            echo "⏰ Timeout configuration:"
+            echo "   - Pytest internal timeout: ${PYTEST_TIMEOUT_SEC}s (from pyproject.toml)"
+            echo "   - Cleanup buffer: ${BUFFER_SEC}s"
+            echo "   - Outer shell timeout: ${OUTER_TIMEOUT_SEC}s (${PYTEST_TIMEOUT_SEC}s + ${BUFFER_SEC}s buffer)"
+            echo "   - This ensures pytest can complete its own timeout handling and cleanup"
+
+            echo "🏃 Running pytest with ${OUTER_TIMEOUT_SEC}s outer timeout..."
+
+            # Export for inner shell
+            export PYTEST_TIMEOUT_SEC OUTER_TIMEOUT_SEC BUFFER_SEC
+
+            timeout --preserve-status --signal=INT --kill-after=10 ${OUTER_TIMEOUT_SEC} bash -c '
               echo "⏱️ Pytest starting at: $(date)"
               echo "Running command: pytest tests/ -vv --maxfail=3 --tb=short --capture=no"
 
@@ -382,7 +403,7 @@ jobs:
             echo "🔚 Timeout command exited with code: $EXIT_CODE"
 
                         if [ $EXIT_CODE -eq 124 ]; then
-              echo "⚠️ TIMEOUT TRIGGERED - Tests took more than 180 seconds!"
+              echo "⚠️ TIMEOUT TRIGGERED - Tests took more than ${OUTER_TIMEOUT_SEC} seconds!"
               echo "📸 Capturing full diagnostics..."
               diag
 
