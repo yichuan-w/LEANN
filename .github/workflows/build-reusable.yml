@@ -119,6 +119,18 @@ jobs:
             uv pip install --system delocate
           fi
 
+      - name: Set macOS environment variables
+        if: runner.os == 'macOS'
+        run: |
+          # Detect Homebrew installation path and set environment variables
+          if [ -d "/opt/homebrew/opt/libomp" ]; then
+            echo "HOMEBREW_PREFIX=/opt/homebrew" >> $GITHUB_ENV
+            echo "OpenMP_ROOT=/opt/homebrew/opt/libomp" >> $GITHUB_ENV
+          elif [ -d "/usr/local/opt/libomp" ]; then
+            echo "HOMEBREW_PREFIX=/usr/local" >> $GITHUB_ENV  
+            echo "OpenMP_ROOT=/usr/local/opt/libomp" >> $GITHUB_ENV
+          fi
+
       - name: Build packages
         run: |
           # Build core (platform independent)
