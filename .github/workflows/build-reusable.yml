@@ -64,6 +64,16 @@ jobs:
             python: '3.12'
           - os: macos-latest
             python: '3.13'
+          - os: macos-13
+            python: '3.9'
+          - os: macos-13
+            python: '3.10'
+          - os: macos-13
+            python: '3.11'
+          - os: macos-13
+            python: '3.12'
+          - os: macos-13
+            python: '3.13'
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -107,6 +117,18 @@ jobs:
             uv pip install --system auditwheel
           else
             uv pip install --system delocate
+          fi
+
+      - name: Set macOS environment variables
+        if: runner.os == 'macOS'
+        run: |
+          # Detect Homebrew installation path and set environment variables
+          if [ -d "/opt/homebrew/opt/libomp" ]; then
+            echo "HOMEBREW_PREFIX=/opt/homebrew" >> $GITHUB_ENV
+            echo "OpenMP_ROOT=/opt/homebrew/opt/libomp" >> $GITHUB_ENV
+          elif [ -d "/usr/local/opt/libomp" ]; then
+            echo "HOMEBREW_PREFIX=/usr/local" >> $GITHUB_ENV  
+            echo "OpenMP_ROOT=/usr/local/opt/libomp" >> $GITHUB_ENV
           fi
 
       - name: Build packages
