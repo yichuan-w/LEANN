@@ -97,28 +97,6 @@ uv sync
 
 </details>
 
-
-### 🆕 Using Ollama for Embeddings (Privacy-Focused)
-
-LEANN now supports Ollama for generating embeddings locally, perfect for privacy-sensitive applications:
-
-```bash
-# First, pull an embedding model from Ollama
-ollama pull nomic-embed-text  # or mxbai-embed-large, bge-m3, etc.
-
-# Build an index using Ollama embeddings
-leann build my-project --docs ./documents --embedding-model nomic-embed-text --embedding-mode ollama
-
-# Use with example apps
-python -m apps.document_rag --embedding-model nomic-embed-text --embedding-mode ollama --query "Your question"
-```
-
-**Available Ollama Embedding Models:**
-- `nomic-embed-text`: High-performing 768-dim embeddings
-- `mxbai-embed-large`: Large 1024-dim embeddings
-- `bge-m3`: Multilingual embeddings
-- See [Ollama library](https://ollama.com/library) for more embedding models
-
 ## Quick Start
 
 Our declarative API makes RAG as easy as writing a config file.
