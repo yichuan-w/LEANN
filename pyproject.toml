@@ -60,7 +60,7 @@ dev = [
 
 test = [
     "pytest>=7.0",
-    "pytest-timeout>=2.0",
+    "pytest-timeout>=2.0",  # Simple timeout protection for CI
     "llama-index-core>=0.12.0",
     "llama-index-readers-file>=0.4.0",
     "python-dotenv>=1.0.0",
@@ -152,7 +152,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "openai: marks tests that require OpenAI API key",
 ]
-timeout = 600
+timeout = 300  # Simple timeout for CI safety (5 minutes)
 addopts = [
     "-v",
     "--tb=short",

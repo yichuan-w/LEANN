@@ -87,21 +87,23 @@ def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int)
     # Connect to embedding server
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
+    socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
     socket.connect(f"tcp://localhost:{port}")
 
-    # Send chunks to server for embedding computation
-    request = chunks
-    socket.send(msgpack.packb(request))
+    try:
+        # Send chunks to server for embedding computation
+        request = chunks
+        socket.send(msgpack.packb(request))
 
-    # Receive embeddings from server
-    response = socket.recv()
-    embeddings_list = msgpack.unpackb(response)
+        # Receive embeddings from server
+        response = socket.recv()
+        embeddings_list = msgpack.unpackb(response)
 
-    # Convert back to numpy array
-    embeddings = np.array(embeddings_list, dtype=np.float32)
-
-    socket.close()
-    context.term()
+        # Convert back to numpy array
+        embeddings = np.array(embeddings_list, dtype=np.float32)
+    finally:
+        socket.close()
+        # Don't call context.term() - this was causing hangs
 
     return embeddings
 
@@ -605,6 +607,11 @@ class LeannSearcher:
 
         logger.info(f"  {GREEN}✓ Final enriched results: {len(enriched_results)} passages{RESET}")
         return enriched_results
+
+    def cleanup(self):
+        """Cleanup embedding server and other resources."""
+        if hasattr(self.backend_impl, "cleanup"):
+            self.backend_impl.cleanup()
 
 
 class LeannChat:
