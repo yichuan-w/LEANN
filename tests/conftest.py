@@ -1,11 +1,25 @@
 """Global test configuration and cleanup fixtures."""
 
+import faulthandler
 import os
 import signal
 import time
 from collections.abc import Generator
 
 import pytest
+
+# Enable faulthandler to dump stack traces
+faulthandler.enable()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ci_backtraces():
+    """Dump stack traces before CI timeout to diagnose hanging."""
+    if os.getenv("CI") == "true":
+        # Dump stack traces 10s before the 180s timeout
+        faulthandler.dump_traceback_later(170, repeat=True)
+    yield
+    faulthandler.cancel_dump_traceback_later()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -30,33 +44,25 @@ def global_test_cleanup() -> Generator:
     except Exception:
         pass
 
-    # 2. Terminate ZMQ contexts more aggressively
+    # 2. Set ZMQ linger but DON'T term Context.instance()
+    # Terminating the global instance can block if other code still has sockets
     try:
         import zmq
 
-        # Get the global instance and destroy it
+        # Just set linger on the global instance, don't terminate it
         ctx = zmq.Context.instance()
         ctx.linger = 0
-
-        # Force termination - this is aggressive but needed for CI
-        try:
-            ctx.destroy(linger=0)
-        except Exception:
-            pass
-
-        # Also try to terminate the default context
-        try:
-            zmq.Context.term(zmq.Context.instance())
-        except Exception:
-            pass
+        # Do NOT call ctx.term() or ctx.destroy() on the global instance!
+        # That would block waiting for all sockets to close
     except Exception:
         pass
 
-    # Kill any leftover child processes
+    # Kill any leftover child processes (including grandchildren)
     try:
         import psutil
 
         current_process = psutil.Process()
+        # Get ALL descendants recursively
         children = current_process.children(recursive=True)
 
         if children:
@@ -65,6 +71,7 @@ def global_test_cleanup() -> Generator:
             # First try to terminate gracefully
             for child in children:
                 try:
+                    print(f"  Terminating {child.pid} ({child.name()})")
                     child.terminate()
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
@@ -79,6 +86,9 @@ def global_test_cleanup() -> Generator:
                     child.kill()
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
+
+            # Final wait to ensure cleanup
+            psutil.wait_procs(alive, timeout=1)
     except ImportError:
         # psutil not installed, try basic process cleanup
         try:
@@ -126,6 +136,33 @@ def auto_cleanup_searcher():
 
     gc.collect()
     time.sleep(0.1)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _reap_children():
+    """Reap all child processes at session end as a safety net."""
+    yield
+
+    # Final aggressive cleanup
+    try:
+        import psutil
+
+        me = psutil.Process()
+        kids = me.children(recursive=True)
+        for p in kids:
+            try:
+                p.terminate()
+            except Exception:
+                pass
+
+        _, alive = psutil.wait_procs(kids, timeout=2)
+        for p in alive:
+            try:
+                p.kill()
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 @pytest.fixture(autouse=True)

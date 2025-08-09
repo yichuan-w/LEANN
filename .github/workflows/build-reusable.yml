@@ -263,14 +263,32 @@ jobs:
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
 
+          # Define diagnostic function for debugging hangs
+          diag() {
+            echo "===== DIAG BEGIN ====="
+            date
+            echo "# pstree (current shell group)"
+            pstree -ap $$ 2>/dev/null || true
+            echo "# python/pytest processes"
+            ps -ef | grep -E 'python|pytest|embedding|zmq|diskann' | grep -v grep || true
+            echo "# network listeners"
+            ss -ltnp 2>/dev/null || netstat -ltn 2>/dev/null || true
+            echo "# pytest PIDs"
+            pgrep -fa pytest || true
+            echo "===== DIAG END ====="
+          }
+
           # Run all tests with timeout on Linux to prevent hanging
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             echo "Running tests with timeout (Linux)..."
-            timeout --signal=INT 180 pytest tests/ -v || {
+            # Set trap for diagnostics
+            trap diag INT TERM
+
+            timeout --signal=INT 180 pytest tests/ -vv --maxfail=3 || {
               EXIT_CODE=$?
               if [ $EXIT_CODE -eq 124 ]; then
-                echo "⚠️ Tests timed out after 180 seconds - likely process cleanup issue"
-                echo "Check for lingering ZMQ connections or child processes"
+                echo "⚠️ Tests timed out after 180 seconds - dumping diagnostics..."
+                diag
                 # Try to clean up any leftover processes
                 pkill -TERM -P $$ || true
                 sleep 1
@@ -281,7 +299,7 @@ jobs:
           else
             # For macOS/Windows, run without GNU timeout
             echo "Running tests ($RUNNER_OS)..."
-            pytest tests/ -v
+            pytest tests/ -vv --maxfail=3
           fi
 
       - name: Run sanity checks (optional)

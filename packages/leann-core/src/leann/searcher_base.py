@@ -137,8 +137,10 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         try:
             context = zmq.Context()
             socket = context.socket(zmq.REQ)
-            socket.setsockopt(zmq.RCVTIMEO, 30000)  # 30 second timeout
             socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
+            socket.setsockopt(zmq.RCVTIMEO, 5000)  # 5 second timeout
+            socket.setsockopt(zmq.SNDTIMEO, 5000)  # 5 second timeout
+            socket.setsockopt(zmq.IMMEDIATE, 1)  # Don't wait for connection
             socket.connect(f"tcp://localhost:{zmq_port}")
 
             # Send embedding request
@@ -202,13 +204,14 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         if hasattr(self, "embedding_server_manager"):
             self.embedding_server_manager.stop_server()
 
-        # Force cleanup of ZMQ connections (especially for C++ side in HNSW/DiskANN)
+        # Set ZMQ linger but don't terminate global context
         try:
             import zmq
 
-            # Set short linger to prevent blocking
+            # Just set linger on the global instance
             ctx = zmq.Context.instance()
             ctx.linger = 0
+            # NEVER call ctx.term() on the global instance
         except Exception:
             pass
 

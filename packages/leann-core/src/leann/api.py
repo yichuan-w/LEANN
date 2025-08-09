@@ -88,6 +88,9 @@ def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int)
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
     socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
+    socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1s timeout on receive
+    socket.setsockopt(zmq.SNDTIMEO, 1000)  # 1s timeout on send
+    socket.setsockopt(zmq.IMMEDIATE, 1)  # Don't wait for connection
     socket.connect(f"tcp://localhost:{port}")
 
     try:
@@ -623,14 +626,15 @@ class LeannSearcher:
         if hasattr(self.backend_impl, "embedding_server_manager"):
             self.backend_impl.embedding_server_manager.stop_server()
 
-        # Force cleanup of ZMQ connections (especially for C++ side)
+        # Set ZMQ linger but don't terminate global context
         try:
             import zmq
 
-            # Aggressively terminate all ZMQ contexts to prevent hanging
+            # Just set linger on the global instance
             ctx = zmq.Context.instance()
             ctx.linger = 0
-            # Don't call destroy() here as it might affect other components
+            # NEVER call ctx.term() or destroy() on the global instance
+            # That would block waiting for all sockets to close
         except Exception:
             pass
 
