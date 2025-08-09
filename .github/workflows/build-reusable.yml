@@ -126,9 +126,15 @@ jobs:
           if [ -d "/opt/homebrew/opt/libomp" ]; then
             echo "HOMEBREW_PREFIX=/opt/homebrew" >> $GITHUB_ENV
             echo "OpenMP_ROOT=/opt/homebrew/opt/libomp" >> $GITHUB_ENV
+            echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/libomp:/opt/homebrew/opt/boost:/opt/homebrew/opt/protobuf:/opt/homebrew/opt/zeromq" >> $GITHUB_ENV
+            echo "LDFLAGS=-L/opt/homebrew/opt/libomp/lib" >> $GITHUB_ENV
+            echo "CPPFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
           elif [ -d "/usr/local/opt/libomp" ]; then
-            echo "HOMEBREW_PREFIX=/usr/local" >> $GITHUB_ENV  
+            echo "HOMEBREW_PREFIX=/usr/local" >> $GITHUB_ENV
             echo "OpenMP_ROOT=/usr/local/opt/libomp" >> $GITHUB_ENV
+            echo "CMAKE_PREFIX_PATH=/usr/local/opt/libomp:/usr/local/opt/boost:/usr/local/opt/protobuf:/usr/local/opt/zeromq" >> $GITHUB_ENV
+            echo "LDFLAGS=-L/usr/local/opt/libomp/lib" >> $GITHUB_ENV
+            echo "CPPFLAGS=-I/usr/local/opt/libomp/include" >> $GITHUB_ENV
           fi
 
       - name: Build packages
@@ -142,11 +148,13 @@ jobs:
 
           # Build HNSW backend
           cd packages/leann-backend-hnsw
-          if [ "${{ matrix.os }}" == "macos-latest" ]; then
+          if [[ "${{ matrix.os }}" == macos-* ]]; then
             # Use system clang instead of homebrew LLVM for better compatibility
             export CC=clang
             export CXX=clang++
             export MACOSX_DEPLOYMENT_TARGET=11.0
+            # Ensure CMake can find all Homebrew packages
+            export CMAKE_ARGS="-DOpenMP_ROOT=${OpenMP_ROOT} -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
             uv build --wheel --python python
           else
             uv build --wheel --python python
@@ -155,12 +163,14 @@ jobs:
 
           # Build DiskANN backend
           cd packages/leann-backend-diskann
-          if [ "${{ matrix.os }}" == "macos-latest" ]; then
+          if [[ "${{ matrix.os }}" == macos-* ]]; then
             # Use system clang instead of homebrew LLVM for better compatibility
             export CC=clang
             export CXX=clang++
             # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
             export MACOSX_DEPLOYMENT_TARGET=13.3
+            # Ensure CMake can find all Homebrew packages
+            export CMAKE_ARGS="-DOpenMP_ROOT=${OpenMP_ROOT} -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
             uv build --wheel --python python
           else
             uv build --wheel --python python
