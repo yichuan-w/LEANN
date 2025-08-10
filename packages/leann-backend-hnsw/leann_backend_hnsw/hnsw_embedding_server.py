@@ -296,7 +296,7 @@ if __name__ == "__main__":
         "--embedding-mode",
         type=str,
         default="sentence-transformers",
-        choices=["sentence-transformers", "openai", "mlx"],
+        choices=["sentence-transformers", "openai", "mlx", "ollama"],
         help="Embedding backend mode",
     )
 
