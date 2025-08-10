@@ -97,6 +97,7 @@ uv sync
 
 </details>
 
+
 ## Quick Start
 
 Our declarative API makes RAG as easy as writing a config file.
