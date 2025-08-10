@@ -111,29 +111,6 @@ This is your first step for any serious codebase work - think of it as giving yo
                                     "maximum": 128,
                                     "description": "Search complexity level. Use 16-32 for fast searches (recommended), 64+ for higher precision when needed.",
                                 },
-                                "search_mode": {
-                                    "type": "string",
-                                    "enum": ["fast", "balanced", "precise"],
-                                    "default": "balanced",
-                                    "description": "Search strategy: 'fast' (~2-5s), 'balanced' (~5-10s), 'precise' (~10-20s). Choose based on time vs accuracy needs.",
-                                },
-                                "recompute_embeddings": {
-                                    "type": "boolean",
-                                    "default": False,
-                                    "description": "Recompute embeddings for maximum accuracy. Enable only when precision is more important than speed.",
-                                },
-                                "file_types": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "Filter results by file types (e.g., ['py', 'js', 'ts']). Searches all indexed file types if not specified.",
-                                },
-                                "min_score": {
-                                    "type": "number",
-                                    "minimum": 0.0,
-                                    "maximum": 1.0,
-                                    "default": 0.0,
-                                    "description": "Minimum relevance score threshold (0.0-1.0). Higher values return more relevant but fewer results.",
-                                },
                             },
                             "required": ["index_name", "query"],
                         },
@@ -149,25 +126,6 @@ This is your first step for any serious codebase work - think of it as giving yo
                                     "description": "Optional: Name of specific index to check. If not provided, shows status of all indexes.",
                                 }
                             },
-                        },
-                    },
-                    {
-                        "name": "leann_clear",
-                        "description": "🗑️ Safely delete a code index (with confirmation required). Think of it as 'rm -rf' but for your search indexes - be careful!",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "index_name": {
-                                    "type": "string",
-                                    "description": "Name of the index to clear/delete.",
-                                },
-                                "confirm": {
-                                    "type": "boolean",
-                                    "default": False,
-                                    "description": "Confirmation flag. Must be set to true to actually perform the deletion.",
-                                },
-                            },
-                            "required": ["index_name"],
                         },
                     },
                     {
@@ -263,52 +221,17 @@ This is your first step for any serious codebase work - think of it as giving yo
                         },
                     }
 
-                # Build command with enhanced parameters
+                # Build simplified command
                 cmd = [
                     "leann",
                     "search",
                     args["index_name"],
                     args["query"],
                     f"--top-k={args.get('top_k', 5)}",
+                    f"--complexity={args.get('complexity', 32)}",
                 ]
 
-                # Handle search mode mapping to set complexity and beam width
-                search_mode = args.get("search_mode", "balanced")
-                if search_mode == "fast":
-                    cmd.extend(["--complexity=16", "--beam-width=1"])
-                elif search_mode == "precise":
-                    cmd.extend(["--complexity=64", "--beam-width=2"])
-                else:  # balanced mode
-                    complexity = args.get("complexity", 32)
-                    cmd.append(f"--complexity={complexity}")
-
-                # Handle recompute embeddings
-                if args.get("recompute_embeddings", False):
-                    cmd.append("--recompute-embeddings")
-
-                # Handle file types filtering
-                file_types = args.get("file_types")
-                if file_types and isinstance(file_types, list):
-                    # Validate file extensions
-                    valid_extensions = []
-                    for ext in file_types:
-                        if isinstance(ext, str) and ext.strip():
-                            clean_ext = ext.strip()
-                            if not clean_ext.startswith("."):
-                                clean_ext = "." + clean_ext
-                            valid_extensions.append(clean_ext)
-
-                    if valid_extensions:
-                        cmd.extend(["--filter-extensions", ",".join(valid_extensions)])
-
                 result = subprocess.run(cmd, capture_output=True, text=True)
-
-                # Handle min_score filtering in post-processing if needed
-                min_score = args.get("min_score", 0.0)
-                if min_score > 0.0 and result.returncode == 0:
-                    # Note: This is a basic implementation. For full support,
-                    # the CLI would need to return structured data for filtering
-                    pass
 
             elif tool_name == "leann_status":
                 if args.get("index_name"):
@@ -318,39 +241,6 @@ This is your first step for any serious codebase work - think of it as giving yo
                 else:
                     # Show all indexes status
                     result = subprocess.run(["leann", "list"], capture_output=True, text=True)
-
-            elif tool_name == "leann_clear":
-                index_name = args["index_name"]
-                confirm = args.get("confirm", False)
-
-                if not confirm:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"Warning: This will permanently delete index '{index_name}'. To proceed, call this tool again with confirm=true.",
-                                }
-                            ]
-                        },
-                    }
-
-                # For clearing, we need to implement this in the CLI
-                # For now, we'll return a message explaining the limitation
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Clear functionality for index '{index_name}' is not yet implemented in CLI. You can manually delete the index files in .leann/indexes/{index_name}/",
-                            }
-                        ]
-                    },
-                }
 
             elif tool_name == "leann_list":
                 result = subprocess.run(["leann", "list"], capture_output=True, text=True)
