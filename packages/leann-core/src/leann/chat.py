@@ -8,7 +8,7 @@ import difflib
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Union
 
 import torch
 
@@ -309,7 +309,7 @@ def search_hf_models(query: str, limit: int = 10) -> list[str]:
     return search_hf_models_fuzzy(query, limit)
 
 
-def validate_model_and_suggest(model_name: str, llm_type: str) -> str | None:
+def validate_model_and_suggest(model_name: str, llm_type: str) -> Union[str, None]:
     """Validate model name and provide suggestions if invalid"""
     if llm_type == "ollama":
         available_models = check_ollama_models()
@@ -683,7 +683,7 @@ class HFChat(LLMInterface):
 class OpenAIChat(LLMInterface):
     """LLM interface for OpenAI models."""
 
-    def __init__(self, model: str = "gpt-4o", api_key: str | None = None):
+    def __init__(self, model: str = "gpt-4o", api_key: Union[str, None] = None):
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
 

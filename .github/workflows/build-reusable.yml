@@ -108,7 +108,6 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           # Don't install LLVM, use system clang for better compatibility
-          # abseil is automatically installed as a dependency of protobuf
           brew install libomp boost protobuf zeromq
 
       - name: Install build dependencies
@@ -123,20 +122,17 @@ jobs:
       - name: Set macOS environment variables
         if: runner.os == 'macOS'
         run: |
-          # Detect Homebrew installation path and set environment variables
-          if [ -d "/opt/homebrew/opt/libomp" ]; then
-            echo "HOMEBREW_PREFIX=/opt/homebrew" >> $GITHUB_ENV
-            echo "OpenMP_ROOT=/opt/homebrew/opt/libomp" >> $GITHUB_ENV
-            echo "CMAKE_PREFIX_PATH=/opt/homebrew/opt/libomp:/opt/homebrew/opt/boost:/opt/homebrew/opt/protobuf:/opt/homebrew/opt/zeromq:/opt/homebrew/opt/abseil" >> $GITHUB_ENV
-            echo "LDFLAGS=-L/opt/homebrew/opt/libomp/lib" >> $GITHUB_ENV
-            echo "CPPFLAGS=-I/opt/homebrew/opt/libomp/include -I/opt/homebrew/opt/abseil/include" >> $GITHUB_ENV
-          elif [ -d "/usr/local/opt/libomp" ]; then
-            echo "HOMEBREW_PREFIX=/usr/local" >> $GITHUB_ENV
-            echo "OpenMP_ROOT=/usr/local/opt/libomp" >> $GITHUB_ENV
-            echo "CMAKE_PREFIX_PATH=/usr/local/opt/libomp:/usr/local/opt/boost:/usr/local/opt/protobuf:/usr/local/opt/zeromq:/usr/local/opt/abseil" >> $GITHUB_ENV
-            echo "LDFLAGS=-L/usr/local/opt/libomp/lib" >> $GITHUB_ENV
-            echo "CPPFLAGS=-I/usr/local/opt/libomp/include -I/usr/local/opt/abseil/include" >> $GITHUB_ENV
-          fi
+          # Use brew --prefix to automatically detect Homebrew installation path
+          HOMEBREW_PREFIX=$(brew --prefix)
+          echo "HOMEBREW_PREFIX=${HOMEBREW_PREFIX}" >> $GITHUB_ENV
+          echo "OpenMP_ROOT=${HOMEBREW_PREFIX}/opt/libomp" >> $GITHUB_ENV
+
+          # Set CMAKE_PREFIX_PATH to let CMake find all packages automatically
+          echo "CMAKE_PREFIX_PATH=${HOMEBREW_PREFIX}" >> $GITHUB_ENV
+
+          # Set compiler flags for OpenMP (required for both backends)
+          echo "LDFLAGS=-L${HOMEBREW_PREFIX}/opt/libomp/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${HOMEBREW_PREFIX}/opt/libomp/include" >> $GITHUB_ENV
 
       - name: Build packages
         run: |
@@ -150,12 +146,10 @@ jobs:
           # Build HNSW backend
           cd packages/leann-backend-hnsw
           if [[ "${{ matrix.os }}" == macos-* ]]; then
-            # Use system clang instead of homebrew LLVM for better compatibility
+            # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
             export MACOSX_DEPLOYMENT_TARGET=11.0
-            # Ensure CMake can find all Homebrew packages including abseil for protobuf
-            export CMAKE_ARGS="-DOpenMP_ROOT=${OpenMP_ROOT} -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} -Dabsl_DIR=${HOMEBREW_PREFIX}/opt/abseil/lib/cmake/absl"
             uv build --wheel --python python
           else
             uv build --wheel --python python
@@ -165,13 +159,11 @@ jobs:
           # Build DiskANN backend
           cd packages/leann-backend-diskann
           if [[ "${{ matrix.os }}" == macos-* ]]; then
-            # Use system clang instead of homebrew LLVM for better compatibility
+            # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
             # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
             export MACOSX_DEPLOYMENT_TARGET=13.3
-            # Ensure CMake can find all Homebrew packages including abseil for protobuf
-            export CMAKE_ARGS="-DOpenMP_ROOT=${OpenMP_ROOT} -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} -Dabsl_DIR=${HOMEBREW_PREFIX}/opt/abseil/lib/cmake/absl"
             uv build --wheel --python python
           else
             uv build --wheel --python python

@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 from pathlib import Path
+from typing import Union
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
@@ -270,7 +271,7 @@ Examples:
                     print(f'  leann search {example_name} "your query"')
                     print(f"  leann ask {example_name} --interactive")
 
-    def load_documents(self, docs_dir: str, custom_file_types: str | None = None):
+    def load_documents(self, docs_dir: str, custom_file_types: Union[str, None] = None):
         print(f"Loading documents from {docs_dir}...")
         if custom_file_types:
             print(f"Using custom file types: {custom_file_types}")
