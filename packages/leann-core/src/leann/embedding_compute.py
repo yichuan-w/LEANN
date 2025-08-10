@@ -7,7 +7,7 @@ Preserves all optimization parameters to ensure performance
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import torch
@@ -19,11 +19,11 @@ log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
 logger.setLevel(log_level)
 
 # Global model cache to avoid repeated loading
-_model_cache: Dict[str, Any] = {}
+_model_cache: dict[str, Any] = {}
 
 
 def compute_embeddings(
-    texts: List[str],
+    texts: list[str],
     model_name: str,
     mode: str = "sentence-transformers",
     is_build: bool = False,
@@ -63,7 +63,7 @@ def compute_embeddings(
 
 
 def compute_embeddings_sentence_transformers(
-    texts: List[str],
+    texts: list[str],
     model_name: str,
     use_fp16: bool = True,
     device: str = "auto",
@@ -235,7 +235,7 @@ def compute_embeddings_sentence_transformers(
     return embeddings
 
 
-def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
+def compute_embeddings_openai(texts: list[str], model_name: str) -> np.ndarray:
     # TODO: @yichuan-w add progress bar only in build mode
     """Compute embeddings using OpenAI API"""
     try:
@@ -296,7 +296,7 @@ def compute_embeddings_openai(texts: List[str], model_name: str) -> np.ndarray:
     return embeddings
 
 
-def compute_embeddings_mlx(chunks: List[str], model_name: str, batch_size: int = 16) -> np.ndarray:
+def compute_embeddings_mlx(chunks: list[str], model_name: str, batch_size: int = 16) -> np.ndarray:
     # TODO: @yichuan-w add progress bar only in build mode
     """Computes embeddings using an MLX model."""
     try:
@@ -371,7 +371,7 @@ def compute_embeddings_mlx(chunks: List[str], model_name: str, batch_size: int =
 
 
 def compute_embeddings_ollama(
-    texts: List[str], model_name: str, is_build: bool = False, host: str = "http://localhost:11434"
+    texts: list[str], model_name: str, is_build: bool = False, host: str = "http://localhost:11434"
 ) -> np.ndarray:
     """
     Compute embeddings using Ollama API.

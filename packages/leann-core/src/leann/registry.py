@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from leann.interface import LeannBackendFactoryInterface
 
-BACKEND_REGISTRY: Dict[str, "LeannBackendFactoryInterface"] = {}
+BACKEND_REGISTRY: dict[str, "LeannBackendFactoryInterface"] = {}
 
 
 def register_backend(name: str):

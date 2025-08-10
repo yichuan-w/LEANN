@@ -23,13 +23,13 @@ from .registry import BACKEND_REGISTRY
 logger = logging.getLogger(__name__)
 
 
-def get_registered_backends() -> List[str]:
+def get_registered_backends() -> list[str]:
     """Get list of registered backend names."""
     return list(BACKEND_REGISTRY.keys())
 
 
 def compute_embeddings(
-    chunks: List[str],
+    chunks: list[str],
     model_name: str,
     mode: str = "sentence-transformers",
     use_server: bool = True,
@@ -70,7 +70,7 @@ def compute_embeddings(
         )
 
 
-def compute_embeddings_via_server(chunks: List[str], model_name: str, port: int) -> np.ndarray:
+def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int) -> np.ndarray:
     """Computes embeddings using sentence-transformers.
 
     Args:
@@ -113,12 +113,12 @@ class SearchResult:
     id: str
     score: float
     text: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class PassageManager:
     def __init__(
-        self, passage_sources: list[Dict[str, Any]], metadata_file_path: Optional[str] = None
+        self, passage_sources: list[dict[str, Any]], metadata_file_path: Optional[str] = None
     ):
         self.offset_maps = {}
         self.passage_files = {}
@@ -162,7 +162,7 @@ class PassageManager:
                 for passage_id, offset in offset_map.items():
                     self.global_offset_map[passage_id] = (passage_file, offset)
 
-    def get_passage(self, passage_id: str) -> Dict[str, Any]:
+    def get_passage(self, passage_id: str) -> dict[str, Any]:
         if passage_id in self.global_offset_map:
             passage_file, offset = self.global_offset_map[passage_id]
             # Lazy file opening - only open when needed
@@ -260,9 +260,9 @@ class LeannBuilder:
             )
 
         self.backend_kwargs = backend_kwargs
-        self.chunks: list[Dict[str, Any]] = []
+        self.chunks: list[dict[str, Any]] = []
 
-    def add_text(self, text: str, metadata: Optional[Dict[str, Any]] = None):
+    def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
         passage_id = metadata.get("id", str(len(self.chunks)))
@@ -618,7 +618,7 @@ class LeannChat:
     def __init__(
         self,
         index_path: str,
-        llm_config: Optional[Dict[str, Any]] = None,
+        llm_config: Optional[dict[str, Any]] = None,
         enable_warmup: bool = False,
         **kwargs,
     ):
@@ -634,7 +634,7 @@ class LeannChat:
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        llm_kwargs: Optional[Dict[str, Any]] = None,
+        llm_kwargs: Optional[dict[str, Any]] = None,
         expected_zmq_port: int = 5557,
         **search_kwargs,
     ):

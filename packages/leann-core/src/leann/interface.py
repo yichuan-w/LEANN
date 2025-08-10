@@ -8,7 +8,7 @@ class LeannBackendBuilderInterface(ABC):
     """Backend interface for building indexes"""
 
     @abstractmethod
-    def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs) -> None:
+    def build(self, data: np.ndarray, ids: list[str], index_path: str, **kwargs) -> None:
         """Build index
 
         Args:
@@ -52,7 +52,7 @@ class LeannBackendSearcherInterface(ABC):
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         zmq_port: Optional[int] = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Search for nearest neighbors
 
         Args:

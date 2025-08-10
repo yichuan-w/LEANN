@@ -4,7 +4,7 @@ import os
 import struct
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Literal, Optional
 
 import numpy as np
 import psutil
@@ -85,7 +85,7 @@ def _write_vectors_to_bin(data: np.ndarray, file_path: Path):
         f.write(data.tobytes())
 
 
-def _calculate_smart_memory_config(data: np.ndarray) -> Tuple[float, float]:
+def _calculate_smart_memory_config(data: np.ndarray) -> tuple[float, float]:
     """
     Calculate smart memory configuration for DiskANN based on data size and system specs.
 
@@ -202,7 +202,7 @@ class DiskannBuilder(LeannBackendBuilderInterface):
                     size_mb = file_path.stat().st_size / (1024 * 1024)
                     logger.info(f"  - {filename} ({size_mb:.1f} MB)")
 
-    def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs):
+    def build(self, data: np.ndarray, ids: list[str], index_path: str, **kwargs):
         path = Path(index_path)
         index_dir = path.parent
         index_prefix = path.stem
@@ -388,7 +388,7 @@ class DiskannSearcher(BaseSearcher):
         batch_recompute: bool = False,
         dedup_node_dis: bool = False,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Search for nearest neighbors using DiskANN index.
 

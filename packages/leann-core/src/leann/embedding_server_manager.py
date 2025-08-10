@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 import psutil
 
@@ -147,7 +147,7 @@ def _check_passages_in_cmdline(cmdline: list, expected_passages_file: str) -> bo
 
 def _find_compatible_port_or_next_available(
     start_port: int, model_name: str, passages_file: str, max_attempts: int = 100
-) -> Tuple[int, bool]:
+) -> tuple[int, bool]:
     """
     Find a port that either has a compatible server or is available.
     Returns (port, is_compatible) where is_compatible indicates if we found a matching server.
@@ -193,7 +193,7 @@ class EmbeddingServerManager:
         model_name: str,
         embedding_mode: str = "sentence-transformers",
         **kwargs,
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """Start the embedding server."""
         passages_file = kwargs.get("passages_file")
 
@@ -225,7 +225,7 @@ class EmbeddingServerManager:
         model_name: str,
         embedding_mode: str = "sentence-transformers",
         **kwargs,
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """Start server with Colab-specific configuration."""
         # Try to find an available port
         try:
@@ -261,7 +261,7 @@ class EmbeddingServerManager:
 
     def _start_new_server(
         self, port: int, model_name: str, embedding_mode: str, **kwargs
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """Start a new embedding server on the given port."""
         logger.info(f"Starting embedding server on port {port}...")
 
@@ -321,7 +321,7 @@ class EmbeddingServerManager:
             atexit.register(lambda: self.stop_server() if self.server_process else None)
             self._atexit_registered = True
 
-    def _wait_for_server_ready(self, port: int) -> Tuple[bool, int]:
+    def _wait_for_server_ready(self, port: int) -> tuple[bool, int]:
         """Wait for the server to be ready."""
         max_wait, wait_interval = 120, 0.5
         for _ in range(int(max_wait / wait_interval)):
@@ -403,7 +403,7 @@ class EmbeddingServerManager:
             atexit.register(lambda: self.stop_server() if self.server_process else None)
             self._atexit_registered = True
 
-    def _wait_for_server_ready_colab(self, port: int) -> Tuple[bool, int]:
+    def _wait_for_server_ready_colab(self, port: int) -> tuple[bool, int]:
         """Wait for the server to be ready with Colab-specific timeout."""
         max_wait, wait_interval = 30, 0.5  # Shorter timeout for Colab
 

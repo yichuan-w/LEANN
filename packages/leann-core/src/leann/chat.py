@@ -8,7 +8,7 @@ import difflib
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 
@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def check_ollama_models(host: str) -> List[str]:
+def check_ollama_models(host: str) -> list[str]:
     """Check available Ollama models and return a list"""
     try:
         import requests
@@ -31,7 +31,7 @@ def check_ollama_models(host: str) -> List[str]:
         return []
 
 
-def check_ollama_model_exists_remotely(model_name: str) -> Tuple[bool, List[str]]:
+def check_ollama_model_exists_remotely(model_name: str) -> tuple[bool, list[str]]:
     """Check if a model exists in Ollama's remote library and return available tags
 
     Returns:
@@ -94,7 +94,7 @@ def check_ollama_model_exists_remotely(model_name: str) -> Tuple[bool, List[str]
     return True, []
 
 
-def search_ollama_models_fuzzy(query: str, available_models: List[str]) -> List[str]:
+def search_ollama_models_fuzzy(query: str, available_models: list[str]) -> list[str]:
     """Use intelligent fuzzy search for Ollama models"""
     if not available_models:
         return []
@@ -169,7 +169,7 @@ def search_ollama_models_fuzzy(query: str, available_models: List[str]) -> List[
 # Remove this too - no need for fallback
 
 
-def suggest_similar_models(invalid_model: str, available_models: List[str]) -> List[str]:
+def suggest_similar_models(invalid_model: str, available_models: list[str]) -> list[str]:
     """Use difflib to find similar model names"""
     if not available_models:
         return []
@@ -190,7 +190,7 @@ def check_hf_model_exists(model_name: str) -> bool:
         return False
 
 
-def get_popular_hf_models() -> List[str]:
+def get_popular_hf_models() -> list[str]:
     """Return a list of popular HuggingFace models for suggestions"""
     try:
         from huggingface_hub import list_models
@@ -222,7 +222,7 @@ def get_popular_hf_models() -> List[str]:
         return _get_fallback_hf_models()
 
 
-def _get_fallback_hf_models() -> List[str]:
+def _get_fallback_hf_models() -> list[str]:
     """Fallback list of popular HuggingFace models"""
     return [
         "microsoft/DialoGPT-medium",
@@ -238,7 +238,7 @@ def _get_fallback_hf_models() -> List[str]:
     ]
 
 
-def search_hf_models_fuzzy(query: str, limit: int = 10) -> List[str]:
+def search_hf_models_fuzzy(query: str, limit: int = 10) -> list[str]:
     """Use HuggingFace Hub's native fuzzy search for model suggestions"""
     try:
         from huggingface_hub import list_models
@@ -304,7 +304,7 @@ def search_hf_models_fuzzy(query: str, limit: int = 10) -> List[str]:
         return []
 
 
-def search_hf_models(query: str, limit: int = 10) -> List[str]:
+def search_hf_models(query: str, limit: int = 10) -> list[str]:
     """Simple search for HuggingFace models based on query (kept for backward compatibility)"""
     return search_hf_models_fuzzy(query, limit)
 
@@ -761,7 +761,7 @@ class SimulatedChat(LLMInterface):
         return "This is a simulated answer from the LLM based on the retrieved context."
 
 
-def get_llm(llm_config: Optional[Dict[str, Any]] = None) -> LLMInterface:
+def get_llm(llm_config: Optional[dict[str, Any]] = None) -> LLMInterface:
     """
     Factory function to get an LLM interface based on configuration.
 

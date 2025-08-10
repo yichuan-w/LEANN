@@ -46,7 +46,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             backend_module_name=backend_module_name,
         )
 
-    def _load_meta(self) -> Dict[str, Any]:
+    def _load_meta(self) -> dict[str, Any]:
         """Loads the metadata file associated with the index."""
         # This is the corrected logic for finding the meta file.
         meta_path = self.index_dir / f"{self.index_path.name}.meta.json"
@@ -174,7 +174,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         zmq_port: Optional[int] = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Search for the top_k nearest neighbors of the query vector.
 
