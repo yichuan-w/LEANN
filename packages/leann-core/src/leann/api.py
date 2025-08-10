@@ -88,6 +88,9 @@ def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int)
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
     socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
+    socket.setsockopt(zmq.RCVTIMEO, 300000)  # 300秒接收超时
+    socket.setsockopt(zmq.SNDTIMEO, 300000)  # 300秒发送超时
+    socket.setsockopt(zmq.IMMEDIATE, 1)  # 立即模式，避免队列阻塞
     socket.connect(f"tcp://localhost:{port}")
 
     try:
