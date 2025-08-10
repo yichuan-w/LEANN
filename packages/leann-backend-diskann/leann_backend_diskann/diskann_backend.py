@@ -477,6 +477,7 @@ class DiskannSearcher(BaseSearcher):
         # Force garbage collection to ensure C++ objects are destroyed
         try:
             import gc
+
             gc.collect()
         except Exception:
             pass
