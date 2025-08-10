@@ -685,7 +685,7 @@ class HFChat(LLMInterface):
 class OpenAIChat(LLMInterface):
     """LLM interface for OpenAI models."""
 
-    def __init__(self, model: str = "gpt-4o", api_key: Union[str, None] = None):
+    def __init__(self, model: str = "gpt-4o", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
 
