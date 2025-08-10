@@ -150,8 +150,6 @@ jobs:
             export CC=clang
             export CXX=clang++
             export MACOSX_DEPLOYMENT_TARGET=11.0
-            # Pass CMAKE_PREFIX_PATH to help CMake find Homebrew packages
-            export CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} -DOpenMP_ROOT=${OpenMP_ROOT}"
             uv build --wheel --python python
           else
             uv build --wheel --python python
@@ -166,8 +164,6 @@ jobs:
             export CXX=clang++
             # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
             export MACOSX_DEPLOYMENT_TARGET=13.3
-            # Pass CMAKE_PREFIX_PATH to help CMake find Homebrew packages
-            export CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH} -DOpenMP_ROOT=${OpenMP_ROOT}"
             uv build --wheel --python python
           else
             uv build --wheel --python python

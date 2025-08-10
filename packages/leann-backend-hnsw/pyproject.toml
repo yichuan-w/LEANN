@@ -22,6 +22,8 @@ cmake.build-type = "Release"
 build.verbose = true
 build.tool-args = ["-j8"]
 
-# CMake definitions to optimize compilation
+# CMake definitions to optimize compilation and find Homebrew packages
 [tool.scikit-build.cmake.define]
 CMAKE_BUILD_PARALLEL_LEVEL = "8"
+CMAKE_PREFIX_PATH = {env = "CMAKE_PREFIX_PATH"}
+OpenMP_ROOT = {env = "OpenMP_ROOT"}
