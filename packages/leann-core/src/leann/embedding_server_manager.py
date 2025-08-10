@@ -1,6 +1,7 @@
 import atexit
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -311,6 +312,7 @@ class EmbeddingServerManager:
             cwd=project_root,
             stdout=None,  # Direct to console
             stderr=None,  # Direct to console
+            start_new_session=True,  # Create new process group for better cleanup
         )
         self.server_port = port
         logger.info(f"Server process started with PID: {self.server_process.pid}")
@@ -352,7 +354,14 @@ class EmbeddingServerManager:
         logger.info(
             f"Terminating server process (PID: {self.server_process.pid}) for backend {self.backend_module_name}..."
         )
-        self.server_process.terminate()
+        
+        # Try terminating the whole process group first
+        try:
+            pgid = os.getpgid(self.server_process.pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            # Fallback to terminating just the process
+            self.server_process.terminate()
 
         try:
             self.server_process.wait(timeout=3)
@@ -361,7 +370,13 @@ class EmbeddingServerManager:
             logger.warning(
                 f"Server process {self.server_process.pid} did not terminate gracefully within 3 seconds, killing it."
             )
-            self.server_process.kill()
+            # Try killing the whole process group
+            try:
+                pgid = os.getpgid(self.server_process.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                # Fallback to killing just the process
+                self.server_process.kill()
             try:
                 self.server_process.wait(timeout=2)
                 logger.info(f"Server process {self.server_process.pid} killed successfully.")
