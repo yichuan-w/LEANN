@@ -61,7 +61,7 @@ class HNSWBuilder(LeannBackendBuilderInterface):
                     "is_recompute is False, but is_compact is True. This is not compatible now. change is compact to False and you can use the original HNSW index."
                 )
 
-    def build(self, data: np.ndarray, ids: list[str], index_path: str, **kwargs):
+    def build(self, data: np.ndarray, ids: List[str], index_path: str, **kwargs):
         from . import faiss  # type: ignore
 
         path = Path(index_path)
@@ -160,7 +160,7 @@ class HNSWSearcher(BaseSearcher):
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         batch_size: int = 0,
         **kwargs,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """
         Search for nearest neighbors using HNSW index.
 

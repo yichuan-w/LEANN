@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 
 class GraphPartitioner:
@@ -92,7 +92,7 @@ class GraphPartitioner:
         output_dir: Optional[str] = None,
         partition_prefix: Optional[str] = None,
         **kwargs,
-    ) -> tuple[str, str]:
+    ) -> Tuple[str, str]:
         """
         Partition a disk-based index for improved performance.
 
@@ -263,11 +263,11 @@ class GraphPartitioner:
 
 def partition_graph(
     index_prefix_path: str,
-    output_dir: str | None = None,
-    partition_prefix: str | None = None,
+    output_dir: Optional[str] = None,
+    partition_prefix: Optional[str] = None,
     build_type: str = "release",
     **kwargs,
-) -> tuple[str, str]:
+) -> Tuple[str, str]:
     """
     Convenience function to partition a graph index.
 

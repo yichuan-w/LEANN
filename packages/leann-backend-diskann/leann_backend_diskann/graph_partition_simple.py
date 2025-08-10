@@ -15,7 +15,7 @@ from typing import Optional
 
 def partition_graph_simple(
     index_prefix_path: str, output_dir: Optional[str] = None, **kwargs
-) -> tuple[str, str]:
+) -> Tuple[str, str]:
     """
     Simple function to partition a graph index.
 
