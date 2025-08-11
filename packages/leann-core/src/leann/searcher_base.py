@@ -1,7 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import numpy as np
 
@@ -169,7 +169,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: int | None = None,
+        zmq_port: Optional[int] = None,
         **kwargs,
     ) -> dict[str, Any]:
         """

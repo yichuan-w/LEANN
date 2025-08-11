@@ -54,16 +54,26 @@ jobs:
             python: '3.12'
           - os: ubuntu-22.04
             python: '3.13'
-          - os: macos-latest
+          - os: macos-14
             python: '3.9'
-          - os: macos-latest
+          - os: macos-14
             python: '3.10'
-          - os: macos-latest
+          - os: macos-14
             python: '3.11'
-          - os: macos-latest
+          - os: macos-14
             python: '3.12'
-          - os: macos-latest
+          - os: macos-14
             python: '3.13'
+          - os: macos-13
+            python: '3.9'
+          - os: macos-13
+            python: '3.10'
+          - os: macos-13
+            python: '3.11'
+          - os: macos-13
+            python: '3.12'
+          # Note: macos-13 + Python 3.13 excluded due to PyTorch compatibility
+          # (PyTorch 2.5+ supports Python 3.13 but not Intel Mac x86_64)
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -109,48 +119,59 @@ jobs:
             uv pip install --system delocate
           fi
 
+      - name: Set macOS environment variables
+        if: runner.os == 'macOS'
+        run: |
+          # Use brew --prefix to automatically detect Homebrew installation path
+          HOMEBREW_PREFIX=$(brew --prefix)
+          echo "HOMEBREW_PREFIX=${HOMEBREW_PREFIX}" >> $GITHUB_ENV
+          echo "OpenMP_ROOT=${HOMEBREW_PREFIX}/opt/libomp" >> $GITHUB_ENV
+
+          # Set CMAKE_PREFIX_PATH to let CMake find all packages automatically
+          echo "CMAKE_PREFIX_PATH=${HOMEBREW_PREFIX}" >> $GITHUB_ENV
+
+          # Set compiler flags for OpenMP (required for both backends)
+          echo "LDFLAGS=-L${HOMEBREW_PREFIX}/opt/libomp/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${HOMEBREW_PREFIX}/opt/libomp/include" >> $GITHUB_ENV
+
       - name: Build packages
         run: |
           # Build core (platform independent)
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            cd packages/leann-core
-            uv build
-            cd ../..
-          fi
+          cd packages/leann-core
+          uv build
+          cd ../..
 
           # Build HNSW backend
           cd packages/leann-backend-hnsw
-          if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            # Use system clang instead of homebrew LLVM for better compatibility
+          if [[ "${{ matrix.os }}" == macos-* ]]; then
+            # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
             export MACOSX_DEPLOYMENT_TARGET=11.0
-            uv build --wheel --python python
+            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
-            uv build --wheel --python python
+            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           fi
           cd ../..
 
           # Build DiskANN backend
           cd packages/leann-backend-diskann
-          if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            # Use system clang instead of homebrew LLVM for better compatibility
+          if [[ "${{ matrix.os }}" == macos-* ]]; then
+            # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
             # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
             export MACOSX_DEPLOYMENT_TARGET=13.3
-            uv build --wheel --python python
+            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
-            uv build --wheel --python python
+            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           fi
           cd ../..
 
           # Build meta package (platform independent)
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            cd packages/leann
-            uv build
-            cd ../..
-          fi
+          cd packages/leann
+          uv build
+          cd ../..
 
       - name: Repair wheels (Linux)
         if: runner.os == 'Linux'
@@ -199,20 +220,18 @@ jobs:
           echo "📦 Built packages:"
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
 
+
       - name: Install built packages for testing
         run: |
-          # Create a virtual environment
-          uv venv
+          # Create a virtual environment with the correct Python version
+          uv venv --python ${{ matrix.python }}
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Install the built wheels
-          # Use --find-links to let uv choose the correct wheel for the platform
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            uv pip install leann-core --find-links packages/leann-core/dist
-            uv pip install leann --find-links packages/leann/dist
-          fi
-          uv pip install leann-backend-hnsw --find-links packages/leann-backend-hnsw/dist
-          uv pip install leann-backend-diskann --find-links packages/leann-backend-diskann/dist
+          # Install packages using --find-links to prioritize local builds
+          uv pip install --find-links packages/leann-core/dist --find-links packages/leann-backend-hnsw/dist --find-links packages/leann-backend-diskann/dist packages/leann-core/dist/*.whl || uv pip install --find-links packages/leann-core/dist packages/leann-core/dist/*.tar.gz
+          uv pip install --find-links packages/leann-core/dist packages/leann-backend-hnsw/dist/*.whl
+          uv pip install --find-links packages/leann-core/dist packages/leann-backend-diskann/dist/*.whl
+          uv pip install packages/leann/dist/*.whl || uv pip install packages/leann/dist/*.tar.gz
 
           # Install test dependencies using extras
           uv pip install -e ".[test]"

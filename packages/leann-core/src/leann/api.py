@@ -10,7 +10,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import numpy as np
 
@@ -33,7 +33,7 @@ def compute_embeddings(
     model_name: str,
     mode: str = "sentence-transformers",
     use_server: bool = True,
-    port: int | None = None,
+    port: Optional[int] = None,
     is_build=False,
 ) -> np.ndarray:
     """
@@ -157,12 +157,12 @@ class LeannBuilder:
         self,
         backend_name: str,
         embedding_model: str = "facebook/contriever",
-        dimensions: int | None = None,
+        dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
         **backend_kwargs,
     ):
         self.backend_name = backend_name
-        backend_factory: LeannBackendFactoryInterface | None = BACKEND_REGISTRY.get(backend_name)
+        backend_factory: Optional[LeannBackendFactoryInterface] = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found or not registered.")
         self.backend_factory = backend_factory
@@ -242,7 +242,7 @@ class LeannBuilder:
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
-    def add_text(self, text: str, metadata: dict[str, Any] | None = None):
+    def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
         passage_id = metadata.get("id", str(len(self.chunks)))
@@ -554,7 +554,7 @@ class LeannSearcher:
         if "labels" in results and "distances" in results:
             logger.info(f"  Processing {len(results['labels'][0])} passage IDs:")
             for i, (string_id, dist) in enumerate(
-                zip(results["labels"][0], results["distances"][0], strict=False)
+                zip(results["labels"][0], results["distances"][0])
             ):
                 try:
                     passage_data = self.passage_manager.get_passage(string_id)
@@ -592,7 +592,7 @@ class LeannChat:
     def __init__(
         self,
         index_path: str,
-        llm_config: dict[str, Any] | None = None,
+        llm_config: Optional[dict[str, Any]] = None,
         enable_warmup: bool = False,
         **kwargs,
     ):
@@ -608,7 +608,7 @@ class LeannChat:
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        llm_kwargs: dict[str, Any] | None = None,
+        llm_kwargs: Optional[dict[str, Any]] = None,
         expected_zmq_port: int = 5557,
         **search_kwargs,
     ):

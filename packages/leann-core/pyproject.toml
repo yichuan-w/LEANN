@@ -33,8 +33,8 @@ dependencies = [
     "pdfplumber>=0.10.0",
     "nbconvert>=7.0.0",  # For .ipynb file support
     "gitignore-parser>=0.1.12",  # For proper .gitignore handling
-    "mlx>=0.26.3; sys_platform == 'darwin'",
-    "mlx-lm>=0.26.0; sys_platform == 'darwin'",
+    "mlx>=0.26.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-lm>=0.26.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 [project.optional-dependencies]

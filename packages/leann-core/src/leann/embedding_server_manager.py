@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 import psutil
 
@@ -182,8 +183,8 @@ class EmbeddingServerManager:
                                        e.g., "leann_backend_diskann.embedding_server"
         """
         self.backend_module_name = backend_module_name
-        self.server_process: subprocess.Popen | None = None
-        self.server_port: int | None = None
+        self.server_process: Optional[subprocess.Popen] = None
+        self.server_port: Optional[int] = None
         self._atexit_registered = False
 
     def start_server(

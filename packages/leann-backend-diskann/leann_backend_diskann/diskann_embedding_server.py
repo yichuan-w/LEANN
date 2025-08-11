@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import zmq
@@ -32,7 +33,7 @@ if not logger.handlers:
 
 
 def create_diskann_embedding_server(
-    passages_file: str | None = None,
+    passages_file: Optional[str] = None,
     zmq_port: int = 5555,
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     embedding_mode: str = "sentence-transformers",
