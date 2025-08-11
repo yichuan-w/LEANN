@@ -220,17 +220,6 @@ jobs:
           echo "📦 Built packages:"
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
 
-      - name: Debug wheel compatibility
-        run: |
-          echo "🔍 Checking wheel compatibility:"
-          uv pip debug platform-tags | head -10
-          echo ""
-          echo "Built wheel details:"
-          for wheel in packages/*/dist/*.whl; do
-            if [ -f "$wheel" ]; then
-              echo "  $(basename $wheel)"
-            fi
-          done
 
       - name: Install built packages for testing
         run: |
@@ -243,38 +232,12 @@ jobs:
           uv pip install packages/leann-core/dist/*.whl || uv pip install packages/leann-core/dist/*.tar.gz
           uv pip install packages/leann/dist/*.whl || uv pip install packages/leann/dist/*.tar.gz
 
-          # Install backend wheels directly with Python version filtering
-          PYTHON_VERSION="${{ matrix.python }}"
-          PYTHON_TAG="cp${PYTHON_VERSION//./}"  # Convert 3.11 to cp311
+          # Install backend wheels directly
+          uv pip install packages/leann-backend-hnsw/dist/*.whl
+          uv pip install packages/leann-backend-diskann/dist/*.whl
 
-          # Find and install the correct wheel for this Python version
-          HNSW_WHEEL=$(find packages/leann-backend-hnsw/dist -name "*${PYTHON_TAG}*.whl" | head -1)
-          DISKANN_WHEEL=$(find packages/leann-backend-diskann/dist -name "*${PYTHON_TAG}*.whl" | head -1)
-
-          if [ -n "$HNSW_WHEEL" ]; then
-            echo "Installing HNSW wheel: $HNSW_WHEEL"
-            uv pip install "$HNSW_WHEEL"
-          else
-            echo "No HNSW wheel found for Python $PYTHON_VERSION"
-            exit 1
-          fi
-
-          if [ -n "$DISKANN_WHEEL" ]; then
-            echo "Installing DiskANN wheel: $DISKANN_WHEEL"
-            uv pip install "$DISKANN_WHEEL"
-          else
-            echo "No DiskANN wheel found for Python $PYTHON_VERSION"
-            exit 1
-          fi
-
-          # Install base dependencies needed for testing (without the local packages)
-          uv pip install numpy torch tqdm flask flask_compress datasets evaluate colorama boto3 "protobuf==4.25.3"
-          uv pip install "PyPDF2>=3.0.0" "pdfplumber>=0.11.0" "pymupdf>=1.26.0" "pypdfium2>=4.30.0"
-          uv pip install "llama-index>=0.12.44" "llama-index-readers-file>=0.4.0" "llama-index-vector-stores-faiss>=0.4.0"
-          uv pip install "llama-index-embeddings-huggingface>=0.5.5" "ipykernel==6.29.5" "msgpack>=1.1.1" "psutil>=5.8.0"
-
-          # Install test dependencies
-          uv pip install "pytest>=7.0" "pytest-timeout>=2.0" "llama-index-core>=0.12.0" "python-dotenv>=1.0.0" "sentence-transformers>=2.2.0"
+          # Install test dependencies using extras
+          uv pip install -e ".[test]"
 
       - name: Run tests with pytest
         env:
