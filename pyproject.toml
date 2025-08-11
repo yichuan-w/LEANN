@@ -32,7 +32,7 @@ dependencies = [
     "pypdfium2>=4.30.0",
     # LlamaIndex core and readers - updated versions
     "llama-index>=0.12.44",
-    "llama-index-readers-file>=0.4.0",  # Essential for PDF parsing
+    "llama-index-readers-file>=0.4.0", # Essential for PDF parsing
     # "llama-index-readers-docling",  # Requires Python >= 3.10
     # "llama-index-node-parser-docling",  # Requires Python >= 3.10
     "llama-index-vector-stores-faiss>=0.4.0",
@@ -43,6 +43,9 @@ dependencies = [
     "mlx>=0.26.3; sys_platform == 'darwin'",
     "mlx-lm>=0.26.0; sys_platform == 'darwin'",
     "psutil>=5.8.0",
+    "pathspec>=0.12.1",
+    "nbconvert>=7.16.6",
+    "gitignore-parser>=0.1.12",
 ]
 
 [project.optional-dependencies]
