@@ -31,8 +31,8 @@ dependencies = [
     "PyPDF2>=3.0.0",
     "pymupdf>=1.23.0",
     "pdfplumber>=0.10.0",
-    "mlx>=0.26.3; sys_platform == 'darwin'",
-    "mlx-lm>=0.26.0; sys_platform == 'darwin'",
+    "mlx>=0.26.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-lm>=0.26.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 [project.optional-dependencies]
