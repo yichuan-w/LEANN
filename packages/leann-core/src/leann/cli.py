@@ -203,62 +203,36 @@ Examples:
         with open(global_registry, "w") as f:
             json.dump(projects, f, indent=2)
 
-    def _read_gitignore_patterns(self, docs_dir: str) -> list[str]:
-        """Read .gitignore file and return patterns for exclusion."""
-        gitignore_path = Path(docs_dir) / ".gitignore"
-        patterns = []
+    def _build_gitignore_parser(self, docs_dir: str):
+        """Build gitignore parser using gitignore-parser library."""
+        from gitignore_parser import parse_gitignore
 
-        # Add some essential patterns that should always be excluded
-        essential_patterns = [
-            ".git",
-            ".DS_Store",
-        ]
-        patterns.extend(essential_patterns)
+        # Try to parse the root .gitignore
+        gitignore_path = Path(docs_dir) / ".gitignore"
 
         if gitignore_path.exists():
             try:
-                with open(gitignore_path, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        # Skip empty lines and comments
-                        if line and not line.startswith("#"):
-                            # Remove leading slash if present (make it relative)
-                            if line.startswith("/"):
-                                line = line[1:]
-                            patterns.append(line)
-                print(
-                    f"📋 Loaded {len(patterns) - len(essential_patterns)} patterns from .gitignore"
-                )
+                # gitignore-parser automatically handles all subdirectory .gitignore files!
+                matches = parse_gitignore(str(gitignore_path))
+                print(f"📋 Loaded .gitignore from {docs_dir} (includes all subdirectories)")
+                return matches
             except Exception as e:
-                print(f"Warning: Could not read .gitignore: {e}")
+                print(f"Warning: Could not parse .gitignore: {e}")
         else:
-            print("📋 No .gitignore found, using minimal exclusion patterns")
+            print("📋 No .gitignore found")
 
-        return patterns
+        # Fallback: basic pattern matching for essential files
+        essential_patterns = {".git", ".DS_Store", "__pycache__", "node_modules", ".venv", "venv"}
 
-    def _should_exclude_file(self, relative_path: Path, exclude_patterns: list[str]) -> bool:
-        """Check if a file should be excluded based on gitignore-style patterns."""
-        path_str = str(relative_path)
+        def basic_matches(file_path):
+            path_parts = Path(file_path).parts
+            return any(part in essential_patterns for part in path_parts)
 
-        for pattern in exclude_patterns:
-            # Simple pattern matching (could be enhanced with full gitignore syntax)
-            if pattern.endswith("*"):
-                # Wildcard pattern
-                prefix = pattern[:-1]
-                if path_str.startswith(prefix):
-                    return True
-            elif "*" in pattern:
-                # Contains wildcard - simple glob-like matching
-                import fnmatch
+        return basic_matches
 
-                if fnmatch.fnmatch(path_str, pattern):
-                    return True
-            else:
-                # Exact match or directory match
-                if path_str == pattern or path_str.startswith(pattern + "/"):
-                    return True
-
-        return False
+    def _should_exclude_file(self, relative_path: Path, gitignore_matches) -> bool:
+        """Check if a file should be excluded using gitignore parser."""
+        return gitignore_matches(str(relative_path))
 
     def list_indexes(self):
         print("Stored LEANN indexes:")
@@ -341,8 +315,8 @@ Examples:
         if custom_file_types:
             print(f"Using custom file types: {custom_file_types}")
 
-        # Read .gitignore patterns first
-        exclude_patterns = self._read_gitignore_patterns(docs_dir)
+        # Build gitignore parser
+        gitignore_matches = self._build_gitignore_parser(docs_dir)
 
         # Try to use better PDF parsers first, but only if PDFs are requested
         documents = []
@@ -355,7 +329,7 @@ Examples:
             for file_path in docs_path.rglob("*.pdf"):
                 # Check if file matches any exclude pattern
                 relative_path = file_path.relative_to(docs_path)
-                if self._should_exclude_file(relative_path, exclude_patterns):
+                if self._should_exclude_file(relative_path, gitignore_matches):
                     continue
 
                 print(f"Processing PDF: {file_path}")
@@ -449,14 +423,34 @@ Examples:
             ]
         # Try to load other file types, but don't fail if none are found
         try:
+            # Create a custom file filter function using our PathSpec
+            def file_filter(file_path: str) -> bool:
+                """Return True if file should be included (not excluded)"""
+                try:
+                    docs_path_obj = Path(docs_dir)
+                    file_path_obj = Path(file_path)
+                    relative_path = file_path_obj.relative_to(docs_path_obj)
+                    return not self._should_exclude_file(relative_path, gitignore_matches)
+                except (ValueError, OSError):
+                    return True  # Include files that can't be processed
+
             other_docs = SimpleDirectoryReader(
                 docs_dir,
                 recursive=True,
                 encoding="utf-8",
                 required_exts=code_extensions,
-                exclude=exclude_patterns,
+                file_extractor={},  # Use default extractors
+                filename_as_id=True,
             ).load_data(show_progress=True)
-            documents.extend(other_docs)
+
+            # Filter documents after loading based on gitignore rules
+            filtered_docs = []
+            for doc in other_docs:
+                file_path = doc.metadata.get("file_path", "")
+                if file_filter(file_path):
+                    filtered_docs.append(doc)
+
+            documents.extend(filtered_docs)
         except ValueError as e:
             if "No files found" in str(e):
                 print("No additional files found for other supported types.")

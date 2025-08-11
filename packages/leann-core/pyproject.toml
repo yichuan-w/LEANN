@@ -31,6 +31,8 @@ dependencies = [
     "PyPDF2>=3.0.0",
     "pymupdf>=1.23.0",
     "pdfplumber>=0.10.0",
+    "nbconvert>=7.0.0",  # For .ipynb file support
+    "gitignore-parser>=0.1.12",  # For proper .gitignore handling
     "mlx>=0.26.3; sys_platform == 'darwin'",
     "mlx-lm>=0.26.0; sys_platform == 'darwin'",
 ]
