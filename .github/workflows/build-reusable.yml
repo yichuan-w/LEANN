@@ -241,8 +241,13 @@ jobs:
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
 
+          # Debug: Show debug_enabled value
+          echo "🔍 DEBUG_ENABLED value: '${{ inputs.debug_enabled }}'"
+          echo "🔍 COMMIT MESSAGE: '${{ github.event.head_commit.message }}'"
+          echo "🔍 Contains [debug]: '${{ contains(github.event.head_commit.message, '[debug]') }}'"
+          
           # Start tmate session INSIDE the test step if debug enabled
-          if [[ "${{ inputs.debug_enabled }}" == "true" ]]; then
+          if [[ "${{ inputs.debug_enabled }}" == "true" ]] || [[ "${{ contains(github.event.head_commit.message, '[debug]') }}" == "true" ]]; then
             echo "🔧 DEBUG MODE: Starting tmate session before tests..."
             # Install tmate if not available
             if ! command -v tmate &> /dev/null; then
