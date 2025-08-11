@@ -137,11 +137,9 @@ jobs:
       - name: Build packages
         run: |
           # Build core (platform independent)
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            cd packages/leann-core
-            uv build
-            cd ../..
-          fi
+          cd packages/leann-core
+          uv build
+          cd ../..
 
           # Build HNSW backend
           cd packages/leann-backend-hnsw
