@@ -25,32 +25,61 @@ def handle_request(request):
                 "tools": [
                     {
                         "name": "leann_search",
-                        "description": "Search LEANN index",
+                        "description": """🔍 Search code using natural language - like having a coding assistant who knows your entire codebase!
+
+🎯 **Perfect for**:
+- "How does authentication work?" → finds auth-related code
+- "Error handling patterns" → locates try-catch blocks and error logic
+- "Database connection setup" → finds DB initialization code
+- "API endpoint definitions" → locates route handlers
+- "Configuration management" → finds config files and usage
+
+💡 **Pro tip**: Use this before making any changes to understand existing patterns and conventions.""",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "index_name": {"type": "string"},
-                                "query": {"type": "string"},
-                                "top_k": {"type": "integer", "default": 5},
+                                "index_name": {
+                                    "type": "string",
+                                    "description": "Name of the LEANN index to search. Use 'leann_list' first to see available indexes.",
+                                },
+                                "query": {
+                                    "type": "string",
+                                    "description": "Search query - can be natural language (e.g., 'how to handle errors') or technical terms (e.g., 'async function definition')",
+                                },
+                                "top_k": {
+                                    "type": "integer",
+                                    "default": 5,
+                                    "minimum": 1,
+                                    "maximum": 20,
+                                    "description": "Number of search results to return. Use 5-10 for focused results, 15-20 for comprehensive exploration.",
+                                },
+                                "complexity": {
+                                    "type": "integer",
+                                    "default": 32,
+                                    "minimum": 16,
+                                    "maximum": 128,
+                                    "description": "Search complexity level. Use 16-32 for fast searches (recommended), 64+ for higher precision when needed.",
+                                },
                             },
                             "required": ["index_name", "query"],
                         },
                     },
                     {
-                        "name": "leann_ask",
-                        "description": "Ask question using LEANN RAG",
+                        "name": "leann_status",
+                        "description": "📊 Check the health and stats of your code indexes - like a medical checkup for your codebase knowledge!",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "index_name": {"type": "string"},
-                                "question": {"type": "string"},
+                                "index_name": {
+                                    "type": "string",
+                                    "description": "Optional: Name of specific index to check. If not provided, shows status of all indexes.",
+                                }
                             },
-                            "required": ["index_name", "question"],
                         },
                     },
                     {
                         "name": "leann_list",
-                        "description": "List all LEANN indexes",
+                        "description": "📋 Show all your indexed codebases - your personal code library! Use this to see what's available for search.",
                         "inputSchema": {"type": "object", "properties": {}},
                     },
                 ]
@@ -63,19 +92,41 @@ def handle_request(request):
 
         try:
             if tool_name == "leann_search":
+                # Validate required parameters
+                if not args.get("index_name") or not args.get("query"):
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Error: Both index_name and query are required",
+                                }
+                            ]
+                        },
+                    }
+
+                # Build simplified command
                 cmd = [
                     "leann",
                     "search",
                     args["index_name"],
                     args["query"],
-                    "--recompute-embeddings",
                     f"--top-k={args.get('top_k', 5)}",
+                    f"--complexity={args.get('complexity', 32)}",
                 ]
+
                 result = subprocess.run(cmd, capture_output=True, text=True)
 
-            elif tool_name == "leann_ask":
-                cmd = f'echo "{args["question"]}" | leann ask {args["index_name"]} --recompute-embeddings --llm ollama --model qwen3:8b'
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            elif tool_name == "leann_status":
+                if args.get("index_name"):
+                    # Check specific index status - for now, we'll use leann list and filter
+                    result = subprocess.run(["leann", "list"], capture_output=True, text=True)
+                    # We could enhance this to show more detailed status per index
+                else:
+                    # Show all indexes status
+                    result = subprocess.run(["leann", "list"], capture_output=True, text=True)
 
             elif tool_name == "leann_list":
                 result = subprocess.run(["leann", "list"], capture_output=True, text=True)

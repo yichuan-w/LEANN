@@ -44,6 +44,9 @@ dependencies = [
     "mlx-lm>=0.26.0; sys_platform == 'darwin'",
     "psutil>=5.8.0",
     "pybind11>=3.0.0",
+    "pathspec>=0.12.1",
+    "nbconvert>=7.16.6",
+    "gitignore-parser>=0.1.12",
 ]
 
 [project.optional-dependencies]

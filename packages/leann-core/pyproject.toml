@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leann-core"
-version = "0.2.5"
+version = "0.2.7"
 description = "Core API and plugin system for LEANN"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -31,6 +31,8 @@ dependencies = [
     "PyPDF2>=3.0.0",
     "pymupdf>=1.23.0",
     "pdfplumber>=0.10.0",
+    "nbconvert>=7.0.0",  # For .ipynb file support
+    "gitignore-parser>=0.1.12",  # For proper .gitignore handling
     "mlx>=0.26.3; sys_platform == 'darwin'",
     "mlx-lm>=0.26.0; sys_platform == 'darwin'",
 ]

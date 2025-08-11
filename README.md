@@ -20,7 +20,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 **Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can semantic search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)**, **[codebase](#-claude-code-integration-transform-your-development-workflow)**\* , or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
 
-\* Claude Code only supports basic `grep`-style keyword search.  **LEANN** is a drop-in **semantic search MCP service fully compatible with Claude Code**, unlocking intelligent retrieval without changing your workflow.
+\* Claude Code only supports basic `grep`-style keyword search. **LEANN** is a drop-in **semantic search MCP service fully compatible with Claude Code**, unlocking intelligent retrieval without changing your workflow. 🔥 Check out [the easy setup →](packages/leann-mcp/README.md)
 
 
 
@@ -189,8 +189,8 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 --force-rebuild         # Force rebuild index even if it exists
 
 # Embedding Parameters
---embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small or mlx-community/multilingual-e5-base-mlx
---embedding-mode MODE    # sentence-transformers, openai, or mlx
+--embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small, nomic-embed-text, mlx-community/Qwen3-Embedding-0.6B-8bit or nomic-embed-text
+--embedding-mode MODE    # sentence-transformers, openai, mlx, or ollama
 
 # LLM Parameters (Text generation models)
 --llm TYPE              # LLM backend: openai, ollama, or hf (default: openai)
