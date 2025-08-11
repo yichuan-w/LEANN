@@ -761,7 +761,7 @@ class SimulatedChat(LLMInterface):
         return "This is a simulated answer from the LLM based on the retrieved context."
 
 
-def get_llm(llm_config: dict[str, Any] | None = None) -> LLMInterface:
+def get_llm(llm_config: Optional[dict[str, Any]] = None) -> LLMInterface:
     """
     Factory function to get an LLM interface based on configuration.
 
