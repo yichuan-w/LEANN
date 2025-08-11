@@ -246,6 +246,8 @@ jobs:
           echo "🔍 EVENT NAME: '${{ github.event_name }}'"
           echo "🔍 COMMIT MESSAGE: '${{ github.event.head_commit.message }}'"
           echo "🔍 Contains [debug]: '${{ contains(github.event.head_commit.message, '[debug]') }}'"
+          echo "🔍 GITHUB REF: '${{ github.ref }}'"
+          echo "🔍 GITHUB HEAD_REF: '${{ github.head_ref }}'"
           
           # Start tmate session INSIDE the test step if debug enabled
           # Force debug mode for this investigation branch
@@ -256,7 +258,7 @@ jobs:
           elif [[ "${{ contains(github.event.head_commit.message, '[debug]') }}" == "true" ]]; then
             DEBUG_MODE=true
             echo "✅ Debug enabled via [debug] in commit message"
-          elif [[ "${{ github.ref }}" == "refs/heads/debug/clean-state-investigation" ]]; then
+          elif [[ "${{ github.head_ref }}" == "debug/clean-state-investigation" ]] || [[ "${{ github.ref }}" == "refs/heads/debug/clean-state-investigation" ]]; then
             DEBUG_MODE=true
             echo "✅ Debug enabled for debug investigation branch"
           fi
