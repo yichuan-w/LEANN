@@ -150,9 +150,9 @@ jobs:
             export CC=clang
             export CXX=clang++
             export MACOSX_DEPLOYMENT_TARGET=11.0
-            uv build --wheel --python python
+            uv build --wheel --python ${{ matrix.python }}
           else
-            uv build --wheel --python python
+            uv build --wheel --python ${{ matrix.python }}
           fi
           cd ../..
 
@@ -164,9 +164,9 @@ jobs:
             export CXX=clang++
             # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
             export MACOSX_DEPLOYMENT_TARGET=13.3
-            uv build --wheel --python python
+            uv build --wheel --python ${{ matrix.python }}
           else
-            uv build --wheel --python python
+            uv build --wheel --python ${{ matrix.python }}
           fi
           cd ../..
 
