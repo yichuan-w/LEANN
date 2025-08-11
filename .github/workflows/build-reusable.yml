@@ -243,11 +243,25 @@ jobs:
 
           # Debug: Show debug_enabled value
           echo "🔍 DEBUG_ENABLED value: '${{ inputs.debug_enabled }}'"
+          echo "🔍 EVENT NAME: '${{ github.event_name }}'"
           echo "🔍 COMMIT MESSAGE: '${{ github.event.head_commit.message }}'"
           echo "🔍 Contains [debug]: '${{ contains(github.event.head_commit.message, '[debug]') }}'"
           
           # Start tmate session INSIDE the test step if debug enabled
-          if [[ "${{ inputs.debug_enabled }}" == "true" ]] || [[ "${{ contains(github.event.head_commit.message, '[debug]') }}" == "true" ]]; then
+          # Force debug mode for this investigation branch
+          DEBUG_MODE=false
+          if [[ "${{ inputs.debug_enabled }}" == "true" ]]; then
+            DEBUG_MODE=true
+            echo "✅ Debug enabled via manual trigger"
+          elif [[ "${{ contains(github.event.head_commit.message, '[debug]') }}" == "true" ]]; then
+            DEBUG_MODE=true
+            echo "✅ Debug enabled via [debug] in commit message"
+          elif [[ "${{ github.ref }}" == "refs/heads/debug/clean-state-investigation" ]]; then
+            DEBUG_MODE=true
+            echo "✅ Debug enabled for debug investigation branch"
+          fi
+          
+          if [[ "$DEBUG_MODE" == "true" ]]; then
             echo "🔧 DEBUG MODE: Starting tmate session before tests..."
             # Install tmate if not available
             if ! command -v tmate &> /dev/null; then
