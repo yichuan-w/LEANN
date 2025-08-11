@@ -228,14 +228,6 @@ jobs:
           python -c "from leann_backend_diskann import _diskannpy; print('_diskannpy imported successfully')" || echo "Failed to import _diskannpy"
           ls -la $(python -c "import leann_backend_diskann; import os; print(os.path.dirname(leann_backend_diskann.__file__))" 2>/dev/null) 2>/dev/null || echo "Failed to list module directory"
 
-      # Enable tmate debugging session if requested
-      - name: Setup tmate session for debugging
-        if: ${{ inputs.debug_enabled }}
-        uses: mxschmitt/action-tmate@v3
-        with:
-          detached: true
-          timeout-minutes: 30
-          limit-access-to-actor: true
       - name: Run tests with pytest
         env:
           CI: true  # Mark as CI environment to skip memory-intensive tests
@@ -248,6 +240,31 @@ jobs:
         run: |
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
+
+          # Start tmate session INSIDE the test step if debug enabled
+          if [[ "${{ inputs.debug_enabled }}" == "true" ]]; then
+            echo "🔧 DEBUG MODE: Starting tmate session before tests..."
+            # Install tmate if not available
+            if ! command -v tmate &> /dev/null; then
+              if [[ "$RUNNER_OS" == "Linux" ]]; then
+                sudo apt-get update && sudo apt-get install -y tmate
+              elif [[ "$RUNNER_OS" == "macOS" ]]; then
+                brew install tmate
+              fi
+            fi
+            
+            # Start tmate session in background
+            tmate -S debug-session new-session -d 
+            echo "🔗 Tmate session created. Connection info:"
+            tmate -S debug-session display -p '#{tmate_ssh}'
+            echo "🔗 Web session: $(tmate -S debug-session display -p '#{tmate_web}')"
+            echo "⏱️  Session will timeout after 30 minutes"
+            echo "💡 You can now SSH in and run: pytest tests/ -vv --capture=no"
+            echo "💡 Or run diagnostics: bash scripts/diagnose_hang.sh"
+            echo ""
+            echo "Waiting 60 seconds for you to connect..."
+            sleep 60
+          fi
 
           # Define comprehensive diagnostic function
           diag() {
