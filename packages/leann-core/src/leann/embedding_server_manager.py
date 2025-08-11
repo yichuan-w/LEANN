@@ -354,7 +354,7 @@ class EmbeddingServerManager:
         logger.info(
             f"Terminating server process (PID: {self.server_process.pid}) for backend {self.backend_module_name}..."
         )
-        
+
         # Try terminating the whole process group first
         try:
             pgid = os.getpgid(self.server_process.pid)
