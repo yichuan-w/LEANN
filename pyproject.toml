@@ -40,8 +40,8 @@ dependencies = [
     # Other dependencies
     "ipykernel==6.29.5",
     "msgpack>=1.1.1",
-    "mlx>=0.26.3; sys_platform == 'darwin'",
-    "mlx-lm>=0.26.0; sys_platform == 'darwin'",
+    "mlx>=0.26.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-lm>=0.26.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "psutil>=5.8.0",
     "pybind11>=3.0.0",
     "pathspec>=0.12.1",
