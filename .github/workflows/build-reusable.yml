@@ -227,14 +227,13 @@ jobs:
           uv venv --python ${{ matrix.python }}
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Install the built wheels directly without checking PyPI
-          # This avoids the dependency resolution issue for new platforms
-          uv pip install packages/leann-core/dist/*.whl || uv pip install packages/leann-core/dist/*.tar.gz
-          uv pip install packages/leann/dist/*.whl || uv pip install packages/leann/dist/*.tar.gz
-
-          # Install backend wheels directly
+          # Install backend wheels first (before core/meta packages to avoid PyPI dependencies)
           uv pip install packages/leann-backend-hnsw/dist/*.whl
           uv pip install packages/leann-backend-diskann/dist/*.whl
+
+          # Then install core and meta packages
+          uv pip install packages/leann-core/dist/*.whl || uv pip install packages/leann-core/dist/*.tar.gz
+          uv pip install packages/leann/dist/*.whl || uv pip install packages/leann/dist/*.tar.gz
 
           # Install test dependencies using extras
           uv pip install -e ".[test]"
