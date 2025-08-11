@@ -249,9 +249,29 @@ jobs:
             uv pip install packages/leann/dist/*.whl || uv pip install packages/leann/dist/*.tar.gz
           fi
 
-          # Install backend wheels directly
-          uv pip install packages/leann-backend-hnsw/dist/*.whl
-          uv pip install packages/leann-backend-diskann/dist/*.whl
+          # Install backend wheels directly with Python version filtering
+          PYTHON_VERSION="${{ matrix.python }}"
+          PYTHON_TAG="cp${PYTHON_VERSION//./}"  # Convert 3.11 to cp311
+
+          # Find and install the correct wheel for this Python version
+          HNSW_WHEEL=$(find packages/leann-backend-hnsw/dist -name "*${PYTHON_TAG}*.whl" | head -1)
+          DISKANN_WHEEL=$(find packages/leann-backend-diskann/dist -name "*${PYTHON_TAG}*.whl" | head -1)
+
+          if [ -n "$HNSW_WHEEL" ]; then
+            echo "Installing HNSW wheel: $HNSW_WHEEL"
+            uv pip install "$HNSW_WHEEL"
+          else
+            echo "No HNSW wheel found for Python $PYTHON_VERSION"
+            exit 1
+          fi
+
+          if [ -n "$DISKANN_WHEEL" ]; then
+            echo "Installing DiskANN wheel: $DISKANN_WHEEL"
+            uv pip install "$DISKANN_WHEEL"
+          else
+            echo "No DiskANN wheel found for Python $PYTHON_VERSION"
+            exit 1
+          fi
 
           # Install base dependencies needed for testing (without the local packages)
           uv pip install numpy torch tqdm flask flask_compress datasets evaluate colorama boto3 "protobuf==4.25.3"
