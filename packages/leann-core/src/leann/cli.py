@@ -86,7 +86,9 @@ Examples:
 
         # Build command
         build_parser = subparsers.add_parser("build", help="Build document index")
-        build_parser.add_argument("index_name", help="Index name")
+        build_parser.add_argument(
+            "index_name", nargs="?", help="Index name (default: current directory name)"
+        )
         build_parser.add_argument(
             "--docs", type=str, default=".", help="Documents directory (default: current directory)"
         )
@@ -94,6 +96,13 @@ Examples:
             "--backend", type=str, default="hnsw", choices=["hnsw", "diskann"]
         )
         build_parser.add_argument("--embedding-model", type=str, default="facebook/contriever")
+        build_parser.add_argument(
+            "--embedding-mode",
+            type=str,
+            default="sentence-transformers",
+            choices=["sentence-transformers", "openai", "mlx", "ollama"],
+            help="Embedding backend mode (default: sentence-transformers)",
+        )
         build_parser.add_argument("--force", "-f", action="store_true", help="Force rebuild")
         build_parser.add_argument("--graph-degree", type=int, default=32)
         build_parser.add_argument("--complexity", type=int, default=64)
@@ -194,6 +203,37 @@ Examples:
         with open(global_registry, "w") as f:
             json.dump(projects, f, indent=2)
 
+    def _build_gitignore_parser(self, docs_dir: str):
+        """Build gitignore parser using gitignore-parser library."""
+        from gitignore_parser import parse_gitignore
+
+        # Try to parse the root .gitignore
+        gitignore_path = Path(docs_dir) / ".gitignore"
+
+        if gitignore_path.exists():
+            try:
+                # gitignore-parser automatically handles all subdirectory .gitignore files!
+                matches = parse_gitignore(str(gitignore_path))
+                print(f"📋 Loaded .gitignore from {docs_dir} (includes all subdirectories)")
+                return matches
+            except Exception as e:
+                print(f"Warning: Could not parse .gitignore: {e}")
+        else:
+            print("📋 No .gitignore found")
+
+        # Fallback: basic pattern matching for essential files
+        essential_patterns = {".git", ".DS_Store", "__pycache__", "node_modules", ".venv", "venv"}
+
+        def basic_matches(file_path):
+            path_parts = Path(file_path).parts
+            return any(part in essential_patterns for part in path_parts)
+
+        return basic_matches
+
+    def _should_exclude_file(self, relative_path: Path, gitignore_matches) -> bool:
+        """Check if a file should be excluded using gitignore parser."""
+        return gitignore_matches(str(relative_path))
+
     def list_indexes(self):
         print("Stored LEANN indexes:")
 
@@ -275,34 +315,49 @@ Examples:
         if custom_file_types:
             print(f"Using custom file types: {custom_file_types}")
 
-        # Try to use better PDF parsers first
+        # Build gitignore parser
+        gitignore_matches = self._build_gitignore_parser(docs_dir)
+
+        # Try to use better PDF parsers first, but only if PDFs are requested
         documents = []
         docs_path = Path(docs_dir)
 
-        for file_path in docs_path.rglob("*.pdf"):
-            print(f"Processing PDF: {file_path}")
+        # Check if we should process PDFs
+        should_process_pdfs = custom_file_types is None or ".pdf" in custom_file_types
 
-            # Try PyMuPDF first (best quality)
-            text = extract_pdf_text_with_pymupdf(str(file_path))
-            if text is None:
-                # Try pdfplumber
-                text = extract_pdf_text_with_pdfplumber(str(file_path))
+        if should_process_pdfs:
+            for file_path in docs_path.rglob("*.pdf"):
+                # Check if file matches any exclude pattern
+                relative_path = file_path.relative_to(docs_path)
+                if self._should_exclude_file(relative_path, gitignore_matches):
+                    continue
 
-            if text:
-                # Create a simple document structure
-                from llama_index.core import Document
+                print(f"Processing PDF: {file_path}")
 
-                doc = Document(text=text, metadata={"source": str(file_path)})
-                documents.append(doc)
-            else:
-                # Fallback to default reader
-                print(f"Using default reader for {file_path}")
-                default_docs = SimpleDirectoryReader(
-                    str(file_path.parent),
-                    filename_as_id=True,
-                    required_exts=[file_path.suffix],
-                ).load_data()
-                documents.extend(default_docs)
+                # Try PyMuPDF first (best quality)
+                text = extract_pdf_text_with_pymupdf(str(file_path))
+                if text is None:
+                    # Try pdfplumber
+                    text = extract_pdf_text_with_pdfplumber(str(file_path))
+
+                if text:
+                    # Create a simple document structure
+                    from llama_index.core import Document
+
+                    doc = Document(text=text, metadata={"source": str(file_path)})
+                    documents.append(doc)
+                else:
+                    # Fallback to default reader
+                    print(f"Using default reader for {file_path}")
+                    try:
+                        default_docs = SimpleDirectoryReader(
+                            str(file_path.parent),
+                            filename_as_id=True,
+                            required_exts=[file_path.suffix],
+                        ).load_data()
+                        documents.extend(default_docs)
+                    except Exception as e:
+                        print(f"Warning: Could not process {file_path}: {e}")
 
         # Load other file types with default reader
         if custom_file_types:
@@ -368,13 +423,34 @@ Examples:
             ]
         # Try to load other file types, but don't fail if none are found
         try:
+            # Create a custom file filter function using our PathSpec
+            def file_filter(file_path: str) -> bool:
+                """Return True if file should be included (not excluded)"""
+                try:
+                    docs_path_obj = Path(docs_dir)
+                    file_path_obj = Path(file_path)
+                    relative_path = file_path_obj.relative_to(docs_path_obj)
+                    return not self._should_exclude_file(relative_path, gitignore_matches)
+                except (ValueError, OSError):
+                    return True  # Include files that can't be processed
+
             other_docs = SimpleDirectoryReader(
                 docs_dir,
                 recursive=True,
                 encoding="utf-8",
                 required_exts=code_extensions,
+                file_extractor={},  # Use default extractors
+                filename_as_id=True,
             ).load_data(show_progress=True)
-            documents.extend(other_docs)
+
+            # Filter documents after loading based on gitignore rules
+            filtered_docs = []
+            for doc in other_docs:
+                file_path = doc.metadata.get("file_path", "")
+                if file_filter(file_path):
+                    filtered_docs.append(doc)
+
+            documents.extend(filtered_docs)
         except ValueError as e:
             if "No files found" in str(e):
                 print("No additional files found for other supported types.")
@@ -447,7 +523,13 @@ Examples:
 
     async def build_index(self, args):
         docs_dir = args.docs
-        index_name = args.index_name
+        # Use current directory name if index_name not provided
+        if args.index_name:
+            index_name = args.index_name
+        else:
+            index_name = Path.cwd().name
+            print(f"Using current directory name as index: '{index_name}'")
+
         index_dir = self.indexes_dir / index_name
         index_path = self.get_index_path(index_name)
 
@@ -469,6 +551,7 @@ Examples:
         builder = LeannBuilder(
             backend_name=args.backend,
             embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
             graph_degree=args.graph_degree,
             complexity=args.complexity,
             is_compact=args.compact,

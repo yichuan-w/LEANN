@@ -49,12 +49,23 @@ Based on our experience developing LEANN, embedding models fall into three categ
 - **Cons**: Slower inference, longer index build times
 - **Use when**: Quality is paramount and you have sufficient compute resources. **Highly recommended** for production use
 
-### Quick Start: OpenAI Embeddings (Fastest Setup)
+### Quick Start: Cloud and Local Embedding Options
 
+**OpenAI Embeddings (Fastest Setup)**
 For immediate testing without local model downloads:
 ```bash
 # Set OpenAI embeddings (requires OPENAI_API_KEY)
 --embedding-mode openai --embedding-model text-embedding-3-small
+```
+
+**Ollama Embeddings (Privacy-Focused)**
+For local embeddings with complete privacy:
+```bash
+# First, pull an embedding model
+ollama pull nomic-embed-text
+
+# Use Ollama embeddings
+--embedding-mode ollama --embedding-model nomic-embed-text
 ```
 
 <details>
@@ -225,9 +236,15 @@ python apps/document_rag.py --query "What are the main techniques LEANN explores
 
 3. **Use MLX on Apple Silicon** (optional optimization):
    ```bash
-   --embedding-mode mlx --embedding-model mlx-community/multilingual-e5-base-mlx
+   --embedding-mode mlx --embedding-model mlx-community/Qwen3-Embedding-0.6B-8bit
    ```
+    MLX might not be the best choice, as we tested and found that it only offers 1.3x acceleration compared to HF, so maybe using ollama is a better choice for embedding generation
 
+4. **Use Ollama**
+   ```bash
+   --embedding-mode ollama --embedding-model nomic-embed-text
+   ```
+   To discover additional embedding models in ollama, check out https://ollama.com/search?c=embedding or read more about embedding models at https://ollama.com/blog/embedding-models, please do check the model size that works best for you
 ### If Search Quality is Poor
 
 1. **Increase retrieval count**:

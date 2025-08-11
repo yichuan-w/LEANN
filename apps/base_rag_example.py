@@ -75,7 +75,7 @@ class BaseRAGExample(ABC):
             "--embedding-mode",
             type=str,
             default="sentence-transformers",
-            choices=["sentence-transformers", "openai", "mlx"],
+            choices=["sentence-transformers", "openai", "mlx", "ollama"],
             help="Embedding backend mode (default: sentence-transformers)",
         )
 
