@@ -224,23 +224,43 @@ jobs:
           echo "📦 Built packages:"
           find packages/*/dist -name "*.whl" -o -name "*.tar.gz" | sort
 
+      - name: Debug wheel compatibility
+        run: |
+          echo "🔍 Checking wheel compatibility:"
+          uv pip debug platform-tags | head -10
+          echo ""
+          echo "Built wheel details:"
+          for wheel in packages/*/dist/*.whl; do
+            if [ -f "$wheel" ]; then
+              echo "  $(basename $wheel)"
+            fi
+          done
+
       - name: Install built packages for testing
         run: |
           # Create a virtual environment
           uv venv
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Install the built wheels
-          # Use --find-links to let uv choose the correct wheel for the platform
+          # Install the built wheels directly without checking PyPI
+          # This avoids the dependency resolution issue for new platforms
           if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            uv pip install leann-core --find-links packages/leann-core/dist
-            uv pip install leann --find-links packages/leann/dist
+            uv pip install packages/leann-core/dist/*.whl || uv pip install packages/leann-core/dist/*.tar.gz
+            uv pip install packages/leann/dist/*.whl || uv pip install packages/leann/dist/*.tar.gz
           fi
-          uv pip install leann-backend-hnsw --find-links packages/leann-backend-hnsw/dist
-          uv pip install leann-backend-diskann --find-links packages/leann-backend-diskann/dist
 
-          # Install test dependencies using extras
-          uv pip install -e ".[test]"
+          # Install backend wheels directly
+          uv pip install packages/leann-backend-hnsw/dist/*.whl
+          uv pip install packages/leann-backend-diskann/dist/*.whl
+
+          # Install base dependencies needed for testing (without the local packages)
+          uv pip install numpy torch tqdm flask flask_compress datasets evaluate colorama boto3 "protobuf==4.25.3"
+          uv pip install "PyPDF2>=3.0.0" "pdfplumber>=0.11.0" "pymupdf>=1.26.0" "pypdfium2>=4.30.0"
+          uv pip install "llama-index>=0.12.44" "llama-index-readers-file>=0.4.0" "llama-index-vector-stores-faiss>=0.4.0"
+          uv pip install "llama-index-embeddings-huggingface>=0.5.5" "ipykernel==6.29.5" "msgpack>=1.1.1" "psutil>=5.8.0"
+
+          # Install test dependencies
+          uv pip install "pytest>=7.0" "pytest-timeout>=2.0" "llama-index-core>=0.12.0" "python-dotenv>=1.0.0" "sentence-transformers>=2.2.0"
 
       - name: Run tests with pytest
         env:
