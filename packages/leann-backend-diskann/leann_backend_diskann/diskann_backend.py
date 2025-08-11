@@ -4,7 +4,7 @@ import os
 import struct
 import sys
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import numpy as np
 import psutil
@@ -259,7 +259,7 @@ class DiskannSearcher(BaseSearcher):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: int | None = None,
+        zmq_port: Optional[int] = None,
         batch_recompute: bool = False,
         dedup_node_dis: bool = False,
         **kwargs,
