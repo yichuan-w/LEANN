@@ -169,11 +169,9 @@ jobs:
           cd ../..
 
           # Build meta package (platform independent)
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            cd packages/leann
-            uv build
-            cd ../..
-          fi
+          cd packages/leann
+          uv build
+          cd ../..
 
       - name: Repair wheels (Linux)
         if: runner.os == 'Linux'
@@ -242,10 +240,8 @@ jobs:
 
           # Install the built wheels directly without checking PyPI
           # This avoids the dependency resolution issue for new platforms
-          if [[ "${{ matrix.os }}" == ubuntu-* ]]; then
-            uv pip install packages/leann-core/dist/*.whl || uv pip install packages/leann-core/dist/*.tar.gz
-            uv pip install packages/leann/dist/*.whl || uv pip install packages/leann/dist/*.tar.gz
-          fi
+          uv pip install packages/leann-core/dist/*.whl || uv pip install packages/leann-core/dist/*.tar.gz
+          uv pip install packages/leann/dist/*.whl || uv pip install packages/leann/dist/*.tar.gz
 
           # Install backend wheels directly with Python version filtering
           PYTHON_VERSION="${{ matrix.python }}"
