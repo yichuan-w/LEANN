@@ -238,8 +238,8 @@ jobs:
 
       - name: Install built packages for testing
         run: |
-          # Create a virtual environment
-          uv venv
+          # Create a virtual environment with the correct Python version
+          uv venv --python ${{ matrix.python }}
           source .venv/bin/activate || source .venv/Scripts/activate
 
           # Install the built wheels directly without checking PyPI
