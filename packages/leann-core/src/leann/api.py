@@ -554,7 +554,7 @@ class LeannSearcher:
         if "labels" in results and "distances" in results:
             logger.info(f"  Processing {len(results['labels'][0])} passage IDs:")
             for i, (string_id, dist) in enumerate(
-                zip(results["labels"][0], results["distances"][0], strict=False)
+                zip(results["labels"][0], results["distances"][0])
             ):
                 try:
                     passage_data = self.passage_manager.get_passage(string_id)
