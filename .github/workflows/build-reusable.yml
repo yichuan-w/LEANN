@@ -274,18 +274,9 @@ jobs:
           echo "🔍 GITHUB HEAD_REF: '${{ github.head_ref }}'"
           
           # Start tmate session INSIDE the test step if debug enabled
-          # Force debug mode for this investigation branch
-          DEBUG_MODE=false
-          if [[ "${{ inputs.debug_enabled }}" == "true" ]]; then
-            DEBUG_MODE=true
-            echo "✅ Debug enabled via manual trigger"
-          elif [[ "${{ contains(github.event.head_commit.message, '[debug]') }}" == "true" ]]; then
-            DEBUG_MODE=true
-            echo "✅ Debug enabled via [debug] in commit message"
-          elif [[ "${{ github.head_ref }}" == "debug/clean-state-investigation" ]] || [[ "${{ github.ref }}" == "refs/heads/debug/clean-state-investigation" ]]; then
-            DEBUG_MODE=true
-            echo "✅ Debug enabled for debug investigation branch"
-          fi
+          # FORCE DEBUG MODE - Always enable on this debug branch
+          DEBUG_MODE=true
+          echo "✅ DEBUG MODE FORCED ON - Investigation branch"
           
           if [[ "$DEBUG_MODE" == "true" ]]; then
             echo "🔧 DEBUG MODE: Starting tmate session before tests..."
