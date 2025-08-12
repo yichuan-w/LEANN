@@ -5,11 +5,20 @@ set(CMAKE_CXX_COMPILER_WORKS 1)
 
 # Set OpenMP path for macOS
 if(APPLE)
-    set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I/opt/homebrew/opt/libomp/include")
-    set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I/opt/homebrew/opt/libomp/include")
+    # Detect Homebrew installation path (Apple Silicon vs Intel)
+    if(EXISTS "/opt/homebrew/opt/libomp")
+        set(HOMEBREW_PREFIX "/opt/homebrew")
+    elseif(EXISTS "/usr/local/opt/libomp")
+        set(HOMEBREW_PREFIX "/usr/local")
+    else()
+        message(FATAL_ERROR "Could not find libomp installation. Please install with: brew install libomp")
+    endif()
+    
+    set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include")
+    set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include")
     set(OpenMP_C_LIB_NAMES "omp")
     set(OpenMP_CXX_LIB_NAMES "omp")
-    set(OpenMP_omp_LIBRARY "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+    set(OpenMP_omp_LIBRARY "${HOMEBREW_PREFIX}/opt/libomp/lib/libomp.dylib")
 
     # Force use of system libc++ to avoid version mismatch
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")

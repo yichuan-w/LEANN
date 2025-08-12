@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Union
 
 import msgpack
 import numpy as np
@@ -33,7 +34,7 @@ if not logger.handlers:
 
 
 def create_hnsw_embedding_server(
-    passages_file: str | None = None,
+    passages_file: Union[str, None] = None,
     zmq_port: int = 5555,
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     distance_metric: str = "mips",
