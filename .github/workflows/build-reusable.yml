@@ -253,54 +253,7 @@ jobs:
           if [[ "${{ matrix.os }}" == "ubuntu-22.04" ]]; then
             echo "🔍 [HANG DEBUG] Ubuntu 22.04 detected - enabling enhanced process monitoring"
 
-            # Create Python script to inject stack trace dumping into pytest
-            cat > debug_pytest.py << 'EOF'
-            import signal
-            import faulthandler
-            import threading
-            import time
-            import sys
-            import traceback
-
-            def setup_hang_detection():
-                """Setup signal handlers and faulthandler for hang detection"""
-                # Enable faulthandler for automatic stack dumps
-                faulthandler.enable()
-
-                def dump_all_stacks(signum, frame):
-                    print(f"\n🔥 [HANG DEBUG] SIGNAL {signum} - DUMPING ALL THREAD STACKS:")
-                    faulthandler.dump_traceback()
-                    # Also dump current frames manually
-                    for thread_id, frame in sys._current_frames().items():
-                        print(f"\n📍 Thread {thread_id}:")
-                        traceback.print_stack(frame)
-
-                def periodic_stack_dump():
-                    """Periodically dump stacks to catch hang location"""
-                    time.sleep(300)  # Wait 5 minutes
-                    print(f"\n⏰ [HANG DEBUG] Periodic stack dump at {time.time()}:")
-                    for thread_id, frame in sys._current_frames().items():
-                        print(f"\n📍 Thread {thread_id}:")
-                        traceback.print_stack(frame)
-                    time.sleep(300)  # Wait another 5 minutes if still running
-                    print(f"\n⚠️ [HANG DEBUG] Final stack dump at {time.time()} (likely hanging):")
-                    faulthandler.dump_traceback()
-
-                # Register signal handlers for external debugging
-                signal.signal(signal.SIGUSR1, dump_all_stacks)
-                signal.signal(signal.SIGUSR2, dump_all_stacks)
-
-                # Start periodic dumping thread
-                dump_thread = threading.Thread(target=periodic_stack_dump, daemon=True)
-                dump_thread.start()
-
-            if __name__ == "__main__":
-                setup_hang_detection()
-                # Re-exec pytest with debugging enabled
-                import subprocess
-                result = subprocess.run([sys.executable, "-m", "pytest"] + sys.argv[1:])
-                sys.exit(result.returncode)
-            EOF
+            # Create debug runner script exists in repo: scripts/ci_debug_pytest.py
 
             # Pre-test state
             echo "📊 [HANG DEBUG] Pre-test process state:"
@@ -392,7 +345,7 @@ jobs:
             timeout --preserve-status --signal=TERM --kill-after=30 600 bash -c '
               echo "▶️ [HANG DEBUG] Pytest starting at: $(date)"
               # Force unbuffered output and immediate flush
-              stdbuf -o0 -e0 python debug_pytest.py tests/ -v --tb=short --maxfail=5 -x -s 2>&1 | while IFS= read -r line; do
+              stdbuf -o0 -e0 python scripts/ci_debug_pytest.py tests/ -v --tb=short --maxfail=5 -x -s 2>&1 | while IFS= read -r line; do
                 printf "%s [PYTEST] %s\n" "$(date +"%H:%M:%S")" "$line"
                 # Force flush after each line
                 sync
