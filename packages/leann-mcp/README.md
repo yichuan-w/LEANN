@@ -45,6 +45,42 @@ leann build my-project --docs ./
 claude
 ```
 
+## 🚀 Advanced Usage Examples
+
+### Index Entire Git Repository
+```bash
+# Index all tracked files in your git repository, note right now we will skip submodules, but we can add it back easily if you want
+leann build my-repo --docs $(git ls-files) --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
+
+# Index only specific file types from git
+leann build my-python-code --docs $(git ls-files "*.py") --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
+```
+
+### Multiple Directories and Files
+```bash
+# Index multiple directories
+leann build my-codebase --docs ./src ./tests ./docs ./config --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
+
+# Mix files and directories
+leann build my-project --docs ./README.md ./src/ ./package.json ./docs/ --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
+
+# Specific files only
+leann build my-configs --docs ./tsconfig.json ./package.json ./webpack.config.js --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
+```
+
+### Advanced Git Integration
+```bash
+# Index recently modified files
+leann build recent-changes --docs $(git diff --name-only HEAD~10..HEAD) --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
+
+# Index files matching pattern
+leann build frontend --docs $(git ls-files "*.tsx" "*.ts" "*.jsx" "*.js") --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
+
+# Index documentation and config files
+leann build docs-and-configs --docs $(git ls-files "*.md" "*.yml" "*.yaml" "*.json" "*.toml") --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
+```
+
+
 **Try this in Claude Code:**
 ```
 Help me understand this codebase. List available indexes and search for authentication patterns.
