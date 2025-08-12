@@ -290,173 +290,20 @@ jobs:
 
           # Add targeted debugging for pytest hangs (especially Ubuntu 22.04)
           if [[ "${{ matrix.os }}" == "ubuntu-22.04" ]]; then
-            echo "🔍 [HANG DEBUG] Ubuntu 22.04 detected - enabling enhanced process monitoring"
-
-            # Create debug runner script exists in repo: scripts/ci_debug_pytest.py
-
-            # Pre-test state
-            echo "📊 [HANG DEBUG] Pre-test process state:"
-            ps aux | grep -E "(python|embedding|zmq)" | grep -v grep || echo "No relevant processes"
-
-            echo "🔌 [HANG DEBUG] Pre-test network state:"
-            ss -tulpn | grep -E "(555[0-9]|556[0-9])" || echo "No embedding server ports"
-
-            # Function to monitor processes during test
-            monitor_processes() {
-              while true; do
-                sleep 30
-                echo "⏰ [HANG DEBUG] $(date): Process check during test execution"
-                ps aux | grep -E "(python|pytest|embedding)" | grep -v grep | head -10
-                ss -tulpn | grep -E "(555[0-9]|556[0-9])" || echo "No ports"
-              done
-            }
-
-            # Start background monitoring
-            monitor_processes &
-            MONITOR_PID=$!
-            echo "🔍 [HANG DEBUG] Started background monitor (PID: $MONITOR_PID)"
-
-            # Run pytest with enhanced real-time monitoring (no dependency on pytest logs)
-            echo "🚀 [HANG DEBUG] Starting pytest with 600s timeout and external monitoring..."
-
-            # Start independent process monitor that tracks the actual pytest process
-            external_monitor() {
-              local timeout_pid=$1
-              local start_time=$(date +%s)
-              local last_output_time=$start_time
-              local stable_count=0
-
-              while true; do
-                sleep 10
-                current_time=$(date +%s)
-                elapsed=$((current_time - start_time))
-                output_silence=$((current_time - last_output_time))
-
-                # Find the actual pytest process (deepest Python process in the tree)
-                actual_pytest_pid=$(pgrep -f "python.*-m.*pytest" | tail -1)
-
-                if [ -z "$actual_pytest_pid" ]; then
-                  echo "📊 [EXTERNAL] $(date): No pytest process found, checking if timeout is still running"
-                  if ! kill -0 $timeout_pid 2>/dev/null; then
-                    echo "📊 [EXTERNAL] $(date): Timeout process ended after ${elapsed}s"
-                    break
-                  fi
-                  continue
-                fi
-
-                # Get detailed process info for actual pytest
-                ps_info=$(ps -p $actual_pytest_pid -o pid,ppid,time,pcpu,pmem,state,comm 2>/dev/null || echo "PROCESS_GONE")
-                if [ "$ps_info" != "PROCESS_GONE" ]; then
-                  current_cpu=$(echo "$ps_info" | tail -1 | awk '{print $4}' | cut -d. -f1)
-                  state=$(echo "$ps_info" | tail -1 | awk '{print $6}')
-
-                  echo "📊 [EXTERNAL] $(date): Real pytest PID $actual_pytest_pid - CPU: ${current_cpu}%, State: $state, Silent: ${output_silence}s"
-
-                  # Check for real hang: low CPU + no output for extended time + process still running
-                  if [ "$current_cpu" -lt 2 ] && [ $output_silence -gt 120 ] && [ "$state" != "Z" ]; then
-                    stable_count=$((stable_count + 1))
-                    if [ $stable_count -ge 3 ]; then  # 30 seconds of confirmed hang
-                      echo "🔥 [EXTERNAL] $(date): REAL HANG DETECTED - dumping stack traces"
-                      echo "🔍 [EXTERNAL] $(date): Sending SIGUSR1 to pytest PID $actual_pytest_pid"
-                      kill -USR1 $actual_pytest_pid 2>/dev/null || echo "Failed to send signal to pytest"
-
-                      # Also try to get system-level stack trace
-                      echo "🔍 [EXTERNAL] $(date): Getting system stack trace with gdb"
-                      timeout 10 gdb --batch --ex "thread apply all bt" --ex "quit" --pid=$actual_pytest_pid 2>/dev/null || echo "gdb failed"
-
-                      # Reset counter to avoid spam
-                      stable_count=0
-                      last_output_time=$current_time
-                    fi
-                  else
-                    stable_count=0
-                    # Update last output time if we see activity
-                    if [ "$current_cpu" -gt 5 ]; then
-                      last_output_time=$current_time
-                    fi
-                  fi
-
-                  # Check for zombie/stopped state
-                  if [ "$state" = "Z" ] || [ "$state" = "T" ]; then
-                    echo "💀 [EXTERNAL] $(date): Pytest process in abnormal state: $state"
-                  fi
-                else
-                  echo "📊 [EXTERNAL] $(date): Pytest process $actual_pytest_pid disappeared"
-                fi
-
-                # Emergency timeout - much longer now
-                if [ $elapsed -gt 900 ]; then  # 15 minutes
-                  echo "💥 [EXTERNAL] $(date): Emergency timeout reached, force killing"
-                  kill -KILL $timeout_pid 2>/dev/null || true
-                  pkill -KILL -f "pytest" 2>/dev/null || true
-                  break
-                fi
-              done
-            }
-
-            # Run pytest in background so we can monitor it externally
-            python -u -c "import sys, time; print(f'🔍 [REALTIME] {time.strftime(\"%H:%M:%S\")} Starting pytest...', flush=True)"
-            timeout --preserve-status --signal=TERM --kill-after=30 900 bash -c '
-              echo "▶️ [HANG DEBUG] Pytest starting at: $(date)"
-              # Force unbuffered output and immediate flush
-              stdbuf -o0 -e0 python scripts/ci_debug_pytest.py tests/ -v --tb=short --maxfail=5 -x -s 2>&1 | while IFS= read -r line; do
-                printf "%s [PYTEST] %s\n" "$(date +"%H:%M:%S")" "$line"
-                # Force flush after each line
-                sync
-              done
-              PYTEST_RESULT=${PIPESTATUS[0]}
-              echo "✅ [HANG DEBUG] Pytest completed at: $(date) with exit code: $PYTEST_RESULT"
-              exit $PYTEST_RESULT
-            ' &
-            PYTEST_PID=$!
-            echo "🔍 [HANG DEBUG] Pytest started with PID: $PYTEST_PID"
-
-            # Start external monitoring
-            external_monitor $PYTEST_PID &
-            EXTERNAL_MONITOR_PID=$!
-
-            # Wait for pytest to complete
-            wait $PYTEST_PID
+            echo "🔍 [HANG DEBUG] Ubuntu 22.04 detected - using pytest wrapper"
+            python scripts/ci_pytest_wrapper.py tests/ -v --tb=short --maxfail=5 -x -s
             PYTEST_EXIT=$?
-            echo "🏁 [HANG DEBUG] Pytest process ended with exit code: $PYTEST_EXIT"
-
-            # Stop external monitor
-            kill $EXTERNAL_MONITOR_PID 2>/dev/null || true
-
-            # Final cleanup check
-            echo "🧹 [HANG DEBUG] Final cleanup check..."
-            REMAINING_PROCS=$(ps aux | grep -E "python.*pytest" | grep -v grep | wc -l)
-            if [ $REMAINING_PROCS -gt 0 ]; then
-              echo "⚠️ [HANG DEBUG] Found $REMAINING_PROCS remaining pytest processes after completion"
-              ps aux | grep -E "python.*pytest" | grep -v grep
-              echo "💀 [HANG DEBUG] Force killing remaining processes..."
-              ps aux | grep -E "python.*pytest" | grep -v grep | awk "{print \$2}" | xargs -r kill -KILL
-            else
-              echo "✅ [HANG DEBUG] No remaining pytest processes found"
-            fi
-            PYTEST_EXIT=$?
-
-            # Stop background monitoring
-            kill $MONITOR_PID 2>/dev/null || true
-
-            echo "🔚 [HANG DEBUG] Pytest exit code: $PYTEST_EXIT"
-            if [ $PYTEST_EXIT -eq 124 ]; then
-              echo "⚠️ [HANG DEBUG] TIMEOUT! Pytest hung for >600s"
-              echo "🔍 [HANG DEBUG] Final process state:"
-              ps aux | grep -E "(python|pytest|embedding)" | grep -v grep
-              echo "🔍 [HANG DEBUG] Final network state:"
-              ss -tulpn | grep -E "(555[0-9]|556[0-9])" || echo "No ports"
-              echo "💀 [HANG DEBUG] Killing remaining processes..."
-              pkill -TERM -f "pytest\|embedding_server\|zmq" || true
-              sleep 3
-              pkill -KILL -f "pytest\|embedding_server\|zmq" || true
-            fi
-
-            exit $PYTEST_EXIT
           else
             # For non-Ubuntu or non-22.04, run normally
             echo "🚀 [HANG DEBUG] Running tests on ${{ matrix.os }} (normal mode)"
             pytest tests/ -v --tb=short
+            PYTEST_EXIT=$?
+          fi
+
+          echo "🔚 [HANG DEBUG] Final pytest exit code: $PYTEST_EXIT"
+          if [ $PYTEST_EXIT -ne 0 ]; then
+            echo "❌ [HANG DEBUG] Tests failed with exit code $PYTEST_EXIT"
+            exit $PYTEST_EXIT
           fi
 
       - name: Run sanity checks (optional)
