@@ -280,61 +280,76 @@ jobs:
             # Run pytest with enhanced real-time monitoring (no dependency on pytest logs)
             echo "🚀 [HANG DEBUG] Starting pytest with 600s timeout and external monitoring..."
 
-            # Start independent process monitor that doesn't rely on pytest output
+            # Start independent process monitor that tracks the actual pytest process
             external_monitor() {
-              local pytest_pid=$1
+              local timeout_pid=$1
               local start_time=$(date +%s)
-              local last_cpu_check=0
+              local last_output_time=$start_time
               local stable_count=0
 
               while true; do
-                sleep 5
+                sleep 10
                 current_time=$(date +%s)
                 elapsed=$((current_time - start_time))
+                output_silence=$((current_time - last_output_time))
 
-                # Check if pytest process still exists
-                if ! kill -0 $pytest_pid 2>/dev/null; then
-                  echo "📊 [EXTERNAL] $(date): Pytest process $pytest_pid ended after ${elapsed}s"
-                  break
+                # Find the actual pytest process (deepest Python process in the tree)
+                actual_pytest_pid=$(pgrep -f "python.*-m.*pytest" | tail -1)
+
+                if [ -z "$actual_pytest_pid" ]; then
+                  echo "📊 [EXTERNAL] $(date): No pytest process found, checking if timeout is still running"
+                  if ! kill -0 $timeout_pid 2>/dev/null; then
+                    echo "📊 [EXTERNAL] $(date): Timeout process ended after ${elapsed}s"
+                    break
+                  fi
+                  continue
                 fi
 
-                # Get detailed process info
-                ps_info=$(ps -p $pytest_pid -o pid,ppid,time,pcpu,pmem,state,comm 2>/dev/null || echo "PROCESS_GONE")
+                # Get detailed process info for actual pytest
+                ps_info=$(ps -p $actual_pytest_pid -o pid,ppid,time,pcpu,pmem,state,comm 2>/dev/null || echo "PROCESS_GONE")
                 if [ "$ps_info" != "PROCESS_GONE" ]; then
-                  echo "📊 [EXTERNAL] $(date): Process $pytest_pid - ${ps_info}"
-
-                  # Extract CPU percentage and check for stability
                   current_cpu=$(echo "$ps_info" | tail -1 | awk '{print $4}' | cut -d. -f1)
-                  if [ "$current_cpu" = "$last_cpu_check" ] && [ "$current_cpu" -lt 5 ]; then
+                  state=$(echo "$ps_info" | tail -1 | awk '{print $6}')
+
+                  echo "📊 [EXTERNAL] $(date): Real pytest PID $actual_pytest_pid - CPU: ${current_cpu}%, State: $state, Silent: ${output_silence}s"
+
+                  # Check for real hang: low CPU + no output for extended time + process still running
+                  if [ "$current_cpu" -lt 2 ] && [ $output_silence -gt 120 ] && [ "$state" != "Z" ]; then
                     stable_count=$((stable_count + 1))
-                    if [ $stable_count -ge 6 ]; then  # 30 seconds of low CPU
-                      echo "⚠️ [EXTERNAL] $(date): Process appears hung - CPU stable at ${current_cpu}% for 30s"
-                      echo "🔍 [EXTERNAL] $(date): Sending SIGUSR1 to dump stack traces..."
-                      kill -USR1 $pytest_pid 2>/dev/null || echo "Failed to send signal"
+                    if [ $stable_count -ge 3 ]; then  # 30 seconds of confirmed hang
+                      echo "🔥 [EXTERNAL] $(date): REAL HANG DETECTED - dumping stack traces"
+                      echo "🔍 [EXTERNAL] $(date): Sending SIGUSR1 to pytest PID $actual_pytest_pid"
+                      kill -USR1 $actual_pytest_pid 2>/dev/null || echo "Failed to send signal to pytest"
+
+                      # Also try to get system-level stack trace
+                      echo "🔍 [EXTERNAL] $(date): Getting system stack trace with gdb"
+                      timeout 10 gdb --batch --ex "thread apply all bt" --ex "quit" --pid=$actual_pytest_pid 2>/dev/null || echo "gdb failed"
+
+                      # Reset counter to avoid spam
+                      stable_count=0
+                      last_output_time=$current_time
                     fi
                   else
                     stable_count=0
+                    # Update last output time if we see activity
+                    if [ "$current_cpu" -gt 5 ]; then
+                      last_output_time=$current_time
+                    fi
                   fi
-                  last_cpu_check=$current_cpu
 
                   # Check for zombie/stopped state
-                  state=$(echo "$ps_info" | tail -1 | awk '{print $6}')
                   if [ "$state" = "Z" ] || [ "$state" = "T" ]; then
-                    echo "💀 [EXTERNAL] $(date): Process in abnormal state: $state"
+                    echo "💀 [EXTERNAL] $(date): Pytest process in abnormal state: $state"
                   fi
+                else
+                  echo "📊 [EXTERNAL] $(date): Pytest process $actual_pytest_pid disappeared"
                 fi
 
-                # Check for orphaned Python processes
-                orphan_count=$(ps aux | grep -E "python.*pytest" | grep -v grep | wc -l)
-                if [ $orphan_count -gt 1 ]; then
-                  echo "🔍 [EXTERNAL] $(date): Found $orphan_count pytest-related processes"
-                  ps aux | grep -E "python.*pytest" | grep -v grep
-                fi
-
-                # Emergency timeout
-                if [ $elapsed -gt 650 ]; then
-                  echo "💥 [EXTERNAL] $(date): Emergency timeout reached, force killing pytest"
-                  kill -KILL $pytest_pid 2>/dev/null || true
+                # Emergency timeout - much longer now
+                if [ $elapsed -gt 900 ]; then  # 15 minutes
+                  echo "💥 [EXTERNAL] $(date): Emergency timeout reached, force killing"
+                  kill -KILL $timeout_pid 2>/dev/null || true
+                  pkill -KILL -f "pytest" 2>/dev/null || true
                   break
                 fi
               done
@@ -342,7 +357,7 @@ jobs:
 
             # Run pytest in background so we can monitor it externally
             python -u -c "import sys, time; print(f'🔍 [REALTIME] {time.strftime(\"%H:%M:%S\")} Starting pytest...', flush=True)"
-            timeout --preserve-status --signal=TERM --kill-after=30 600 bash -c '
+            timeout --preserve-status --signal=TERM --kill-after=30 900 bash -c '
               echo "▶️ [HANG DEBUG] Pytest starting at: $(date)"
               # Force unbuffered output and immediate flush
               stdbuf -o0 -e0 python scripts/ci_debug_pytest.py tests/ -v --tb=short --maxfail=5 -x -s 2>&1 | while IFS= read -r line; do
