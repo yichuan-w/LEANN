@@ -5,6 +5,7 @@ from typing import Union
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
+from tqdm import tqdm
 
 from .api import LeannBuilder, LeannChat, LeannSearcher
 
@@ -75,11 +76,14 @@ class LeannCLI:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
-  leann build my-docs --docs ./documents                    # Build index named my-docs
-  leann build my-ppts --docs ./ --file-types .pptx,.pdf    # Index only PowerPoint and PDF files
-  leann search my-docs "query"                             # Search in my-docs index
-  leann ask my-docs "question"                             # Ask my-docs index
-  leann list                                              # List all stored indexes
+  leann build my-docs --docs ./documents                                  # Build index from directory
+  leann build my-code --docs ./src ./tests ./config                      # Build index from multiple directories
+  leann build my-files --docs ./file1.py ./file2.txt ./docs/             # Build index from files and directories
+  leann build my-mixed --docs ./readme.md ./src/ ./config.json           # Build index from mixed files/dirs
+  leann build my-ppts --docs ./ --file-types .pptx,.pdf                  # Index only PowerPoint and PDF files
+  leann search my-docs "query"                                           # Search in my-docs index
+  leann ask my-docs "question"                                           # Ask my-docs index
+  leann list                                                             # List all stored indexes
             """,
         )
 
@@ -91,7 +95,11 @@ Examples:
             "index_name", nargs="?", help="Index name (default: current directory name)"
         )
         build_parser.add_argument(
-            "--docs", type=str, default=".", help="Documents directory (default: current directory)"
+            "--docs",
+            type=str,
+            nargs="+",
+            default=["."],
+            help="Documents directories and/or files (default: current directory)",
         )
         build_parser.add_argument(
             "--backend", type=str, default="hnsw", choices=["hnsw", "diskann"]
@@ -235,6 +243,32 @@ Examples:
         """Check if a file should be excluded using gitignore parser."""
         return gitignore_matches(str(relative_path))
 
+    def _is_git_submodule(self, path: Path) -> bool:
+        """Check if a path is a git submodule."""
+        try:
+            # Find the git repo root
+            current_dir = Path.cwd()
+            while current_dir != current_dir.parent:
+                if (current_dir / ".git").exists():
+                    gitmodules_path = current_dir / ".gitmodules"
+                    if gitmodules_path.exists():
+                        # Read .gitmodules to check if this path is a submodule
+                        gitmodules_content = gitmodules_path.read_text()
+                        # Convert path to relative to git root
+                        try:
+                            relative_path = path.resolve().relative_to(current_dir)
+                            # Check if this path appears in .gitmodules
+                            return f"path = {relative_path}" in gitmodules_content
+                        except ValueError:
+                            # Path is not under git root
+                            return False
+                    break
+                current_dir = current_dir.parent
+            return False
+        except Exception:
+            # If anything goes wrong, assume it's not a submodule
+            return False
+
     def list_indexes(self):
         print("Stored LEANN indexes:")
 
@@ -264,7 +298,9 @@ Examples:
             valid_projects.append(current_path)
 
         if not valid_projects:
-            print("No indexes found. Use 'leann build <name> --docs <dir>' to create one.")
+            print(
+                "No indexes found. Use 'leann build <name> --docs <dir> [<dir2> ...]' to create one."
+            )
             return
 
         total_indexes = 0
@@ -311,56 +347,88 @@ Examples:
                     print(f'  leann search {example_name} "your query"')
                     print(f"  leann ask {example_name} --interactive")
 
-    def load_documents(self, docs_dir: str, custom_file_types: Union[str, None] = None):
-        print(f"Loading documents from {docs_dir}...")
+    def load_documents(
+        self, docs_paths: Union[str, list], custom_file_types: Union[str, None] = None
+    ):
+        # Handle both single path (string) and multiple paths (list) for backward compatibility
+        if isinstance(docs_paths, str):
+            docs_paths = [docs_paths]
+
+        # Separate files and directories
+        files = []
+        directories = []
+        for path in docs_paths:
+            path_obj = Path(path)
+            if path_obj.is_file():
+                files.append(str(path_obj))
+            elif path_obj.is_dir():
+                # Check if this is a git submodule - if so, skip it
+                if self._is_git_submodule(path_obj):
+                    print(f"⚠️  Skipping git submodule: {path}")
+                    continue
+                directories.append(str(path_obj))
+            else:
+                print(f"⚠️  Warning: Path '{path}' does not exist, skipping...")
+                continue
+
+        # Print summary of what we're processing
+        total_items = len(files) + len(directories)
+        items_desc = []
+        if files:
+            items_desc.append(f"{len(files)} file{'s' if len(files) > 1 else ''}")
+        if directories:
+            items_desc.append(
+                f"{len(directories)} director{'ies' if len(directories) > 1 else 'y'}"
+            )
+
+        print(f"Loading documents from {' and '.join(items_desc)} ({total_items} total):")
+        if files:
+            print(f"  📄 Files: {', '.join([Path(f).name for f in files])}")
+        if directories:
+            print(f"  📁 Directories: {', '.join(directories)}")
+
         if custom_file_types:
             print(f"Using custom file types: {custom_file_types}")
 
-        # Build gitignore parser
-        gitignore_matches = self._build_gitignore_parser(docs_dir)
+        all_documents = []
 
-        # Try to use better PDF parsers first, but only if PDFs are requested
-        documents = []
-        docs_path = Path(docs_dir)
+        # First, process individual files if any
+        if files:
+            print(f"\n🔄 Processing {len(files)} individual file{'s' if len(files) > 1 else ''}...")
 
-        # Check if we should process PDFs
-        should_process_pdfs = custom_file_types is None or ".pdf" in custom_file_types
+            # Load individual files using SimpleDirectoryReader with input_files
+            # Note: We skip gitignore filtering for explicitly specified files
+            try:
+                # Group files by their parent directory for efficient loading
+                from collections import defaultdict
 
-        if should_process_pdfs:
-            for file_path in docs_path.rglob("*.pdf"):
-                # Check if file matches any exclude pattern
-                relative_path = file_path.relative_to(docs_path)
-                if self._should_exclude_file(relative_path, gitignore_matches):
-                    continue
+                files_by_dir = defaultdict(list)
+                for file_path in files:
+                    parent_dir = str(Path(file_path).parent)
+                    files_by_dir[parent_dir].append(file_path)
 
-                print(f"Processing PDF: {file_path}")
-
-                # Try PyMuPDF first (best quality)
-                text = extract_pdf_text_with_pymupdf(str(file_path))
-                if text is None:
-                    # Try pdfplumber
-                    text = extract_pdf_text_with_pdfplumber(str(file_path))
-
-                if text:
-                    # Create a simple document structure
-                    from llama_index.core import Document
-
-                    doc = Document(text=text, metadata={"source": str(file_path)})
-                    documents.append(doc)
-                else:
-                    # Fallback to default reader
-                    print(f"Using default reader for {file_path}")
+                # Load files from each parent directory
+                for parent_dir, file_list in files_by_dir.items():
+                    print(
+                        f"  Loading {len(file_list)} file{'s' if len(file_list) > 1 else ''} from {parent_dir}"
+                    )
                     try:
-                        default_docs = SimpleDirectoryReader(
-                            str(file_path.parent),
+                        file_docs = SimpleDirectoryReader(
+                            parent_dir,
+                            input_files=file_list,
                             filename_as_id=True,
-                            required_exts=[file_path.suffix],
                         ).load_data()
-                        documents.extend(default_docs)
+                        all_documents.extend(file_docs)
+                        print(
+                            f"    ✅ Loaded {len(file_docs)} document{'s' if len(file_docs) > 1 else ''}"
+                        )
                     except Exception as e:
-                        print(f"Warning: Could not process {file_path}: {e}")
+                        print(f"    ❌ Warning: Could not load files from {parent_dir}: {e}")
 
-        # Load other file types with default reader
+            except Exception as e:
+                print(f"❌ Error processing individual files: {e}")
+
+        # Define file extensions to process
         if custom_file_types:
             # Parse custom file types from comma-separated string
             code_extensions = [ext.strip() for ext in custom_file_types.split(",") if ext.strip()]
@@ -422,41 +490,106 @@ Examples:
                 ".py",
                 ".jl",
             ]
-        # Try to load other file types, but don't fail if none are found
-        try:
-            # Create a custom file filter function using our PathSpec
-            def file_filter(file_path: str) -> bool:
-                """Return True if file should be included (not excluded)"""
-                try:
-                    docs_path_obj = Path(docs_dir)
-                    file_path_obj = Path(file_path)
-                    relative_path = file_path_obj.relative_to(docs_path_obj)
-                    return not self._should_exclude_file(relative_path, gitignore_matches)
-                except (ValueError, OSError):
-                    return True  # Include files that can't be processed
 
-            other_docs = SimpleDirectoryReader(
-                docs_dir,
-                recursive=True,
-                encoding="utf-8",
-                required_exts=code_extensions,
-                file_extractor={},  # Use default extractors
-                filename_as_id=True,
-            ).load_data(show_progress=True)
+        # Process each directory
+        if directories:
+            print(
+                f"\n🔄 Processing {len(directories)} director{'ies' if len(directories) > 1 else 'y'}..."
+            )
 
-            # Filter documents after loading based on gitignore rules
-            filtered_docs = []
-            for doc in other_docs:
-                file_path = doc.metadata.get("file_path", "")
-                if file_filter(file_path):
-                    filtered_docs.append(doc)
+        for docs_dir in directories:
+            print(f"Processing directory: {docs_dir}")
+            # Build gitignore parser for each directory
+            gitignore_matches = self._build_gitignore_parser(docs_dir)
 
-            documents.extend(filtered_docs)
-        except ValueError as e:
-            if "No files found" in str(e):
-                print("No additional files found for other supported types.")
-            else:
-                raise e
+            # Try to use better PDF parsers first, but only if PDFs are requested
+            documents = []
+            docs_path = Path(docs_dir)
+
+            # Check if we should process PDFs
+            should_process_pdfs = custom_file_types is None or ".pdf" in custom_file_types
+
+            if should_process_pdfs:
+                for file_path in docs_path.rglob("*.pdf"):
+                    # Check if file matches any exclude pattern
+                    try:
+                        relative_path = file_path.relative_to(docs_path)
+                        if self._should_exclude_file(relative_path, gitignore_matches):
+                            continue
+                    except ValueError:
+                        # Skip files that can't be made relative to docs_path
+                        print(f"⚠️  Skipping file outside directory scope: {file_path}")
+                        continue
+
+                    print(f"Processing PDF: {file_path}")
+
+                    # Try PyMuPDF first (best quality)
+                    text = extract_pdf_text_with_pymupdf(str(file_path))
+                    if text is None:
+                        # Try pdfplumber
+                        text = extract_pdf_text_with_pdfplumber(str(file_path))
+
+                    if text:
+                        # Create a simple document structure
+                        from llama_index.core import Document
+
+                        doc = Document(text=text, metadata={"source": str(file_path)})
+                        documents.append(doc)
+                    else:
+                        # Fallback to default reader
+                        print(f"Using default reader for {file_path}")
+                        try:
+                            default_docs = SimpleDirectoryReader(
+                                str(file_path.parent),
+                                filename_as_id=True,
+                                required_exts=[file_path.suffix],
+                            ).load_data()
+                            documents.extend(default_docs)
+                        except Exception as e:
+                            print(f"Warning: Could not process {file_path}: {e}")
+
+            # Load other file types with default reader
+            try:
+                # Create a custom file filter function using our PathSpec
+                def file_filter(
+                    file_path: str, docs_dir=docs_dir, gitignore_matches=gitignore_matches
+                ) -> bool:
+                    """Return True if file should be included (not excluded)"""
+                    try:
+                        docs_path_obj = Path(docs_dir)
+                        file_path_obj = Path(file_path)
+                        relative_path = file_path_obj.relative_to(docs_path_obj)
+                        return not self._should_exclude_file(relative_path, gitignore_matches)
+                    except (ValueError, OSError):
+                        return True  # Include files that can't be processed
+
+                other_docs = SimpleDirectoryReader(
+                    docs_dir,
+                    recursive=True,
+                    encoding="utf-8",
+                    required_exts=code_extensions,
+                    file_extractor={},  # Use default extractors
+                    filename_as_id=True,
+                ).load_data(show_progress=True)
+
+                # Filter documents after loading based on gitignore rules
+                filtered_docs = []
+                for doc in other_docs:
+                    file_path = doc.metadata.get("file_path", "")
+                    if file_filter(file_path):
+                        filtered_docs.append(doc)
+
+                documents.extend(filtered_docs)
+            except ValueError as e:
+                if "No files found" in str(e):
+                    print(f"No additional files found for other supported types in {docs_dir}.")
+                else:
+                    raise e
+
+            all_documents.extend(documents)
+            print(f"Loaded {len(documents)} documents from {docs_dir}")
+
+        documents = all_documents
 
         all_texts = []
 
@@ -507,7 +640,9 @@ Examples:
             ".jl",
         }
 
-        for doc in documents:
+        print("start chunking documents")
+        # Add progress bar for document chunking
+        for doc in tqdm(documents, desc="Chunking documents", unit="doc"):
             # Check if this is a code file based on source path
             source_path = doc.metadata.get("source", "")
             is_code_file = any(source_path.endswith(ext) for ext in code_file_exts)
@@ -523,7 +658,7 @@ Examples:
         return all_texts
 
     async def build_index(self, args):
-        docs_dir = args.docs
+        docs_paths = args.docs
         # Use current directory name if index_name not provided
         if args.index_name:
             index_name = args.index_name
@@ -534,13 +669,25 @@ Examples:
         index_dir = self.indexes_dir / index_name
         index_path = self.get_index_path(index_name)
 
-        print(f"📂 Indexing: {Path(docs_dir).resolve()}")
+        # Display all paths being indexed with file/directory distinction
+        files = [p for p in docs_paths if Path(p).is_file()]
+        directories = [p for p in docs_paths if Path(p).is_dir()]
+
+        print(f"📂 Indexing {len(docs_paths)} path{'s' if len(docs_paths) > 1 else ''}:")
+        if files:
+            print(f"  📄 Files ({len(files)}):")
+            for i, file_path in enumerate(files, 1):
+                print(f"    {i}. {Path(file_path).resolve()}")
+        if directories:
+            print(f"  📁 Directories ({len(directories)}):")
+            for i, dir_path in enumerate(directories, 1):
+                print(f"    {i}. {Path(dir_path).resolve()}")
 
         if index_dir.exists() and not args.force:
             print(f"Index '{index_name}' already exists. Use --force to rebuild.")
             return
 
-        all_texts = self.load_documents(docs_dir, args.file_types)
+        all_texts = self.load_documents(docs_paths, args.file_types)
         if not all_texts:
             print("No documents found")
             return
@@ -576,7 +723,7 @@ Examples:
 
         if not self.index_exists(index_name):
             print(
-                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir>' to create it."
+                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
             )
             return
 
@@ -603,7 +750,7 @@ Examples:
 
         if not self.index_exists(index_name):
             print(
-                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir>' to create it."
+                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
             )
             return
 

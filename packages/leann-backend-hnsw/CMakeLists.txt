@@ -13,7 +13,7 @@ if(APPLE)
     else()
         message(FATAL_ERROR "Could not find libomp installation. Please install with: brew install libomp")
     endif()
-    
+
     set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include")
     set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include")
     set(OpenMP_C_LIB_NAMES "omp")
