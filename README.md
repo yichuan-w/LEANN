@@ -468,7 +468,7 @@ leann --help
 ### Usage Examples
 
 ```bash
-# build from a specific directory, and my_docs is the index name
+# build from a specific directory, and my_docs is the index name(Here you can also build from multiple dict or multiple files)
 leann build my-docs --docs ./your_documents
 
 # Search your documents
