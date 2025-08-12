@@ -289,7 +289,7 @@ jobs:
           source .venv/bin/activate || source .venv/Scripts/activate
 
           # Run tests
-          pytest -v test/
+          pytest -v tests/
 
       - name: Run sanity checks (optional)
         run: |
