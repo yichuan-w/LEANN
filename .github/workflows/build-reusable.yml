@@ -112,8 +112,25 @@ jobs:
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          # Don't install LLVM, use system clang for better compatibility
-          brew install libomp boost protobuf zeromq
+          # Update brew first to ensure we get latest packages
+          brew update || true
+          
+          # Install libomp first and verify installation
+          echo "🍺 Installing libomp..."
+          brew install libomp
+          
+          # Verify libomp installation
+          HOMEBREW_PREFIX=$(brew --prefix)
+          echo "🔍 Verifying libomp installation at ${HOMEBREW_PREFIX}/opt/libomp"
+          ls -la ${HOMEBREW_PREFIX}/opt/libomp/lib/libomp.dylib || {
+            echo "❌ libomp.dylib not found, trying to reinstall..."
+            brew uninstall libomp || true
+            brew install libomp
+          }
+          
+          # Install other dependencies
+          echo "🍺 Installing other dependencies..."
+          brew install boost protobuf zeromq
 
       - name: Install build dependencies
         run: |
@@ -130,10 +147,22 @@ jobs:
           # Use brew --prefix to automatically detect Homebrew installation path
           HOMEBREW_PREFIX=$(brew --prefix)
           echo "HOMEBREW_PREFIX=${HOMEBREW_PREFIX}" >> $GITHUB_ENV
+          
+          # Debug: Check if libomp is properly installed
+          echo "🔍 Checking libomp installation:"
+          ls -la ${HOMEBREW_PREFIX}/opt/libomp/lib/ || echo "libomp lib directory not found"
+          ls -la ${HOMEBREW_PREFIX}/opt/libomp/include/ || echo "libomp include directory not found"
+          
+          # Set OpenMP environment variables
           echo "OpenMP_ROOT=${HOMEBREW_PREFIX}/opt/libomp" >> $GITHUB_ENV
+          echo "OpenMP_C_FLAGS=-Xpreprocessor -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" >> $GITHUB_ENV
+          echo "OpenMP_CXX_FLAGS=-Xpreprocessor -fopenmp -I${HOMEBREW_PREFIX}/opt/libomp/include" >> $GITHUB_ENV
+          echo "OpenMP_C_LIB_NAMES=omp" >> $GITHUB_ENV
+          echo "OpenMP_CXX_LIB_NAMES=omp" >> $GITHUB_ENV
+          echo "OpenMP_omp_LIBRARY=${HOMEBREW_PREFIX}/opt/libomp/lib/libomp.dylib" >> $GITHUB_ENV
 
           # Set CMAKE_PREFIX_PATH to let CMake find all packages automatically
-          echo "CMAKE_PREFIX_PATH=${HOMEBREW_PREFIX}" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}/opt/libomp" >> $GITHUB_ENV
 
           # Set compiler flags for OpenMP (required for both backends)
           echo "LDFLAGS=-L${HOMEBREW_PREFIX}/opt/libomp/lib" >> $GITHUB_ENV
@@ -167,6 +196,13 @@ jobs:
             export CXX=clang++
             # sgesdd_ is only available on macOS 13.3+
             export MACOSX_DEPLOYMENT_TARGET=13.3
+            
+            # Ensure OpenMP is found during build
+            HOMEBREW_PREFIX=$(brew --prefix)
+            export OpenMP_ROOT=${HOMEBREW_PREFIX}/opt/libomp
+            export LDFLAGS="-L${HOMEBREW_PREFIX}/opt/libomp/lib ${LDFLAGS}"
+            export CPPFLAGS="-I${HOMEBREW_PREFIX}/opt/libomp/include ${CPPFLAGS}"
+            
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
