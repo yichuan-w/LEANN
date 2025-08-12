@@ -330,6 +330,19 @@ jobs:
                 echo "$(date +"%H:%M:%S") [PYTEST] $line"
               done
               echo "✅ [HANG DEBUG] Pytest completed at: $(date)"
+
+              # Monitor post-pytest cleanup for 30 seconds
+              echo "🧹 [HANG DEBUG] Monitoring post-pytest cleanup..."
+              for i in {1..30}; do
+                echo "🔍 [HANG DEBUG] Cleanup check $i/30 at $(date)"
+                ps aux | grep -E "(python|pytest|embedding)" | grep -v grep | head -5
+                if [ $(ps aux | grep -E "(python|pytest)" | grep -v grep | wc -l) -eq 0 ]; then
+                  echo "✅ [HANG DEBUG] All Python processes cleaned up successfully"
+                  break
+                fi
+                sleep 1
+              done
+              echo "🏁 [HANG DEBUG] Cleanup monitoring finished"
             '
             PYTEST_EXIT=$?
 
