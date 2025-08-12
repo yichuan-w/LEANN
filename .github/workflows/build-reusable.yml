@@ -157,8 +157,13 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            # Use 11.0 for broad macOS compatibility
-            export MACOSX_DEPLOYMENT_TARGET=11.0
+            # Set deployment target based on runner OS
+            if [[ "${{ matrix.os }}" == "macos-13" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=11.0
+            else
+              # macos-14+ runner - match the system libraries
+              export MACOSX_DEPLOYMENT_TARGET=14.0
+            fi
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
@@ -171,8 +176,14 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
-            export MACOSX_DEPLOYMENT_TARGET=13.3
+            # Set deployment target based on runner OS
+            if [[ "${{ matrix.os }}" == "macos-13" ]]; then
+              # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
+              export MACOSX_DEPLOYMENT_TARGET=13.3
+            else
+              # macos-14+ runner - match the system libraries
+              export MACOSX_DEPLOYMENT_TARGET=14.0
+            fi
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
@@ -208,13 +219,23 @@ jobs:
       - name: Repair wheels (macOS)
         if: runner.os == 'macOS'
         run: |
+          # Determine deployment target based on runner OS
+          # macOS 13 runners have libraries built for macOS 13
+          # macOS 14 runners have libraries built for macOS 14
+          if [[ "${{ matrix.os }}" == "macos-13" ]]; then
+            HNSW_TARGET="11.0"
+            DISKANN_TARGET="13.3"
+          else
+            # macos-14 runner - libraries are built for macOS 14
+            HNSW_TARGET="14.0"
+            DISKANN_TARGET="14.0"
+          fi
+
           # Repair HNSW wheel
           cd packages/leann-backend-hnsw
           if [ -d dist ]; then
-            # Set deployment target to ensure wheel compatibility with older macOS versions
-            # This ensures the wheel is tagged for macOS 11.0+ compatibility
-            export MACOSX_DEPLOYMENT_TARGET=11.0
-            delocate-wheel -w dist_repaired -v --require-target-macos-version 11.0 dist/*.whl
+            export MACOSX_DEPLOYMENT_TARGET=$HNSW_TARGET
+            delocate-wheel -w dist_repaired -v --require-target-macos-version $HNSW_TARGET dist/*.whl
             rm -rf dist
             mv dist_repaired dist
           fi
@@ -223,9 +244,8 @@ jobs:
           # Repair DiskANN wheel
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
-            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
-            export MACOSX_DEPLOYMENT_TARGET=13.3
-            delocate-wheel -w dist_repaired -v --require-target-macos-version 13.3 dist/*.whl
+            export MACOSX_DEPLOYMENT_TARGET=$DISKANN_TARGET
+            delocate-wheel -w dist_repaired -v --require-target-macos-version $DISKANN_TARGET dist/*.whl
             rm -rf dist
             mv dist_repaired dist
           fi
