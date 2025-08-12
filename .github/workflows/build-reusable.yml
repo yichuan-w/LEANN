@@ -290,10 +290,27 @@ jobs:
             fi
             
             # Start tmate session in background
+            echo "Starting tmate session..."
             tmate -S debug-session new-session -d 
-            echo "🔗 Tmate session created. Connection info:"
-            tmate -S debug-session display -p '#{tmate_ssh}'
-            echo "🔗 Web session: $(tmate -S debug-session display -p '#{tmate_web}')"
+            
+            # Wait for tmate to initialize and get connection info
+            echo "Waiting for tmate to initialize..."
+            sleep 5
+            
+            # Try multiple times to get connection info
+            for i in {1..10}; do
+              SSH_INFO=$(tmate -S debug-session display -p '#{tmate_ssh}' 2>/dev/null || echo "")
+              WEB_INFO=$(tmate -S debug-session display -p '#{tmate_web}' 2>/dev/null || echo "")
+              
+              if [[ -n "$SSH_INFO" && "$SSH_INFO" != "connecting..." ]]; then
+                echo "🔗 SSH: $SSH_INFO"
+                echo "🔗 Web: $WEB_INFO"
+                break
+              fi
+              
+              echo "Attempt $i: Still connecting... (SSH: '$SSH_INFO')"
+              sleep 2
+            done
             echo "⏱️  Session will timeout after 30 minutes"
             echo "💡 You can now SSH in and run: pytest tests/ -vv --capture=no"
             echo "💡 Or run diagnostics: bash scripts/diagnose_hang.sh"
