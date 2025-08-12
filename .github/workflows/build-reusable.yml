@@ -275,75 +275,110 @@ jobs:
             MONITOR_PID=$!
             echo "🔍 [HANG DEBUG] Started background monitor (PID: $MONITOR_PID)"
 
-            # Run pytest with timeout and enhanced logging
-            echo "🚀 [HANG DEBUG] Starting pytest with 600s timeout..."
+            # Run pytest with enhanced real-time monitoring (no dependency on pytest logs)
+            echo "🚀 [HANG DEBUG] Starting pytest with 600s timeout and external monitoring..."
 
-            # Pre-test import debugging to identify hang point
-            echo "🔍 [HANG DEBUG] Testing individual imports to identify hang source..."
-            timeout 120 python -c "
-            import sys
-            import time
-            def timed_import(module, desc):
-                start = time.time()
-                print(f'⏳ Importing {desc}...', flush=True)
-                try:
-                    __import__(module)
-                    elapsed = time.time() - start
-                    print(f'✅ {desc} imported in {elapsed:.2f}s', flush=True)
-                except Exception as e:
-                    elapsed = time.time() - start
-                    print(f'❌ {desc} failed after {elapsed:.2f}s: {e}', flush=True)
-                    raise
+            # Start independent process monitor that doesn't rely on pytest output
+            external_monitor() {
+              local pytest_pid=$1
+              local start_time=$(date +%s)
+              local last_cpu_check=0
+              local stable_count=0
 
-            print('🧪 Testing individual module imports...', flush=True)
-            timed_import('leann', 'Core LEANN package')
-            timed_import('leann.api', 'LEANN API module')
+              while true; do
+                sleep 5
+                current_time=$(date +%s)
+                elapsed=$((current_time - start_time))
 
-            print('🧪 Testing backend imports (most likely hang point)...', flush=True)
-            timed_import('leann_backend_hnsw', 'HNSW backend package')
-            timed_import('leann_backend_diskann', 'DiskANN backend package')
-
-            print('🧪 Testing deep imports...', flush=True)
-            timed_import('leann_backend_hnsw.hnsw_backend', 'HNSW backend module')
-            timed_import('leann_backend_diskann.diskann_backend', 'DiskANN backend module')
-
-            print('✅ All imports completed successfully', flush=True)
-            " 2>&1 | while IFS= read -r line; do
-              echo "$(date +"%H:%M:%S") [IMPORT] $line"
-            done
-            IMPORT_EXIT=$?
-
-            if [ $IMPORT_EXIT -eq 124 ]; then
-              echo "⚠️ [HANG DEBUG] IMPORT TIMEOUT! Import process hung - this is likely the root cause"
-              echo "💀 [HANG DEBUG] Killing any hanging Python processes..."
-              pkill -KILL -f python || true
-              exit 1
-            elif [ $IMPORT_EXIT -ne 0 ]; then
-              echo "❌ [HANG DEBUG] Import tests failed with exit code: $IMPORT_EXIT"
-              exit $IMPORT_EXIT
-            fi
-
-            echo "✅ [HANG DEBUG] Import tests passed, proceeding with pytest..."
-            timeout --preserve-status --signal=TERM --kill-after=30 600 bash -c '
-              echo "▶️ [HANG DEBUG] Pytest starting at: $(date)"
-              pytest tests/ -v --tb=short --maxfail=5 -x 2>&1 | while IFS= read -r line; do
-                echo "$(date +"%H:%M:%S") [PYTEST] $line"
-              done
-              echo "✅ [HANG DEBUG] Pytest completed at: $(date)"
-
-              # Monitor post-pytest cleanup for 30 seconds
-              echo "🧹 [HANG DEBUG] Monitoring post-pytest cleanup..."
-              for i in {1..30}; do
-                echo "🔍 [HANG DEBUG] Cleanup check $i/30 at $(date)"
-                ps aux | grep -E "(python|pytest|embedding)" | grep -v grep | head -5
-                if [ $(ps aux | grep -E "(python|pytest)" | grep -v grep | wc -l) -eq 0 ]; then
-                  echo "✅ [HANG DEBUG] All Python processes cleaned up successfully"
+                # Check if pytest process still exists
+                if ! kill -0 $pytest_pid 2>/dev/null; then
+                  echo "📊 [EXTERNAL] $(date): Pytest process $pytest_pid ended after ${elapsed}s"
                   break
                 fi
-                sleep 1
+
+                # Get detailed process info
+                ps_info=$(ps -p $pytest_pid -o pid,ppid,time,pcpu,pmem,state,comm 2>/dev/null || echo "PROCESS_GONE")
+                if [ "$ps_info" != "PROCESS_GONE" ]; then
+                  echo "📊 [EXTERNAL] $(date): Process $pytest_pid - ${ps_info}"
+
+                  # Extract CPU percentage and check for stability
+                  current_cpu=$(echo "$ps_info" | tail -1 | awk '{print $4}' | cut -d. -f1)
+                  if [ "$current_cpu" = "$last_cpu_check" ] && [ "$current_cpu" -lt 5 ]; then
+                    stable_count=$((stable_count + 1))
+                    if [ $stable_count -ge 6 ]; then  # 30 seconds of low CPU
+                      echo "⚠️ [EXTERNAL] $(date): Process appears hung - CPU stable at ${current_cpu}% for 30s"
+                    fi
+                  else
+                    stable_count=0
+                  fi
+                  last_cpu_check=$current_cpu
+
+                  # Check for zombie/stopped state
+                  state=$(echo "$ps_info" | tail -1 | awk '{print $6}')
+                  if [ "$state" = "Z" ] || [ "$state" = "T" ]; then
+                    echo "💀 [EXTERNAL] $(date): Process in abnormal state: $state"
+                  fi
+                fi
+
+                # Check for orphaned Python processes
+                orphan_count=$(ps aux | grep -E "python.*pytest" | grep -v grep | wc -l)
+                if [ $orphan_count -gt 1 ]; then
+                  echo "🔍 [EXTERNAL] $(date): Found $orphan_count pytest-related processes"
+                  ps aux | grep -E "python.*pytest" | grep -v grep
+                fi
+
+                # Emergency timeout
+                if [ $elapsed -gt 650 ]; then
+                  echo "💥 [EXTERNAL] $(date): Emergency timeout reached, force killing pytest"
+                  kill -KILL $pytest_pid 2>/dev/null || true
+                  break
+                fi
               done
-              echo "🏁 [HANG DEBUG] Cleanup monitoring finished"
-            '
+            }
+
+            # Run pytest in background so we can monitor it externally
+            python -u -c "
+            import sys, time
+            print(f'🔍 [REALTIME] {time.strftime(\"%H:%M:%S\")} Starting pytest...', flush=True)
+            "
+            timeout --preserve-status --signal=TERM --kill-after=30 600 bash -c '
+              echo "▶️ [HANG DEBUG] Pytest starting at: $(date)"
+              # Force unbuffered output and immediate flush
+              stdbuf -o0 -e0 pytest tests/ -v --tb=short --maxfail=5 -x -s 2>&1 | while IFS= read -r line; do
+                printf "%s [PYTEST] %s\n" "$(date +"%H:%M:%S")" "$line"
+                # Force flush after each line
+                sync
+              done
+              PYTEST_RESULT=${PIPESTATUS[0]}
+              echo "✅ [HANG DEBUG] Pytest completed at: $(date) with exit code: $PYTEST_RESULT"
+              exit $PYTEST_RESULT
+            ' &
+            PYTEST_PID=$!
+            echo "🔍 [HANG DEBUG] Pytest started with PID: $PYTEST_PID"
+
+            # Start external monitoring
+            external_monitor $PYTEST_PID &
+            EXTERNAL_MONITOR_PID=$!
+
+            # Wait for pytest to complete
+            wait $PYTEST_PID
+            PYTEST_EXIT=$?
+            echo "🏁 [HANG DEBUG] Pytest process ended with exit code: $PYTEST_EXIT"
+
+            # Stop external monitor
+            kill $EXTERNAL_MONITOR_PID 2>/dev/null || true
+
+            # Final cleanup check
+            echo "🧹 [HANG DEBUG] Final cleanup check..."
+            REMAINING_PROCS=$(ps aux | grep -E "python.*pytest" | grep -v grep | wc -l)
+            if [ $REMAINING_PROCS -gt 0 ]; then
+              echo "⚠️ [HANG DEBUG] Found $REMAINING_PROCS remaining pytest processes after completion"
+              ps aux | grep -E "python.*pytest" | grep -v grep
+              echo "💀 [HANG DEBUG] Force killing remaining processes..."
+              ps aux | grep -E "python.*pytest" | grep -v grep | awk "{print \$2}" | xargs -r kill -KILL
+            else
+              echo "✅ [HANG DEBUG] No remaining pytest processes found"
+            fi
             PYTEST_EXIT=$?
 
             # Stop background monitoring
