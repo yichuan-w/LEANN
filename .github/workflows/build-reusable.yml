@@ -157,7 +157,8 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            export MACOSX_DEPLOYMENT_TARGET=14.0
+            # Use 11.0 for broad macOS compatibility
+            export MACOSX_DEPLOYMENT_TARGET=11.0
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
@@ -170,9 +171,8 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
-            # Using 14.0 for better M4 compatibility
-            export MACOSX_DEPLOYMENT_TARGET=14.0
+            # DiskANN requires macOS 13+ for sgesdd_ LAPACK function
+            export MACOSX_DEPLOYMENT_TARGET=13.3
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
@@ -211,7 +211,10 @@ jobs:
           # Repair HNSW wheel
           cd packages/leann-backend-hnsw
           if [ -d dist ]; then
-            delocate-wheel -w dist_repaired -v dist/*.whl
+            # Set deployment target to ensure wheel compatibility with older macOS versions
+            # This ensures the wheel is tagged for macOS 11.0+ compatibility
+            export MACOSX_DEPLOYMENT_TARGET=11.0
+            delocate-wheel -w dist_repaired -v --require-target-macos-version 11.0 dist/*.whl
             rm -rf dist
             mv dist_repaired dist
           fi
@@ -220,7 +223,10 @@ jobs:
           # Repair DiskANN wheel
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
-            delocate-wheel -w dist_repaired -v dist/*.whl
+            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
+            # But we need to support macOS 13 runners, so use 13.0 as the target
+            export MACOSX_DEPLOYMENT_TARGET=13.0
+            delocate-wheel -w dist_repaired -v --require-target-macos-version 13.0 dist/*.whl
             rm -rf dist
             mv dist_repaired dist
           fi
