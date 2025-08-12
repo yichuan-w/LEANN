@@ -249,8 +249,112 @@ jobs:
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Run all tests
-          pytest tests/
+          # Add targeted debugging for pytest hangs (especially Ubuntu 22.04)
+          if [[ "${{ matrix.os }}" == "ubuntu-22.04" ]]; then
+            echo "🔍 [HANG DEBUG] Ubuntu 22.04 detected - enabling enhanced process monitoring"
+
+            # Pre-test state
+            echo "📊 [HANG DEBUG] Pre-test process state:"
+            ps aux | grep -E "(python|embedding|zmq)" | grep -v grep || echo "No relevant processes"
+
+            echo "🔌 [HANG DEBUG] Pre-test network state:"
+            ss -tulpn | grep -E "(555[0-9]|556[0-9])" || echo "No embedding server ports"
+
+            # Function to monitor processes during test
+            monitor_processes() {
+              while true; do
+                sleep 30
+                echo "⏰ [HANG DEBUG] $(date): Process check during test execution"
+                ps aux | grep -E "(python|pytest|embedding)" | grep -v grep | head -10
+                ss -tulpn | grep -E "(555[0-9]|556[0-9])" || echo "No ports"
+              done
+            }
+
+            # Start background monitoring
+            monitor_processes &
+            MONITOR_PID=$!
+            echo "🔍 [HANG DEBUG] Started background monitor (PID: $MONITOR_PID)"
+
+            # Run pytest with timeout and enhanced logging
+            echo "🚀 [HANG DEBUG] Starting pytest with 600s timeout..."
+
+            # Pre-test import debugging to identify hang point
+            echo "🔍 [HANG DEBUG] Testing individual imports to identify hang source..."
+            timeout 120 python -c "
+            import sys
+            import time
+            def timed_import(module, desc):
+                start = time.time()
+                print(f'⏳ Importing {desc}...', flush=True)
+                try:
+                    __import__(module)
+                    elapsed = time.time() - start
+                    print(f'✅ {desc} imported in {elapsed:.2f}s', flush=True)
+                except Exception as e:
+                    elapsed = time.time() - start
+                    print(f'❌ {desc} failed after {elapsed:.2f}s: {e}', flush=True)
+                    raise
+
+            print('🧪 Testing individual module imports...', flush=True)
+            timed_import('leann', 'Core LEANN package')
+            timed_import('leann.api', 'LEANN API module')
+
+            print('🧪 Testing backend imports (most likely hang point)...', flush=True)
+            timed_import('leann_backend_hnsw', 'HNSW backend package')
+            timed_import('leann_backend_diskann', 'DiskANN backend package')
+
+            print('🧪 Testing deep imports...', flush=True)
+            timed_import('leann_backend_hnsw.hnsw_backend', 'HNSW backend module')
+            timed_import('leann_backend_diskann.diskann_backend', 'DiskANN backend module')
+
+            print('✅ All imports completed successfully', flush=True)
+            " 2>&1 | while IFS= read -r line; do
+              echo "$(date +"%H:%M:%S") [IMPORT] $line"
+            done
+            IMPORT_EXIT=$?
+
+            if [ $IMPORT_EXIT -eq 124 ]; then
+              echo "⚠️ [HANG DEBUG] IMPORT TIMEOUT! Import process hung - this is likely the root cause"
+              echo "💀 [HANG DEBUG] Killing any hanging Python processes..."
+              pkill -KILL -f python || true
+              exit 1
+            elif [ $IMPORT_EXIT -ne 0 ]; then
+              echo "❌ [HANG DEBUG] Import tests failed with exit code: $IMPORT_EXIT"
+              exit $IMPORT_EXIT
+            fi
+
+            echo "✅ [HANG DEBUG] Import tests passed, proceeding with pytest..."
+            timeout --preserve-status --signal=TERM --kill-after=30 600 bash -c '
+              echo "▶️ [HANG DEBUG] Pytest starting at: $(date)"
+              pytest tests/ -v --tb=short --maxfail=5 -x 2>&1 | while IFS= read -r line; do
+                echo "$(date +"%H:%M:%S") [PYTEST] $line"
+              done
+              echo "✅ [HANG DEBUG] Pytest completed at: $(date)"
+            '
+            PYTEST_EXIT=$?
+
+            # Stop background monitoring
+            kill $MONITOR_PID 2>/dev/null || true
+
+            echo "🔚 [HANG DEBUG] Pytest exit code: $PYTEST_EXIT"
+            if [ $PYTEST_EXIT -eq 124 ]; then
+              echo "⚠️ [HANG DEBUG] TIMEOUT! Pytest hung for >600s"
+              echo "🔍 [HANG DEBUG] Final process state:"
+              ps aux | grep -E "(python|pytest|embedding)" | grep -v grep
+              echo "🔍 [HANG DEBUG] Final network state:"
+              ss -tulpn | grep -E "(555[0-9]|556[0-9])" || echo "No ports"
+              echo "💀 [HANG DEBUG] Killing remaining processes..."
+              pkill -TERM -f "pytest\|embedding_server\|zmq" || true
+              sleep 3
+              pkill -KILL -f "pytest\|embedding_server\|zmq" || true
+            fi
+
+            exit $PYTEST_EXIT
+          else
+            # For non-Ubuntu or non-22.04, run normally
+            echo "🚀 [HANG DEBUG] Running tests on ${{ matrix.os }} (normal mode)"
+            pytest tests/ -v --tb=short
+          fi
 
       - name: Run sanity checks (optional)
         run: |
