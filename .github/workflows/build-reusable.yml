@@ -171,7 +171,7 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            # DiskANN requires macOS 13+ for sgesdd_ LAPACK function
+            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
             export MACOSX_DEPLOYMENT_TARGET=13.3
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
@@ -224,9 +224,8 @@ jobs:
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
             # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
-            # But we need to support macOS 13 runners, so use 13.0 as the target
-            export MACOSX_DEPLOYMENT_TARGET=13.0
-            delocate-wheel -w dist_repaired -v --require-target-macos-version 13.0 dist/*.whl
+            export MACOSX_DEPLOYMENT_TARGET=13.3
+            delocate-wheel -w dist_repaired -v --require-target-macos-version 13.3 dist/*.whl
             rm -rf dist
             mv dist_repaired dist
           fi
