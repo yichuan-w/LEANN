@@ -6,15 +6,7 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      debug_enabled:
-        type: boolean
-        description: 'Run with tmate debugging enabled (SSH access to runner)'
-        required: false
-        default: false
 
 jobs:
   build:
     uses: ./.github/workflows/build-reusable.yml
-    with:
-      debug_enabled: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled || false }}
