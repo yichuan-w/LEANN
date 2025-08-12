@@ -337,10 +337,7 @@ jobs:
             }
 
             # Run pytest in background so we can monitor it externally
-            python -u -c "
-            import sys, time
-            print(f'🔍 [REALTIME] {time.strftime(\"%H:%M:%S\")} Starting pytest...', flush=True)
-            "
+            python -u -c "import sys, time; print(f'🔍 [REALTIME] {time.strftime(\"%H:%M:%S\")} Starting pytest...', flush=True)"
             timeout --preserve-status --signal=TERM --kill-after=30 600 bash -c '
               echo "▶️ [HANG DEBUG] Pytest starting at: $(date)"
               # Force unbuffered output and immediate flush
