@@ -64,6 +64,16 @@ jobs:
             python: '3.12'
           - os: macos-14
             python: '3.13'
+          - os: macos-15
+            python: '3.9'
+          - os: macos-15
+            python: '3.10'
+          - os: macos-15
+            python: '3.11'
+          - os: macos-15
+            python: '3.12'
+          - os: macos-15
+            python: '3.13'
           - os: macos-13
             python: '3.9'
           - os: macos-13
@@ -147,7 +157,7 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            export MACOSX_DEPLOYMENT_TARGET=11.0
+            export MACOSX_DEPLOYMENT_TARGET=14.0
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
@@ -161,7 +171,8 @@ jobs:
             export CC=clang
             export CXX=clang++
             # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
-            export MACOSX_DEPLOYMENT_TARGET=13.3
+            # Using 14.0 for better M4 compatibility
+            export MACOSX_DEPLOYMENT_TARGET=14.0
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
