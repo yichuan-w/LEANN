@@ -617,6 +617,31 @@ def compute_embeddings_ollama(
     # Remove None values and convert to numpy array
     all_embeddings = [e for e in all_embeddings if e is not None]
 
+    # Validate embedding dimensions before creating numpy array
+    if all_embeddings:
+        expected_dim = len(all_embeddings[0])
+        inconsistent_dims = []
+        for i, embedding in enumerate(all_embeddings):
+            if len(embedding) != expected_dim:
+                inconsistent_dims.append((i, len(embedding)))
+
+        if inconsistent_dims:
+            error_msg = f"Ollama returned inconsistent embedding dimensions. Expected {expected_dim}, but got:\n"
+            for idx, dim in inconsistent_dims[:10]:  # Show first 10 inconsistent ones
+                error_msg += f"  - Text {idx}: {dim} dimensions\n"
+            if len(inconsistent_dims) > 10:
+                error_msg += f"  ... and {len(inconsistent_dims) - 10} more\n"
+            error_msg += (
+                f"\nThis is likely an Ollama API bug with model '{model_name}'. Please try:\n"
+            )
+            error_msg += "1. Restart Ollama service: 'ollama serve'\n"
+            error_msg += f"2. Re-pull the model: 'ollama pull {model_name}'\n"
+            error_msg += (
+                "3. Use sentence-transformers instead: --embedding-mode sentence-transformers\n"
+            )
+            error_msg += "4. Report this issue to Ollama: https://github.com/ollama/ollama/issues"
+            raise ValueError(error_msg)
+
     # Convert to numpy array and normalize
     embeddings = np.array(all_embeddings, dtype=np.float32)
 
