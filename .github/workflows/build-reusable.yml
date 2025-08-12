@@ -64,6 +64,16 @@ jobs:
             python: '3.12'
           - os: macos-14
             python: '3.13'
+          - os: macos-15
+            python: '3.9'
+          - os: macos-15
+            python: '3.10'
+          - os: macos-15
+            python: '3.11'
+          - os: macos-15
+            python: '3.12'
+          - os: macos-15
+            python: '3.13'
           - os: macos-13
             python: '3.9'
           - os: macos-13
@@ -147,7 +157,14 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            export MACOSX_DEPLOYMENT_TARGET=11.0
+            # Homebrew libraries on each macOS version require matching minimum version
+            if [[ "${{ matrix.os }}" == "macos-13" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=13.0
+            elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=14.0
+            elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=15.0
+            fi
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
@@ -161,7 +178,14 @@ jobs:
             export CC=clang
             export CXX=clang++
             # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
-            export MACOSX_DEPLOYMENT_TARGET=13.3
+            # But Homebrew libraries on each macOS version require matching minimum version
+            if [[ "${{ matrix.os }}" == "macos-13" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=13.3
+            elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=14.0
+            elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=15.0
+            fi
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
@@ -197,10 +221,24 @@ jobs:
       - name: Repair wheels (macOS)
         if: runner.os == 'macOS'
         run: |
+          # Determine deployment target based on runner OS
+          # Must match the Homebrew libraries for each macOS version
+          if [[ "${{ matrix.os }}" == "macos-13" ]]; then
+            HNSW_TARGET="13.0"
+            DISKANN_TARGET="13.3"
+          elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
+            HNSW_TARGET="14.0"
+            DISKANN_TARGET="14.0"
+          elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+            HNSW_TARGET="15.0"
+            DISKANN_TARGET="15.0"
+          fi
+
           # Repair HNSW wheel
           cd packages/leann-backend-hnsw
           if [ -d dist ]; then
-            delocate-wheel -w dist_repaired -v dist/*.whl
+            export MACOSX_DEPLOYMENT_TARGET=$HNSW_TARGET
+            delocate-wheel -w dist_repaired -v --require-target-macos-version $HNSW_TARGET dist/*.whl
             rm -rf dist
             mv dist_repaired dist
           fi
@@ -209,7 +247,8 @@ jobs:
           # Repair DiskANN wheel
           cd packages/leann-backend-diskann
           if [ -d dist ]; then
-            delocate-wheel -w dist_repaired -v dist/*.whl
+            export MACOSX_DEPLOYMENT_TARGET=$DISKANN_TARGET
+            delocate-wheel -w dist_repaired -v --require-target-macos-version $DISKANN_TARGET dist/*.whl
             rm -rf dist
             mv dist_repaired dist
           fi
@@ -249,8 +288,8 @@ jobs:
           # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
 
-          # Run all tests
-          pytest tests/
+          # Run tests
+          pytest -v tests/
 
       - name: Run sanity checks (optional)
         run: |
