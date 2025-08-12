@@ -158,11 +158,13 @@ jobs:
             export CC=clang
             export CXX=clang++
             # Set deployment target based on runner OS
+            # Must match the system libraries from Homebrew
             if [[ "${{ matrix.os }}" == "macos-13" ]]; then
               export MACOSX_DEPLOYMENT_TARGET=11.0
-            else
-              # macos-14+ runner - match the system libraries
+            elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
               export MACOSX_DEPLOYMENT_TARGET=14.0
+            elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=15.0
             fi
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
@@ -177,12 +179,14 @@ jobs:
             export CC=clang
             export CXX=clang++
             # Set deployment target based on runner OS
+            # Must match the system libraries from Homebrew
             if [[ "${{ matrix.os }}" == "macos-13" ]]; then
               # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
               export MACOSX_DEPLOYMENT_TARGET=13.3
-            else
-              # macos-14+ runner - match the system libraries
+            elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
               export MACOSX_DEPLOYMENT_TARGET=14.0
+            elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=15.0
             fi
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
@@ -220,15 +224,16 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           # Determine deployment target based on runner OS
-          # macOS 13 runners have libraries built for macOS 13
-          # macOS 14 runners have libraries built for macOS 14
+          # Must match the Homebrew libraries for each macOS version
           if [[ "${{ matrix.os }}" == "macos-13" ]]; then
             HNSW_TARGET="11.0"
             DISKANN_TARGET="13.3"
-          else
-            # macos-14 runner - libraries are built for macOS 14
+          elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
             HNSW_TARGET="14.0"
             DISKANN_TARGET="14.0"
+          elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+            HNSW_TARGET="15.0"
+            DISKANN_TARGET="15.0"
           fi
 
           # Repair HNSW wheel
