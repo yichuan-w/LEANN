@@ -190,7 +190,7 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 --force-rebuild         # Force rebuild index even if it exists
 
 # Embedding Parameters
---embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small, nomic-embed-text,mlx-community/Qwen3-Embedding-0.6B-8bit or nomic-embed-text
+--embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small, mlx-community/Qwen3-Embedding-0.6B-8bit or nomic-embed-text
 --embedding-mode MODE    # sentence-transformers, openai, mlx, or ollama
 
 # LLM Parameters (Text generation models)
