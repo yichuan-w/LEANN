@@ -1,7 +1,6 @@
 import atexit
 import logging
 import os
-import signal
 import socket
 import subprocess
 import sys
@@ -316,13 +315,12 @@ class EmbeddingServerManager:
             stdout_target = None  # Direct to console for visible logs
             stderr_target = None  # Direct to console for visible logs
 
-        # IMPORTANT: Use a new session so we can manage the whole process group reliably
+        # Start embedding server subprocess
         self.server_process = subprocess.Popen(
             command,
             cwd=project_root,
             stdout=stdout_target,
             stderr=stderr_target,
-            start_new_session=True,
         )
         self.server_port = port
         logger.info(f"Server process started with PID: {self.server_process.pid}")
@@ -364,26 +362,18 @@ class EmbeddingServerManager:
         logger.info(
             f"Terminating server process (PID: {self.server_process.pid}) for backend {self.backend_module_name}..."
         )
-        # Try terminating the whole process group first (POSIX)
-        try:
-            pgid = os.getpgid(self.server_process.pid)
-            os.killpg(pgid, signal.SIGTERM)
-        except Exception:
-            # Fallback to terminating just the process
-            self.server_process.terminate()
+
+        # Use simple termination - our improved server shutdown should handle this properly
+        self.server_process.terminate()
 
         try:
-            self.server_process.wait(timeout=3)
-            logger.info(f"Server process {self.server_process.pid} terminated.")
+            self.server_process.wait(timeout=5)  # Give more time for graceful shutdown
+            logger.info(f"Server process {self.server_process.pid} terminated gracefully.")
         except subprocess.TimeoutExpired:
             logger.warning(
-                f"Server process {self.server_process.pid} did not terminate gracefully within 3 seconds, killing it."
+                f"Server process {self.server_process.pid} did not terminate within 5 seconds, force killing..."
             )
-            try:
-                pgid = os.getpgid(self.server_process.pid)
-                os.killpg(pgid, signal.SIGKILL)
-            except Exception:
-                self.server_process.kill()
+            self.server_process.kill()
             try:
                 self.server_process.wait(timeout=2)
                 logger.info(f"Server process {self.server_process.pid} killed successfully.")
@@ -391,12 +381,20 @@ class EmbeddingServerManager:
                 logger.error(
                     f"Failed to kill server process {self.server_process.pid} - it may be hung"
                 )
-                # Don't hang indefinitely
 
-        # Clean up process resources without waiting
-        # The process should already be terminated/killed above
-        # Don't wait here as it can hang CI indefinitely
-        self.server_process = None
+        # Clean up process resources with timeout to avoid CI hang
+        try:
+            # Use shorter timeout in CI environments
+            is_ci = os.environ.get("CI") == "true"
+            timeout = 3 if is_ci else 10
+            self.server_process.wait(timeout=timeout)
+            logger.info(f"Server process {self.server_process.pid} cleanup completed")
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Process cleanup timeout after {timeout}s, proceeding anyway")
+        except Exception as e:
+            logger.warning(f"Error during process cleanup: {e}")
+        finally:
+            self.server_process = None
 
     def _launch_server_process_colab(self, command: list, port: int) -> None:
         """Launch the server process with Colab-specific settings."""
