@@ -301,6 +301,9 @@ def create_hnsw_embedding_server(
                         and isinstance(request[1], list)
                     ):
                         node_ids = request[0]
+                        # Handle nested [[ids]] shape defensively
+                        if len(node_ids) == 1 and isinstance(node_ids[0], list):
+                            node_ids = node_ids[0]
                         query_vector = np.array(request[1], dtype=np.float32)
                         last_request_type = "distance"
                         last_request_length = len(node_ids)
@@ -356,8 +359,17 @@ def create_hnsw_embedding_server(
                         logger.info(f"⏱️  Distance calculation E2E time: {e2e_end - e2e_start:.6f}s")
                         continue
 
-                    # Fallback: treat as embedding-by-id request [[ids]]
-                    node_ids = request if isinstance(request, list) else []
+                    # Fallback: treat as embedding-by-id request
+                    if (
+                        isinstance(request, list)
+                        and len(request) == 1
+                        and isinstance(request[0], list)
+                    ):
+                        node_ids = request[0]
+                    elif isinstance(request, list):
+                        node_ids = request
+                    else:
+                        node_ids = []
                     last_request_type = "embedding"
                     last_request_length = len(node_ids)
                     logger.info(f"ZMQ received {len(node_ids)} node IDs for embedding fetch")
