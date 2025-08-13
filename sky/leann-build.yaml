@@ -19,8 +19,8 @@ env:
   embedding_mode: sentence-transformers   # sentence-transformers | openai | mlx | ollama
   embedding_model: facebook/contriever
   # Storage/latency knobs
-  recompute: true             # true => selective recomputation; false => store full embeddings
-  compact: true               # for HNSW only: false when recompute=false
+  recompute: true             # true => selective recomputation (recommended)
+  compact: true               # for HNSW only
   # Optional pass-through
   extra_args: ""
 
@@ -45,10 +45,6 @@ run: |
   if [ "${recompute}" = "false" ] || [ "${recompute}" = "0" ]; then
     recompute_flag="--no-recompute"
   fi
-  compact_flag=""
-  if [ "${compact}" = "false" ] || [ "${compact}" = "0" ]; then
-    compact_flag="--no-compact"
-  fi
 
   # Build command
   leann build ${index_name} \
@@ -59,4 +55,4 @@ run: |
     --num-threads ${num_threads} \
     --embedding-mode ${embedding_mode} \
     --embedding-model ${embedding_model} \
-    ${recompute_flag} ${compact_flag} ${extra_args}
+    ${recompute_flag} ${extra_args}

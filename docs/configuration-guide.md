@@ -288,23 +288,18 @@ Offload embedding generation and index building to a GPU VM using [SkyPilot](htt
 # One-time: install and configure SkyPilot
 pip install skypilot
 
-# Launch with defaults (L4:1) and mount ./data to ~/leann-data
+# Launch with defaults (L4:1) and mount ./data to ~/leann-data; the build runs automatically
 sky launch -c leann-gpu sky/leann-build.yaml
 
-# Override parameters via -e key=value
+# Override parameters via -e key=value (optional)
 sky launch -c leann-gpu sky/leann-build.yaml \
   -e index_name=my-index \
   -e backend=hnsw \
-  -e recompute=false \
-  -e compact=false \
   -e embedding_mode=sentence-transformers \
   -e embedding_model=Qwen/Qwen3-Embedding-0.6B
 
-# Build remotely (template installs uv + leann CLI)
-sky exec leann-gpu -- "leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32 --no-recompute --no-compact"
-
-# Copy the built index back to your local .leann
-sky cp leann-gpu:~/.leann/indexes/my-index ./.leann/indexes/
+# Copy the built index back to your local .leann (use rsync)
+rsync -Pavz leann-gpu:~/.leann/indexes/my-index ./.leann/indexes/
 ```
 
 ### 3) Disable recomputation to trade storage for speed
@@ -325,7 +320,7 @@ When to use:
 - Environments without a stable embedding server
 
 Constraints:
-- HNSW: must use `--no-compact` when `--no-recompute` (compact/pruned graphs rely on recomputation)
+- HNSW: when `--no-recompute` is set, LEANN automatically disables compact mode during build
 - DiskANN: supported; `--no-recompute` skips selective recompute during search
 
 Storage impact:
