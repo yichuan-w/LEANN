@@ -12,7 +12,7 @@ from test_timeout import ci_timeout
 
 
 @pytest.mark.parametrize("backend_name", ["hnsw", "diskann"])
-@ci_timeout(90)  # 90 second timeout for this comprehensive test
+@ci_timeout(180)  # 180 second timeout to allow for model download and initialization
 def test_readme_basic_example(backend_name):
     """Test the basic example from README.md with both backends."""
     # Skip on macOS CI due to MPS environment issues with all-MiniLM-L6-v2
@@ -81,7 +81,7 @@ def test_readme_imports():
     assert callable(LeannChat)
 
 
-@ci_timeout(60)  # 60 second timeout
+@ci_timeout(150)  # 150 second timeout to allow for model download
 def test_backend_options():
     """Test different backend options mentioned in documentation."""
     # Skip on macOS CI due to MPS environment issues with all-MiniLM-L6-v2
@@ -118,7 +118,7 @@ def test_backend_options():
 
 
 @pytest.mark.parametrize("backend_name", ["hnsw", "diskann"])
-@ci_timeout(75)  # 75 second timeout for LLM tests
+@ci_timeout(150)  # 150 second timeout to allow for model download
 def test_llm_config_simulated(backend_name):
     """Test simulated LLM configuration option with both backends."""
     # Skip on macOS CI due to MPS environment issues with all-MiniLM-L6-v2
