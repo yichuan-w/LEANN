@@ -16,12 +16,11 @@ def cleanup_all_processes():
     print("🧹 [CLEANUP] Performing aggressive cleanup...")
 
     # Kill by pattern - use separate calls to avoid shell injection
+    # Avoid killing ourselves by being more specific
     patterns = [
         "embedding_server",
         "hnsw_embedding",
         "zmq",
-        "python.*pytest",
-        "scripts/ci_debug_pytest",
     ]
 
     for pattern in patterns:
@@ -30,12 +29,23 @@ def cleanup_all_processes():
         except Exception:
             pass
 
-    # Clean up any hanging Python processes with specific patterns
+    # Clean up specific pytest processes but NOT the wrapper itself
     try:
         result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
         lines = result.stdout.split("\n")
+        current_pid = str(os.getpid())
+
         for line in lines:
-            if "python" in line and ("test_" in line or "pytest" in line or "embedding" in line):
+            # Skip our own process
+            if current_pid in line:
+                continue
+            # Only kill actual pytest processes, not wrapper processes
+            if (
+                "python" in line
+                and "pytest" in line
+                and "ci_pytest_wrapper.py" not in line
+                and "ci_debug_pytest.py" not in line
+            ):
                 try:
                     pid = line.split()[1]
                     subprocess.run(["kill", "-9", pid], timeout=2)
