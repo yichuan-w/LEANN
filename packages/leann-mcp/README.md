@@ -4,20 +4,12 @@ Transform your development workflow with intelligent code assistance using LEANN
 
 ## Prerequisites
 
-**Step 1:** First, complete the basic LEANN installation following the [📦 Installation guide](../../README.md#installation) in the root README:
+Install LEANN globally for MCP integration (with default backend):
 
 ```bash
-uv venv
-source .venv/bin/activate
-uv pip install leann
+uv tool install leann-core --with leann
 ```
-
-**Step 2:** Install LEANN globally for MCP integration:
-```bash
-uv tool install leann-core
-```
-
-This makes the `leann` command available system-wide, which `leann_mcp` requires.
+This installs the `leann` CLI into an isolated tool environment and includes both backends so `leann build` works out-of-the-box.
 
 ## 🚀 Quick Setup
 
