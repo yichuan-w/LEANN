@@ -71,6 +71,11 @@ source .venv/bin/activate
 uv pip install leann
 ```
 
+> Low-resource setup: No local GPU? That's fine.
+> - Use OpenAI embeddings (`--embedding-mode openai --embedding-model text-embedding-3-small`) for fast indexing without local compute.
+> - Or run remote builds with SkyPilot using the template at `sky/leann-build.yaml` (see Configuration Guide for details).
+> - If build/search is slow, consider these two options or disable recomputation with `--no-recompute` (trade storage for speed).
+
 <details>
 <summary>
 <strong>🔧 Build from Source (Recommended for development)</strong>
@@ -544,17 +549,6 @@ Options:
 - **Two-level search:** Smart graph traversal that prioritizes promising nodes
 
 **Backends:** HNSW (default) for most use cases, with optional DiskANN support for billion-scale datasets.
-
-### Cloud Builds with SkyPilot (Optional)
-
-If your local machine lacks a GPU or you want faster embedding/index builds, you can run LEANN builds on a cloud GPU VM using SkyPilot. A ready-to-use template is provided at `sky/leann-build.yaml`.
-
-```bash
-sky launch -c leann-gpu sky/leann-build.yaml
-sky exec leann-gpu -- "leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32"
-```
-
-See the configuration guide section “Running Builds on SkyPilot (Optional)” for details.
 
 ## Benchmarks
 

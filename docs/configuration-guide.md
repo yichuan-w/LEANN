@@ -261,7 +261,7 @@ The key is finding the right balance for your specific use case. Start small and
 
 ## Deep Dive: Critical Configuration Decisions
 
-### When to Disable Recomputation
+### When to Disable Recomputation (Low-resource tip)
 
 LEANN's recomputation feature provides exact distance calculations but can be disabled for extreme QPS requirements:
 
@@ -284,7 +284,7 @@ You can offload embedding generation and index building to a cloud GPU VM using 
 
 ### Quick Start
 
-1) Install SkyPilot by following their docs (`pip install skypilot`, then configure cloud credentials).
+1) Install SkyPilot by following their docs (`pip install skypilot`), then configure cloud credentials.
 
 2) Use the provided SkyPilot template:
 
