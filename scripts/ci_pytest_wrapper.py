@@ -149,11 +149,19 @@ def run_pytest_with_monitoring(pytest_args):
 
         try:
             result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
-            remaining = [
-                line
-                for line in result.stdout.split("\n")
-                if "python" in line and ("pytest" in line or "embedding" in line)
-            ]
+            lines = result.stdout.split("\n")
+            current_pid = str(os.getpid())
+
+            remaining = []
+            for line in lines:
+                # Skip our own wrapper process
+                if current_pid in line or "ci_pytest_wrapper.py" in line:
+                    continue
+                # Only check for actual problematic processes
+                if "python" in line and ("pytest" in line or "embedding" in line):
+                    # Skip debug script too
+                    if "ci_debug_pytest.py" not in line:
+                        remaining.append(line)
 
             if remaining:
                 print(f"⚠️ [WRAPPER] Found {len(remaining)} remaining processes:")
