@@ -282,18 +282,30 @@ leann search my-index "your query" \
 
 ### 2) Run remote builds with SkyPilot (cloud GPU)
 
-Offload embedding generation and index building to a GPU VM using SkyPilot. A template is provided at `sky/leann-build.yaml`.
+Offload embedding generation and index building to a GPU VM using [SkyPilot](https://skypilot.readthedocs.io/en/latest/). A template is provided at `sky/leann-build.yaml`.
 
 ```bash
 # One-time: install and configure SkyPilot
 pip install skypilot
+
+# Launch with defaults (L4:1) and mount ./data to ~/leann-data
 sky launch -c leann-gpu sky/leann-build.yaml
 
-# Build remotely (template installs uv + leann CLI)
-sky exec leann-gpu -- "leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32"
-```
+# Override parameters via -e key=value
+sky launch -c leann-gpu sky/leann-build.yaml \
+  -e index_name=my-index \
+  -e backend=hnsw \
+  -e recompute=false \
+  -e compact=false \
+  -e embedding_mode=sentence-transformers \
+  -e embedding_model=Qwen/Qwen3-Embedding-0.6B
 
-Details: see “Running Builds on SkyPilot (Optional)” below.
+# Build remotely (template installs uv + leann CLI)
+sky exec leann-gpu -- "leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32 --no-recompute --no-compact"
+
+# Copy the built index back to your local .leann
+sky cp leann-gpu:~/.leann/indexes/my-index ./.leann/indexes/
+```
 
 ### 3) Disable recomputation to trade storage for speed
 
@@ -307,32 +319,38 @@ leann build my-index --no-recompute --no-compact
 leann search my-index "your query" --no-recompute
 ```
 
-Trade-offs: lower query-time latency, but significantly higher storage usage.
+When to use:
+- Extreme low latency requirements (high QPS, interactive assistants)
+- Read-heavy workloads where storage is cheaper than latency
+- Environments without a stable embedding server
 
-## Running Builds on SkyPilot (Optional)
+Constraints:
+- HNSW: must use `--no-compact` when `--no-recompute` (compact/pruned graphs rely on recomputation)
+- DiskANN: supported; `--no-recompute` skips selective recompute during search
 
-You can offload embedding generation and index building to a cloud GPU VM using SkyPilot, without changing any LEANN code. This is useful when your local machine lacks a GPU or you want faster throughput.
+Storage impact:
+- Storing N embeddings of dimension D with float32 requires approximately N × D × 4 bytes
+- Example: 1,000,000 chunks × 768 dims × 4 bytes ≈ 2.86 GB (plus graph/metadata)
 
-### Quick Start
-
-1) Install SkyPilot by following their docs (`pip install skypilot`), then configure cloud credentials.
-
-2) Use the provided SkyPilot template:
-
+Converting an existing index (rebuild required):
 ```bash
-sky launch -c leann-gpu sky/leann-build.yaml
+# Rebuild in-place (ensure you still have original docs or can regenerate chunks)
+leann build my-index --force --no-recompute --no-compact
 ```
 
-3) On the remote, either put your data under the mounted path or adjust `file_mounts` in `sky/leann-build.yaml`. Then run the LEANN build:
+Python API usage:
+```python
+from leann import LeannSearcher
 
-```bash
-sky exec leann-gpu -- "leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32"
+searcher = LeannSearcher("/path/to/my-index.leann")
+results = searcher.search("your query", top_k=10, recompute_embeddings=False)
 ```
 
-Notes:
-- The template installs `uv` and the `leann` CLI globally on the remote instance.
-- Change the `accelerators` and `cloud` settings in `sky/leann-build.yaml` to match your budget/availability (e.g., `A10G:1`, `A100:1`, or CPU-only if you prefer).
-- You can also build with `diskann` by switching `--backend diskann`.
+Trade-offs:
+- Lower latency and fewer network hops at query time
+- Significantly higher storage (10–100× vs selective recomputation)
+- Slightly larger memory footprint during build and search
+
 
 ## Further Reading
 
