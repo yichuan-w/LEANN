@@ -117,7 +117,19 @@ Examples:
         build_parser.add_argument("--complexity", type=int, default=64)
         build_parser.add_argument("--num-threads", type=int, default=1)
         build_parser.add_argument("--compact", action="store_true", default=True)
+        build_parser.add_argument(
+            "--no-compact",
+            dest="compact",
+            action="store_false",
+            help="Disable compact index storage (store full embeddings; higher storage)",
+        )
         build_parser.add_argument("--recompute", action="store_true", default=True)
+        build_parser.add_argument(
+            "--no-recompute",
+            dest="recompute",
+            action="store_false",
+            help="Disable embedding recomputation (store full embeddings; lower query latency)",
+        )
         build_parser.add_argument(
             "--file-types",
             type=str,
@@ -137,6 +149,18 @@ Examples:
             action="store_true",
             default=True,
             help="Recompute embeddings (default: True)",
+        )
+        search_parser.add_argument(
+            "--no-recompute-embeddings",
+            dest="recompute_embeddings",
+            action="store_false",
+            help="Disable embedding recomputation during search",
+        )
+        search_parser.add_argument(
+            "--no-recompute",
+            dest="recompute_embeddings",
+            action="store_false",
+            help="Alias for --no-recompute-embeddings",
         )
         search_parser.add_argument(
             "--pruning-strategy",
@@ -165,6 +189,18 @@ Examples:
             action="store_true",
             default=True,
             help="Recompute embeddings (default: True)",
+        )
+        ask_parser.add_argument(
+            "--no-recompute-embeddings",
+            dest="recompute_embeddings",
+            action="store_false",
+            help="Disable embedding recomputation during ask",
+        )
+        ask_parser.add_argument(
+            "--no-recompute",
+            dest="recompute_embeddings",
+            action="store_false",
+            help="Alias for --no-recompute-embeddings",
         )
         ask_parser.add_argument(
             "--pruning-strategy",

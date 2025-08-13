@@ -319,8 +319,8 @@ Details: see “Running Builds on SkyPilot (Optional)” below.
 If you need lower latency and have more storage/memory, disable recomputation. This stores full embeddings and avoids recomputing at search time.
 
 ```bash
-# Build without recomputation
-leann build my-index --no-recompute
+# Build without recomputation (HNSW requires non-compact in this mode)
+leann build my-index --no-recompute --no-compact
 
 # Search without recomputation
 leann search my-index "your query" --no-recompute
