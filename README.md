@@ -71,10 +71,7 @@ source .venv/bin/activate
 uv pip install leann
 ```
 
-> Low-resource setup: No local GPU? That's fine.
-> - Use OpenAI embeddings (`--embedding-mode openai --embedding-model text-embedding-3-small`) for fast indexing without local compute.
-> - Or run remote builds with SkyPilot using the template at `sky/leann-build.yaml` (see Configuration Guide for details).
-> - If build/search is slow, consider these two options or disable recomputation with `--no-recompute` (trade storage for speed).
+> Low-resource? See “Low-resource setups” in the [Configuration Guide](docs/configuration-guide.md#low-resource-setups).
 
 <details>
 <summary>

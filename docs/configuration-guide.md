@@ -278,6 +278,56 @@ LEANN's recomputation feature provides exact distance calculations but can be di
 - Need extremely low latency (< 100ms)
 - Running a read-heavy workload where storage cost is acceptable
 
+## Low-resource setups
+
+If you don’t have a local GPU or builds/searches are too slow, use one or more of the options below.
+
+### 1) Use OpenAI embeddings (no local compute)
+
+Fastest path with zero local GPU requirements. Set your API key and use OpenAI embeddings during build and search:
+
+```bash
+export OPENAI_API_KEY=sk-...
+
+# Build with OpenAI embeddings
+leann build my-index \
+  --embedding-mode openai \
+  --embedding-model text-embedding-3-small
+
+# Search with OpenAI embeddings (recompute at query time)
+leann search my-index "your query" \
+  --recompute-embeddings
+```
+
+### 2) Run remote builds with SkyPilot (cloud GPU)
+
+Offload embedding generation and index building to a GPU VM using SkyPilot. A template is provided at `sky/leann-build.yaml`.
+
+```bash
+# One-time: install and configure SkyPilot
+pip install skypilot
+sky launch -c leann-gpu sky/leann-build.yaml
+
+# Build remotely (template installs uv + leann CLI)
+sky exec leann-gpu -- "leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32"
+```
+
+Details: see “Running Builds on SkyPilot (Optional)” below.
+
+### 3) Disable recomputation to trade storage for speed
+
+If you need lower latency and have more storage/memory, disable recomputation. This stores full embeddings and avoids recomputing at search time.
+
+```bash
+# Build without recomputation
+leann build my-index --no-recompute
+
+# Search without recomputation
+leann search my-index "your query" --no-recompute
+```
+
+Trade-offs: lower query-time latency, but significantly higher storage usage.
+
 ## Running Builds on SkyPilot (Optional)
 
 You can offload embedding generation and index building to a cloud GPU VM using SkyPilot, without changing any LEANN code. This is useful when your local machine lacks a GPU or you want faster throughput.
