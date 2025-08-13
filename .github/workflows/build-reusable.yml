@@ -277,34 +277,16 @@ jobs:
 
       - name: Run tests with pytest
         env:
-          CI: true  # Mark as CI environment to skip memory-intensive tests
+          CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           HF_HUB_DISABLE_SYMLINKS: 1
           TOKENIZERS_PARALLELISM: false
-          PYTORCH_ENABLE_MPS_FALLBACK: 0  # Disable MPS on macOS CI to avoid memory issues
-          OMP_NUM_THREADS: 1  # Disable OpenMP parallelism to avoid libomp crashes
-          MKL_NUM_THREADS: 1  # Single thread for MKL operations
+          PYTORCH_ENABLE_MPS_FALLBACK: 0
+          OMP_NUM_THREADS: 1
+          MKL_NUM_THREADS: 1
         run: |
-          # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
-
-          # Add targeted debugging for pytest hangs (especially Ubuntu 22.04)
-          if [[ "${{ matrix.os }}" == "ubuntu-22.04" ]]; then
-            echo "🔍 [HANG DEBUG] Ubuntu 22.04 detected - using pytest wrapper"
-            python scripts/ci_pytest_wrapper.py tests/ -v --tb=short --maxfail=5 -x -s
-            PYTEST_EXIT=$?
-          else
-            # For non-Ubuntu or non-22.04, run normally
-            echo "🚀 [HANG DEBUG] Running tests on ${{ matrix.os }} (normal mode)"
-            pytest tests/ -v --tb=short
-            PYTEST_EXIT=$?
-          fi
-
-          echo "🔚 [HANG DEBUG] Final pytest exit code: $PYTEST_EXIT"
-          if [ $PYTEST_EXIT -ne 0 ]; then
-            echo "❌ [HANG DEBUG] Tests failed with exit code $PYTEST_EXIT"
-            exit $PYTEST_EXIT
-          fi
+          pytest tests/ -v --tb=short
 
       - name: Run sanity checks (optional)
         run: |
