@@ -240,30 +240,149 @@ def create_hnsw_embedding_server(
                 traceback.print_exc()
                 socket.send(msgpack.packb([[], []]))
 
-    zmq_thread = threading.Thread(target=zmq_server_thread, daemon=True)
+    def zmq_server_thread_with_shutdown(shutdown_event):
+        """ZMQ server thread that respects shutdown signal."""
+        logger.info("ZMQ server thread started with shutdown support")
+
+        # Set receive timeout so we can check shutdown_event periodically
+        socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1 second timeout
+
+        while not shutdown_event.is_set():
+            try:
+                e2e_start = time.time()
+                logger.debug("🔍 Waiting for ZMQ message...")
+                request_bytes = socket.recv(zmq.NOBLOCK)
+
+                # Rest of the processing logic (same as original)
+                request = msgpack.unpackb(request_bytes)
+
+                if len(request) == 1 and request[0] == "__QUERY_MODEL__":
+                    response_bytes = msgpack.packb([model_name])
+                    socket.send(response_bytes)
+                    continue
+
+                node_ids = request
+                logger.info(f"ZMQ received {len(node_ids)} node IDs")
+
+                texts = []
+                for nid in node_ids:
+                    try:
+                        txt = passages.get_text(nid)
+                        if not txt:
+                            raise RuntimeError(f"FATAL: Empty text for passage ID {nid}")
+                        texts.append(txt)
+                    except KeyError:
+                        raise RuntimeError(f"FATAL: Passage with ID {nid} not found")
+                    except Exception as e:
+                        logger.error(f"Exception looking up passage ID {nid}: {e}")
+                        raise
+
+                embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
+                logger.info(
+                    f"Computed embeddings for {len(texts)} texts, shape: {embeddings.shape}"
+                )
+
+                if np.isnan(embeddings).any() or np.isinf(embeddings).any():
+                    logger.error(
+                        f"NaN or Inf detected in embeddings! Requested IDs: {node_ids[:5]}..."
+                    )
+                    raise AssertionError()
+
+                hidden_contiguous_f32 = np.ascontiguousarray(embeddings, dtype=np.float32)
+                response_payload = [
+                    list(hidden_contiguous_f32.shape),
+                    hidden_contiguous_f32.flatten().tolist(),
+                ]
+                response_bytes = msgpack.packb(response_payload, use_single_float=True)
+
+                socket.send(response_bytes)
+                e2e_end = time.time()
+                logger.info(f"⏱️  ZMQ E2E time: {e2e_end - e2e_start:.6f}s")
+
+            except zmq.Again:
+                # Timeout - check shutdown_event and continue
+                continue
+            except Exception as e:
+                if not shutdown_event.is_set():
+                    logger.error(f"Error in ZMQ server loop: {e}")
+                    try:
+                        socket.send(msgpack.packb([[], []]))
+                    except Exception:
+                        pass
+                else:
+                    logger.info("Shutdown in progress, ignoring ZMQ error")
+                    break
+
+        logger.info("ZMQ server thread exiting gracefully")
+
+    # Add shutdown coordination
+    shutdown_event = threading.Event()
+
+    def shutdown_zmq_server():
+        """Gracefully shutdown ZMQ server."""
+        logger.info("Initiating graceful shutdown...")
+        shutdown_event.set()
+
+        if zmq_thread.is_alive():
+            logger.info("Waiting for ZMQ thread to finish...")
+            zmq_thread.join(timeout=5)
+            if zmq_thread.is_alive():
+                logger.warning("ZMQ thread did not finish in time")
+
+        # Clean up ZMQ resources
+        try:
+            # Note: socket and context are cleaned up by thread exit
+            logger.info("ZMQ resources cleaned up")
+        except Exception as e:
+            logger.warning(f"Error cleaning ZMQ resources: {e}")
+
+        # Clean up other resources
+        try:
+            import gc
+
+            gc.collect()
+            logger.info("Additional resources cleaned up")
+        except Exception as e:
+            logger.warning(f"Error cleaning additional resources: {e}")
+
+        logger.info("Graceful shutdown completed")
+        sys.exit(0)
+
+    # Register signal handlers within this function scope
+    import signal
+
+    def signal_handler(sig, frame):
+        logger.info(f"Received signal {sig}, shutting down gracefully...")
+        shutdown_zmq_server()
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Pass shutdown_event to ZMQ thread
+    zmq_thread = threading.Thread(
+        target=lambda: zmq_server_thread_with_shutdown(shutdown_event),
+        daemon=False,  # Not daemon - we want to wait for it
+    )
     zmq_thread.start()
     logger.info(f"Started HNSW ZMQ server thread on port {zmq_port}")
 
     # Keep the main thread alive
     try:
-        while True:
-            time.sleep(1)
+        while not shutdown_event.is_set():
+            time.sleep(0.1)  # Check shutdown more frequently
     except KeyboardInterrupt:
         logger.info("HNSW Server shutting down...")
+        shutdown_zmq_server()
         return
+
+    # If we reach here, shutdown was triggered by signal
+    logger.info("Main loop exited, process should be shutting down")
 
 
 if __name__ == "__main__":
-    import signal
     import sys
 
-    def signal_handler(sig, frame):
-        logger.info(f"Received signal {sig}, shutting down gracefully...")
-        sys.exit(0)
-
-    # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
+    # Signal handlers are now registered within create_hnsw_embedding_server
 
     parser = argparse.ArgumentParser(description="HNSW Embedding service")
     parser.add_argument("--zmq-port", type=int, default=5555, help="ZMQ port to run on")
