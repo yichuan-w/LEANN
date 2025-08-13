@@ -1,0 +1,28 @@
+name: leann-build
+
+resources:
+  # Choose a GPU for fast embeddings (examples: L4, A10G, A100). CPU also works but is slower.
+  accelerators: L4:1
+  # Optionally pin a cloud, otherwise SkyPilot will auto-select
+  # cloud: aws
+  disk_size: 100
+
+# Sync local paths to the remote VM. Adjust as needed.
+file_mounts:
+  # Example: mount your local data directory used for building
+  ~/leann-data: ./data
+
+setup: |
+  set -e
+  # Install uv (package manager)
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+
+  # Install the LEANN CLI globally on the remote machine
+  uv tool install leann
+
+# Optional: you can immediately kick off a build here, or use `sky exec` later.
+# run: |
+#   export PATH="$HOME/.local/bin:$PATH"
+#   # Example build using the mounted data directory
+#   leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32

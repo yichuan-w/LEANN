@@ -545,6 +545,17 @@ Options:
 
 **Backends:** HNSW (default) for most use cases, with optional DiskANN support for billion-scale datasets.
 
+### Cloud Builds with SkyPilot (Optional)
+
+If your local machine lacks a GPU or you want faster embedding/index builds, you can run LEANN builds on a cloud GPU VM using SkyPilot. A ready-to-use template is provided at `sky/leann-build.yaml`.
+
+```bash
+sky launch -c leann-gpu sky/leann-build.yaml
+sky exec leann-gpu -- "leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32"
+```
+
+See the configuration guide section “Running Builds on SkyPilot (Optional)” for details.
+
 ## Benchmarks
 
 

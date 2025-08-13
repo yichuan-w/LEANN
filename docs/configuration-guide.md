@@ -278,6 +278,31 @@ LEANN's recomputation feature provides exact distance calculations but can be di
 - Need extremely low latency (< 100ms)
 - Running a read-heavy workload where storage cost is acceptable
 
+## Running Builds on SkyPilot (Optional)
+
+You can offload embedding generation and index building to a cloud GPU VM using SkyPilot, without changing any LEANN code. This is useful when your local machine lacks a GPU or you want faster throughput.
+
+### Quick Start
+
+1) Install SkyPilot by following their docs (`pip install skypilot`, then configure cloud credentials).
+
+2) Use the provided SkyPilot template:
+
+```bash
+sky launch -c leann-gpu sky/leann-build.yaml
+```
+
+3) On the remote, either put your data under the mounted path or adjust `file_mounts` in `sky/leann-build.yaml`. Then run the LEANN build:
+
+```bash
+sky exec leann-gpu -- "leann build my-index --docs ~/leann-data --backend hnsw --complexity 64 --graph-degree 32"
+```
+
+Notes:
+- The template installs `uv` and the `leann` CLI globally on the remote instance.
+- Change the `accelerators` and `cloud` settings in `sky/leann-build.yaml` to match your budget/availability (e.g., `A10G:1`, `A100:1`, or CPU-only if you prefer).
+- You can also build with `diskann` by switching `--backend diskann`.
+
 ## Further Reading
 
 - [Lessons Learned Developing LEANN](https://yichuan-w.github.io/blog/lessons_learned_in_dev_leann/)
