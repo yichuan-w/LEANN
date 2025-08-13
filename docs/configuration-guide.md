@@ -259,25 +259,6 @@ Every configuration choice involves trade-offs:
 
 The key is finding the right balance for your specific use case. Start small and simple, measure performance, then scale up only where needed.
 
-## Deep Dive: Critical Configuration Decisions
-
-### When to Disable Recomputation (Low-resource tip)
-
-LEANN's recomputation feature provides exact distance calculations but can be disabled for extreme QPS requirements:
-
-```bash
---no-recompute  # Disable selective recomputation
-```
-
-**Trade-offs**:
-- **With recomputation** (default): Exact distances, best quality, higher latency, minimal storage (only stores metadata, recomputes embeddings on-demand)
-- **Without recomputation**: Must store full embeddings, significantly higher memory and storage usage (10-100x more), but faster search
-
-**Disable when**:
-- You have abundant storage and memory
-- Need extremely low latency (< 100ms)
-- Running a read-heavy workload where storage cost is acceptable
-
 ## Low-resource setups
 
 If you don’t have a local GPU or builds/searches are too slow, use one or more of the options below.
