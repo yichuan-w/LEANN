@@ -6,7 +6,6 @@ import os
 import signal
 import subprocess
 import sys
-import time
 
 import pytest
 
@@ -107,19 +106,16 @@ def ci_process_monitor():
         stop_monitor.set()
 
 
-def pytest_runtest_call(puretest):
-    """Hook to wrap each test with additional monitoring."""
-    if os.environ.get("CI") != "true":
-        return
+def pytest_runtest_setup(item):
+    """Hook called before each test runs."""
+    if os.environ.get("CI") == "true":
+        print(f"\n🚀 [TEST] Starting: {item.nodeid}")
 
-    print(f"\n🚀 [TEST] Starting: {puretest.nodeid}")
-    start_time = time.time()
 
-    try:
-        yield
-    finally:
-        elapsed = time.time() - start_time
-        print(f"✅ [TEST] Completed: {puretest.nodeid} in {elapsed:.1f}s")
+def pytest_runtest_teardown(item, nextitem):
+    """Hook called after each test runs."""
+    if os.environ.get("CI") == "true":
+        print(f"✅ [TEST] Completed: {item.nodeid}")
 
 
 def pytest_collection_modifyitems(config, items):
