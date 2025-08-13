@@ -304,13 +304,15 @@ class EmbeddingServerManager:
         project_root = Path(__file__).parent.parent.parent.parent.parent
         logger.info(f"Command: {' '.join(command)}")
 
-        # In CI environment, redirect output to avoid buffer deadlock
-        # Embedding servers use many print statements that can fill buffers
+        # In CI environment, redirect stdout to avoid buffer deadlock but keep stderr for debugging
+        # Embedding servers use many print statements that can fill stdout buffers
         is_ci = os.environ.get("CI") == "true"
         if is_ci:
             stdout_target = subprocess.DEVNULL
-            stderr_target = subprocess.DEVNULL
-            logger.info("CI environment detected, redirecting embedding server output to DEVNULL")
+            stderr_target = None  # Keep stderr for error debugging in CI
+            logger.info(
+                "CI environment detected, redirecting embedding server stdout to DEVNULL, keeping stderr"
+            )
         else:
             stdout_target = None  # Direct to console for visible logs
             stderr_target = None  # Direct to console for visible logs
