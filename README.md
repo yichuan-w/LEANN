@@ -1,3 +1,5 @@
+[![MSeeP.ai Security Assessment Badge](https://mseep.net/pr/yichuan-w-leann-badge.png)](https://mseep.ai/app/yichuan-w-leann)
+
 <p align="center">
   <img src="assets/logo-text.png" alt="LEANN Logo" width="400">
 </p>
