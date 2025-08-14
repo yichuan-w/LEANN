@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 @contextlib.contextmanager
 def suppress_cpp_output_if_needed():
     """Suppress C++ stdout/stderr based on LEANN_LOG_LEVEL"""
+    # In CI we avoid fiddling with low-level file descriptors to prevent aborts
+    if os.getenv("CI") == "true":
+        yield
+        return
+
     log_level = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
 
     # Only suppress if log level is WARNING or higher (ERROR, CRITICAL)
