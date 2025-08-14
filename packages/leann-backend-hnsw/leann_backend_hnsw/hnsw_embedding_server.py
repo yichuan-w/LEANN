@@ -108,7 +108,9 @@ def create_hnsw_embedding_server(
         rep_socket.bind(f"tcp://*:{zmq_port}")
         logger.info(f"HNSW ZMQ REP server listening on port {zmq_port}")
         rep_socket.setsockopt(zmq.RCVTIMEO, 1000)
-        rep_socket.setsockopt(zmq.SNDTIMEO, 300000)
+        # Keep sends from blocking during shutdown; fail fast and drop on close
+        rep_socket.setsockopt(zmq.SNDTIMEO, 1000)
+        rep_socket.setsockopt(zmq.LINGER, 0)
 
         # Track last request type/length for shape-correct fallbacks
         last_request_type = "unknown"  # 'text' | 'distance' | 'embedding' | 'unknown'

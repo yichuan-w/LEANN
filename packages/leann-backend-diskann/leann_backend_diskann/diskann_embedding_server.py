@@ -103,8 +103,9 @@ def create_diskann_embedding_server(
         socket.bind(f"tcp://*:{zmq_port}")
         logger.info(f"DiskANN ZMQ REP server listening on port {zmq_port}")
 
-        socket.setsockopt(zmq.RCVTIMEO, 300000)
-        socket.setsockopt(zmq.SNDTIMEO, 300000)
+        socket.setsockopt(zmq.RCVTIMEO, 1000)
+        socket.setsockopt(zmq.SNDTIMEO, 1000)
+        socket.setsockopt(zmq.LINGER, 0)
 
         while True:
             try:
@@ -236,7 +237,8 @@ def create_diskann_embedding_server(
 
         # Set receive timeout so we can check shutdown_event periodically
         rep_socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1 second timeout
-        rep_socket.setsockopt(zmq.SNDTIMEO, 300000)
+        rep_socket.setsockopt(zmq.SNDTIMEO, 1000)
+        rep_socket.setsockopt(zmq.LINGER, 0)
 
         try:
             while not shutdown_event.is_set():
