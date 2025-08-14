@@ -116,19 +116,17 @@ Examples:
         build_parser.add_argument("--graph-degree", type=int, default=32)
         build_parser.add_argument("--complexity", type=int, default=64)
         build_parser.add_argument("--num-threads", type=int, default=1)
-        build_parser.add_argument("--compact", action="store_true", default=True)
         build_parser.add_argument(
-            "--no-compact",
-            dest="compact",
-            action="store_false",
-            help="Disable compact index storage (store full embeddings; higher storage)",
+            "--compact",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Use compact index storage (default: enabled). Use --no-compact to disable and store full embeddings.",
         )
-        build_parser.add_argument("--recompute", action="store_true", default=True)
         build_parser.add_argument(
-            "--no-recompute",
-            dest="recompute",
-            action="store_false",
-            help="Disable embedding recomputation (store full embeddings; lower query latency)",
+            "--recompute",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable embedding recomputation (default: enabled). Use --no-recompute to store full embeddings and speed up queries.",
         )
         build_parser.add_argument(
             "--file-types",
@@ -145,17 +143,11 @@ Examples:
         search_parser.add_argument("--beam-width", type=int, default=1)
         search_parser.add_argument("--prune-ratio", type=float, default=0.0)
         search_parser.add_argument(
-            "--no-recompute",
-            dest="recompute_embeddings",
-            action="store_false",
-            help="Disable embedding recomputation during search",
-        )
-        search_parser.add_argument(
             "--recompute",
             dest="recompute_embeddings",
-            action="store_true",
+            action=argparse.BooleanOptionalAction,
             default=True,
-            help="Enable embedding recomputation during search (default)",
+            help="Enable/disable embedding recomputation during search (default: enabled)",
         )
         search_parser.add_argument(
             "--pruning-strategy",
@@ -180,17 +172,11 @@ Examples:
         ask_parser.add_argument("--beam-width", type=int, default=1)
         ask_parser.add_argument("--prune-ratio", type=float, default=0.0)
         ask_parser.add_argument(
-            "--no-recompute",
-            dest="recompute_embeddings",
-            action="store_false",
-            help="Disable embedding recomputation during ask",
-        )
-        ask_parser.add_argument(
             "--recompute",
             dest="recompute_embeddings",
-            action="store_true",
+            action=argparse.BooleanOptionalAction,
             default=True,
-            help="Enable embedding recomputation during ask (default)",
+            help="Enable/disable embedding recomputation during ask (default: enabled)",
         )
         ask_parser.add_argument(
             "--pruning-strategy",
