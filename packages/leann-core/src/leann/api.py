@@ -122,31 +122,55 @@ class PassageManager:
         self.passage_files = {}
         self.global_offset_map = {}  # Combined map for fast lookup
 
+        # Derive index base name for standard sibling fallbacks, e.g., <index_name>.passages.*
+        index_name_base = None
+        if metadata_file_path:
+            meta_name = Path(metadata_file_path).name
+            if meta_name.endswith(".meta.json"):
+                index_name_base = meta_name[: -len(".meta.json")]
+
         for source in passage_sources:
             assert source["type"] == "jsonl", "only jsonl is supported"
-            passage_file = source["path"]
-            index_file = source["index_path"]  # .idx file
+            passage_file = source.get("path", "")
+            index_file = source.get("index_path", "")  # .idx file
 
             # Fix path resolution - relative paths should be relative to metadata file directory
-            if not Path(index_file).is_absolute():
-                if metadata_file_path:
-                    # Resolve relative to metadata file directory
-                    metadata_dir = Path(metadata_file_path).parent
-                    logger.debug(
-                        f"PassageManager: Resolving relative paths from metadata_dir: {metadata_dir}"
-                    )
-                    index_file = str((metadata_dir / index_file).resolve())
-                    passage_file = str((metadata_dir / passage_file).resolve())
-                    logger.debug(f"PassageManager: Resolved index_file: {index_file}")
-                else:
-                    # Fallback to current directory resolution (legacy behavior)
-                    logger.warning(
-                        "PassageManager: No metadata_file_path provided, using fallback resolution from cwd"
-                    )
-                    logger.debug(f"PassageManager: Current working directory: {Path.cwd()}")
-                    index_file = str(Path(index_file).resolve())
-                    passage_file = str(Path(passage_file).resolve())
-                    logger.debug(f"PassageManager: Fallback resolved index_file: {index_file}")
+            def _resolve_candidates(
+                primary: str,
+                relative_key: str,
+                default_name: Optional[str],
+                source_dict: dict[str, Any],
+            ) -> list[Path]:
+                candidates: list[Path] = []
+                # 1) Primary as-is (absolute or relative)
+                if primary:
+                    p = Path(primary)
+                    candidates.append(p if p.is_absolute() else (Path.cwd() / p))
+                # 2) metadata-relative explicit relative key
+                if metadata_file_path and source_dict.get(relative_key):
+                    candidates.append(Path(metadata_file_path).parent / source_dict[relative_key])
+                # 3) metadata-relative standard sibling filename
+                if metadata_file_path and default_name:
+                    candidates.append(Path(metadata_file_path).parent / default_name)
+                return candidates
+
+            # Build candidate lists and pick first existing; otherwise keep last candidate for error message
+            idx_default = f"{index_name_base}.passages.idx" if index_name_base else None
+            idx_candidates = _resolve_candidates(
+                index_file, "index_path_relative", idx_default, source
+            )
+            pas_default = f"{index_name_base}.passages.jsonl" if index_name_base else None
+            pas_candidates = _resolve_candidates(passage_file, "path_relative", pas_default, source)
+
+            def _pick_existing(cands: list[Path]) -> str:
+                for c in cands:
+                    if c.exists():
+                        return str(c.resolve())
+                # Fallback to last candidate (best guess) even if not exists; will error below
+                return str(cands[-1].resolve()) if cands else ""
+
+            index_file = _pick_existing(idx_candidates)
+            passage_file = _pick_existing(pas_candidates)
 
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
@@ -332,8 +356,12 @@ class LeannBuilder:
             "passage_sources": [
                 {
                     "type": "jsonl",
-                    "path": passages_file.name,  # Use relative path (just filename)
-                    "index_path": offset_file.name,  # Use relative path (just filename)
+                    # Preserve existing relative file names (backward-compatible)
+                    "path": passages_file.name,
+                    "index_path": offset_file.name,
+                    # Add optional redundant relative keys for remote build portability (non-breaking)
+                    "path_relative": passages_file.name,
+                    "index_path_relative": offset_file.name,
                 }
             ],
         }
@@ -448,8 +476,12 @@ class LeannBuilder:
             "passage_sources": [
                 {
                     "type": "jsonl",
-                    "path": passages_file.name,  # Use relative path (just filename)
-                    "index_path": offset_file.name,  # Use relative path (just filename)
+                    # Preserve existing relative file names (backward-compatible)
+                    "path": passages_file.name,
+                    "index_path": offset_file.name,
+                    # Add optional redundant relative keys for remote build portability (non-breaking)
+                    "path_relative": passages_file.name,
+                    "index_path_relative": offset_file.name,
                 }
             ],
             "built_from_precomputed_embeddings": True,

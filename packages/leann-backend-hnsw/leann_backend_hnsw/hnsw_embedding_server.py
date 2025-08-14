@@ -82,7 +82,8 @@ def create_hnsw_embedding_server(
     with open(passages_file) as f:
         meta = json.load(f)
 
-    # Let PassageManager handle path resolution uniformly
+    # Let PassageManager handle path resolution uniformly. It supports fallback order:
+    # 1) path/index_path; 2) *_relative; 3) standard siblings next to meta
     passages = PassageManager(meta["passage_sources"], metadata_file_path=passages_file)
     # Dimension from metadata for shaping responses
     try:
