@@ -61,12 +61,19 @@ def main():
     t_recompute = bench_once(index_path_recompute, recompute=True)
     t_norecompute = bench_once(index_path_norecompute, recompute=False)
 
-    size_recompute = sum(
-        f.stat().st_size for f in Path(index_path_recompute).parent.iterdir() if f.is_file()
-    )
-    size_norecompute = sum(
-        f.stat().st_size for f in Path(index_path_norecompute).parent.iterdir() if f.is_file()
-    )
+    # Compute sizes only for files belonging to each index prefix
+    def _size_for(prefix: str) -> int:
+        p = Path(prefix)
+        base = p.parent
+        stem = p.stem  # e.g., 'recompute.leann'
+        total = 0
+        for f in base.iterdir():
+            if f.is_file() and f.name.startswith(stem):
+                total += f.stat().st_size
+        return total
+
+    size_recompute = _size_for(index_path_recompute)
+    size_norecompute = _size_for(index_path_norecompute)
 
     print("Benchmark results (HNSW):")
     print(

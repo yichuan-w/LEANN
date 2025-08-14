@@ -360,6 +360,15 @@ Trade-offs:
 - Significantly higher storage (10–100× vs selective recomputation)
 - Slightly larger memory footprint during build and search
 
+Real-world quick benchmark (HNSW, 5k texts; script `benchmarks/benchmark_no_recompute.py`):
+
+```text
+recompute=True:  ~6.58s; size ~1.1MB
+recompute=False: ~0.10s; size ~16.6MB
+
+Conclusion: no-recompute is much faster but uses more storage; recompute is smaller but has higher first-hop latency.
+```
+
 
 ## Further Reading
 
