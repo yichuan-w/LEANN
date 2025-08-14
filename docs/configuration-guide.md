@@ -317,7 +317,7 @@ leann search my-index "your query" --no-recompute
 When to use:
 - Extreme low latency requirements (high QPS, interactive assistants)
 - Read-heavy workloads where storage is cheaper than latency
-- Environments without a stable embedding server
+- No always-available GPU
 
 Constraints:
 - HNSW: when `--no-recompute` is set, LEANN automatically disables compact mode during build

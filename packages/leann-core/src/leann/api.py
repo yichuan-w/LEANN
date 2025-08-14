@@ -162,6 +162,18 @@ class LeannBuilder:
         **backend_kwargs,
     ):
         self.backend_name = backend_name
+        # Normalize incompatible combinations early (for consistent metadata)
+        if backend_name == "hnsw":
+            is_recompute = backend_kwargs.get("is_recompute", True)
+            is_compact = backend_kwargs.get("is_compact", True)
+            if is_recompute is False and is_compact is True:
+                warnings.warn(
+                    "HNSW with is_recompute=False requires non-compact storage. Forcing is_compact=False.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                backend_kwargs["is_compact"] = False
+
         backend_factory: Optional[LeannBackendFactoryInterface] = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found or not registered.")
