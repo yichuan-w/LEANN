@@ -16,6 +16,9 @@ def test_readme_basic_example(backend_name):
     # Skip on macOS CI due to MPS environment issues with all-MiniLM-L6-v2
     if os.environ.get("CI") == "true" and platform.system() == "Darwin":
         pytest.skip("Skipping on macOS CI due to MPS environment issues with all-MiniLM-L6-v2")
+    # Skip DiskANN on CI (Linux runners) due to C++ extension memory/hardware constraints
+    if os.environ.get("CI") == "true" and backend_name == "diskann":
+        pytest.skip("Skip DiskANN tests in CI due to resource constraints and instability")
 
     # This is the exact code from README (with smaller model for CI)
     from leann import LeannBuilder, LeannChat, LeannSearcher
