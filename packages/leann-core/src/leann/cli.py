@@ -145,22 +145,17 @@ Examples:
         search_parser.add_argument("--beam-width", type=int, default=1)
         search_parser.add_argument("--prune-ratio", type=float, default=0.0)
         search_parser.add_argument(
-            "--recompute-embeddings",
-            action="store_true",
-            default=True,
-            help="Recompute embeddings (default: True)",
-        )
-        search_parser.add_argument(
-            "--no-recompute-embeddings",
+            "--no-recompute",
             dest="recompute_embeddings",
             action="store_false",
             help="Disable embedding recomputation during search",
         )
         search_parser.add_argument(
-            "--no-recompute",
+            "--recompute",
             dest="recompute_embeddings",
-            action="store_false",
-            help="Alias for --no-recompute-embeddings",
+            action="store_true",
+            default=True,
+            help="Enable embedding recomputation during search (default)",
         )
         search_parser.add_argument(
             "--pruning-strategy",
@@ -185,22 +180,17 @@ Examples:
         ask_parser.add_argument("--beam-width", type=int, default=1)
         ask_parser.add_argument("--prune-ratio", type=float, default=0.0)
         ask_parser.add_argument(
-            "--recompute-embeddings",
-            action="store_true",
-            default=True,
-            help="Recompute embeddings (default: True)",
-        )
-        ask_parser.add_argument(
-            "--no-recompute-embeddings",
+            "--no-recompute",
             dest="recompute_embeddings",
             action="store_false",
             help="Disable embedding recomputation during ask",
         )
         ask_parser.add_argument(
-            "--no-recompute",
+            "--recompute",
             dest="recompute_embeddings",
-            action="store_false",
-            help="Alias for --no-recompute-embeddings",
+            action="store_true",
+            default=True,
+            help="Enable embedding recomputation during ask (default)",
         )
         ask_parser.add_argument(
             "--pruning-strategy",

@@ -514,7 +514,7 @@ leann search INDEX_NAME QUERY [OPTIONS]
 Options:
   --top-k N                   Number of results (default: 5)
   --complexity N              Search complexity (default: 64)
-  --recompute-embeddings      Use recomputation for highest accuracy
+  --recompute                 Use recomputation for highest accuracy
   --pruning-strategy {global,local,proportional}
 ```
 

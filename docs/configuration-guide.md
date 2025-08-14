@@ -291,7 +291,7 @@ leann build my-index \
 
 # Search with OpenAI embeddings (recompute at query time)
 leann search my-index "your query" \
-  --recompute-embeddings
+  --recompute
 ```
 
 ### 2) Run remote builds with SkyPilot (cloud GPU)
