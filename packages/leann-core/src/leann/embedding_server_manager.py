@@ -352,8 +352,8 @@ class EmbeddingServerManager:
 
         # Register atexit callback only when we actually start a process
         if not self._atexit_registered:
-            # Use a lambda to avoid issues with bound methods
-            atexit.register(lambda: self.stop_server() if self.server_process else None)
+            # Always attempt best-effort finalize at interpreter exit
+            atexit.register(self._finalize_process)
             self._atexit_registered = True
         # Touch finalizer so it knows there is a live process
         if getattr(self, "_finalizer", None) is not None and not self._finalizer.alive:
