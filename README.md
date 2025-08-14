@@ -515,6 +515,7 @@ Options:
   --top-k N                   Number of results (default: 5)
   --complexity N              Search complexity (default: 64)
   --recompute                 Use recomputation for highest accuracy
+  --no-recompute              Disable recomputation (requires non-compact HNSW index)
   --pruning-strategy {global,local,proportional}
 ```
 

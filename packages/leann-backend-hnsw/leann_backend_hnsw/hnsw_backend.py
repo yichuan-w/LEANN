@@ -185,9 +185,11 @@ class HNSWSearcher(BaseSearcher):
         """
         from . import faiss  # type: ignore
 
-        if not recompute_embeddings:
-            if self.is_pruned:
-                raise RuntimeError("Recompute is required for pruned index.")
+        if not recompute_embeddings and self.is_pruned:
+            raise RuntimeError(
+                "Recompute is required for pruned/compact HNSW index. "
+                "Re-run search with --recompute, or rebuild with --no-recompute and --no-compact."
+            )
         if recompute_embeddings:
             if zmq_port is None:
                 raise ValueError("zmq_port must be provided if recompute_embeddings is True")
