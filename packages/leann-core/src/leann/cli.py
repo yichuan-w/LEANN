@@ -123,6 +123,30 @@ Examples:
             type=str,
             help="Comma-separated list of file extensions to include (e.g., '.txt,.pdf,.pptx'). If not specified, uses default supported types.",
         )
+        build_parser.add_argument(
+            "--doc-chunk-size",
+            type=int,
+            default=256,
+            help="Document chunk size in tokens/characters (default: 256)",
+        )
+        build_parser.add_argument(
+            "--doc-chunk-overlap",
+            type=int,
+            default=128,
+            help="Document chunk overlap (default: 128)",
+        )
+        build_parser.add_argument(
+            "--code-chunk-size",
+            type=int,
+            default=512,
+            help="Code chunk size in tokens/lines (default: 512)",
+        )
+        build_parser.add_argument(
+            "--code-chunk-overlap",
+            type=int,
+            default=50,
+            help="Code chunk overlap (default: 50)",
+        )
 
         # Search command
         search_parser = subparsers.add_parser("search", help="Search documents")
@@ -686,6 +710,37 @@ Examples:
         if index_dir.exists() and not args.force:
             print(f"Index '{index_name}' already exists. Use --force to rebuild.")
             return
+
+        # Configure chunking based on CLI args before loading documents
+        # Guard against invalid configurations
+        doc_chunk_size = max(1, int(args.doc_chunk_size))
+        doc_chunk_overlap = max(0, int(args.doc_chunk_overlap))
+        if doc_chunk_overlap >= doc_chunk_size:
+            print(
+                f"⚠️  Adjusting doc chunk overlap from {doc_chunk_overlap} to {doc_chunk_size - 1} (must be < chunk size)"
+            )
+            doc_chunk_overlap = doc_chunk_size - 1
+
+        code_chunk_size = max(1, int(args.code_chunk_size))
+        code_chunk_overlap = max(0, int(args.code_chunk_overlap))
+        if code_chunk_overlap >= code_chunk_size:
+            print(
+                f"⚠️  Adjusting code chunk overlap from {code_chunk_overlap} to {code_chunk_size - 1} (must be < chunk size)"
+            )
+            code_chunk_overlap = code_chunk_size - 1
+
+        self.node_parser = SentenceSplitter(
+            chunk_size=doc_chunk_size,
+            chunk_overlap=doc_chunk_overlap,
+            separator=" ",
+            paragraph_separator="\n\n",
+        )
+        self.code_parser = SentenceSplitter(
+            chunk_size=code_chunk_size,
+            chunk_overlap=code_chunk_overlap,
+            separator="\n",
+            paragraph_separator="\n\n",
+        )
 
         all_texts = self.load_documents(docs_paths, args.file_types)
         if not all_texts:

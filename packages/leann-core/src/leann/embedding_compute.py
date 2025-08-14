@@ -263,8 +263,16 @@ def compute_embeddings_openai(texts: list[str], model_name: str) -> np.ndarray:
     print(f"len of texts: {len(texts)}")
 
     # OpenAI has limits on batch size and input length
-    max_batch_size = 1000  # Conservative batch size
+    max_batch_size = 800  # Conservative batch size because the token limit is 300K
     all_embeddings = []
+    # get the avg len of texts
+    avg_len = sum(len(text) for text in texts) / len(texts)
+    print(f"avg len of texts: {avg_len}")
+    # if avg len is less than 1000, use the max batch size
+    if avg_len > 300:
+        max_batch_size = 500
+
+    # if avg len is less than 1000, use the max batch size
 
     try:
         from tqdm import tqdm
