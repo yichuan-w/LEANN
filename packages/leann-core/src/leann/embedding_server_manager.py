@@ -81,12 +81,12 @@ class EmbeddingServerManager:
         **kwargs,
     ) -> tuple[bool, int]:
         """Start the embedding server."""
-        passages_file = kwargs.get("passages_file")
+        # passages_file may be present in kwargs for server CLI, but we don't need it here
 
-        # Check if we have a compatible server already running in-process
-        if self._has_compatible_running_server(model_name, passages_file, embedding_mode):
-            logger.info("Reusing in-process compatible server")
-            return True, self.server_port or port
+        # If this manager already has a live server, just reuse it
+        if self.server_process and self.server_process.poll() is None and self.server_port:
+            logger.info("Reusing in-process server")
+            return True, self.server_port
 
         # For Colab environment, use a different strategy
         if _is_colab_environment():
@@ -131,20 +131,7 @@ class EmbeddingServerManager:
             logger.error(f"Failed to start embedding server in Colab: {e}")
             return False, actual_port
 
-    def _has_compatible_running_server(
-        self, model_name: str, passages_file: str, embedding_mode: str
-    ) -> bool:
-        """Check if current in-process server matches desired config."""
-        if not (self.server_process and self.server_process.poll() is None and self.server_port):
-            return False
-        if not self._server_config:
-            return False
-        cfg = self._server_config
-        return (
-            cfg.get("model_name") == model_name
-            and cfg.get("passages_file") == passages_file
-            and cfg.get("embedding_mode", "sentence-transformers") == embedding_mode
-        )
+    # Note: No compatibility check needed; manager is per-searcher and configs are stable per instance
 
     def _start_new_server(
         self, port: int, model_name: str, embedding_mode: str, **kwargs
