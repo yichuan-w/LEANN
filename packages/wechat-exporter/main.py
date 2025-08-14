@@ -136,5 +136,9 @@ def export_sqlite(
     connection.commit()
 
 
-if __name__ == "__main__":
+def main():
     app()
+
+
+if __name__ == "__main__":
+    main()

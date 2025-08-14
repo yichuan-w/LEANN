@@ -10,6 +10,7 @@ requires-python = ">=3.9"
 dependencies = [
     "leann-core",
     "leann-backend-hnsw",
+    "typer>=0.12.3",
     "numpy>=1.26.0",
     "torch",
     "tqdm",
@@ -84,6 +85,11 @@ documents = [
 
 [tool.setuptools]
 py-modules = []
+packages = ["wechat_exporter"]
+package-dir = { "wechat_exporter" = "packages/wechat-exporter" }
+
+[project.scripts]
+wechat-exporter = "wechat_exporter.main:main"
 
 
 [tool.uv.sources]
