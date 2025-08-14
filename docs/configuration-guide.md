@@ -113,7 +113,7 @@ ollama pull nomic-embed-text
 --backend-name diskann --graph-degree 32 --build-complexity 64
 ```
 
-**Performance Benchmark**: Run `python benchmarks/diskann_vs_hnsw_speed_comparison.py` to compare DiskANN and HNSW on your system.
+**Performance Benchmark**: Run `uv run benchmarks/diskann_vs_hnsw_speed_comparison.py` to compare DiskANN and HNSW on your system.
 
 ## LLM Selection: Engine and Model Comparison
 

@@ -665,6 +665,23 @@ class LeannSearcher:
         if hasattr(self.backend_impl, "embedding_server_manager"):
             self.backend_impl.embedding_server_manager.stop_server()
 
+    # Enable automatic cleanup patterns
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+
+    def __del__(self):
+        try:
+            self.cleanup()
+        except Exception:
+            # Avoid noisy errors during interpreter shutdown
+            pass
+
 
 class LeannChat:
     def __init__(
@@ -743,3 +760,19 @@ class LeannChat:
         """
         if hasattr(self.searcher, "cleanup"):
             self.searcher.cleanup()
+
+    # Enable automatic cleanup patterns
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+
+    def __del__(self):
+        try:
+            self.cleanup()
+        except Exception:
+            pass

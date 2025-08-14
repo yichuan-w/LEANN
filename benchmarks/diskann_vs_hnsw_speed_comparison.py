@@ -113,10 +113,10 @@ def benchmark_backend(
         ]
         score_validity_rate = len(valid_scores) / len(all_scores) if all_scores else 0
 
-        # Clean up
+        # Clean up (ensure embedding server shutdown and object GC)
         try:
-            if hasattr(searcher, "__del__"):
-                searcher.__del__()
+            if hasattr(searcher, "cleanup"):
+                searcher.cleanup()
             del searcher
             del builder
             gc.collect()

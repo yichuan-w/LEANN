@@ -268,8 +268,12 @@ class EmbeddingServerManager:
             f"Terminating server process (PID: {self.server_process.pid}) for backend {self.backend_module_name}..."
         )
 
-        # Use simple termination - our improved server shutdown should handle this properly
-        self.server_process.terminate()
+        # Use simple termination first; if the server installed signal handlers,
+        # it will exit cleanly. Otherwise escalate to kill after a short wait.
+        try:
+            self.server_process.terminate()
+        except Exception:
+            pass
 
         try:
             self.server_process.wait(timeout=5)  # Give more time for graceful shutdown
@@ -278,7 +282,10 @@ class EmbeddingServerManager:
             logger.warning(
                 f"Server process {self.server_process.pid} did not terminate within 5 seconds, force killing..."
             )
-            self.server_process.kill()
+            try:
+                self.server_process.kill()
+            except Exception:
+                pass
             try:
                 self.server_process.wait(timeout=2)
                 logger.info(f"Server process {self.server_process.pid} killed successfully.")
