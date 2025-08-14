@@ -328,6 +328,9 @@ class LeannBuilder:
                     "type": "jsonl",
                     "path": str(passages_file),
                     "index_path": str(offset_file),
+                    # Relative hints for cross-machine portability (non-breaking addition)
+                    "path_relative": f"{index_name}.passages.jsonl",
+                    "index_path_relative": f"{index_name}.passages.idx",
                 }
             ],
         }
@@ -444,6 +447,9 @@ class LeannBuilder:
                     "type": "jsonl",
                     "path": str(passages_file),
                     "index_path": str(offset_file),
+                    # Relative hints for cross-machine portability (non-breaking addition)
+                    "path_relative": f"{index_name}.passages.jsonl",
+                    "index_path_relative": f"{index_name}.passages.idx",
                 }
             ],
             "built_from_precomputed_embeddings": True,
@@ -485,6 +491,42 @@ class LeannSearcher:
         self.embedding_model = self.meta_data["embedding_model"]
         # Support both old and new format
         self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
+        # Best-effort portability: if meta contains absolute paths from another machine,
+        # and those paths do not exist locally, try relative hints or fallback sibling filenames.
+        try:
+            idx_path_obj = Path(self.meta_path_str).with_suffix("").with_suffix("")
+            index_dir = idx_path_obj.parent
+            index_name = idx_path_obj.name
+            default_passages = index_dir / f"{index_name}.passages.jsonl"
+            default_offsets = index_dir / f"{index_name}.passages.idx"
+
+            sources = self.meta_data.get("passage_sources", [])
+            normalized_sources: list[dict[str, Any]] = []
+            for src in sources:
+                new_src = dict(src)
+                raw_path = Path(new_src.get("path", ""))
+                raw_idx = Path(new_src.get("index_path", ""))
+                rel_path = new_src.get("path_relative")
+                rel_idx = new_src.get("index_path_relative")
+
+                # Normalize path
+                if not raw_path.exists():
+                    cand = index_dir / rel_path if rel_path else default_passages
+                    if cand.exists():
+                        new_src["path"] = str(cand)
+                # Normalize idx
+                if not raw_idx.exists():
+                    cand = index_dir / rel_idx if rel_idx else default_offsets
+                    if cand.exists():
+                        new_src["index_path"] = str(cand)
+
+                normalized_sources.append(new_src)
+
+            # Only override in-memory view; do not rewrite meta file (non-destructive)
+            self.meta_data["passage_sources"] = normalized_sources
+        except Exception:
+            pass
+
         self.passage_manager = PassageManager(self.meta_data.get("passage_sources", []))
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:

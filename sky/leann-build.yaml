@@ -7,7 +7,7 @@ resources:
   # cloud: aws
   disk_size: 100
 
-env:
+envs:
   # Build parameters (override with: sky launch -c leann-gpu sky/leann-build.yaml -e key=value)
   index_name: my-index
   docs: ./data
@@ -23,6 +23,8 @@ env:
   compact: true               # for HNSW only
   # Optional pass-through
   extra_args: ""
+  # Rebuild control
+  force: true
 
 # Sync local paths to the remote VM. Adjust as needed.
 file_mounts:
@@ -35,8 +37,17 @@ setup: |
   curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
 
-  # Install the LEANN CLI globally on the remote machine
-  uv tool install leann
+  # Ensure modern libstdc++ for FAISS (GLIBCXX >= 3.4.30)
+  sudo apt-get update -y
+  sudo apt-get install -y libstdc++6 libgomp1
+  # Also upgrade conda's libstdc++ in base env (Skypilot images include conda)
+  if command -v conda >/dev/null 2>&1; then
+    conda install -y -n base -c conda-forge libstdcxx-ng
+  fi
+
+  # Install LEANN CLI and backends into the user environment
+  uv pip install --upgrade pip
+  uv pip install leann-core leann-backend-hnsw leann-backend-diskann
 
 run: |
   export PATH="$HOME/.local/bin:$PATH"
@@ -45,9 +56,13 @@ run: |
   if [ "${recompute}" = "false" ] || [ "${recompute}" = "0" ]; then
     recompute_flag="--no-recompute"
   fi
+  force_flag=""
+  if [ "${force}" = "true" ] || [ "${force}" = "1" ]; then
+    force_flag="--force"
+  fi
 
   # Build command
-  leann build ${index_name} \
+  python -m leann.cli build ${index_name} \
     --docs ~/leann-data \
     --backend ${backend} \
     --complexity ${complexity} \
@@ -55,4 +70,7 @@ run: |
     --num-threads ${num_threads} \
     --embedding-mode ${embedding_mode} \
     --embedding-model ${embedding_model} \
-    ${recompute_flag} ${extra_args}
+    ${recompute_flag} ${force_flag} ${extra_args}
+
+  # Print where the index is stored for downstream rsync
+  echo "INDEX_OUT_DIR=~/.leann/indexes/${index_name}"

@@ -82,17 +82,35 @@ def create_hnsw_embedding_server(
     with open(passages_file) as f:
         meta = json.load(f)
 
-    # Convert relative paths to absolute paths based on metadata file location
-    metadata_dir = Path(passages_file).parent.parent  # Go up one level from the metadata file
+    # Resolve passage files for cross-machine portability
+    metadata_dir = Path(passages_file).parent  # Same directory as meta.json
     passage_sources = []
     for source in meta["passage_sources"]:
-        source_copy = source.copy()
-        # Convert relative paths to absolute paths
-        if not Path(source_copy["path"]).is_absolute():
-            source_copy["path"] = str(metadata_dir / source_copy["path"])
-        if not Path(source_copy["index_path"]).is_absolute():
-            source_copy["index_path"] = str(metadata_dir / source_copy["index_path"])
-        passage_sources.append(source_copy)
+        src = dict(source)
+        # Absolute candidates from meta
+        cand_path = Path(src.get("path", ""))
+        cand_idx = Path(src.get("index_path", ""))
+        # Relative hints if provided
+        rel_path = src.get("path_relative")
+        rel_idx = src.get("index_path_relative")
+        # Defaults (siblings of meta)
+        default_path = metadata_dir / "documents.leann.passages.jsonl"
+        default_idx = metadata_dir / "documents.leann.passages.idx"
+
+        # Normalize path
+        if not cand_path.exists():
+            if rel_path and (metadata_dir / rel_path).exists():
+                src["path"] = str(metadata_dir / rel_path)
+            elif default_path.exists():
+                src["path"] = str(default_path)
+        # Normalize index_path
+        if not cand_idx.exists():
+            if rel_idx and (metadata_dir / rel_idx).exists():
+                src["index_path"] = str(metadata_dir / rel_idx)
+            elif default_idx.exists():
+                src["index_path"] = str(default_idx)
+
+        passage_sources.append(src)
 
     passages = PassageManager(passage_sources)
     logger.info(
