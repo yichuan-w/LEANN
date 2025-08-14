@@ -178,6 +178,9 @@ class BaseRAGExample(ABC):
             config["host"] = args.llm_host
         elif args.llm == "hf":
             config["model"] = args.llm_model or "Qwen/Qwen2.5-1.5B-Instruct"
+        elif args.llm == "simulated":
+            # Simulated LLM doesn't need additional configuration
+            pass
 
         return config
 

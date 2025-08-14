@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Literal, Union
+from typing import Any, Literal, Optional
 
 import numpy as np
 
@@ -35,7 +35,7 @@ class LeannBackendSearcherInterface(ABC):
 
     @abstractmethod
     def _ensure_server_running(
-        self, passages_source_file: str, port: Union[int, None], **kwargs
+        self, passages_source_file: str, port: Optional[int], **kwargs
     ) -> int:
         """Ensure server is running"""
         pass
@@ -50,7 +50,7 @@ class LeannBackendSearcherInterface(ABC):
         prune_ratio: float = 0.0,
         recompute_embeddings: bool = False,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
-        zmq_port: Union[int, None] = None,
+        zmq_port: Optional[int] = None,
         **kwargs,
     ) -> dict[str, Any]:
         """Search for nearest neighbors
@@ -76,7 +76,7 @@ class LeannBackendSearcherInterface(ABC):
         self,
         query: str,
         use_server_if_available: bool = True,
-        zmq_port: Union[int, None] = None,
+        zmq_port: Optional[int] = None,
     ) -> np.ndarray:
         """Compute embedding for a query string
 

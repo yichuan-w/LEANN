@@ -81,7 +81,8 @@ def create_diskann_embedding_server(
     with open(passages_file) as f:
         meta = json.load(f)
 
-    passages = PassageManager(meta["passage_sources"])
+    logger.info(f"Loading PassageManager with metadata_file_path: {passages_file}")
+    passages = PassageManager(meta["passage_sources"], metadata_file_path=passages_file)
     logger.info(
         f"Loaded PassageManager with {len(passages.global_offset_map)} passages from metadata"
     )
@@ -102,8 +103,9 @@ def create_diskann_embedding_server(
         socket.bind(f"tcp://*:{zmq_port}")
         logger.info(f"DiskANN ZMQ REP server listening on port {zmq_port}")
 
-        socket.setsockopt(zmq.RCVTIMEO, 300000)
-        socket.setsockopt(zmq.SNDTIMEO, 300000)
+        socket.setsockopt(zmq.RCVTIMEO, 1000)
+        socket.setsockopt(zmq.SNDTIMEO, 1000)
+        socket.setsockopt(zmq.LINGER, 0)
 
         while True:
             try:
@@ -220,30 +222,217 @@ def create_diskann_embedding_server(
                 traceback.print_exc()
                 raise
 
-    zmq_thread = threading.Thread(target=zmq_server_thread, daemon=True)
+    def zmq_server_thread_with_shutdown(shutdown_event):
+        """ZMQ server thread that respects shutdown signal.
+
+        This creates its own REP socket, binds to zmq_port, and periodically
+        checks shutdown_event using recv timeouts to exit cleanly.
+        """
+        logger.info("DiskANN ZMQ server thread started with shutdown support")
+
+        context = zmq.Context()
+        rep_socket = context.socket(zmq.REP)
+        rep_socket.bind(f"tcp://*:{zmq_port}")
+        logger.info(f"DiskANN ZMQ REP server listening on port {zmq_port}")
+
+        # Set receive timeout so we can check shutdown_event periodically
+        rep_socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1 second timeout
+        rep_socket.setsockopt(zmq.SNDTIMEO, 1000)
+        rep_socket.setsockopt(zmq.LINGER, 0)
+
+        try:
+            while not shutdown_event.is_set():
+                try:
+                    e2e_start = time.time()
+                    # REP socket receives single-part messages
+                    message = rep_socket.recv()
+
+                    # Check for empty messages - REP socket requires response to every request
+                    if not message:
+                        logger.warning("Received empty message, sending empty response")
+                        rep_socket.send(b"")
+                        continue
+
+                    # Try protobuf first (same logic as original)
+                    texts = []
+                    is_text_request = False
+
+                    try:
+                        req_proto = embedding_pb2.NodeEmbeddingRequest()
+                        req_proto.ParseFromString(message)
+                        node_ids = list(req_proto.node_ids)
+
+                        # Look up texts by node IDs
+                        for nid in node_ids:
+                            try:
+                                passage_data = passages.get_passage(str(nid))
+                                txt = passage_data["text"]
+                                if not txt:
+                                    raise RuntimeError(f"FATAL: Empty text for passage ID {nid}")
+                                texts.append(txt)
+                            except KeyError:
+                                raise RuntimeError(f"FATAL: Passage with ID {nid} not found")
+
+                        logger.info(f"ZMQ received protobuf request for {len(node_ids)} node IDs")
+                    except Exception:
+                        # Fallback to msgpack for text requests
+                        try:
+                            import msgpack
+
+                            request = msgpack.unpackb(message)
+                            if isinstance(request, list) and all(
+                                isinstance(item, str) for item in request
+                            ):
+                                texts = request
+                                is_text_request = True
+                                logger.info(
+                                    f"ZMQ received msgpack text request for {len(texts)} texts"
+                                )
+                            else:
+                                raise ValueError("Not a valid msgpack text request")
+                        except Exception:
+                            logger.error("Both protobuf and msgpack parsing failed!")
+                            # Send error response
+                            resp_proto = embedding_pb2.NodeEmbeddingResponse()
+                            rep_socket.send(resp_proto.SerializeToString())
+                            continue
+
+                    # Process the request
+                    embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
+                    logger.info(f"Computed embeddings shape: {embeddings.shape}")
+
+                    # Validation
+                    if np.isnan(embeddings).any() or np.isinf(embeddings).any():
+                        logger.error("NaN or Inf detected in embeddings!")
+                        # Send error response
+                        if is_text_request:
+                            import msgpack
+
+                            response_data = msgpack.packb([])
+                        else:
+                            resp_proto = embedding_pb2.NodeEmbeddingResponse()
+                            response_data = resp_proto.SerializeToString()
+                        rep_socket.send(response_data)
+                        continue
+
+                    # Prepare response based on request type
+                    if is_text_request:
+                        # For direct text requests, return msgpack
+                        import msgpack
+
+                        response_data = msgpack.packb(embeddings.tolist())
+                    else:
+                        # For protobuf requests, return protobuf
+                        resp_proto = embedding_pb2.NodeEmbeddingResponse()
+                        hidden_contiguous = np.ascontiguousarray(embeddings, dtype=np.float32)
+
+                        resp_proto.embeddings_data = hidden_contiguous.tobytes()
+                        resp_proto.dimensions.append(hidden_contiguous.shape[0])
+                        resp_proto.dimensions.append(hidden_contiguous.shape[1])
+
+                        response_data = resp_proto.SerializeToString()
+
+                    # Send response back to the client
+                    rep_socket.send(response_data)
+
+                    e2e_end = time.time()
+                    logger.info(f"⏱️  ZMQ E2E time: {e2e_end - e2e_start:.6f}s")
+
+                except zmq.Again:
+                    # Timeout - check shutdown_event and continue
+                    continue
+                except Exception as e:
+                    if not shutdown_event.is_set():
+                        logger.error(f"Error in ZMQ server loop: {e}")
+                        try:
+                            # Send error response for REP socket
+                            resp_proto = embedding_pb2.NodeEmbeddingResponse()
+                            rep_socket.send(resp_proto.SerializeToString())
+                        except Exception:
+                            pass
+                    else:
+                        logger.info("Shutdown in progress, ignoring ZMQ error")
+                        break
+        finally:
+            try:
+                rep_socket.close(0)
+            except Exception:
+                pass
+            try:
+                context.term()
+            except Exception:
+                pass
+
+        logger.info("DiskANN ZMQ server thread exiting gracefully")
+
+    # Add shutdown coordination
+    shutdown_event = threading.Event()
+
+    def shutdown_zmq_server():
+        """Gracefully shutdown ZMQ server."""
+        logger.info("Initiating graceful shutdown...")
+        shutdown_event.set()
+
+        if zmq_thread.is_alive():
+            logger.info("Waiting for ZMQ thread to finish...")
+            zmq_thread.join(timeout=5)
+            if zmq_thread.is_alive():
+                logger.warning("ZMQ thread did not finish in time")
+
+        # Clean up ZMQ resources
+        try:
+            # Note: socket and context are cleaned up by thread exit
+            logger.info("ZMQ resources cleaned up")
+        except Exception as e:
+            logger.warning(f"Error cleaning ZMQ resources: {e}")
+
+        # Clean up other resources
+        try:
+            import gc
+
+            gc.collect()
+            logger.info("Additional resources cleaned up")
+        except Exception as e:
+            logger.warning(f"Error cleaning additional resources: {e}")
+
+        logger.info("Graceful shutdown completed")
+        sys.exit(0)
+
+    # Register signal handlers within this function scope
+    import signal
+
+    def signal_handler(sig, frame):
+        logger.info(f"Received signal {sig}, shutting down gracefully...")
+        shutdown_zmq_server()
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Start ZMQ thread (NOT daemon!)
+    zmq_thread = threading.Thread(
+        target=lambda: zmq_server_thread_with_shutdown(shutdown_event),
+        daemon=False,  # Not daemon - we want to wait for it
+    )
     zmq_thread.start()
     logger.info(f"Started DiskANN ZMQ server thread on port {zmq_port}")
 
     # Keep the main thread alive
     try:
-        while True:
-            time.sleep(1)
+        while not shutdown_event.is_set():
+            time.sleep(0.1)  # Check shutdown more frequently
     except KeyboardInterrupt:
         logger.info("DiskANN Server shutting down...")
+        shutdown_zmq_server()
         return
+
+    # If we reach here, shutdown was triggered by signal
+    logger.info("Main loop exited, process should be shutting down")
 
 
 if __name__ == "__main__":
-    import signal
     import sys
 
-    def signal_handler(sig, frame):
-        logger.info(f"Received signal {sig}, shutting down gracefully...")
-        sys.exit(0)
-
-    # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
+    # Signal handlers are now registered within create_diskann_embedding_server
 
     parser = argparse.ArgumentParser(description="DiskANN Embedding service")
     parser.add_argument("--zmq-port", type=int, default=5555, help="ZMQ port to run on")

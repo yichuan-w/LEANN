@@ -116,7 +116,6 @@ def handle_request(request):
                     f"--top-k={args.get('top_k', 5)}",
                     f"--complexity={args.get('complexity', 32)}",
                 ]
-
                 result = subprocess.run(cmd, capture_output=True, text=True)
 
             elif tool_name == "leann_status":

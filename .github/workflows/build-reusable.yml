@@ -277,19 +277,16 @@ jobs:
 
       - name: Run tests with pytest
         env:
-          CI: true  # Mark as CI environment to skip memory-intensive tests
+          CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           HF_HUB_DISABLE_SYMLINKS: 1
           TOKENIZERS_PARALLELISM: false
-          PYTORCH_ENABLE_MPS_FALLBACK: 0  # Disable MPS on macOS CI to avoid memory issues
-          OMP_NUM_THREADS: 1  # Disable OpenMP parallelism to avoid libomp crashes
-          MKL_NUM_THREADS: 1  # Single thread for MKL operations
+          PYTORCH_ENABLE_MPS_FALLBACK: 0
+          OMP_NUM_THREADS: 1
+          MKL_NUM_THREADS: 1
         run: |
-          # Activate virtual environment
           source .venv/bin/activate || source .venv/Scripts/activate
-
-          # Run tests
-          pytest -v tests/
+          pytest tests/ -v --tb=short
 
       - name: Run sanity checks (optional)
         run: |
