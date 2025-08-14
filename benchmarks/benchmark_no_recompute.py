@@ -1,16 +1,9 @@
 import argparse
 import os
-import socket
 import time
 from pathlib import Path
 
 from leann import LeannBuilder, LeannSearcher
-
-
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
 
 
 def _meta_exists(index_path: str) -> bool:
@@ -18,41 +11,26 @@ def _meta_exists(index_path: str) -> bool:
     return (p.parent / f"{p.stem}.meta.json").exists()
 
 
-def ensure_index_hnsw(index_path: str, num_docs: int, is_recompute: bool) -> None:
-    if _meta_exists(index_path):
-        return
+def ensure_index(index_path: str, backend_name: str, num_docs: int, is_recompute: bool) -> None:
+    # if _meta_exists(index_path):
+    #     return
+    kwargs = {}
+    if backend_name == "hnsw":
+        kwargs["is_compact"] = is_recompute
     builder = LeannBuilder(
-        backend_name="hnsw",
+        backend_name=backend_name,
         embedding_model=os.getenv("LEANN_EMBED_MODEL", "facebook/contriever"),
         embedding_mode=os.getenv("LEANN_EMBED_MODE", "sentence-transformers"),
         graph_degree=32,
         complexity=64,
-        is_compact=is_recompute,  # HNSW: compact only when recompute
         is_recompute=is_recompute,
         num_threads=4,
+        **kwargs,
     )
     for i in range(num_docs):
         builder.add_text(
             f"This is a test document number {i}. It contains some repeated text for benchmarking."
         )
-    builder.build_index(index_path)
-
-
-def ensure_index_diskann(index_path: str, num_docs: int, is_recompute: bool) -> None:
-    if _meta_exists(index_path):
-        return
-    builder = LeannBuilder(
-        backend_name="diskann",
-        embedding_model=os.getenv("LEANN_EMBED_MODEL", "facebook/contriever"),
-        embedding_mode=os.getenv("LEANN_EMBED_MODE", "sentence-transformers"),
-        graph_degree=32,
-        complexity=64,
-        is_recompute=is_recompute,
-        num_threads=4,
-    )
-    for i in range(num_docs):
-        label = "R" if is_recompute else "NR"
-        builder.add_text(f"DiskANN {label} test doc {i} for quick benchmark.")
     builder.build_index(index_path)
 
 
@@ -66,7 +44,6 @@ def _bench_group(
 ) -> float:
     # Independent searcher per group; fixed port when recompute
     searcher = LeannSearcher(index_path=index_path)
-    port = _free_port() if recompute else 0
 
     # Warm-up once
     _ = searcher.search(
@@ -74,7 +51,6 @@ def _bench_group(
         top_k=top_k,
         complexity=complexity,
         recompute_embeddings=recompute,
-        expected_zmq_port=port,
     )
 
     def _once() -> float:
@@ -84,7 +60,6 @@ def _bench_group(
             top_k=top_k,
             complexity=complexity,
             recompute_embeddings=recompute,
-            expected_zmq_port=port,
         )
         return time.time() - t0
 
@@ -111,14 +86,14 @@ def main():
     # ---------- Build HNSW variants ----------
     hnsw_r = str(base / f"hnsw_recompute_n{args.num_docs}.leann")
     hnsw_nr = str(base / f"hnsw_norecompute_n{args.num_docs}.leann")
-    ensure_index_hnsw(hnsw_r, num_docs=args.num_docs, is_recompute=True)
-    ensure_index_hnsw(hnsw_nr, num_docs=args.num_docs, is_recompute=False)
+    ensure_index(hnsw_r, "hnsw", args.num_docs, True)
+    ensure_index(hnsw_nr, "hnsw", args.num_docs, False)
 
     # ---------- Build DiskANN variants ----------
     diskann_r = str(base / "diskann_r.leann")
     diskann_nr = str(base / "diskann_nr.leann")
-    ensure_index_diskann(diskann_r, num_docs=args.num_docs, is_recompute=True)
-    ensure_index_diskann(diskann_nr, num_docs=args.num_docs, is_recompute=False)
+    ensure_index(diskann_r, "diskann", args.num_docs, True)
+    ensure_index(diskann_nr, "diskann", args.num_docs, False)
 
     # ---------- Helpers ----------
     def _size_for(prefix: str) -> int:

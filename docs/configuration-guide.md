@@ -97,26 +97,20 @@ ollama pull nomic-embed-text
 ```
 
 ### DiskANN
-**Best for**: Performance-critical applications and large datasets - **Production-ready with automatic graph partitioning**
+**Best for**: Large datasets, especially when you want `recompute=True`.
 
-**How it works:**
-- **Product Quantization (PQ) + Real-time Reranking**: Uses compressed PQ codes for fast graph traversal, then recomputes exact embeddings for final candidates
-- **Automatic Graph Partitioning**: When `is_recompute=True`, automatically partitions large indices and safely removes redundant files to save storage
-- **Superior Speed-Accuracy Trade-off**: Faster search than HNSW while maintaining high accuracy
+**Key advantages:**
+- **Faster search** on large datasets (3x+ speedup vs HNSW in many cases)
+- **Smart storage**: `recompute=True` enables automatic graph partitioning for smaller indexes
+- **Better scaling**: Designed for 100k+ documents
 
-**Trade-offs compared to HNSW:**
-- ✅ **Faster search latency** (typically 2-8x speedup)
-- ✅ **Better scaling** for large datasets
-- ✅ **Smart storage management** with automatic partitioning
-- ✅ **Better graph locality** with `--ldg-times` parameter for SSD optimization
-- ⚠️ **Slightly larger index size** due to PQ tables and graph metadata
+**Recompute behavior:**
+- `recompute=True` (recommended): Pure PQ traversal + final reranking - faster and enables partitioning
+- `recompute=False`: PQ + partial real distances during traversal - slower but higher accuracy
 
 ```bash
 # Recommended for most use cases
 --backend-name diskann --graph-degree 32 --build-complexity 64
-
-# For large-scale deployments
---backend-name diskann --graph-degree 64 --build-complexity 128
 ```
 
 **Performance Benchmark**: Run `python benchmarks/diskann_vs_hnsw_speed_comparison.py` to compare DiskANN and HNSW on your system.
@@ -360,30 +354,25 @@ Trade-offs:
 - Significantly higher storage (10–100× vs selective recomputation)
 - Slightly larger memory footprint during build and search
 
-Real-world quick benchmark (`benchmarks/benchmark_no_recompute.py`, 5k texts):
+Quick benchmark results (`benchmarks/benchmark_no_recompute.py` with 5k texts, complexity=32):
 
 - HNSW
 
   ```text
-  recompute=True:  ~7.55s; size ~1.1MB
-  recompute=False: ~0.11s; size ~16.6MB
+  recompute=True:  search_time=0.818s, size=1.1MB
+  recompute=False: search_time=0.012s, size=16.6MB
   ```
 
 - DiskANN
 
   ```text
-  Build sizes (5k):
-    - recompute=True (partition): ~5.7MB
-    - recompute=False: ~24.8MB
-  Search latency (on recompute-build, median of 5 runs; macOS, complexity=32):
-    - recompute=False (PQ traversal only): ~0.013–0.014s
-    - recompute=True (final rerank):        ~0.033–0.046s
-  On 20k texts (same settings):
-    - recompute=False: ~0.013–0.014s
-    - recompute=True:  ~0.033–0.036s
+  recompute=True:  search_time=0.041s, size=5.9MB
+  recompute=False: search_time=0.013s, size=24.6MB
   ```
 
-Conclusion: for HNSW, no-recompute is faster but larger; for DiskANN, no-recompute (PQ traversal only) is fastest at the cost of potentially lower accuracy, while recompute (final rerank) adds ~20–30ms for higher accuracy. DiskANN recompute-build also enables partitioning, reducing storage.
+Conclusion:
+- **HNSW**: `no-recompute` is significantly faster (no embedding recomputation) but requires much more storage (stores all embeddings)
+- **DiskANN**: `no-recompute` uses PQ + partial real distances during traversal (slower but higher accuracy), while `recompute=True` uses pure PQ traversal + final reranking (faster traversal, enables build-time partitioning for smaller storage)
 
 
 
