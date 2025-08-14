@@ -278,7 +278,6 @@ jobs:
       - name: Run tests with pytest
         env:
           CI: true
-          LEANN_SKIP_COMPAT: 1
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           HF_HUB_DISABLE_SYMLINKS: 1
           TOKENIZERS_PARALLELISM: false
