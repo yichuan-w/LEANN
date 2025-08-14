@@ -250,11 +250,7 @@ def convert_hnsw_graph_to_csr(input_filename, output_filename, prune_embeddings=
         output_filename: Output CSR index file
         prune_embeddings: Whether to prune embedding storage (write NULL storage marker)
     """
-    # Disable buffering for print statements to avoid deadlock in CI/pytest
-    import functools
-
-    global print
-    print = functools.partial(print, flush=True)
+    # Keep prints simple; rely on CI runner to flush output as needed
 
     print(f"Starting conversion: {input_filename} -> {output_filename}")
     start_time = time.time()
