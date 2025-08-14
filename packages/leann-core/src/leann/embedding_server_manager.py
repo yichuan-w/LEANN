@@ -186,6 +186,13 @@ class EmbeddingServerManager:
         self.server_process: Optional[subprocess.Popen] = None
         self.server_port: Optional[int] = None
         self._atexit_registered = False
+        # Also register a weakref finalizer to ensure cleanup when manager is GC'ed
+        try:
+            import weakref
+
+            self._finalizer = weakref.finalize(self, self._finalize_process)
+        except Exception:
+            self._finalizer = None
 
     def start_server(
         self,
@@ -332,6 +339,14 @@ class EmbeddingServerManager:
             # Use a lambda to avoid issues with bound methods
             atexit.register(lambda: self.stop_server() if self.server_process else None)
             self._atexit_registered = True
+        # Touch finalizer so it knows there is a live process
+        if getattr(self, "_finalizer", None) is not None and not self._finalizer.alive:
+            try:
+                import weakref
+
+                self._finalizer = weakref.finalize(self, self._finalize_process)
+            except Exception:
+                pass
 
     def _wait_for_server_ready(self, port: int) -> tuple[bool, int]:
         """Wait for the server to be ready."""
@@ -397,6 +412,13 @@ class EmbeddingServerManager:
             logger.warning(f"Error during process cleanup: {e}")
         finally:
             self.server_process = None
+
+    def _finalize_process(self) -> None:
+        """Best-effort cleanup used by weakref.finalize/atexit."""
+        try:
+            self.stop_server()
+        except Exception:
+            pass
 
     def _launch_server_process_colab(self, command: list, port: int) -> None:
         """Launch the server process with Colab-specific settings."""
