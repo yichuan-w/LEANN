@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import psutil
+# Lightweight, self-contained server manager with no cross-process inspection
 
 # Set up logging based on environment variable
 LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
@@ -43,130 +43,7 @@ def _check_port(port: int) -> bool:
         return s.connect_ex(("localhost", port)) == 0
 
 
-def _check_process_matches_config(
-    port: int, expected_model: str, expected_passages_file: str
-) -> bool:
-    """
-    Check if the process using the port matches our expected model and passages file.
-    Returns True if matches, False otherwise.
-    """
-    try:
-        for proc in psutil.process_iter(["pid", "cmdline"]):
-            if not _is_process_listening_on_port(proc, port):
-                continue
-
-            cmdline = proc.info["cmdline"]
-            if not cmdline:
-                continue
-
-            return _check_cmdline_matches_config(
-                cmdline, port, expected_model, expected_passages_file
-            )
-
-        logger.debug(f"No process found listening on port {port}")
-        return False
-
-    except Exception as e:
-        logger.warning(f"Could not check process on port {port}: {e}")
-        return False
-
-
-def _is_process_listening_on_port(proc, port: int) -> bool:
-    """Check if a process is listening on the given port."""
-    try:
-        connections = proc.net_connections()
-        for conn in connections:
-            if conn.laddr.port == port and conn.status == psutil.CONN_LISTEN:
-                return True
-        return False
-    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-        return False
-
-
-def _check_cmdline_matches_config(
-    cmdline: list, port: int, expected_model: str, expected_passages_file: str
-) -> bool:
-    """Check if command line matches our expected configuration."""
-    cmdline_str = " ".join(cmdline)
-    logger.debug(f"Found process on port {port}: {cmdline_str}")
-
-    # Check if it's our embedding server
-    is_embedding_server = any(
-        server_type in cmdline_str
-        for server_type in [
-            "embedding_server",
-            "leann_backend_diskann.embedding_server",
-            "leann_backend_hnsw.hnsw_embedding_server",
-        ]
-    )
-
-    if not is_embedding_server:
-        logger.debug(f"Process on port {port} is not our embedding server")
-        return False
-
-    # Check model name
-    model_matches = _check_model_in_cmdline(cmdline, expected_model)
-
-    # Check passages file if provided
-    passages_matches = _check_passages_in_cmdline(cmdline, expected_passages_file)
-
-    result = model_matches and passages_matches
-    logger.debug(
-        f"model_matches: {model_matches}, passages_matches: {passages_matches}, overall: {result}"
-    )
-    return result
-
-
-def _check_model_in_cmdline(cmdline: list, expected_model: str) -> bool:
-    """Check if the command line contains the expected model."""
-    if "--model-name" not in cmdline:
-        return False
-
-    model_idx = cmdline.index("--model-name")
-    if model_idx + 1 >= len(cmdline):
-        return False
-
-    actual_model = cmdline[model_idx + 1]
-    return actual_model == expected_model
-
-
-def _check_passages_in_cmdline(cmdline: list, expected_passages_file: str) -> bool:
-    """Check if the command line contains the expected passages file."""
-    if "--passages-file" not in cmdline:
-        return False  # Expected but not found
-
-    passages_idx = cmdline.index("--passages-file")
-    if passages_idx + 1 >= len(cmdline):
-        return False
-
-    actual_passages = cmdline[passages_idx + 1]
-    expected_path = Path(expected_passages_file).resolve()
-    actual_path = Path(actual_passages).resolve()
-    return actual_path == expected_path
-
-
-def _find_compatible_port_or_next_available(
-    start_port: int, model_name: str, passages_file: str, max_attempts: int = 100
-) -> tuple[int, bool]:
-    """
-    Find a port that either has a compatible server or is available.
-    Returns (port, is_compatible) where is_compatible indicates if we found a matching server.
-    """
-    for port in range(start_port, start_port + max_attempts):
-        if not _check_port(port):
-            # Port is available
-            return port, False
-
-        # Port is in use, check if it's compatible
-        if _check_process_matches_config(port, model_name, passages_file):
-            logger.info(f"Found compatible server on port {port}")
-            return port, True
-        else:
-            logger.info(f"Port {port} has incompatible server, trying next port...")
-
-    raise RuntimeError(
-        f"Could not find compatible or available port in range {start_port}-{start_port + max_attempts}"
-    )
+# Note: All cross-process scanning helpers removed for simplicity
 
 
 class EmbeddingServerManager:
@@ -185,7 +62,16 @@ class EmbeddingServerManager:
         self.backend_module_name = backend_module_name
         self.server_process: Optional[subprocess.Popen] = None
         self.server_port: Optional[int] = None
+        # Track last-started config for in-process reuse only
+        self._server_config: Optional[dict] = None
         self._atexit_registered = False
+        # Also register a weakref finalizer to ensure cleanup when manager is GC'ed
+        try:
+            import weakref
+
+            self._finalizer = weakref.finalize(self, self._finalize_process)
+        except Exception:
+            self._finalizer = None
 
     def start_server(
         self,
@@ -195,26 +81,24 @@ class EmbeddingServerManager:
         **kwargs,
     ) -> tuple[bool, int]:
         """Start the embedding server."""
-        passages_file = kwargs.get("passages_file")
+        # passages_file may be present in kwargs for server CLI, but we don't need it here
 
-        # Check if we have a compatible server already running
-        if self._has_compatible_running_server(model_name, passages_file):
-            logger.info("Found compatible running server!")
-            return True, port
+        # If this manager already has a live server, just reuse it
+        if self.server_process and self.server_process.poll() is None and self.server_port:
+            logger.info("Reusing in-process server")
+            return True, self.server_port
 
         # For Colab environment, use a different strategy
         if _is_colab_environment():
             logger.info("Detected Colab environment, using alternative startup strategy")
             return self._start_server_colab(port, model_name, embedding_mode, **kwargs)
 
-        # Find a compatible port or next available
-        actual_port, is_compatible = _find_compatible_port_or_next_available(
-            port, model_name, passages_file
-        )
-
-        if is_compatible:
-            logger.info(f"Found compatible server on port {actual_port}")
-            return True, actual_port
+        # Always pick a fresh available port
+        try:
+            actual_port = _get_available_port(port)
+        except RuntimeError:
+            logger.error("No available ports found")
+            return False, port
 
         # Start a new server
         return self._start_new_server(actual_port, model_name, embedding_mode, **kwargs)
@@ -247,17 +131,7 @@ class EmbeddingServerManager:
             logger.error(f"Failed to start embedding server in Colab: {e}")
             return False, actual_port
 
-    def _has_compatible_running_server(self, model_name: str, passages_file: str) -> bool:
-        """Check if we have a compatible running server."""
-        if not (self.server_process and self.server_process.poll() is None and self.server_port):
-            return False
-
-        if _check_process_matches_config(self.server_port, model_name, passages_file):
-            logger.info(f"Existing server process (PID {self.server_process.pid}) is compatible")
-            return True
-
-        logger.info("Existing server process is incompatible. Should start a new server.")
-        return False
+    # Note: No compatibility check needed; manager is per-searcher and configs are stable per instance
 
     def _start_new_server(
         self, port: int, model_name: str, embedding_mode: str, **kwargs
@@ -304,22 +178,61 @@ class EmbeddingServerManager:
         project_root = Path(__file__).parent.parent.parent.parent.parent
         logger.info(f"Command: {' '.join(command)}")
 
-        # Let server output go directly to console
-        # The server will respect LEANN_LOG_LEVEL environment variable
+        # In CI environment, redirect stdout to avoid buffer deadlock but keep stderr for debugging
+        # Embedding servers use many print statements that can fill stdout buffers
+        is_ci = os.environ.get("CI") == "true"
+        if is_ci:
+            stdout_target = subprocess.DEVNULL
+            stderr_target = None  # Keep stderr for error debugging in CI
+            logger.info(
+                "CI environment detected, redirecting embedding server stdout to DEVNULL, keeping stderr"
+            )
+        else:
+            stdout_target = None  # Direct to console for visible logs
+            stderr_target = None  # Direct to console for visible logs
+
+        # Start embedding server subprocess
         self.server_process = subprocess.Popen(
             command,
             cwd=project_root,
-            stdout=None,  # Direct to console
-            stderr=None,  # Direct to console
+            stdout=stdout_target,
+            stderr=stderr_target,
         )
         self.server_port = port
+        # Record config for in-process reuse
+        try:
+            self._server_config = {
+                "model_name": command[command.index("--model-name") + 1]
+                if "--model-name" in command
+                else "",
+                "passages_file": command[command.index("--passages-file") + 1]
+                if "--passages-file" in command
+                else "",
+                "embedding_mode": command[command.index("--embedding-mode") + 1]
+                if "--embedding-mode" in command
+                else "sentence-transformers",
+            }
+        except Exception:
+            self._server_config = {
+                "model_name": "",
+                "passages_file": "",
+                "embedding_mode": "sentence-transformers",
+            }
         logger.info(f"Server process started with PID: {self.server_process.pid}")
 
         # Register atexit callback only when we actually start a process
         if not self._atexit_registered:
-            # Use a lambda to avoid issues with bound methods
-            atexit.register(lambda: self.stop_server() if self.server_process else None)
+            # Always attempt best-effort finalize at interpreter exit
+            atexit.register(self._finalize_process)
             self._atexit_registered = True
+        # Touch finalizer so it knows there is a live process
+        if getattr(self, "_finalizer", None) is not None and not self._finalizer.alive:
+            try:
+                import weakref
+
+                self._finalizer = weakref.finalize(self, self._finalize_process)
+            except Exception:
+                pass
 
     def _wait_for_server_ready(self, port: int) -> tuple[bool, int]:
         """Wait for the server to be ready."""
@@ -344,22 +257,26 @@ class EmbeddingServerManager:
         if not self.server_process:
             return
 
-        if self.server_process.poll() is not None:
+        if self.server_process and self.server_process.poll() is not None:
             # Process already terminated
             self.server_process = None
+            self.server_port = None
+            self._server_config = None
             return
 
         logger.info(
             f"Terminating server process (PID: {self.server_process.pid}) for backend {self.backend_module_name}..."
         )
+
+        # Use simple termination - our improved server shutdown should handle this properly
         self.server_process.terminate()
 
         try:
-            self.server_process.wait(timeout=3)
-            logger.info(f"Server process {self.server_process.pid} terminated.")
+            self.server_process.wait(timeout=5)  # Give more time for graceful shutdown
+            logger.info(f"Server process {self.server_process.pid} terminated gracefully.")
         except subprocess.TimeoutExpired:
             logger.warning(
-                f"Server process {self.server_process.pid} did not terminate gracefully within 3 seconds, killing it."
+                f"Server process {self.server_process.pid} did not terminate within 5 seconds, force killing..."
             )
             self.server_process.kill()
             try:
@@ -369,15 +286,33 @@ class EmbeddingServerManager:
                 logger.error(
                     f"Failed to kill server process {self.server_process.pid} - it may be hung"
                 )
-                # Don't hang indefinitely
 
-        # Clean up process resources to prevent resource tracker warnings
+        # Clean up process resources with timeout to avoid CI hang
         try:
-            self.server_process.wait()  # Ensure process is fully cleaned up
+            # Use shorter timeout in CI environments
+            is_ci = os.environ.get("CI") == "true"
+            timeout = 3 if is_ci else 10
+            self.server_process.wait(timeout=timeout)
+            logger.info(f"Server process {self.server_process.pid} cleanup completed")
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Process cleanup timeout after {timeout}s, proceeding anyway")
+        except Exception as e:
+            logger.warning(f"Error during process cleanup: {e}")
+        finally:
+            self.server_process = None
+            self.server_port = None
+            self._server_config = None
+
+    def _finalize_process(self) -> None:
+        """Best-effort cleanup used by weakref.finalize/atexit."""
+        try:
+            self.stop_server()
         except Exception:
             pass
 
-        self.server_process = None
+    def _adopt_existing_server(self, *args, **kwargs) -> None:
+        # Removed: cross-process adoption no longer supported
+        return
 
     def _launch_server_process_colab(self, command: list, port: int) -> None:
         """Launch the server process with Colab-specific settings."""
@@ -393,10 +328,16 @@ class EmbeddingServerManager:
         self.server_port = port
         logger.info(f"Colab server process started with PID: {self.server_process.pid}")
 
-        # Register atexit callback
+        # Register atexit callback (unified)
         if not self._atexit_registered:
-            atexit.register(lambda: self.stop_server() if self.server_process else None)
+            atexit.register(self._finalize_process)
             self._atexit_registered = True
+        # Record config for in-process reuse is best-effort in Colab mode
+        self._server_config = {
+            "model_name": "",
+            "passages_file": "",
+            "embedding_mode": "sentence-transformers",
+        }
 
     def _wait_for_server_ready_colab(self, port: int) -> tuple[bool, int]:
         """Wait for the server to be ready with Colab-specific timeout."""

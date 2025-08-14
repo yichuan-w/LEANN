@@ -69,14 +69,14 @@ class BaseRAGExample(ABC):
             "--embedding-model",
             type=str,
             default=embedding_model_default,
-            help=f"Embedding model to use (default: {embedding_model_default})",
+            help=f"Embedding model to use (default: {embedding_model_default}), we provide facebook/contriever, text-embedding-3-small,mlx-community/Qwen3-Embedding-0.6B-8bit or nomic-embed-text",
         )
         embedding_group.add_argument(
             "--embedding-mode",
             type=str,
             default="sentence-transformers",
             choices=["sentence-transformers", "openai", "mlx", "ollama"],
-            help="Embedding backend mode (default: sentence-transformers)",
+            help="Embedding backend mode (default: sentence-transformers), we provide sentence-transformers, openai, mlx, or ollama",
         )
 
         # LLM parameters
@@ -86,13 +86,13 @@ class BaseRAGExample(ABC):
             type=str,
             default="openai",
             choices=["openai", "ollama", "hf", "simulated"],
-            help="LLM backend to use (default: openai)",
+            help="LLM backend: openai, ollama, or hf (default: openai)",
         )
         llm_group.add_argument(
             "--llm-model",
             type=str,
             default=None,
-            help="LLM model name (default: gpt-4o for openai, llama3.2:1b for ollama)",
+            help="Model name (default: gpt-4o) e.g., gpt-4o-mini, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct",
         )
         llm_group.add_argument(
             "--llm-host",
@@ -178,6 +178,9 @@ class BaseRAGExample(ABC):
             config["host"] = args.llm_host
         elif args.llm == "hf":
             config["model"] = args.llm_model or "Qwen/Qwen2.5-1.5B-Instruct"
+        elif args.llm == "simulated":
+            # Simulated LLM doesn't need additional configuration
+            pass
 
         return config
 

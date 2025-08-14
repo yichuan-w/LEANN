@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Union
+from typing import Optional
 
 import msgpack
 import numpy as np
@@ -34,7 +34,7 @@ if not logger.handlers:
 
 
 def create_hnsw_embedding_server(
-    passages_file: Union[str, None] = None,
+    passages_file: Optional[str] = None,
     zmq_port: int = 5555,
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     distance_metric: str = "mips",
@@ -82,217 +82,317 @@ def create_hnsw_embedding_server(
     with open(passages_file) as f:
         meta = json.load(f)
 
-    # Resolve passage files for cross-machine portability
-    metadata_dir = Path(passages_file).parent  # Same directory as meta.json
-    passage_sources = []
-    for source in meta["passage_sources"]:
-        src = dict(source)
-        # Absolute candidates from meta
-        cand_path = Path(src.get("path", ""))
-        cand_idx = Path(src.get("index_path", ""))
-        # Relative hints if provided
-        rel_path = src.get("path_relative")
-        rel_idx = src.get("index_path_relative")
-        # Defaults (siblings of meta)
-        default_path = metadata_dir / "documents.leann.passages.jsonl"
-        default_idx = metadata_dir / "documents.leann.passages.idx"
-
-        # Normalize path
-        if not cand_path.exists():
-            if rel_path and (metadata_dir / rel_path).exists():
-                src["path"] = str(metadata_dir / rel_path)
-            elif default_path.exists():
-                src["path"] = str(default_path)
-        # Normalize index_path
-        if not cand_idx.exists():
-            if rel_idx and (metadata_dir / rel_idx).exists():
-                src["index_path"] = str(metadata_dir / rel_idx)
-            elif default_idx.exists():
-                src["index_path"] = str(default_idx)
-
-        passage_sources.append(src)
-
-    passages = PassageManager(passage_sources)
+    # Let PassageManager handle path resolution uniformly. It supports fallback order:
+    # 1) path/index_path; 2) *_relative; 3) standard siblings next to meta
+    passages = PassageManager(meta["passage_sources"], metadata_file_path=passages_file)
+    # Dimension from metadata for shaping responses
+    try:
+        embedding_dim: int = int(meta.get("dimensions", 0))
+    except Exception:
+        embedding_dim = 0
     logger.info(
         f"Loaded PassageManager with {len(passages.global_offset_map)} passages from metadata"
     )
 
-    def zmq_server_thread():
-        """ZMQ server thread"""
+    # (legacy ZMQ thread removed; using shutdown-capable server only)
+
+    def zmq_server_thread_with_shutdown(shutdown_event):
+        """ZMQ server thread that respects shutdown signal.
+
+        Creates its own REP socket bound to zmq_port and polls with timeouts
+        to allow graceful shutdown.
+        """
+        logger.info("ZMQ server thread started with shutdown support")
+
         context = zmq.Context()
-        socket = context.socket(zmq.REP)
-        socket.bind(f"tcp://*:{zmq_port}")
-        logger.info(f"HNSW ZMQ server listening on port {zmq_port}")
+        rep_socket = context.socket(zmq.REP)
+        rep_socket.bind(f"tcp://*:{zmq_port}")
+        logger.info(f"HNSW ZMQ REP server listening on port {zmq_port}")
+        rep_socket.setsockopt(zmq.RCVTIMEO, 1000)
+        # Keep sends from blocking during shutdown; fail fast and drop on close
+        rep_socket.setsockopt(zmq.SNDTIMEO, 1000)
+        rep_socket.setsockopt(zmq.LINGER, 0)
 
-        socket.setsockopt(zmq.RCVTIMEO, 300000)
-        socket.setsockopt(zmq.SNDTIMEO, 300000)
+        # Track last request type/length for shape-correct fallbacks
+        last_request_type = "unknown"  # 'text' | 'distance' | 'embedding' | 'unknown'
+        last_request_length = 0
 
-        while True:
-            try:
-                message_bytes = socket.recv()
-                logger.debug(f"Received ZMQ request of size {len(message_bytes)} bytes")
+        try:
+            while not shutdown_event.is_set():
+                try:
+                    e2e_start = time.time()
+                    logger.debug("🔍 Waiting for ZMQ message...")
+                    request_bytes = rep_socket.recv()
 
-                e2e_start = time.time()
-                request_payload = msgpack.unpackb(message_bytes)
+                    # Rest of the processing logic (same as original)
+                    request = msgpack.unpackb(request_bytes)
 
-                # Handle direct text embedding request
-                if isinstance(request_payload, list) and len(request_payload) > 0:
-                    # Check if this is a direct text request (list of strings)
-                    if all(isinstance(item, str) for item in request_payload):
-                        logger.info(
-                            f"Processing direct text embedding request for {len(request_payload)} texts in {embedding_mode} mode"
-                        )
+                    if len(request) == 1 and request[0] == "__QUERY_MODEL__":
+                        response_bytes = msgpack.packb([model_name])
+                        rep_socket.send(response_bytes)
+                        continue
 
-                        # Use unified embedding computation (now with model caching)
-                        embeddings = compute_embeddings(
-                            request_payload, model_name, mode=embedding_mode
-                        )
-
-                        response = embeddings.tolist()
-                        socket.send(msgpack.packb(response))
+                    # Handle direct text embedding request
+                    if (
+                        isinstance(request, list)
+                        and request
+                        and all(isinstance(item, str) for item in request)
+                    ):
+                        last_request_type = "text"
+                        last_request_length = len(request)
+                        embeddings = compute_embeddings(request, model_name, mode=embedding_mode)
+                        rep_socket.send(msgpack.packb(embeddings.tolist()))
                         e2e_end = time.time()
                         logger.info(f"⏱️  Text embedding E2E time: {e2e_end - e2e_start:.6f}s")
                         continue
 
-                # Handle distance calculation requests
-                if (
-                    isinstance(request_payload, list)
-                    and len(request_payload) == 2
-                    and isinstance(request_payload[0], list)
-                    and isinstance(request_payload[1], list)
-                ):
-                    node_ids = request_payload[0]
-                    query_vector = np.array(request_payload[1], dtype=np.float32)
+                    # Handle distance calculation request: [[ids], [query_vector]]
+                    if (
+                        isinstance(request, list)
+                        and len(request) == 2
+                        and isinstance(request[0], list)
+                        and isinstance(request[1], list)
+                    ):
+                        node_ids = request[0]
+                        # Handle nested [[ids]] shape defensively
+                        if len(node_ids) == 1 and isinstance(node_ids[0], list):
+                            node_ids = node_ids[0]
+                        query_vector = np.array(request[1], dtype=np.float32)
+                        last_request_type = "distance"
+                        last_request_length = len(node_ids)
 
-                    logger.debug("Distance calculation request received")
-                    logger.debug(f"    Node IDs: {node_ids}")
-                    logger.debug(f"    Query vector dim: {len(query_vector)}")
+                        logger.debug("Distance calculation request received")
+                        logger.debug(f"    Node IDs: {node_ids}")
+                        logger.debug(f"    Query vector dim: {len(query_vector)}")
 
-                    # Get embeddings for node IDs
-                    texts = []
-                    for nid in node_ids:
+                        # Gather texts for found ids
+                        texts: list[str] = []
+                        found_indices: list[int] = []
+                        for idx, nid in enumerate(node_ids):
+                            try:
+                                passage_data = passages.get_passage(str(nid))
+                                txt = passage_data.get("text", "")
+                                if isinstance(txt, str) and len(txt) > 0:
+                                    texts.append(txt)
+                                    found_indices.append(idx)
+                                else:
+                                    logger.error(f"Empty text for passage ID {nid}")
+                            except KeyError:
+                                logger.error(f"Passage ID {nid} not found")
+                            except Exception as e:
+                                logger.error(f"Exception looking up passage ID {nid}: {e}")
+
+                        # Prepare full-length response with large sentinel values
+                        large_distance = 1e9
+                        response_distances = [large_distance] * len(node_ids)
+
+                        if texts:
+                            try:
+                                embeddings = compute_embeddings(
+                                    texts, model_name, mode=embedding_mode
+                                )
+                                logger.info(
+                                    f"Computed embeddings for {len(texts)} texts, shape: {embeddings.shape}"
+                                )
+                                if distance_metric == "l2":
+                                    partial = np.sum(
+                                        np.square(embeddings - query_vector.reshape(1, -1)), axis=1
+                                    )
+                                else:  # mips or cosine
+                                    partial = -np.dot(embeddings, query_vector)
+
+                                for pos, dval in zip(found_indices, partial.flatten().tolist()):
+                                    response_distances[pos] = float(dval)
+                            except Exception as e:
+                                logger.error(f"Distance computation error, using sentinels: {e}")
+
+                        # Send response in expected shape [[distances]]
+                        rep_socket.send(msgpack.packb([response_distances], use_single_float=True))
+                        e2e_end = time.time()
+                        logger.info(f"⏱️  Distance calculation E2E time: {e2e_end - e2e_start:.6f}s")
+                        continue
+
+                    # Fallback: treat as embedding-by-id request
+                    if (
+                        isinstance(request, list)
+                        and len(request) == 1
+                        and isinstance(request[0], list)
+                    ):
+                        node_ids = request[0]
+                    elif isinstance(request, list):
+                        node_ids = request
+                    else:
+                        node_ids = []
+                    last_request_type = "embedding"
+                    last_request_length = len(node_ids)
+                    logger.info(f"ZMQ received {len(node_ids)} node IDs for embedding fetch")
+
+                    # Preallocate zero-filled flat data for robustness
+                    if embedding_dim <= 0:
+                        dims = [0, 0]
+                        flat_data: list[float] = []
+                    else:
+                        dims = [len(node_ids), embedding_dim]
+                        flat_data = [0.0] * (dims[0] * dims[1])
+
+                    # Collect texts for found ids
+                    texts: list[str] = []
+                    found_indices: list[int] = []
+                    for idx, nid in enumerate(node_ids):
                         try:
                             passage_data = passages.get_passage(str(nid))
-                            txt = passage_data["text"]
-                            texts.append(txt)
+                            txt = passage_data.get("text", "")
+                            if isinstance(txt, str) and len(txt) > 0:
+                                texts.append(txt)
+                                found_indices.append(idx)
+                            else:
+                                logger.error(f"Empty text for passage ID {nid}")
                         except KeyError:
-                            logger.error(f"Passage ID {nid} not found")
-                            raise RuntimeError(f"FATAL: Passage with ID {nid} not found")
+                            logger.error(f"Passage with ID {nid} not found")
                         except Exception as e:
                             logger.error(f"Exception looking up passage ID {nid}: {e}")
-                            raise
 
-                    # Process embeddings
-                    embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
-                    logger.info(
-                        f"Computed embeddings for {len(texts)} texts, shape: {embeddings.shape}"
-                    )
+                    if texts:
+                        try:
+                            embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
+                            logger.info(
+                                f"Computed embeddings for {len(texts)} texts, shape: {embeddings.shape}"
+                            )
 
-                    # Calculate distances
-                    if distance_metric == "l2":
-                        distances = np.sum(
-                            np.square(embeddings - query_vector.reshape(1, -1)), axis=1
-                        )
-                    else:  # mips or cosine
-                        distances = -np.dot(embeddings, query_vector)
+                            if np.isnan(embeddings).any() or np.isinf(embeddings).any():
+                                logger.error(
+                                    f"NaN or Inf detected in embeddings! Requested IDs: {node_ids[:5]}..."
+                                )
+                                dims = [0, embedding_dim]
+                                flat_data = []
+                            else:
+                                emb_f32 = np.ascontiguousarray(embeddings, dtype=np.float32)
+                                flat = emb_f32.flatten().tolist()
+                                for j, pos in enumerate(found_indices):
+                                    start = pos * embedding_dim
+                                    end = start + embedding_dim
+                                    if end <= len(flat_data):
+                                        flat_data[start:end] = flat[
+                                            j * embedding_dim : (j + 1) * embedding_dim
+                                        ]
+                        except Exception as e:
+                            logger.error(f"Embedding computation error, returning zeros: {e}")
 
-                    response_payload = distances.flatten().tolist()
-                    response_bytes = msgpack.packb([response_payload], use_single_float=True)
-                    logger.debug(f"Sending distance response with {len(distances)} distances")
+                    response_payload = [dims, flat_data]
+                    response_bytes = msgpack.packb(response_payload, use_single_float=True)
 
-                    socket.send(response_bytes)
+                    rep_socket.send(response_bytes)
                     e2e_end = time.time()
-                    logger.info(f"⏱️  Distance calculation E2E time: {e2e_end - e2e_start:.6f}s")
+                    logger.info(f"⏱️  ZMQ E2E time: {e2e_end - e2e_start:.6f}s")
+
+                except zmq.Again:
+                    # Timeout - check shutdown_event and continue
                     continue
+                except Exception as e:
+                    if not shutdown_event.is_set():
+                        logger.error(f"Error in ZMQ server loop: {e}")
+                        # Shape-correct fallback
+                        try:
+                            if last_request_type == "distance":
+                                large_distance = 1e9
+                                fallback_len = max(0, int(last_request_length))
+                                safe = [[large_distance] * fallback_len]
+                            elif last_request_type == "embedding":
+                                bsz = max(0, int(last_request_length))
+                                dim = max(0, int(embedding_dim))
+                                safe = (
+                                    [[bsz, dim], [0.0] * (bsz * dim)] if dim > 0 else [[0, 0], []]
+                                )
+                            elif last_request_type == "text":
+                                safe = []  # direct text embeddings expectation is a flat list
+                            else:
+                                safe = [[0, int(embedding_dim) if embedding_dim > 0 else 0], []]
+                            rep_socket.send(msgpack.packb(safe, use_single_float=True))
+                        except Exception:
+                            pass
+                    else:
+                        logger.info("Shutdown in progress, ignoring ZMQ error")
+                        break
+        finally:
+            try:
+                rep_socket.close(0)
+            except Exception:
+                pass
+            try:
+                context.term()
+            except Exception:
+                pass
 
-                # Standard embedding request (passage ID lookup)
-                if (
-                    not isinstance(request_payload, list)
-                    or len(request_payload) != 1
-                    or not isinstance(request_payload[0], list)
-                ):
-                    logger.error(
-                        f"Invalid MessagePack request format. Expected [[ids...]] or [texts...], got: {type(request_payload)}"
-                    )
-                    socket.send(msgpack.packb([[], []]))
-                    continue
+        logger.info("ZMQ server thread exiting gracefully")
 
-                node_ids = request_payload[0]
-                logger.debug(f"Request for {len(node_ids)} node embeddings")
+    # Add shutdown coordination
+    shutdown_event = threading.Event()
 
-                # Look up texts by node IDs
-                texts = []
-                for nid in node_ids:
-                    try:
-                        passage_data = passages.get_passage(str(nid))
-                        txt = passage_data["text"]
-                        if not txt:
-                            raise RuntimeError(f"FATAL: Empty text for passage ID {nid}")
-                        texts.append(txt)
-                    except KeyError:
-                        raise RuntimeError(f"FATAL: Passage with ID {nid} not found")
-                    except Exception as e:
-                        logger.error(f"Exception looking up passage ID {nid}: {e}")
-                        raise
+    def shutdown_zmq_server():
+        """Gracefully shutdown ZMQ server."""
+        logger.info("Initiating graceful shutdown...")
+        shutdown_event.set()
 
-                # Process embeddings
-                embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
-                logger.info(
-                    f"Computed embeddings for {len(texts)} texts, shape: {embeddings.shape}"
-                )
+        if zmq_thread.is_alive():
+            logger.info("Waiting for ZMQ thread to finish...")
+            zmq_thread.join(timeout=5)
+            if zmq_thread.is_alive():
+                logger.warning("ZMQ thread did not finish in time")
 
-                # Serialization and response
-                if np.isnan(embeddings).any() or np.isinf(embeddings).any():
-                    logger.error(
-                        f"NaN or Inf detected in embeddings! Requested IDs: {node_ids[:5]}..."
-                    )
-                    raise AssertionError()
+        # Clean up ZMQ resources
+        try:
+            # Note: socket and context are cleaned up by thread exit
+            logger.info("ZMQ resources cleaned up")
+        except Exception as e:
+            logger.warning(f"Error cleaning ZMQ resources: {e}")
 
-                hidden_contiguous_f32 = np.ascontiguousarray(embeddings, dtype=np.float32)
-                response_payload = [
-                    list(hidden_contiguous_f32.shape),
-                    hidden_contiguous_f32.flatten().tolist(),
-                ]
-                response_bytes = msgpack.packb(response_payload, use_single_float=True)
+        # Clean up other resources
+        try:
+            import gc
 
-                socket.send(response_bytes)
-                e2e_end = time.time()
-                logger.info(f"⏱️  ZMQ E2E time: {e2e_end - e2e_start:.6f}s")
+            gc.collect()
+            logger.info("Additional resources cleaned up")
+        except Exception as e:
+            logger.warning(f"Error cleaning additional resources: {e}")
 
-            except zmq.Again:
-                logger.debug("ZMQ socket timeout, continuing to listen")
-                continue
-            except Exception as e:
-                logger.error(f"Error in ZMQ server loop: {e}")
-                import traceback
+        logger.info("Graceful shutdown completed")
+        sys.exit(0)
 
-                traceback.print_exc()
-                socket.send(msgpack.packb([[], []]))
+    # Register signal handlers within this function scope
+    import signal
 
-    zmq_thread = threading.Thread(target=zmq_server_thread, daemon=True)
+    def signal_handler(sig, frame):
+        logger.info(f"Received signal {sig}, shutting down gracefully...")
+        shutdown_zmq_server()
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Pass shutdown_event to ZMQ thread
+    zmq_thread = threading.Thread(
+        target=lambda: zmq_server_thread_with_shutdown(shutdown_event),
+        daemon=False,  # Not daemon - we want to wait for it
+    )
     zmq_thread.start()
     logger.info(f"Started HNSW ZMQ server thread on port {zmq_port}")
 
     # Keep the main thread alive
     try:
-        while True:
-            time.sleep(1)
+        while not shutdown_event.is_set():
+            time.sleep(0.1)  # Check shutdown more frequently
     except KeyboardInterrupt:
         logger.info("HNSW Server shutting down...")
+        shutdown_zmq_server()
         return
+
+    # If we reach here, shutdown was triggered by signal
+    logger.info("Main loop exited, process should be shutting down")
 
 
 if __name__ == "__main__":
-    import signal
     import sys
 
-    def signal_handler(sig, frame):
-        logger.info(f"Received signal {sig}, shutting down gracefully...")
-        sys.exit(0)
-
-    # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
+    # Signal handlers are now registered within create_hnsw_embedding_server
 
     parser = argparse.ArgumentParser(description="HNSW Embedding service")
     parser.add_argument("--zmq-port", type=int, default=5555, help="ZMQ port to run on")

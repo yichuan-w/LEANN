@@ -64,6 +64,9 @@ def test_backend_basic(backend_name):
         assert isinstance(results[0], SearchResult)
         assert "topic 2" in results[0].text or "document" in results[0].text
 
+        # Ensure cleanup to avoid hanging background servers
+        searcher.cleanup()
+
 
 @pytest.mark.skipif(
     os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
@@ -90,3 +93,5 @@ def test_large_index():
         searcher = LeannSearcher(index_path)
         results = searcher.search(["word10 word20"], top_k=10)
         assert len(results[0]) == 10
+        # Cleanup
+        searcher.cleanup()

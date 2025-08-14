@@ -115,20 +115,62 @@ class SearchResult:
 
 
 class PassageManager:
-    def __init__(self, passage_sources: list[dict[str, Any]]):
+    def __init__(
+        self, passage_sources: list[dict[str, Any]], metadata_file_path: Optional[str] = None
+    ):
         self.offset_maps = {}
         self.passage_files = {}
         self.global_offset_map = {}  # Combined map for fast lookup
 
+        # Derive index base name for standard sibling fallbacks, e.g., <index_name>.passages.*
+        index_name_base = None
+        if metadata_file_path:
+            meta_name = Path(metadata_file_path).name
+            if meta_name.endswith(".meta.json"):
+                index_name_base = meta_name[: -len(".meta.json")]
+
         for source in passage_sources:
             assert source["type"] == "jsonl", "only jsonl is supported"
-            passage_file = source["path"]
-            index_file = source["index_path"]  # .idx file
+            passage_file = source.get("path", "")
+            index_file = source.get("index_path", "")  # .idx file
 
-            # Fix path resolution for Colab and other environments
-            if not Path(index_file).is_absolute():
-                # If relative path, try to resolve it properly
-                index_file = str(Path(index_file).resolve())
+            # Fix path resolution - relative paths should be relative to metadata file directory
+            def _resolve_candidates(
+                primary: str,
+                relative_key: str,
+                default_name: Optional[str],
+                source_dict: dict[str, Any],
+            ) -> list[Path]:
+                candidates: list[Path] = []
+                # 1) Primary as-is (absolute or relative)
+                if primary:
+                    p = Path(primary)
+                    candidates.append(p if p.is_absolute() else (Path.cwd() / p))
+                # 2) metadata-relative explicit relative key
+                if metadata_file_path and source_dict.get(relative_key):
+                    candidates.append(Path(metadata_file_path).parent / source_dict[relative_key])
+                # 3) metadata-relative standard sibling filename
+                if metadata_file_path and default_name:
+                    candidates.append(Path(metadata_file_path).parent / default_name)
+                return candidates
+
+            # Build candidate lists and pick first existing; otherwise keep last candidate for error message
+            idx_default = f"{index_name_base}.passages.idx" if index_name_base else None
+            idx_candidates = _resolve_candidates(
+                index_file, "index_path_relative", idx_default, source
+            )
+            pas_default = f"{index_name_base}.passages.jsonl" if index_name_base else None
+            pas_candidates = _resolve_candidates(passage_file, "path_relative", pas_default, source)
+
+            def _pick_existing(cands: list[Path]) -> str:
+                for c in cands:
+                    if c.exists():
+                        return str(c.resolve())
+                # Fallback to last candidate (best guess) even if not exists; will error below
+                return str(cands[-1].resolve()) if cands else ""
+
+            index_file = _pick_existing(idx_candidates)
+            passage_file = _pick_existing(pas_candidates)
 
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
@@ -326,11 +368,12 @@ class LeannBuilder:
             "passage_sources": [
                 {
                     "type": "jsonl",
-                    "path": str(passages_file),
-                    "index_path": str(offset_file),
-                    # Relative hints for cross-machine portability (non-breaking addition)
-                    "path_relative": f"{index_name}.passages.jsonl",
-                    "index_path_relative": f"{index_name}.passages.idx",
+                    # Preserve existing relative file names (backward-compatible)
+                    "path": passages_file.name,
+                    "index_path": offset_file.name,
+                    # Add optional redundant relative keys for remote build portability (non-breaking)
+                    "path_relative": passages_file.name,
+                    "index_path_relative": offset_file.name,
                 }
             ],
         }
@@ -445,11 +488,12 @@ class LeannBuilder:
             "passage_sources": [
                 {
                     "type": "jsonl",
-                    "path": str(passages_file),
-                    "index_path": str(offset_file),
-                    # Relative hints for cross-machine portability (non-breaking addition)
-                    "path_relative": f"{index_name}.passages.jsonl",
-                    "index_path_relative": f"{index_name}.passages.idx",
+                    # Preserve existing relative file names (backward-compatible)
+                    "path": passages_file.name,
+                    "index_path": offset_file.name,
+                    # Add optional redundant relative keys for remote build portability (non-breaking)
+                    "path_relative": passages_file.name,
+                    "index_path_relative": offset_file.name,
                 }
             ],
             "built_from_precomputed_embeddings": True,
@@ -491,43 +535,10 @@ class LeannSearcher:
         self.embedding_model = self.meta_data["embedding_model"]
         # Support both old and new format
         self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
-        # Best-effort portability: if meta contains absolute paths from another machine,
-        # and those paths do not exist locally, try relative hints or fallback sibling filenames.
-        try:
-            idx_path_obj = Path(self.meta_path_str).with_suffix("").with_suffix("")
-            index_dir = idx_path_obj.parent
-            index_name = idx_path_obj.name
-            default_passages = index_dir / f"{index_name}.passages.jsonl"
-            default_offsets = index_dir / f"{index_name}.passages.idx"
-
-            sources = self.meta_data.get("passage_sources", [])
-            normalized_sources: list[dict[str, Any]] = []
-            for src in sources:
-                new_src = dict(src)
-                raw_path = Path(new_src.get("path", ""))
-                raw_idx = Path(new_src.get("index_path", ""))
-                rel_path = new_src.get("path_relative")
-                rel_idx = new_src.get("index_path_relative")
-
-                # Normalize path
-                if not raw_path.exists():
-                    cand = index_dir / rel_path if rel_path else default_passages
-                    if cand.exists():
-                        new_src["path"] = str(cand)
-                # Normalize idx
-                if not raw_idx.exists():
-                    cand = index_dir / rel_idx if rel_idx else default_offsets
-                    if cand.exists():
-                        new_src["index_path"] = str(cand)
-
-                normalized_sources.append(new_src)
-
-            # Only override in-memory view; do not rewrite meta file (non-destructive)
-            self.meta_data["passage_sources"] = normalized_sources
-        except Exception:
-            pass
-
-        self.passage_manager = PassageManager(self.meta_data.get("passage_sources", []))
+        # Delegate portability handling to PassageManager
+        self.passage_manager = PassageManager(
+            self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
+        )
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
@@ -600,13 +611,13 @@ class LeannSearcher:
             zmq_port=zmq_port,
             **kwargs,
         )
-        time.time() - start_time
         # logger.info(f"  Search time: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
         enriched_results = []
         if "labels" in results and "distances" in results:
             logger.info(f"  Processing {len(results['labels'][0])} passage IDs:")
+            # Python 3.9 does not support zip(strict=...); lengths are expected to match
             for i, (string_id, dist) in enumerate(
                 zip(results["labels"][0], results["distances"][0])
             ):
@@ -634,12 +645,25 @@ class LeannSearcher:
                     )
                 except KeyError:
                     RED = "\033[91m"
+                    RESET = "\033[0m"
                     logger.error(
                         f"   {RED}✗{RESET} [{i + 1:2d}] ID: '{string_id}' -> {RED}ERROR: Passage not found!{RESET}"
                     )
 
+        # Define color codes outside the loop for final message
+        GREEN = "\033[92m"
+        RESET = "\033[0m"
         logger.info(f"  {GREEN}✓ Final enriched results: {len(enriched_results)} passages{RESET}")
         return enriched_results
+
+    def cleanup(self):
+        """Explicitly cleanup embedding server resources.
+
+        This method should be called after you're done using the searcher,
+        especially in test environments or batch processing scenarios.
+        """
+        if hasattr(self.backend_impl, "embedding_server_manager"):
+            self.backend_impl.embedding_server_manager.stop_server()
 
 
 class LeannChat:
@@ -710,3 +734,12 @@ class LeannChat:
             except (KeyboardInterrupt, EOFError):
                 print("\nGoodbye!")
                 break
+
+    def cleanup(self):
+        """Explicitly cleanup embedding server resources.
+
+        This method should be called after you're done using the chat interface,
+        especially in test environments or batch processing scenarios.
+        """
+        if hasattr(self.searcher, "cleanup"):
+            self.searcher.cleanup()

@@ -43,6 +43,7 @@ dependencies = [
     "mlx>=0.26.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-lm>=0.26.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "psutil>=5.8.0",
+    "pybind11>=3.0.0",
     "pathspec>=0.12.1",
     "nbconvert>=7.16.6",
     "gitignore-parser>=0.1.12",
@@ -54,7 +55,7 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-xdist>=3.0",  # For parallel test execution
     "black>=23.0",
-    "ruff>=0.1.0",
+    "ruff==0.12.7",  # Fixed version to ensure consistent formatting across all environments
     "matplotlib",
     "huggingface-hub>=0.20.0",
     "pre-commit>=3.5.0",
@@ -154,7 +155,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "openai: marks tests that require OpenAI API key",
 ]
-timeout = 600
+timeout = 300  # Reduced from 600s (10min) to 300s (5min) for CI safety
 addopts = [
     "-v",
     "--tb=short",

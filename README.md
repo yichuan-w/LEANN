@@ -192,7 +192,7 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 --force-rebuild         # Force rebuild index even if it exists
 
 # Embedding Parameters
---embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small, nomic-embed-text,mlx-community/Qwen3-Embedding-0.6B-8bit or nomic-embed-text
+--embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small, mlx-community/Qwen3-Embedding-0.6B-8bit or nomic-embed-text
 --embedding-mode MODE    # sentence-transformers, openai, mlx, or ollama
 
 # LLM Parameters (Text generation models)
@@ -457,7 +457,7 @@ leann --help
 **To make it globally available:**
 ```bash
 # Install the LEANN CLI globally using uv tool
-uv tool install leann
+uv tool install leann-core
 
 # Now you can use leann from anywhere without activating venv
 leann --help
@@ -545,12 +545,16 @@ Options:
 - **Dynamic batching:** Efficiently batch embedding computations for GPU utilization
 - **Two-level search:** Smart graph traversal that prioritizes promising nodes
 
-**Backends:** HNSW (default) for most use cases, with optional DiskANN support for billion-scale datasets.
+**Backends:**
+- **HNSW** (default): Ideal for most datasets with maximum storage savings through full recomputation
+- **DiskANN**: Advanced option with superior search performance, using PQ-based graph traversal with real-time reranking for the best speed-accuracy trade-off
 
 ## Benchmarks
 
+**[DiskANN vs HNSW Performance Comparison →](benchmarks/diskann_vs_hnsw_speed_comparison.py)** - Compare search performance between both backends
 
-**[Simple Example: Compare LEANN vs FAISS →](benchmarks/compare_faiss_vs_leann.py)**
+**[Simple Example: Compare LEANN vs FAISS →](benchmarks/compare_faiss_vs_leann.py)** - See storage savings in action
+
 ### 📊 Storage Comparison
 
 | System | DPR (2.1M) | Wiki (60M) | Chat (400K) | Email (780K) | Browser (38K) |
