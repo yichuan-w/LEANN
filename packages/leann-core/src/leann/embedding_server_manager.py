@@ -215,10 +215,23 @@ class EmbeddingServerManager:
             logger.info("Detected Colab environment, using alternative startup strategy")
             return self._start_server_colab(port, model_name, embedding_mode, **kwargs)
 
-        # Find a compatible port or next available
-        actual_port, is_compatible = _find_compatible_port_or_next_available(
-            port, model_name, passages_file
+        # In CI or when explicitly requested, skip compatibility scanning to avoid slow/hanging proc scans
+        skip_compat = (
+            os.environ.get("LEANN_SKIP_COMPAT", "").lower() in {"1", "true", "yes"}
+            or os.environ.get("CI") == "true"
         )
+        if skip_compat:
+            try:
+                actual_port = _get_available_port(port)
+                is_compatible = False
+            except RuntimeError:
+                logger.error("No available ports found")
+                return False, port
+        else:
+            # Find a compatible port or next available (may scan processes)
+            actual_port, is_compatible = _find_compatible_port_or_next_available(
+                port, model_name, passages_file
+            )
 
         if is_compatible:
             logger.info(f"Found compatible server on port {actual_port}")
