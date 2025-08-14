@@ -59,6 +59,9 @@ def test_readme_basic_example(backend_name):
         # The second text about banana-crocodile should be more relevant
         assert "banana" in results[0].text or "crocodile" in results[0].text
 
+        # Ensure we cleanup background embedding server
+        searcher.cleanup()
+
         # Chat with your data (using simulated LLM to avoid external dependencies)
         chat = LeannChat(INDEX_PATH, llm_config={"type": "simulated"})
         response = chat.ask("How much storage does LEANN save?", top_k=1)
@@ -66,6 +69,8 @@ def test_readme_basic_example(backend_name):
         # Verify chat works
         assert isinstance(response, str)
         assert len(response) > 0
+        # Cleanup chat resources
+        chat.cleanup()
 
 
 def test_readme_imports():
