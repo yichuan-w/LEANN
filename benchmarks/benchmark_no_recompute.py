@@ -84,6 +84,80 @@ def main():
     )
     print("Expectation: no-recompute should be faster but larger on disk.")
 
+    # DiskANN quick benchmark (final rerank vs no-recompute)
+    try:
+        index_path_diskann_nr = str(base / "diskann_nr.leann")
+        index_path_diskann_r = str(base / "diskann_r.leann")
+
+        # Build DiskANN no-recompute (keeps full disk index)
+        if not (
+            Path(index_path_diskann_nr).parent / f"{Path(index_path_diskann_nr).stem}.meta.json"
+        ).exists():
+            b = LeannBuilder(
+                backend_name="diskann",
+                embedding_model=os.getenv("LEANN_EMBED_MODEL", "facebook/contriever"),
+                embedding_mode=os.getenv("LEANN_EMBED_MODE", "sentence-transformers"),
+                graph_degree=32,
+                complexity=64,
+                num_threads=4,
+                is_recompute=False,
+            )
+            for i in range(5000):
+                b.add_text(f"DiskANN NR test doc {i} for quick benchmark.")
+            b.build_index(index_path_diskann_nr)
+
+        # Build DiskANN recompute (enables partition; prunes redundant files)
+        if not (
+            Path(index_path_diskann_r).parent / f"{Path(index_path_diskann_r).stem}.meta.json"
+        ).exists():
+            b = LeannBuilder(
+                backend_name="diskann",
+                embedding_model=os.getenv("LEANN_EMBED_MODEL", "facebook/contriever"),
+                embedding_mode=os.getenv("LEANN_EMBED_MODE", "sentence-transformers"),
+                graph_degree=32,
+                complexity=64,
+                num_threads=4,
+                is_recompute=True,
+            )
+            for i in range(5000):
+                b.add_text(f"DiskANN R test doc {i} for quick benchmark.")
+            b.build_index(index_path_diskann_r)
+
+        # Measure size per build prefix
+        def _size_for(prefix: str) -> int:
+            p = Path(prefix)
+            base_dir = p.parent
+            stem = p.stem
+            total = 0
+            for f in base_dir.iterdir():
+                if f.is_file() and f.name.startswith(stem):
+                    total += f.stat().st_size
+            return total
+
+        size_diskann_nr = _size_for(index_path_diskann_nr)
+        size_diskann_r = _size_for(index_path_diskann_r)
+
+        # Speed on recompute-build (final rerank vs no-recompute)
+        s = LeannSearcher(index_path_diskann_r)
+        _ = s.search("DiskANN R test doc 123", top_k=10, complexity=64, recompute_embeddings=False)
+        _ = s.search("DiskANN R test doc 123", top_k=10, complexity=64, recompute_embeddings=True)
+
+        t0 = time.time()
+        _ = s.search("DiskANN R test doc 123", top_k=10, complexity=64, recompute_embeddings=False)
+        t_diskann_nr = time.time() - t0
+
+        t0 = time.time()
+        _ = s.search("DiskANN R test doc 123", top_k=10, complexity=64, recompute_embeddings=True)
+        t_diskann_r = time.time() - t0
+
+        print("\nBenchmark results (DiskANN):")
+        print(f"  build(recompute=False): size={size_diskann_nr / 1024 / 1024:.1f}MB")
+        print(f"  build(recompute=True, partition): size={size_diskann_r / 1024 / 1024:.1f}MB")
+        print(f"  search recompute=False: {t_diskann_nr:.3f}s (on recompute-build)")
+        print(f"  search recompute=True (final rerank): {t_diskann_r:.3f}s (on recompute-build)")
+    except Exception as e:
+        print(f"DiskANN quick benchmark skipped due to: {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -363,10 +363,21 @@ Trade-offs:
 Real-world quick benchmark (HNSW, 5k texts; script `benchmarks/benchmark_no_recompute.py`):
 
 ```text
-recompute=True:  ~6.58s; size ~1.1MB
-recompute=False: ~0.10s; size ~16.6MB
+recompute=True:  ~7.55s; size ~1.1MB
+recompute=False: ~0.11s; size ~16.6MB
 
 Conclusion: no-recompute is much faster but uses more storage; recompute is smaller but has higher first-hop latency.
+```
+
+DiskANN (5k texts; same script, final rerank strategy):
+
+```text
+build(recompute=False): size ~24.8MB
+build(recompute=True, partition): size ~5.7MB
+search recompute=False: ~0.250s (on recompute-build)
+search recompute=True (final rerank): ~0.120s (on recompute-build)
+
+Conclusion: DiskANN's recompute-build enables partitioning to reduce storage; enabling final rerank further improves latency while keeping traversal PQ-fast.
 ```
 
 

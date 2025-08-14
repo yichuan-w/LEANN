@@ -442,8 +442,14 @@ class DiskannSearcher(BaseSearcher):
             use_global_pruning = True
 
         # Perform search with suppressed C++ output based on log level
-        use_deferred_fetch = kwargs.get("USE_DEFERRED_FETCH", True)
+        # Strategy:
+        # - Traversal always uses PQ distances
+        # - If recompute_embeddings=True, do a single final rerank via deferred fetch
+        #   (fetch embeddings for the final candidate set only)
+        # - Do not recompute neighbor distances along the path
+        use_deferred_fetch = True if recompute_embeddings else False
         recompute_neighors = False
+
         with suppress_cpp_output_if_needed():
             labels, distances = self._index.batch_search(
                 query,
