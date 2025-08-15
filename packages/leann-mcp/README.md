@@ -13,10 +13,20 @@ This installs the `leann` CLI into an isolated tool environment and includes bot
 
 ## 🚀 Quick Setup
 
-Add the LEANN MCP server to Claude Code:
+Add the LEANN MCP server to Claude Code. Choose the scope based on how widely you want it available. Below is the command to install it globally; if you prefer a local install, skip this step:
 
 ```bash
-claude mcp add leann-server -- leann_mcp
+# Global (recommended): available in all projects for your user
+claude mcp add --scope user leann-server -- leann_mcp
+```
+
+- `leann-server`: the display name of the MCP server in Claude Code (you can change it).
+- `leann_mcp`: the Python entry point installed with LEANN that starts the MCP server.
+
+Verify it is registered globally:
+
+```bash
+claude mcp list | cat
 ```
 
 ## 🛠️ Available Tools
@@ -25,19 +35,24 @@ Once connected, you'll have access to these powerful semantic search tools in Cl
 
 - **`leann_list`** - List all available indexes across your projects
 - **`leann_search`** - Perform semantic searches across code and documents
-- **`leann_ask`** - Ask natural language questions and get AI-powered answers from your codebase
+
 
 ## 🎯 Quick Start Example
 
 ```bash
+# Add locally if you did not add it globally (current folder only; default if --scope is omitted)
+claude mcp add leann-server -- leann_mcp
+
 # Build an index for your project (change to your actual path)
-leann build my-project --docs ./
+# See the advanced examples below for more ways to configure indexing
+# Set the index name (replace 'my-project' with your own)
+leann build my-project --docs $(git ls-files)
 
 # Start Claude Code
 claude
 ```
 
-## 🚀 Advanced Usage Examples
+## 🚀 Advanced Usage Examples to build the index
 
 ### Index Entire Git Repository
 ```bash
@@ -48,7 +63,7 @@ leann build my-repo --docs $(git ls-files) --embedding-mode sentence-transformer
 # Index only tracked Python files from Git.
 leann build my-python-code --docs $(git ls-files "*.py") --embedding-mode sentence-transformers --embedding-model all-MiniLM-L6-v2 --backend hnsw
 
-# If you encounter empty requests caused by empty files (e.g., __init__.py), exclude zero-byte files. thanks @ww2283 for pointing (that)[https://github.com/yichuan-w/LEANN/issues/48] out
+# If you encounter empty requests caused by empty files (e.g., __init__.py), exclude zero-byte files. Thanks @ww2283 for pointing [that](https://github.com/yichuan-w/LEANN/issues/48) out
 leann build leann-prospec-lig --docs $(find ./src -name "*.py" -not -empty) --embedding-mode openai --embedding-model text-embedding-3-small
 ```
 
@@ -86,6 +101,7 @@ Help me understand this codebase. List available indexes and search for authenti
   <img src="../../assets/claude_code_leann.png" alt="LEANN in Claude Code" width="80%">
 </p>
 
+If you see a prompt asking whether to proceed with LEANN, you can now use it in your chat!
 
 ## 🧠 How It Works
 
@@ -120,4 +136,12 @@ claude mcp remove leann-server
 To remove LEANN
 ```
 uv pip uninstall leann leann-backend-hnsw leann-core
+```
+
+To globally remove LEANN (for version update)
+```
+uv tool list | cat
+uv tool uninstall leann-core
+command -v leann || echo "leann gone"
+command -v leann_mcp || echo "leann_mcp gone"
 ```

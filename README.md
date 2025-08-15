@@ -31,7 +31,7 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
   <img src="assets/effects.png" alt="LEANN vs Traditional Vector DB Storage Comparison" width="70%">
 </p>
 
-> **The numbers speak for themselves:** Index 60 million text chunks in just 6GB instead of 201GB. From emails to browser history, everything fits on your laptop. [See detailed benchmarks for different applications below ↓](#storage-comparison)
+> **The numbers speak for themselves:** Index 60 million text chunks in just 6GB instead of 201GB. From emails to browser history, everything fits on your laptop. [See detailed benchmarks for different applications below ↓](#-storage-comparison)
 
 
 🔒 **Privacy:** Your data never leaves your laptop. No OpenAI, no cloud, no "terms of service".
@@ -70,8 +70,8 @@ uv venv
 source .venv/bin/activate
 uv pip install leann
 ```
-
-> Low-resource? See “Low-resource setups” in the [Configuration Guide](docs/configuration-guide.md#low-resource-setups).
+<!--
+> Low-resource? See “Low-resource setups” in the [Configuration Guide](docs/configuration-guide.md#low-resource-setups). -->
 
 <details>
 <summary>

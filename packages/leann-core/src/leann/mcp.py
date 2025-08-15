@@ -65,19 +65,6 @@ def handle_request(request):
                         },
                     },
                     {
-                        "name": "leann_status",
-                        "description": "📊 Check the health and stats of your code indexes - like a medical checkup for your codebase knowledge!",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "index_name": {
-                                    "type": "string",
-                                    "description": "Optional: Name of specific index to check. If not provided, shows status of all indexes.",
-                                }
-                            },
-                        },
-                    },
-                    {
                         "name": "leann_list",
                         "description": "📋 Show all your indexed codebases - your personal code library! Use this to see what's available for search.",
                         "inputSchema": {"type": "object", "properties": {}},
@@ -117,15 +104,6 @@ def handle_request(request):
                     f"--complexity={args.get('complexity', 32)}",
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True)
-
-            elif tool_name == "leann_status":
-                if args.get("index_name"):
-                    # Check specific index status - for now, we'll use leann list and filter
-                    result = subprocess.run(["leann", "list"], capture_output=True, text=True)
-                    # We could enhance this to show more detailed status per index
-                else:
-                    # Show all indexes status
-                    result = subprocess.run(["leann", "list"], capture_output=True, text=True)
 
             elif tool_name == "leann_list":
                 result = subprocess.run(["leann", "list"], capture_output=True, text=True)
