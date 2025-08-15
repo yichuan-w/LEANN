@@ -493,6 +493,8 @@ leann list
 <details>
 <summary><strong>📋 Click to expand: Complete CLI Reference</strong></summary>
 
+You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann ask --help` to get the complete CLI reference.
+
 **Build Command:**
 ```bash
 leann build INDEX_NAME --docs DIRECTORY [OPTIONS]
