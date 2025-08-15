@@ -1,0 +1,76 @@
+name: leann-build
+
+resources:
+  # Choose a GPU for fast embeddings (examples: L4, A10G, A100). CPU also works but is slower.
+  accelerators: L4:1
+  # Optionally pin a cloud, otherwise SkyPilot will auto-select
+  # cloud: aws
+  disk_size: 100
+
+envs:
+  # Build parameters (override with: sky launch -c leann-gpu sky/leann-build.yaml -e key=value)
+  index_name: my-index
+  docs: ./data
+  backend: hnsw               # hnsw | diskann
+  complexity: 64
+  graph_degree: 32
+  num_threads: 8
+  # Embedding selection
+  embedding_mode: sentence-transformers   # sentence-transformers | openai | mlx | ollama
+  embedding_model: facebook/contriever
+  # Storage/latency knobs
+  recompute: true             # true => selective recomputation (recommended)
+  compact: true               # for HNSW only
+  # Optional pass-through
+  extra_args: ""
+  # Rebuild control
+  force: true
+
+# Sync local paths to the remote VM. Adjust as needed.
+file_mounts:
+  # Example: mount your local data directory used for building
+  ~/leann-data: ${docs}
+
+setup: |
+  set -e
+  # Install uv (package manager)
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+
+  # Ensure modern libstdc++ for FAISS (GLIBCXX >= 3.4.30)
+  sudo apt-get update -y
+  sudo apt-get install -y libstdc++6 libgomp1
+  # Also upgrade conda's libstdc++ in base env (Skypilot images include conda)
+  if command -v conda >/dev/null 2>&1; then
+    conda install -y -n base -c conda-forge libstdcxx-ng
+  fi
+
+  # Install LEANN CLI and backends into the user environment
+  uv pip install --upgrade pip
+  uv pip install leann-core leann-backend-hnsw leann-backend-diskann
+
+run: |
+  export PATH="$HOME/.local/bin:$PATH"
+  # Derive flags from env
+  recompute_flag=""
+  if [ "${recompute}" = "false" ] || [ "${recompute}" = "0" ]; then
+    recompute_flag="--no-recompute"
+  fi
+  force_flag=""
+  if [ "${force}" = "true" ] || [ "${force}" = "1" ]; then
+    force_flag="--force"
+  fi
+
+  # Build command
+  python -m leann.cli build ${index_name} \
+    --docs ~/leann-data \
+    --backend ${backend} \
+    --complexity ${complexity} \
+    --graph-degree ${graph_degree} \
+    --num-threads ${num_threads} \
+    --embedding-mode ${embedding_mode} \
+    --embedding-model ${embedding_model} \
+    ${recompute_flag} ${force_flag} ${extra_args}
+
+  # Print where the index is stored for downstream rsync
+  echo "INDEX_OUT_DIR=~/.leann/indexes/${index_name}"

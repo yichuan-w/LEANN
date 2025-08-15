@@ -97,29 +97,23 @@ ollama pull nomic-embed-text
 ```
 
 ### DiskANN
-**Best for**: Performance-critical applications and large datasets - **Production-ready with automatic graph partitioning**
+**Best for**: Large datasets, especially when you want `recompute=True`.
 
-**How it works:**
-- **Product Quantization (PQ) + Real-time Reranking**: Uses compressed PQ codes for fast graph traversal, then recomputes exact embeddings for final candidates
-- **Automatic Graph Partitioning**: When `is_recompute=True`, automatically partitions large indices and safely removes redundant files to save storage
-- **Superior Speed-Accuracy Trade-off**: Faster search than HNSW while maintaining high accuracy
+**Key advantages:**
+- **Faster search** on large datasets (3x+ speedup vs HNSW in many cases)
+- **Smart storage**: `recompute=True` enables automatic graph partitioning for smaller indexes
+- **Better scaling**: Designed for 100k+ documents
 
-**Trade-offs compared to HNSW:**
-- ✅ **Faster search latency** (typically 2-8x speedup)
-- ✅ **Better scaling** for large datasets
-- ✅ **Smart storage management** with automatic partitioning
-- ✅ **Better graph locality** with `--ldg-times` parameter for SSD optimization
-- ⚠️ **Slightly larger index size** due to PQ tables and graph metadata
+**Recompute behavior:**
+- `recompute=True` (recommended): Pure PQ traversal + final reranking - faster and enables partitioning
+- `recompute=False`: PQ + partial real distances during traversal - slower but higher accuracy
 
 ```bash
 # Recommended for most use cases
 --backend-name diskann --graph-degree 32 --build-complexity 64
-
-# For large-scale deployments
---backend-name diskann --graph-degree 64 --build-complexity 128
 ```
 
-**Performance Benchmark**: Run `python benchmarks/diskann_vs_hnsw_speed_comparison.py` to compare DiskANN and HNSW on your system.
+**Performance Benchmark**: Run `uv run benchmarks/diskann_vs_hnsw_speed_comparison.py` to compare DiskANN and HNSW on your system.
 
 ## LLM Selection: Engine and Model Comparison
 
@@ -273,24 +267,114 @@ Every configuration choice involves trade-offs:
 
 The key is finding the right balance for your specific use case. Start small and simple, measure performance, then scale up only where needed.
 
-## Deep Dive: Critical Configuration Decisions
+## Low-resource setups
 
-### When to Disable Recomputation
+If you don’t have a local GPU or builds/searches are too slow, use one or more of the options below.
 
-LEANN's recomputation feature provides exact distance calculations but can be disabled for extreme QPS requirements:
+### 1) Use OpenAI embeddings (no local compute)
+
+Fastest path with zero local GPU requirements. Set your API key and use OpenAI embeddings during build and search:
 
 ```bash
---no-recompute  # Disable selective recomputation
+export OPENAI_API_KEY=sk-...
+
+# Build with OpenAI embeddings
+leann build my-index \
+  --embedding-mode openai \
+  --embedding-model text-embedding-3-small
+
+# Search with OpenAI embeddings (recompute at query time)
+leann search my-index "your query" \
+  --recompute
 ```
 
-**Trade-offs**:
-- **With recomputation** (default): Exact distances, best quality, higher latency, minimal storage (only stores metadata, recomputes embeddings on-demand)
-- **Without recomputation**: Must store full embeddings, significantly higher memory and storage usage (10-100x more), but faster search
+### 2) Run remote builds with SkyPilot (cloud GPU)
 
-**Disable when**:
-- You have abundant storage and memory
-- Need extremely low latency (< 100ms)
-- Running a read-heavy workload where storage cost is acceptable
+Offload embedding generation and index building to a GPU VM using [SkyPilot](https://skypilot.readthedocs.io/en/latest/). A template is provided at `sky/leann-build.yaml`.
+
+```bash
+# One-time: install and configure SkyPilot
+pip install skypilot
+
+# Launch with defaults (L4:1) and mount ./data to ~/leann-data; the build runs automatically
+sky launch -c leann-gpu sky/leann-build.yaml
+
+# Override parameters via -e key=value (optional)
+sky launch -c leann-gpu sky/leann-build.yaml \
+  -e index_name=my-index \
+  -e backend=hnsw \
+  -e embedding_mode=sentence-transformers \
+  -e embedding_model=Qwen/Qwen3-Embedding-0.6B
+
+# Copy the built index back to your local .leann (use rsync)
+rsync -Pavz leann-gpu:~/.leann/indexes/my-index ./.leann/indexes/
+```
+
+### 3) Disable recomputation to trade storage for speed
+
+If you need lower latency and have more storage/memory, disable recomputation. This stores full embeddings and avoids recomputing at search time.
+
+```bash
+# Build without recomputation (HNSW requires non-compact in this mode)
+leann build my-index --no-recompute --no-compact
+
+# Search without recomputation
+leann search my-index "your query" --no-recompute
+```
+
+When to use:
+- Extreme low latency requirements (high QPS, interactive assistants)
+- Read-heavy workloads where storage is cheaper than latency
+- No always-available GPU
+
+Constraints:
+- HNSW: when `--no-recompute` is set, LEANN automatically disables compact mode during build
+- DiskANN: supported; `--no-recompute` skips selective recompute during search
+
+Storage impact:
+- Storing N embeddings of dimension D with float32 requires approximately N × D × 4 bytes
+- Example: 1,000,000 chunks × 768 dims × 4 bytes ≈ 2.86 GB (plus graph/metadata)
+
+Converting an existing index (rebuild required):
+```bash
+# Rebuild in-place (ensure you still have original docs or can regenerate chunks)
+leann build my-index --force --no-recompute --no-compact
+```
+
+Python API usage:
+```python
+from leann import LeannSearcher
+
+searcher = LeannSearcher("/path/to/my-index.leann")
+results = searcher.search("your query", top_k=10, recompute_embeddings=False)
+```
+
+Trade-offs:
+- Lower latency and fewer network hops at query time
+- Significantly higher storage (10–100× vs selective recomputation)
+- Slightly larger memory footprint during build and search
+
+Quick benchmark results (`benchmarks/benchmark_no_recompute.py` with 5k texts, complexity=32):
+
+- HNSW
+
+  ```text
+  recompute=True:  search_time=0.818s, size=1.1MB
+  recompute=False: search_time=0.012s, size=16.6MB
+  ```
+
+- DiskANN
+
+  ```text
+  recompute=True:  search_time=0.041s, size=5.9MB
+  recompute=False: search_time=0.013s, size=24.6MB
+  ```
+
+Conclusion:
+- **HNSW**: `no-recompute` is significantly faster (no embedding recomputation) but requires much more storage (stores all embeddings)
+- **DiskANN**: `no-recompute` uses PQ + partial real distances during traversal (slower but higher accuracy), while `recompute=True` uses pure PQ traversal + final reranking (faster traversal, enables build-time partitioning for smaller storage)
+
+
 
 ## Further Reading
 

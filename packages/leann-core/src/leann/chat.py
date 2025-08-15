@@ -422,7 +422,6 @@ class LLMInterface(ABC):
                 top_k=10,
                 complexity=64,
                 beam_width=8,
-                USE_DEFERRED_FETCH=True,
                 skip_search_reorder=True,
                 recompute_beighbor_embeddings=True,
                 dedup_node_dis=True,
@@ -434,7 +433,6 @@ class LLMInterface(ABC):
         Supported kwargs:
             - complexity (int): Search complexity parameter (default: 32)
             - beam_width (int): Beam width for search (default: 4)
-            - USE_DEFERRED_FETCH (bool): Enable deferred fetch mode (default: False)
             - skip_search_reorder (bool): Skip search reorder step (default: False)
             - recompute_beighbor_embeddings (bool): Enable ZMQ embedding server for neighbor recomputation (default: False)
             - dedup_node_dis (bool): Deduplicate nodes by distance (default: False)

@@ -54,12 +54,13 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         self.efConstruction = self.build_params.setdefault("efConstruction", 200)
         self.distance_metric = self.build_params.setdefault("distance_metric", "mips")
         self.dimensions = self.build_params.get("dimensions")
-        if not self.is_recompute:
-            if self.is_compact:
-                # TODO: support this case @andy
-                raise ValueError(
-                    "is_recompute is False, but is_compact is True. This is not compatible now. change is compact to False and you can use the original HNSW index."
-                )
+        if not self.is_recompute and self.is_compact:
+            # Auto-correct: non-recompute requires non-compact storage for HNSW
+            logger.warning(
+                "is_recompute=False requires non-compact HNSW. Forcing is_compact=False."
+            )
+            self.is_compact = False
+            self.build_params["is_compact"] = False
 
     def build(self, data: np.ndarray, ids: list[str], index_path: str, **kwargs):
         from . import faiss  # type: ignore
@@ -184,9 +185,11 @@ class HNSWSearcher(BaseSearcher):
         """
         from . import faiss  # type: ignore
 
-        if not recompute_embeddings:
-            if self.is_pruned:
-                raise RuntimeError("Recompute is required for pruned index.")
+        if not recompute_embeddings and self.is_pruned:
+            raise RuntimeError(
+                "Recompute is required for pruned/compact HNSW index. "
+                "Re-run search with --recompute, or rebuild with --no-recompute and --no-compact."
+            )
         if recompute_embeddings:
             if zmq_port is None:
                 raise ValueError("zmq_port must be provided if recompute_embeddings is True")

@@ -204,6 +204,18 @@ class LeannBuilder:
         **backend_kwargs,
     ):
         self.backend_name = backend_name
+        # Normalize incompatible combinations early (for consistent metadata)
+        if backend_name == "hnsw":
+            is_recompute = backend_kwargs.get("is_recompute", True)
+            is_compact = backend_kwargs.get("is_compact", True)
+            if is_recompute is False and is_compact is True:
+                warnings.warn(
+                    "HNSW with is_recompute=False requires non-compact storage. Forcing is_compact=False.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                backend_kwargs["is_compact"] = False
+
         backend_factory: Optional[LeannBackendFactoryInterface] = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found or not registered.")
@@ -523,6 +535,7 @@ class LeannSearcher:
         self.embedding_model = self.meta_data["embedding_model"]
         # Support both old and new format
         self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
+        # Delegate portability handling to PassageManager
         self.passage_manager = PassageManager(
             self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
         )
@@ -652,6 +665,23 @@ class LeannSearcher:
         if hasattr(self.backend_impl, "embedding_server_manager"):
             self.backend_impl.embedding_server_manager.stop_server()
 
+    # Enable automatic cleanup patterns
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+
+    def __del__(self):
+        try:
+            self.cleanup()
+        except Exception:
+            # Avoid noisy errors during interpreter shutdown
+            pass
+
 
 class LeannChat:
     def __init__(
@@ -730,3 +760,19 @@ class LeannChat:
         """
         if hasattr(self.searcher, "cleanup"):
             self.searcher.cleanup()
+
+    # Enable automatic cleanup patterns
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+
+    def __del__(self):
+        try:
+            self.cleanup()
+        except Exception:
+            pass

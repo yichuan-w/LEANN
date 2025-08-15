@@ -72,7 +72,7 @@ class LeannCLI:
     def create_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
             prog="leann",
-            description="LEANN - Local Enhanced AI Navigation",
+            description="The smallest vector index in the world. RAG Everything with LEANN!",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
@@ -102,9 +102,18 @@ Examples:
             help="Documents directories and/or files (default: current directory)",
         )
         build_parser.add_argument(
-            "--backend", type=str, default="hnsw", choices=["hnsw", "diskann"]
+            "--backend",
+            type=str,
+            default="hnsw",
+            choices=["hnsw", "diskann"],
+            help="Backend to use (default: hnsw)",
         )
-        build_parser.add_argument("--embedding-model", type=str, default="facebook/contriever")
+        build_parser.add_argument(
+            "--embedding-model",
+            type=str,
+            default="facebook/contriever",
+            help="Embedding model (default: facebook/contriever)",
+        )
         build_parser.add_argument(
             "--embedding-mode",
             type=str,
@@ -112,12 +121,28 @@ Examples:
             choices=["sentence-transformers", "openai", "mlx", "ollama"],
             help="Embedding backend mode (default: sentence-transformers)",
         )
-        build_parser.add_argument("--force", "-f", action="store_true", help="Force rebuild")
-        build_parser.add_argument("--graph-degree", type=int, default=32)
-        build_parser.add_argument("--complexity", type=int, default=64)
+        build_parser.add_argument(
+            "--force", "-f", action="store_true", help="Force rebuild existing index"
+        )
+        build_parser.add_argument(
+            "--graph-degree", type=int, default=32, help="Graph degree (default: 32)"
+        )
+        build_parser.add_argument(
+            "--complexity", type=int, default=64, help="Build complexity (default: 64)"
+        )
         build_parser.add_argument("--num-threads", type=int, default=1)
-        build_parser.add_argument("--compact", action="store_true", default=True)
-        build_parser.add_argument("--recompute", action="store_true", default=True)
+        build_parser.add_argument(
+            "--compact",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Use compact storage (default: true). Must be `no-compact` for `no-recompute` build.",
+        )
+        build_parser.add_argument(
+            "--recompute",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable recomputation (default: true)",
+        )
         build_parser.add_argument(
             "--file-types",
             type=str,
@@ -152,20 +177,26 @@ Examples:
         search_parser = subparsers.add_parser("search", help="Search documents")
         search_parser.add_argument("index_name", help="Index name")
         search_parser.add_argument("query", help="Search query")
-        search_parser.add_argument("--top-k", type=int, default=5)
-        search_parser.add_argument("--complexity", type=int, default=64)
+        search_parser.add_argument(
+            "--top-k", type=int, default=5, help="Number of results (default: 5)"
+        )
+        search_parser.add_argument(
+            "--complexity", type=int, default=64, help="Search complexity (default: 64)"
+        )
         search_parser.add_argument("--beam-width", type=int, default=1)
         search_parser.add_argument("--prune-ratio", type=float, default=0.0)
         search_parser.add_argument(
-            "--recompute-embeddings",
-            action="store_true",
+            "--recompute",
+            dest="recompute_embeddings",
+            action=argparse.BooleanOptionalAction,
             default=True,
-            help="Recompute embeddings (default: True)",
+            help="Enable/disable embedding recomputation (default: enabled). Should not do a `no-recompute` search in a `recompute` build.",
         )
         search_parser.add_argument(
             "--pruning-strategy",
             choices=["global", "local", "proportional"],
             default="global",
+            help="Pruning strategy (default: global)",
         )
 
         # Ask command
@@ -176,19 +207,27 @@ Examples:
             type=str,
             default="ollama",
             choices=["simulated", "ollama", "hf", "openai"],
+            help="LLM provider (default: ollama)",
         )
-        ask_parser.add_argument("--model", type=str, default="qwen3:8b")
+        ask_parser.add_argument(
+            "--model", type=str, default="qwen3:8b", help="Model name (default: qwen3:8b)"
+        )
         ask_parser.add_argument("--host", type=str, default="http://localhost:11434")
-        ask_parser.add_argument("--interactive", "-i", action="store_true")
-        ask_parser.add_argument("--top-k", type=int, default=20)
+        ask_parser.add_argument(
+            "--interactive", "-i", action="store_true", help="Interactive chat mode"
+        )
+        ask_parser.add_argument(
+            "--top-k", type=int, default=20, help="Retrieval count (default: 20)"
+        )
         ask_parser.add_argument("--complexity", type=int, default=32)
         ask_parser.add_argument("--beam-width", type=int, default=1)
         ask_parser.add_argument("--prune-ratio", type=float, default=0.0)
         ask_parser.add_argument(
-            "--recompute-embeddings",
-            action="store_true",
+            "--recompute",
+            dest="recompute_embeddings",
+            action=argparse.BooleanOptionalAction,
             default=True,
-            help="Recompute embeddings (default: True)",
+            help="Enable/disable embedding recomputation during ask (default: enabled)",
         )
         ask_parser.add_argument(
             "--pruning-strategy",
