@@ -484,10 +484,10 @@ leann list
 ```
 
 **Key CLI features:**
-- Auto-detects document formats (PDF, TXT, MD, DOCX)
+- Auto-detects document formats (PDF, TXT, MD, DOCX, PPTX + code files)
 - Smart text chunking with overlap
 - Multiple LLM providers (Ollama, OpenAI, HuggingFace)
-- Organized index storage in `~/.leann/indexes/`
+- Organized index storage in `.leann/indexes/` (project-local)
 - Support for advanced search parameters
 
 <details>
@@ -497,7 +497,7 @@ You can use `leann --help`, or `leann build --help`, `leann search --help`, `lea
 
 **Build Command:**
 ```bash
-leann build INDEX_NAME --docs DIRECTORY [OPTIONS]
+leann build INDEX_NAME --docs DIRECTORY|FILE [DIRECTORY|FILE ...] [OPTIONS]
 
 Options:
   --backend {hnsw,diskann}     Backend to use (default: hnsw)
