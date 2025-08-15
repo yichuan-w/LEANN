@@ -186,34 +186,34 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 
 ```bash
 # Core Parameters (General preprocessing for all examples)
---index-dir DIR          # Directory to store the index (default: current directory)
---query "YOUR QUESTION"  # Single query mode. Omit for interactive chat (type 'quit' to exit), and now you can play with your index interactively
---max-items N           # Limit data preprocessing (default: -1, process all data)
---force-rebuild         # Force rebuild index even if it exists
+--index-dir DIR              # Directory to store the index (default: current directory)
+--query "YOUR QUESTION"      # Single query mode. Omit for interactive chat (type 'quit' to exit), and now you can play with your index interactively
+--max-items N                # Limit data preprocessing (default: -1, process all data)
+--force-rebuild              # Force rebuild index even if it exists
 
 # Embedding Parameters
---embedding-model MODEL  # e.g., facebook/contriever, text-embedding-3-small, mlx-community/Qwen3-Embedding-0.6B-8bit or nomic-embed-text
---embedding-mode MODE    # sentence-transformers, openai, mlx, or ollama
+--embedding-model MODEL      # e.g., facebook/contriever, text-embedding-3-small, mlx-community/Qwen3-Embedding-0.6B-8bit or nomic-embed-text
+--embedding-mode MODE        # sentence-transformers, openai, mlx, or ollama
 
 # LLM Parameters (Text generation models)
---llm TYPE              # LLM backend: openai, ollama, or hf (default: openai)
---llm-model MODEL       # Model name (default: gpt-4o) e.g., gpt-4o-mini, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
---thinking-budget LEVEL # Thinking budget for reasoning models: low/medium/high (supported by o3, o3-mini, GPT-Oss:20b, and other reasoning models)
+--llm TYPE                   # LLM backend: openai, ollama, or hf (default: openai)
+--llm-model MODEL            # Model name (default: gpt-4o) e.g., gpt-4o-mini, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
+--thinking-budget LEVEL      # Thinking budget for reasoning models: low/medium/high (supported by o3, o3-mini, GPT-Oss:20b, and other reasoning models)
 
 # Search Parameters
---top-k N               # Number of results to retrieve (default: 20)
---search-complexity N   # Search complexity for graph traversal (default: 32)
+--top-k N                    # Number of results to retrieve (default: 20)
+--search-complexity N        # Search complexity for graph traversal (default: 32)
 
 # Chunking Parameters
---chunk-size N          # Size of text chunks (default varies by source: 256 for most, 192 for WeChat)
---chunk-overlap N       # Overlap between chunks (default varies: 25-128 depending on source)
+--chunk-size N               # Size of text chunks (default varies by source: 256 for most, 192 for WeChat)
+--chunk-overlap N            # Overlap between chunks (default varies: 25-128 depending on source)
 
 # Index Building Parameters
---backend-name NAME     # Backend to use: hnsw or diskann (default: hnsw)
---graph-degree N        # Graph degree for index construction (default: 32)
---build-complexity N    # Build complexity for index construction (default: 64)
---no-compact           # Disable compact index storage (compact storage IS enabled to save storage by default)
---no-recompute         # Disable embedding recomputation (recomputation IS enabled to save storage by default)
+--backend-name NAME          # Backend to use: hnsw or diskann (default: hnsw)
+--graph-degree N             # Graph degree for index construction (default: 32)
+--build-complexity N         # Build complexity for index construction (default: 64)
+--compact / --no-compact     # Use compact storage (default: true). Must be `no-compact` for `no-recompute` build.
+--recompute / --no-recompute # Enable/disable embedding recomputation (default: enabled). Should not do a `no-recompute` search in a `recompute` build.
 ```
 
 </details>
@@ -500,11 +500,11 @@ leann build INDEX_NAME --docs DIRECTORY [OPTIONS]
 Options:
   --backend {hnsw,diskann}     Backend to use (default: hnsw)
   --embedding-model MODEL      Embedding model (default: facebook/contriever)
-  --graph-degree N            Graph degree (default: 32)
-  --complexity N              Build complexity (default: 64)
-  --force                     Force rebuild existing index
-  --compact                   Use compact storage (default: true)
-  --recompute                 Enable recomputation (default: true)
+  --graph-degree N             Graph degree (default: 32)
+  --complexity N               Build complexity (default: 64)
+  --force                      Force rebuild existing index
+  --compact / --no-compact     Use compact storage (default: true). Must be `no-compact` for `no-recompute` build.
+  --recompute / --no-recompute Enable recomputation (default: true)
 ```
 
 **Search Command:**
@@ -512,10 +512,9 @@ Options:
 leann search INDEX_NAME QUERY [OPTIONS]
 
 Options:
-  --top-k N                   Number of results (default: 5)
-  --complexity N              Search complexity (default: 64)
-  --recompute                 Use recomputation for highest accuracy
-  --no-recompute              Disable recomputation (requires non-compact HNSW index)
+  --top-k N                     Number of results (default: 5)
+  --complexity N                Search complexity (default: 64)
+  --recompute / --no-recompute  Enable/disable embedding recomputation (default: enabled). Should not do a `no-recompute` search in a `recompute` build.
   --pruning-strategy {global,local,proportional}
 ```
 
