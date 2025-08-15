@@ -10,12 +10,19 @@ This benchmark compares search performance between DiskANN and HNSW backends:
 """
 
 import gc
+import multiprocessing as mp
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+# Prefer 'fork' start method to avoid POSIX semaphore leaks on macOS
+try:
+    mp.set_start_method("fork", force=True)
+except Exception:
+    pass
 
 
 def create_test_texts(n_docs: int) -> list[str]:
@@ -259,10 +266,21 @@ if __name__ == "__main__":
         print(f"\n❌ Benchmark failed: {e}")
         sys.exit(1)
     finally:
-        # Ensure clean exit
+        # Ensure clean exit (forceful to prevent rare hangs from atexit/threads)
         try:
             gc.collect()
             print("\n🧹 Cleanup completed")
+            # Flush stdio to ensure message is visible before hard-exit
+            try:
+                import sys as _sys
+
+                _sys.stdout.flush()
+                _sys.stderr.flush()
+            except Exception:
+                pass
         except Exception:
             pass
-        sys.exit(0)
+        # Use os._exit to bypass atexit handlers that may hang in rare cases
+        import os as _os
+
+        _os._exit(0)
