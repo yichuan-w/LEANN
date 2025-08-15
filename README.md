@@ -426,21 +426,21 @@ Once the index is built, you can ask questions like:
 **The future of code assistance is here.** Transform your development workflow with LEANN's native MCP integration for Claude Code. Index your entire codebase and get intelligent code assistance directly in your IDE.
 
 **Key features:**
-- 🔍 **Semantic code search** across your entire project
+- 🔍 **Semantic code search** across your entire project, fully local index and lightweight
 - 📚 **Context-aware assistance** for debugging and development
 - 🚀 **Zero-config setup** with automatic language detection
 
 ```bash
 # Install LEANN globally for MCP integration
-uv tool install leann-core
-
+uv tool install leann-core --with leann
+claude mcp add --scope user leann-server -- leann_mcp
 # Setup is automatic - just start using Claude Code!
 ```
 Try our fully agentic pipeline with auto query rewriting, semantic search planning, and more:
 
 ![LEANN MCP Integration](assets/mcp_leann.png)
 
-**Ready to supercharge your coding?** [Complete Setup Guide →](packages/leann-mcp/README.md)
+**🔥 Ready to supercharge your coding?** [Complete Setup Guide →](packages/leann-mcp/README.md)
 
 ## 🖥️ Command Line Interface
 
@@ -457,7 +457,8 @@ leann --help
 **To make it globally available:**
 ```bash
 # Install the LEANN CLI globally using uv tool
-uv tool install leann-core
+uv tool install leann-core --with leann
+
 
 # Now you can use leann from anywhere without activating venv
 leann --help

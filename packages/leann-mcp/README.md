@@ -92,7 +92,7 @@ leann build docs-and-configs --docs $(git ls-files "*.md" "*.yml" "*.yaml" "*.js
 ```
 
 
-**Try this in Claude Code:**
+## **Try this in Claude Code:**
 ```
 Help me understand this codebase. List available indexes and search for authentication patterns.
 ```
