@@ -306,6 +306,23 @@ class LeannBuilder:
     def build_index(self, index_path: str):
         if not self.chunks:
             raise ValueError("No chunks added.")
+
+        # Filter out invalid/empty text chunks early to keep passage and embedding counts aligned
+        valid_chunks: list[dict[str, Any]] = []
+        skipped = 0
+        for chunk in self.chunks:
+            text = chunk.get("text", "")
+            if isinstance(text, str) and text.strip():
+                valid_chunks.append(chunk)
+            else:
+                skipped += 1
+        if skipped > 0:
+            print(
+                f"Warning: Skipping {skipped} empty/invalid text chunk(s). Processing {len(valid_chunks)} valid chunks"
+            )
+            self.chunks = valid_chunks
+            if not self.chunks:
+                raise ValueError("All provided chunks are empty or invalid. Nothing to index.")
         if self.dimensions is None:
             self.dimensions = len(
                 compute_embeddings(

@@ -244,6 +244,16 @@ def compute_embeddings_openai(texts: list[str], model_name: str) -> np.ndarray:
     except ImportError as e:
         raise ImportError(f"OpenAI package not installed: {e}")
 
+    # Validate input list
+    if not texts:
+        raise ValueError("Cannot compute embeddings for empty text list")
+    # Extra validation: abort early if any item is empty/whitespace
+    invalid_count = sum(1 for t in texts if not isinstance(t, str) or not t.strip())
+    if invalid_count > 0:
+        raise ValueError(
+            f"Found {invalid_count} empty/invalid text(s) in input. Upstream should filter before calling OpenAI."
+        )
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable not set")
