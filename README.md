@@ -484,6 +484,9 @@ leann ask my-docs --interactive
 
 # List all your indexes
 leann list
+
+# Remove an index
+leann remove my-docs
 ```
 
 **Key CLI features:**
@@ -496,7 +499,7 @@ leann list
 <details>
 <summary><strong>📋 Click to expand: Complete CLI Reference</strong></summary>
 
-You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann ask --help` to get the complete CLI reference.
+You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
 
 **Build Command:**
 ```bash
@@ -532,6 +535,28 @@ Options:
   --model MODEL               Model name (default: qwen3:8b)
   --interactive              Interactive chat mode
   --top-k N                  Retrieval count (default: 20)
+```
+
+**List Command:**
+```bash
+leann list
+
+# Lists all indexes across all projects with status indicators:
+# ✓ - Index is complete and ready to use
+# ✗ - Index is incomplete or corrupted
+```
+
+**Remove Command:**
+```bash
+leann remove INDEX_NAME [OPTIONS]
+
+Options:
+  --force, -f    Force removal without confirmation
+
+# Smart removal: automatically finds and safely removes indexes
+# - Shows all matching indexes across projects
+# - Requires confirmation for cross-project removal
+# - Interactive selection when multiple matches found
 ```
 
 </details>
