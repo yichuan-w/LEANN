@@ -94,7 +94,7 @@ CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv sync
 
 **Linux:**
 ```bash
-# Ubuntu/Debian (For Arch Linux: sudo pacman -S openmp boost protobuf abseil-cpp intel-mkl aio-libs zeromq)
+# Ubuntu/Debian (For Arch Linux: sudo pacman -S blas lapack openblas libaio boost protobuf abseil-cpp zeromq)
 sudo apt-get update && sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libabsl-dev libmkl-full-dev libaio-dev libzmq3-dev
 
 uv sync
