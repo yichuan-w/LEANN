@@ -10,6 +10,7 @@ from typing import Any
 
 import dotenv
 from leann.api import LeannBuilder, LeannChat
+from leann.registry import register_project_directory
 from llama_index.core.node_parser import SentenceSplitter
 
 dotenv.load_dotenv()
@@ -213,6 +214,11 @@ class BaseRAGExample(ABC):
         print("Building index structure...")
         builder.build_index(index_path)
         print(f"Index saved to: {index_path}")
+
+        # Register project directory so leann list can discover this index
+        # The index is saved as args.index_dir/index_name.leann
+        # We want to register the current working directory where the app is run
+        register_project_directory(Path.cwd())
 
         return index_path
 
