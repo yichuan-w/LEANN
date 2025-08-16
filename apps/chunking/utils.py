@@ -35,16 +35,20 @@ DEFAULT_CHUNK_PARAMS = {
 }
 
 
-def detect_code_files(documents) -> tuple[list, list]:
+def detect_code_files(documents, code_extensions=None) -> tuple[list, list]:
     """
     Separate documents into code files and regular text files.
     
     Args:
         documents: List of LlamaIndex Document objects
+        code_extensions: Dict mapping file extensions to languages (defaults to CODE_EXTENSIONS)
         
     Returns:
         Tuple of (code_documents, text_documents)
     """
+    if code_extensions is None:
+        code_extensions = CODE_EXTENSIONS
+        
     code_docs = []
     text_docs = []
     
@@ -57,9 +61,9 @@ def detect_code_files(documents) -> tuple[list, list]:
         
         if file_path:
             file_ext = Path(file_path).suffix.lower()
-            if file_ext in CODE_EXTENSIONS:
+            if file_ext in code_extensions:
                 # Add language info to metadata
-                doc.metadata["language"] = CODE_EXTENSIONS[file_ext]
+                doc.metadata["language"] = code_extensions[file_ext]
                 doc.metadata["is_code"] = True
                 code_docs.append(doc)
             else:
@@ -241,6 +245,9 @@ def create_text_chunks(
         logger.warning("No documents provided for chunking")
         return []
     
+    # Create a local copy of supported extensions for this function call
+    local_code_extensions = CODE_EXTENSIONS.copy()
+    
     # Update supported extensions if provided
     if code_file_extensions:
         # Map extensions to languages (simplified mapping)
@@ -252,18 +259,18 @@ def create_text_chunks(
             ".tsx": "typescript",
         }
         for ext in code_file_extensions:
-            if ext.lower() not in CODE_EXTENSIONS:
+            if ext.lower() not in local_code_extensions:
                 # Try to guess language from extension
                 if ext.lower() in ext_mapping:
-                    CODE_EXTENSIONS[ext.lower()] = ext_mapping[ext.lower()]
+                    local_code_extensions[ext.lower()] = ext_mapping[ext.lower()]
                 else:
                     logger.warning(f"Unsupported extension {ext}, will use traditional chunking")
     
     all_chunks = []
     
     if use_ast_chunking:
-        # Separate code and text documents
-        code_docs, text_docs = detect_code_files(documents)
+        # Separate code and text documents using local extensions
+        code_docs, text_docs = detect_code_files(documents, local_code_extensions)
         
         # Process code files with AST chunking
         if code_docs:
