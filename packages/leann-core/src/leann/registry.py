@@ -5,7 +5,7 @@ import importlib.metadata
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
     from leann.interface import LeannBackendFactoryInterface
@@ -47,7 +47,7 @@ def autodiscover_backends():
     # print("INFO: Backend auto-discovery finished.")
 
 
-def register_project_directory(project_dir: str | Path | None = None):
+def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
     """
     Register a project directory in the global LEANN registry.
 

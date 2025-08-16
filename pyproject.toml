@@ -14,8 +14,6 @@ dependencies = [
     "numpy>=1.26.0",
     "torch",
     "tqdm",
-    "flask",
-    "flask_compress",
     "datasets>=2.15.0",
     "evaluate",
     "colorama",
@@ -66,9 +64,7 @@ test = [
     "pytest>=7.0",
     "pytest-timeout>=2.0",
     "llama-index-core>=0.12.0",
-    "llama-index-readers-file>=0.4.0",
     "python-dotenv>=1.0.0",
-    "sentence-transformers>=2.2.0",
 ]
 
 diskann = [
@@ -100,13 +96,8 @@ leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
 [tool.ruff]
 target-version = "py39"
 line-length = 100
-extend-exclude = [
-    "third_party",
-    "*.egg-info",
-    "__pycache__",
-    ".git",
-    ".venv",
-]
+extend-exclude = ["third_party"]
+
 
 [tool.ruff.lint]
 select = [
@@ -129,20 +120,11 @@ ignore = [
     "RUF012", # mutable class attributes should be annotated with typing.ClassVar
 ]
 
-[tool.ruff.lint.per-file-ignores]
-"test/**/*.py" = ["E402"]      # module level import not at top of file (common in tests)
-"examples/**/*.py" = ["E402"]  # module level import not at top of file (common in examples)
-
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
-
-[dependency-groups]
-dev = [
-    "ruff>=0.12.4",
-]
 
 [tool.lychee]
 accept = ["200", "403", "429", "503"]

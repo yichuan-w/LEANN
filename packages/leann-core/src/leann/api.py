@@ -614,7 +614,7 @@ class LeannSearcher:
             zmq_port=zmq_port,
         )
         # logger.info(f"  Generated embedding shape: {query_embedding.shape}")
-        time.time() - start_time
+        # time.time() - start_time
         # logger.info(f"  Embedding time: {embedding_time} seconds")
 
         start_time = time.time()
@@ -680,8 +680,9 @@ class LeannSearcher:
         This method should be called after you're done using the searcher,
         especially in test environments or batch processing scenarios.
         """
-        if hasattr(self.backend_impl, "embedding_server_manager"):
-            self.backend_impl.embedding_server_manager.stop_server()
+        backend = getattr(self.backend_impl, "embedding_server_manager", None)
+        if backend is not None:
+            backend.stop_server()
 
     # Enable automatic cleanup patterns
     def __enter__(self):

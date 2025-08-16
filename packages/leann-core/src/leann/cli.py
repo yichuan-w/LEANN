@@ -1,7 +1,7 @@
 import argparse
 import asyncio
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
@@ -647,7 +647,7 @@ Examples:
             return False
 
     def _delete_index_directory(
-        self, index_dir: Path, index_name: str, project_path: Path | None = None
+        self, index_dir: Path, index_name: str, project_path: Optional[Path] = None
     ):
         """Actually delete the index directory"""
         try:

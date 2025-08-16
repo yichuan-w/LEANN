@@ -18,6 +18,7 @@ demo/experiment_results/**/*.json
 *.eml
 *.emlx
 *.json
+!.vscode/*.json
 *.sh
 *.txt
 !CMakeLists.txt
