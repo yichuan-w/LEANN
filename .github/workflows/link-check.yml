@@ -14,6 +14,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: lycheeverse/lychee-action@v2
         with:
-          args: --no-progress --insecure README.md docs/ apps/ examples/ benchmarks/
+          args: --no-progress --insecure --user-agent 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' README.md docs/ apps/ examples/ benchmarks/
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
