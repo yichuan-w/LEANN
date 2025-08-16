@@ -46,6 +46,7 @@ def compute_embeddings(
             - "sentence-transformers": Use sentence-transformers library (default)
             - "mlx": Use MLX backend for Apple Silicon
             - "openai": Use OpenAI embedding API
+            - "gemini": Use Google Gemini embedding API
         use_server: Whether to use embedding server (True for search, False for build)
 
     Returns:
