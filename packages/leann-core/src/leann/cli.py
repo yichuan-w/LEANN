@@ -149,6 +149,12 @@ Examples:
             help="Comma-separated list of file extensions to include (e.g., '.txt,.pdf,.pptx'). If not specified, uses default supported types.",
         )
         build_parser.add_argument(
+            "--include-hidden",
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help="Include hidden files and directories (paths starting with '.') during indexing (default: false)",
+        )
+        build_parser.add_argument(
             "--doc-chunk-size",
             type=int,
             default=256,
@@ -411,7 +417,10 @@ Examples:
                     print(f"  leann ask {example_name} --interactive")
 
     def load_documents(
-        self, docs_paths: Union[str, list], custom_file_types: Union[str, None] = None
+        self,
+        docs_paths: Union[str, list],
+        custom_file_types: Union[str, None] = None,
+        include_hidden: bool = False,
     ):
         # Handle both single path (string) and multiple paths (list) for backward compatibility
         if isinstance(docs_paths, str):
@@ -455,6 +464,10 @@ Examples:
 
         all_documents = []
 
+        # Helper to detect hidden path components
+        def _path_has_hidden_segment(p: Path) -> bool:
+            return any(part.startswith(".") and part not in [".", ".."] for part in p.parts)
+
         # First, process individual files if any
         if files:
             print(f"\n🔄 Processing {len(files)} individual file{'s' if len(files) > 1 else ''}...")
@@ -467,8 +480,12 @@ Examples:
 
                 files_by_dir = defaultdict(list)
                 for file_path in files:
-                    parent_dir = str(Path(file_path).parent)
-                    files_by_dir[parent_dir].append(file_path)
+                    file_path_obj = Path(file_path)
+                    if not include_hidden and _path_has_hidden_segment(file_path_obj):
+                        print(f"  ⚠️  Skipping hidden file: {file_path}")
+                        continue
+                    parent_dir = str(file_path_obj.parent)
+                    files_by_dir[parent_dir].append(str(file_path_obj))
 
                 # Load files from each parent directory
                 for parent_dir, file_list in files_by_dir.items():
@@ -479,6 +496,7 @@ Examples:
                         file_docs = SimpleDirectoryReader(
                             parent_dir,
                             input_files=file_list,
+                            # exclude_hidden only affects directory scans; input_files are explicit
                             filename_as_id=True,
                         ).load_data()
                         all_documents.extend(file_docs)
@@ -577,6 +595,8 @@ Examples:
                     # Check if file matches any exclude pattern
                     try:
                         relative_path = file_path.relative_to(docs_path)
+                        if not include_hidden and _path_has_hidden_segment(relative_path):
+                            continue
                         if self._should_exclude_file(relative_path, gitignore_matches):
                             continue
                     except ValueError:
@@ -604,6 +624,7 @@ Examples:
                         try:
                             default_docs = SimpleDirectoryReader(
                                 str(file_path.parent),
+                                exclude_hidden=not include_hidden,
                                 filename_as_id=True,
                                 required_exts=[file_path.suffix],
                             ).load_data()
@@ -632,6 +653,7 @@ Examples:
                     encoding="utf-8",
                     required_exts=code_extensions,
                     file_extractor={},  # Use default extractors
+                    exclude_hidden=not include_hidden,
                     filename_as_id=True,
                 ).load_data(show_progress=True)
 
@@ -781,7 +803,9 @@ Examples:
             paragraph_separator="\n\n",
         )
 
-        all_texts = self.load_documents(docs_paths, args.file_types)
+        all_texts = self.load_documents(
+            docs_paths, args.file_types, include_hidden=args.include_hidden
+        )
         if not all_texts:
             print("No documents found")
             return
