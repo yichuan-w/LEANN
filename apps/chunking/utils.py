@@ -18,7 +18,7 @@ CODE_EXTENSIONS = {
     ".cs": "c_sharp",
     ".ts": "typescript",
     ".tsx": "typescript",
-    ".js": "javascript",  # Often supported by typescript parser
+    ".js": "javascript",
     ".jsx": "javascript"
 }
 
