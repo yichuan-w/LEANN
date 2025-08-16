@@ -87,7 +87,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref }}
           submodules: recursive
@@ -98,7 +98,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v6
 
       - name: Install system dependencies (Ubuntu)
         if: runner.os == 'Linux'
@@ -322,24 +322,29 @@ jobs:
           pacman -S --noconfirm python python-pip gcc git zlib openssl
 
       - name: Download ALL wheel artifacts from this run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           # Don't specify name, download all artifacts
           path: ./wheels
 
-      - name: Install wheels (pip automatically picks matching tags from wheels directory)
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Create virtual environment and install wheels
         run: |
-          python -m pip install --upgrade pip
-          pip install --find-links wheels leann-core
-          pip install --find-links wheels leann-backend-hnsw
-          pip install --find-links wheels leann-backend-diskann
-          pip install --find-links wheels leann
+          uv venv
+          source .venv/bin/activate || source .venv/Scripts/activate
+          uv pip install --find-links wheels leann-core
+          uv pip install --find-links wheels leann-backend-hnsw
+          uv pip install --find-links wheels leann-backend-diskann
+          uv pip install --find-links wheels leann
 
       - name: Import & tiny runtime check
         env:
           OMP_NUM_THREADS: 1
           MKL_NUM_THREADS: 1
         run: |
+          source .venv/bin/activate || source .venv/Scripts/activate
           python - <<'PY'
           import leann
           import leann_backend_hnsw as h
