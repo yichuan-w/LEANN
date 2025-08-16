@@ -542,8 +542,10 @@ Options:
 leann list
 
 # Lists all indexes across all projects with status indicators:
-# ✓ - Index is complete and ready to use
-# ✗ - Index is incomplete or corrupted
+# ✅ - Index is complete and ready to use
+# ❌ - Index is incomplete or corrupted
+# 📁 - CLI-created index (in .leann/indexes/)
+# 📄 - App-created index (*.leann.meta.json files)
 ```
 
 **Remove Command:**
@@ -557,6 +559,7 @@ Options:
 # - Shows all matching indexes across projects
 # - Requires confirmation for cross-project removal
 # - Interactive selection when multiple matches found
+# - Supports both CLI and app-created indexes
 ```
 
 </details>

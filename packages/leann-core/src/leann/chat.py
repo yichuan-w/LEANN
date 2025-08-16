@@ -707,20 +707,28 @@ class GeminiChat(LLMInterface):
         logger.info(f"Sending request to Gemini with model {self.model}")
 
         try:
-            # Set generation configuration
-            generation_config = {
-                "temperature": kwargs.get("temperature", 0.7),
-                "max_output_tokens": kwargs.get("max_tokens", 1000),
-            }
+            from google.genai.types import GenerateContentConfig
+
+            generation_config = GenerateContentConfig(
+                temperature=kwargs.get("temperature", 0.7),
+                max_output_tokens=kwargs.get("max_tokens", 1000),
+            )
 
             # Handle top_p parameter
             if "top_p" in kwargs:
-                generation_config["top_p"] = kwargs["top_p"]
+                generation_config.top_p = kwargs["top_p"]
 
             response = self.client.models.generate_content(
-                model=self.model, contents=prompt, config=generation_config
+                model=self.model,
+                contents=prompt,
+                config=generation_config,
             )
-            return response.text.strip()
+            # Handle potential None response text
+            response_text = response.text
+            if response_text is None:
+                logger.warning("Gemini returned None response text")
+                return ""
+            return response_text.strip()
         except Exception as e:
             logger.error(f"Error communicating with Gemini: {e}")
             return f"Error: Could not get a response from Gemini. Details: {e}"

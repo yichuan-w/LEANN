@@ -1,13 +1,14 @@
 import argparse
 import asyncio
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from tqdm import tqdm
 
 from .api import LeannBuilder, LeannChat, LeannSearcher
+from .registry import register_project_directory
 
 
 def extract_pdf_text_with_pymupdf(file_path: str) -> str:
@@ -263,31 +264,7 @@ Examples:
 
     def register_project_dir(self):
         """Register current project directory in global registry"""
-        global_registry = Path.home() / ".leann" / "projects.json"
-        global_registry.parent.mkdir(exist_ok=True)
-
-        current_dir = str(Path.cwd())
-
-        # Load existing registry
-        projects = []
-        if global_registry.exists():
-            try:
-                import json
-
-                with open(global_registry) as f:
-                    projects = json.load(f)
-            except Exception:
-                projects = []
-
-        # Add current directory if not already present
-        if current_dir not in projects:
-            projects.append(current_dir)
-
-        # Save registry
-        import json
-
-        with open(global_registry, "w") as f:
-            json.dump(projects, f, indent=2)
+        register_project_directory()
 
     def _build_gitignore_parser(self, docs_dir: str):
         """Build gitignore parser using gitignore-parser library."""
@@ -373,13 +350,10 @@ Examples:
             valid_projects.append(current_path)
 
         # Separate current and other projects
-        current_project = None
         other_projects = []
 
         for project_path in valid_projects:
-            if project_path == current_path:
-                current_project = project_path
-            else:
+            if project_path != current_path:
                 other_projects.append(project_path)
 
         print("📚 LEANN Indexes")
@@ -389,35 +363,20 @@ Examples:
         current_indexes_count = 0
 
         # Show current project first (most important)
-        if current_project:
-            current_indexes_dir = current_project / ".leann" / "indexes"
-            if current_indexes_dir.exists():
-                current_index_dirs = [d for d in current_indexes_dir.iterdir() if d.is_dir()]
+        print("\n🏠 Current Project")
+        print(f"   {current_path}")
+        print("   " + "─" * 45)
 
-                print("\n🏠 Current Project")
-                print(f"   {current_project}")
-                print("   " + "─" * 45)
-
-                if current_index_dirs:
-                    for index_dir in current_index_dirs:
-                        total_indexes += 1
-                        current_indexes_count += 1
-                        index_name = index_dir.name
-                        meta_file = index_dir / "documents.leann.meta.json"
-                        status = "✅" if meta_file.exists() else "❌"
-
-                        print(f"   {current_indexes_count}. {index_name} {status}")
-                        if meta_file.exists():
-                            size_mb = sum(
-                                f.stat().st_size for f in index_dir.iterdir() if f.is_file()
-                            ) / (1024 * 1024)
-                            print(f"      📦 Size: {size_mb:.1f} MB")
-                else:
-                    print("   📭 No indexes in current project")
+        current_indexes = self._discover_indexes_in_project(current_path)
+        if current_indexes:
+            for idx in current_indexes:
+                total_indexes += 1
+                current_indexes_count += 1
+                type_icon = "📁" if idx["type"] == "cli" else "📄"
+                print(f"   {current_indexes_count}. {type_icon} {idx['name']} {idx['status']}")
+                if idx["size_mb"] > 0:
+                    print(f"      📦 Size: {idx['size_mb']:.1f} MB")
         else:
-            print("\n🏠 Current Project")
-            print(f"   {current_path}")
-            print("   " + "─" * 45)
             print("   📭 No indexes in current project")
 
         # Show other projects (reference information)
@@ -426,29 +385,19 @@ Examples:
             print("   " + "─" * 45)
 
             for project_path in other_projects:
-                indexes_dir = project_path / ".leann" / "indexes"
-                if not indexes_dir.exists():
-                    continue
-
-                index_dirs = [d for d in indexes_dir.iterdir() if d.is_dir()]
-                if not index_dirs:
+                project_indexes = self._discover_indexes_in_project(project_path)
+                if not project_indexes:
                     continue
 
                 print(f"\n   📂 {project_path.name}")
                 print(f"      {project_path}")
 
-                for index_dir in index_dirs:
+                for idx in project_indexes:
                     total_indexes += 1
-                    index_name = index_dir.name
-                    meta_file = index_dir / "documents.leann.meta.json"
-                    status = "✅" if meta_file.exists() else "❌"
-
-                    print(f"      • {index_name} {status}")
-                    if meta_file.exists():
-                        size_mb = sum(
-                            f.stat().st_size for f in index_dir.iterdir() if f.is_file()
-                        ) / (1024 * 1024)
-                        print(f"        📦 {size_mb:.1f} MB")
+                    type_icon = "📁" if idx["type"] == "cli" else "📄"
+                    print(f"      • {type_icon} {idx['name']} {idx['status']}")
+                    if idx["size_mb"] > 0:
+                        print(f"        📦 {idx['size_mb']:.1f} MB")
 
         # Summary and usage info
         print("\n" + "=" * 50)
@@ -479,6 +428,67 @@ Examples:
             else:
                 print("\n💡 Create your first index:")
                 print("   leann build my-docs --docs ./documents")
+
+    def _discover_indexes_in_project(self, project_path: Path):
+        """Discover all indexes in a project directory (both CLI and apps formats)"""
+        indexes = []
+
+        # 1. CLI format: .leann/indexes/index_name/
+        cli_indexes_dir = project_path / ".leann" / "indexes"
+        if cli_indexes_dir.exists():
+            for index_dir in cli_indexes_dir.iterdir():
+                if index_dir.is_dir():
+                    meta_file = index_dir / "documents.leann.meta.json"
+                    status = "✅" if meta_file.exists() else "❌"
+
+                    size_mb = 0
+                    if meta_file.exists():
+                        try:
+                            size_mb = sum(
+                                f.stat().st_size for f in index_dir.iterdir() if f.is_file()
+                            ) / (1024 * 1024)
+                        except (OSError, PermissionError):
+                            pass
+
+                    indexes.append(
+                        {
+                            "name": index_dir.name,
+                            "type": "cli",
+                            "status": status,
+                            "size_mb": size_mb,
+                            "path": index_dir,
+                        }
+                    )
+
+        # 2. Apps format: *.leann.meta.json files anywhere in the project
+        for meta_file in project_path.rglob("*.leann.meta.json"):
+            if meta_file.is_file():
+                # Extract index name from filename (remove .leann.meta.json extension)
+                index_name = meta_file.name.replace(".leann.meta.json", "")
+
+                # Apps indexes are considered complete if the .leann.meta.json file exists
+                status = "✅"
+
+                # Calculate total size of all related files
+                size_mb = 0
+                try:
+                    index_dir = meta_file.parent
+                    for related_file in index_dir.glob(f"{index_name}.leann*"):
+                        size_mb += related_file.stat().st_size / (1024 * 1024)
+                except (OSError, PermissionError):
+                    pass
+
+                indexes.append(
+                    {
+                        "name": index_name,
+                        "type": "app",
+                        "status": status,
+                        "size_mb": size_mb,
+                        "path": meta_file,
+                    }
+                )
+
+        return indexes
 
     def remove_index(self, index_name: str, force: bool = False):
         """Safely remove an index - always show all matches for transparency"""
@@ -637,7 +647,7 @@ Examples:
             return False
 
     def _delete_index_directory(
-        self, index_dir: Path, index_name: str, project_path: Path | None = None
+        self, index_dir: Path, index_name: str, project_path: Optional[Path] = None
     ):
         """Actually delete the index directory"""
         try:
