@@ -12,7 +12,7 @@ import dotenv
 from leann.api import LeannBuilder, LeannChat
 from leann.registry import register_project_directory
 from llama_index.core.node_parser import SentenceSplitter
-from chunking_utils import enhanced_create_text_chunks
+from chunking import create_text_chunks
 
 dotenv.load_dotenv()
 
@@ -345,39 +345,3 @@ class BaseRAGExample(ABC):
             await self.run_interactive_chat(args, index_path)
 
 
-def create_text_chunks(
-    documents, 
-    chunk_size=256, 
-    chunk_overlap=25,
-    use_ast_chunking=False,
-    ast_chunk_size=512,
-    ast_chunk_overlap=64,
-    code_file_extensions=None,
-    ast_fallback_traditional=True
-) -> list[str]:
-    """
-    Enhanced helper function to create text chunks from documents.
-    
-    Args:
-        documents: List of LlamaIndex Document objects
-        chunk_size: Size for traditional text chunks
-        chunk_overlap: Overlap for traditional text chunks
-        use_ast_chunking: Whether to use AST chunking for code files
-        ast_chunk_size: Size for AST chunks
-        ast_chunk_overlap: Overlap for AST chunks
-        code_file_extensions: Custom list of code file extensions
-        ast_fallback_traditional: Fall back to traditional chunking on AST errors
-        
-    Returns:
-        List of text chunks
-    """
-    return enhanced_create_text_chunks(
-        documents=documents,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        use_ast_chunking=use_ast_chunking,
-        ast_chunk_size=ast_chunk_size,
-        ast_chunk_overlap=ast_chunk_overlap,
-        code_file_extensions=code_file_extensions,
-        ast_fallback_traditional=ast_fallback_traditional
-    )

@@ -6,7 +6,7 @@ This document describes the integration of **astchunk** library into LEANN for A
 
 ## 🚀 Features Added
 
-### 1. Enhanced Chunking Utilities (`apps/chunking_utils.py`)
+### 1. Enhanced Chunking Utilities (`apps/chunking/`)
 - **AST-aware chunking** for Python, Java, C#, TypeScript files
 - **Automatic language detection** from file extensions  
 - **Fallback mechanisms** to traditional chunking when AST fails
@@ -145,7 +145,7 @@ The integration includes sample code files in `data/code_samples/`:
 ### Key Functions
 - `detect_code_files()`: Separate code and text documents
 - `create_ast_chunks()`: AST-aware chunking with astchunk
-- `enhanced_create_text_chunks()`: Unified chunking interface
+- `create_text_chunks()`: Unified chunking interface
 - `get_language_from_extension()`: Language detection
 
 ## 🎯 Benefits

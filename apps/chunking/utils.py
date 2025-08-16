@@ -211,7 +211,7 @@ def create_traditional_chunks(
     return all_texts
 
 
-def enhanced_create_text_chunks(
+def create_text_chunks(
     documents,
     chunk_size: int = 256,
     chunk_overlap: int = 128,
@@ -222,7 +222,7 @@ def enhanced_create_text_chunks(
     ast_fallback_traditional: bool = True
 ) -> List[str]:
     """
-    Enhanced text chunking with optional AST support for code files.
+    Create text chunks from documents with optional AST support for code files.
     
     Args:
         documents: List of LlamaIndex Document objects
@@ -302,9 +302,3 @@ def enhanced_create_text_chunks(
     return all_chunks
 
 
-# Backward compatibility alias
-def create_text_chunks(documents, chunk_size=256, chunk_overlap=25) -> List[str]:
-    """
-    Legacy function for backward compatibility.
-    """
-    return create_traditional_chunks(documents, chunk_size, chunk_overlap)

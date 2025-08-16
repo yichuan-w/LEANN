@@ -1013,10 +1013,10 @@ Examples:
                 if apps_dir.exists():
                     sys.path.insert(0, str(apps_dir))
                 
-                from chunking_utils import enhanced_create_text_chunks
+                from chunking import create_text_chunks
                 
                 # Use enhanced chunking with AST support
-                all_texts = enhanced_create_text_chunks(
+                all_texts = create_text_chunks(
                     documents,
                     chunk_size=self.node_parser.chunk_size,
                     chunk_overlap=self.node_parser.chunk_overlap,

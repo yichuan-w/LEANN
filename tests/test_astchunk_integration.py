@@ -14,12 +14,12 @@ from unittest.mock import patch, MagicMock
 # Add apps directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "apps"))
 
-from chunking_utils import (
+from chunking import (
     detect_code_files,
     get_language_from_extension,
     create_ast_chunks,
     create_traditional_chunks,
-    enhanced_create_text_chunks,
+    create_text_chunks,
     CODE_EXTENSIONS
 )
 
@@ -172,7 +172,7 @@ class Calculator:
         docs = [MockDocument("def test(): pass", "/test/script.py", {"language": "python"})]
         
         # Mock astchunk import to fail
-        with patch('chunking_utils.create_ast_chunks') as mock_create_ast:
+        with patch('chunking.create_ast_chunks') as mock_create_ast:
             # First call (actual test) should import astchunk and potentially fail
             # Let's call the actual function to test the import error handling
             chunks = create_ast_chunks(docs)
@@ -180,14 +180,14 @@ class Calculator:
             # Should return some chunks (either from astchunk or fallback)
             assert isinstance(chunks, list)
     
-    def test_enhanced_create_text_chunks_traditional_mode(self):
-        """Test enhanced chunking in traditional mode."""
+    def test_create_text_chunks_traditional_mode(self):
+        """Test text chunking in traditional mode."""
         docs = [
             MockDocument("def test(): pass", "/test/script.py"),
             MockDocument("This is regular text.", "/test/doc.txt")
         ]
         
-        chunks = enhanced_create_text_chunks(
+        chunks = create_text_chunks(
             docs, 
             use_ast_chunking=False,
             chunk_size=50,
@@ -197,14 +197,14 @@ class Calculator:
         assert len(chunks) > 0
         assert all(isinstance(chunk, str) for chunk in chunks)
     
-    def test_enhanced_create_text_chunks_ast_mode(self):
-        """Test enhanced chunking in AST mode."""
+    def test_create_text_chunks_ast_mode(self):
+        """Test text chunking in AST mode."""
         docs = [
             MockDocument("def test(): pass", "/test/script.py"),
             MockDocument("This is regular text.", "/test/doc.txt")
         ]
         
-        chunks = enhanced_create_text_chunks(
+        chunks = create_text_chunks(
             docs,
             use_ast_chunking=True,
             ast_chunk_size=100,
@@ -216,22 +216,22 @@ class Calculator:
         assert len(chunks) > 0
         assert all(isinstance(chunk, str) for chunk in chunks)
     
-    def test_enhanced_create_text_chunks_custom_extensions(self):
-        """Test enhanced chunking with custom code file extensions."""
+    def test_create_text_chunks_custom_extensions(self):
+        """Test text chunking with custom code file extensions."""
         docs = [
             MockDocument("function test() {}", "/test/script.js"),  # Not in default extensions
             MockDocument("Regular text", "/test/doc.txt")
         ]
         
         # First without custom extensions - should treat .js as text
-        chunks_without = enhanced_create_text_chunks(
+        chunks_without = create_text_chunks(
             docs,
             use_ast_chunking=True,
             code_file_extensions=None
         )
         
         # Then with custom extensions - should treat .js as code
-        chunks_with = enhanced_create_text_chunks(
+        chunks_with = create_text_chunks(
             docs,
             use_ast_chunking=True,
             code_file_extensions=[".js", ".jsx"]
@@ -358,17 +358,17 @@ class MathUtils:
 class TestErrorHandling:
     """Test error handling and edge cases."""
     
-    def test_enhanced_chunking_empty_documents(self):
-        """Test enhanced chunking with empty document list."""
-        chunks = enhanced_create_text_chunks([])
+    def test_text_chunking_empty_documents(self):
+        """Test text chunking with empty document list."""
+        chunks = create_text_chunks([])
         assert chunks == []
     
-    def test_enhanced_chunking_invalid_parameters(self):
-        """Test enhanced chunking with invalid parameters."""
+    def test_text_chunking_invalid_parameters(self):
+        """Test text chunking with invalid parameters."""
         docs = [MockDocument("test content")]
         
         # Should handle negative chunk sizes gracefully
-        chunks = enhanced_create_text_chunks(
+        chunks = create_text_chunks(
             docs,
             chunk_size=0,
             chunk_overlap=0,
