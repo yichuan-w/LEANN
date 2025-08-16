@@ -44,6 +44,11 @@ class DocumentRAG(BaseRAGExample):
         doc_group.add_argument(
             "--chunk-overlap", type=int, default=128, help="Text chunk overlap (default: 128)"
         )
+        doc_group.add_argument(
+            "--enable-code-chunking",
+            action="store_true",
+            help="Enable AST-aware chunking for code files in the data directory"
+        )
 
     async def load_data(self, args) -> list[str]:
         """Load documents and convert to text chunks."""
@@ -76,9 +81,22 @@ class DocumentRAG(BaseRAGExample):
 
         print(f"Loaded {len(documents)} documents")
 
-        # Convert to text chunks
+        # Determine chunking strategy
+        use_ast = args.enable_code_chunking or getattr(args, 'use_ast_chunking', False)
+        
+        if use_ast:
+            print(f"Using AST-aware chunking for code files")
+            
+        # Convert to text chunks with optional AST support
         all_texts = create_text_chunks(
-            documents, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
+            documents, 
+            chunk_size=args.chunk_size, 
+            chunk_overlap=args.chunk_overlap,
+            use_ast_chunking=use_ast,
+            ast_chunk_size=getattr(args, 'ast_chunk_size', 512),
+            ast_chunk_overlap=getattr(args, 'ast_chunk_overlap', 64),
+            code_file_extensions=getattr(args, 'code_file_extensions', None),
+            ast_fallback_traditional=getattr(args, 'ast_fallback_traditional', True)
         )
 
         # Apply max_items limit if specified
@@ -102,6 +120,10 @@ if __name__ == "__main__":
     print(
         "- 'What is the problem of developing pan gu model Huawei meets? (盘古大模型开发中遇到什么问题?)'"
     )
+    print("\n🚀 NEW: Code-aware chunking available!")
+    print("- Use --enable-code-chunking to enable AST-aware chunking for code files")
+    print("- Supports Python, Java, C#, TypeScript files")
+    print("- Better semantic understanding of code structure")
     print("\nOr run without --query for interactive mode\n")
 
     rag = DocumentRAG()
