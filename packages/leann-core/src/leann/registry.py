@@ -2,10 +2,14 @@
 
 import importlib
 import importlib.metadata
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from leann.interface import LeannBackendFactoryInterface
+
+# Set up logger for this module
+logger = logging.getLogger(__name__)
 
 BACKEND_REGISTRY: dict[str, "LeannBackendFactoryInterface"] = {}
 
@@ -14,7 +18,7 @@ def register_backend(name: str):
     """A decorator to register a new backend class."""
 
     def decorator(cls):
-        print(f"INFO: Registering backend '{name}'")
+        logger.debug(f"Registering backend '{name}'")
         BACKEND_REGISTRY[name] = cls
         return cls
 

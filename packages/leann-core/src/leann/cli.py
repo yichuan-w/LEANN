@@ -84,6 +84,7 @@ Examples:
   leann search my-docs "query"                                           # Search in my-docs index
   leann ask my-docs "question"                                           # Ask my-docs index
   leann list                                                             # List all stored indexes
+  leann remove my-docs                                                   # Remove an index (local first, then global)
             """,
         )
 
@@ -251,6 +252,13 @@ Examples:
         # List command
         subparsers.add_parser("list", help="List all indexes")
 
+        # Remove command
+        remove_parser = subparsers.add_parser("remove", help="Remove an index")
+        remove_parser.add_argument("index_name", help="Index name to remove")
+        remove_parser.add_argument(
+            "--force", "-f", action="store_true", help="Force removal without confirmation"
+        )
+
         return parser
 
     def register_project_dir(self):
@@ -339,8 +347,6 @@ Examples:
             return False
 
     def list_indexes(self):
-        print("Stored LEANN indexes:")
-
         # Get all project directories with .leann
         global_registry = Path.home() / ".leann" / "projects.json"
         all_projects = []
@@ -366,55 +372,287 @@ Examples:
         if (current_path / ".leann" / "indexes").exists() and current_path not in valid_projects:
             valid_projects.append(current_path)
 
-        if not valid_projects:
-            print(
-                "No indexes found. Use 'leann build <name> --docs <dir> [<dir2> ...]' to create one."
-            )
-            return
-
-        total_indexes = 0
-        current_dir = Path.cwd()
+        # Separate current and other projects
+        current_project = None
+        other_projects = []
 
         for project_path in valid_projects:
-            indexes_dir = project_path / ".leann" / "indexes"
-            if not indexes_dir.exists():
-                continue
-
-            index_dirs = [d for d in indexes_dir.iterdir() if d.is_dir()]
-            if not index_dirs:
-                continue
-
-            # Show project header
-            if project_path == current_dir:
-                print(f"\n📁 Current project ({project_path}):")
+            if project_path == current_path:
+                current_project = project_path
             else:
-                print(f"\n📂 {project_path}:")
+                other_projects.append(project_path)
 
-            for index_dir in index_dirs:
-                total_indexes += 1
-                index_name = index_dir.name
-                meta_file = index_dir / "documents.leann.meta.json"
-                status = "✓" if meta_file.exists() else "✗"
+        print("📚 LEANN Indexes")
+        print("=" * 50)
 
-                print(f"  {total_indexes}. {index_name} [{status}]")
-                if status == "✓":
-                    size_mb = sum(f.stat().st_size for f in index_dir.iterdir() if f.is_file()) / (
-                        1024 * 1024
-                    )
-                    print(f"     Size: {size_mb:.1f} MB")
+        total_indexes = 0
+        current_indexes_count = 0
 
-        if total_indexes > 0:
-            print(f"\nTotal: {total_indexes} indexes across {len(valid_projects)} projects")
-            print("\nUsage (current project only):")
-
-            # Show example from current project
-            current_indexes_dir = current_dir / ".leann" / "indexes"
+        # Show current project first (most important)
+        if current_project:
+            current_indexes_dir = current_project / ".leann" / "indexes"
             if current_indexes_dir.exists():
                 current_index_dirs = [d for d in current_indexes_dir.iterdir() if d.is_dir()]
+
+                print("\n🏠 Current Project")
+                print(f"   {current_project}")
+                print("   " + "─" * 45)
+
                 if current_index_dirs:
-                    example_name = current_index_dirs[0].name
-                    print(f'  leann search {example_name} "your query"')
-                    print(f"  leann ask {example_name} --interactive")
+                    for index_dir in current_index_dirs:
+                        total_indexes += 1
+                        current_indexes_count += 1
+                        index_name = index_dir.name
+                        meta_file = index_dir / "documents.leann.meta.json"
+                        status = "✅" if meta_file.exists() else "❌"
+
+                        print(f"   {current_indexes_count}. {index_name} {status}")
+                        if meta_file.exists():
+                            size_mb = sum(
+                                f.stat().st_size for f in index_dir.iterdir() if f.is_file()
+                            ) / (1024 * 1024)
+                            print(f"      📦 Size: {size_mb:.1f} MB")
+                else:
+                    print("   📭 No indexes in current project")
+        else:
+            print("\n🏠 Current Project")
+            print(f"   {current_path}")
+            print("   " + "─" * 45)
+            print("   📭 No indexes in current project")
+
+        # Show other projects (reference information)
+        if other_projects:
+            print("\n\n🗂️  Other Projects")
+            print("   " + "─" * 45)
+
+            for project_path in other_projects:
+                indexes_dir = project_path / ".leann" / "indexes"
+                if not indexes_dir.exists():
+                    continue
+
+                index_dirs = [d for d in indexes_dir.iterdir() if d.is_dir()]
+                if not index_dirs:
+                    continue
+
+                print(f"\n   📂 {project_path.name}")
+                print(f"      {project_path}")
+
+                for index_dir in index_dirs:
+                    total_indexes += 1
+                    index_name = index_dir.name
+                    meta_file = index_dir / "documents.leann.meta.json"
+                    status = "✅" if meta_file.exists() else "❌"
+
+                    print(f"      • {index_name} {status}")
+                    if meta_file.exists():
+                        size_mb = sum(
+                            f.stat().st_size for f in index_dir.iterdir() if f.is_file()
+                        ) / (1024 * 1024)
+                        print(f"        📦 {size_mb:.1f} MB")
+
+        # Summary and usage info
+        print("\n" + "=" * 50)
+        if total_indexes == 0:
+            print("💡 Get started:")
+            print("   leann build my-docs --docs ./documents")
+        else:
+            projects_count = len(
+                [
+                    p
+                    for p in valid_projects
+                    if (p / ".leann" / "indexes").exists()
+                    and list((p / ".leann" / "indexes").iterdir())
+                ]
+            )
+            print(f"📊 Total: {total_indexes} indexes across {projects_count} projects")
+
+            if current_indexes_count > 0:
+                print("\n💫 Quick start (current project):")
+                # Get first index from current project for example
+                current_indexes_dir = current_path / ".leann" / "indexes"
+                if current_indexes_dir.exists():
+                    current_index_dirs = [d for d in current_indexes_dir.iterdir() if d.is_dir()]
+                    if current_index_dirs:
+                        example_name = current_index_dirs[0].name
+                        print(f'   leann search {example_name} "your query"')
+                        print(f"   leann ask {example_name} --interactive")
+            else:
+                print("\n💡 Create your first index:")
+                print("   leann build my-docs --docs ./documents")
+
+    def remove_index(self, index_name: str, force: bool = False):
+        """Safely remove an index - always show all matches for transparency"""
+
+        # Always do a comprehensive search for safety
+        print(f"🔍 Searching for all indexes named '{index_name}'...")
+        all_matches = self._find_all_matching_indexes(index_name)
+
+        if not all_matches:
+            print(f"❌ Index '{index_name}' not found in any project.")
+            return False
+
+        if len(all_matches) == 1:
+            return self._remove_single_match(all_matches[0], index_name, force)
+        else:
+            return self._remove_from_multiple_matches(all_matches, index_name, force)
+
+    def _find_all_matching_indexes(self, index_name: str):
+        """Find all indexes with the given name across all projects"""
+        matches = []
+
+        # Get all registered projects
+        global_registry = Path.home() / ".leann" / "projects.json"
+        all_projects = []
+
+        if global_registry.exists():
+            try:
+                import json
+
+                with open(global_registry) as f:
+                    all_projects = json.load(f)
+            except Exception:
+                pass
+
+        # Always include current project
+        current_path = Path.cwd()
+        if str(current_path) not in all_projects:
+            all_projects.append(str(current_path))
+
+        # Search across all projects
+        for project_dir in all_projects:
+            project_path = Path(project_dir)
+            if not project_path.exists():
+                continue
+
+            index_dir = project_path / ".leann" / "indexes" / index_name
+            if index_dir.exists():
+                is_current = project_path == current_path
+                matches.append(
+                    {"project_path": project_path, "index_dir": index_dir, "is_current": is_current}
+                )
+
+        # Sort: current project first, then by project name
+        matches.sort(key=lambda x: (not x["is_current"], x["project_path"].name))
+        return matches
+
+    def _remove_single_match(self, match, index_name: str, force: bool):
+        """Handle removal when only one match is found"""
+        project_path = match["project_path"]
+        index_dir = match["index_dir"]
+        is_current = match["is_current"]
+
+        if is_current:
+            location_info = "current project"
+            emoji = "🏠"
+        else:
+            location_info = f"other project '{project_path.name}'"
+            emoji = "📂"
+
+        print(f"✅ Found 1 index named '{index_name}':")
+        print(f"   {emoji} Location: {location_info}")
+        print(f"   📍 Path: {project_path}")
+
+        if not force:
+            if not is_current:
+                print("\n⚠️  CROSS-PROJECT REMOVAL!")
+                print("   This will delete the index from another project.")
+
+            response = input(f"   ❓ Confirm removal from {location_info}? (y/N): ").strip().lower()
+            if response not in ["y", "yes"]:
+                print("   ❌ Removal cancelled.")
+                return False
+
+        return self._delete_index_directory(
+            index_dir, index_name, project_path if not is_current else None
+        )
+
+    def _remove_from_multiple_matches(self, matches, index_name: str, force: bool):
+        """Handle removal when multiple matches are found"""
+
+        print(f"⚠️  Found {len(matches)} indexes named '{index_name}':")
+        print("   " + "─" * 50)
+
+        for i, match in enumerate(matches, 1):
+            project_path = match["project_path"]
+            is_current = match["is_current"]
+
+            if is_current:
+                print(f"   {i}. 🏠 Current project")
+                print(f"      📍 {project_path}")
+            else:
+                print(f"   {i}. 📂 {project_path.name}")
+                print(f"      📍 {project_path}")
+
+            # Show size info
+            try:
+                size_mb = sum(
+                    f.stat().st_size for f in match["index_dir"].iterdir() if f.is_file()
+                ) / (1024 * 1024)
+                print(f"      📦 Size: {size_mb:.1f} MB")
+            except (OSError, PermissionError):
+                pass
+
+        print("   " + "─" * 50)
+
+        if force:
+            print("   ❌ Multiple matches found, but --force specified.")
+            print("   Please run without --force to choose which one to remove.")
+            return False
+
+        try:
+            choice = input(
+                f"   ❓ Which one to remove? (1-{len(matches)}, or 'c' to cancel): "
+            ).strip()
+            if choice.lower() == "c":
+                print("   ❌ Removal cancelled.")
+                return False
+
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(matches):
+                selected_match = matches[choice_idx]
+                project_path = selected_match["project_path"]
+                index_dir = selected_match["index_dir"]
+                is_current = selected_match["is_current"]
+
+                location = "current project" if is_current else f"'{project_path.name}' project"
+                print(f"   🎯 Selected: Remove from {location}")
+
+                # Final confirmation for safety
+                confirm = input(
+                    f"   ❓ FINAL CONFIRMATION - Type '{index_name}' to proceed: "
+                ).strip()
+                if confirm != index_name:
+                    print("   ❌ Confirmation failed. Removal cancelled.")
+                    return False
+
+                return self._delete_index_directory(
+                    index_dir, index_name, project_path if not is_current else None
+                )
+            else:
+                print("   ❌ Invalid choice. Removal cancelled.")
+                return False
+
+        except (ValueError, KeyboardInterrupt):
+            print("\n   ❌ Invalid input. Removal cancelled.")
+            return False
+
+    def _delete_index_directory(
+        self, index_dir: Path, index_name: str, project_path: Path | None = None
+    ):
+        """Actually delete the index directory"""
+        try:
+            import shutil
+
+            shutil.rmtree(index_dir)
+
+            if project_path:
+                print(f"✅ Index '{index_name}' removed from {project_path.name}")
+            else:
+                print(f"✅ Index '{index_name}' removed successfully")
+            return True
+        except Exception as e:
+            print(f"❌ Error removing index '{index_name}': {e}")
+            return False
 
     def load_documents(
         self,
@@ -942,6 +1180,8 @@ Examples:
 
         if args.command == "list":
             self.list_indexes()
+        elif args.command == "remove":
+            self.remove_index(args.index_name, args.force)
         elif args.command == "build":
             await self.build_index(args)
         elif args.command == "search":
@@ -953,9 +1193,14 @@ Examples:
 
 
 def main():
+    import logging
+
     import dotenv
 
     dotenv.load_dotenv()
+
+    # Set clean logging for CLI usage
+    logging.getLogger().setLevel(logging.WARNING)  # Only show warnings and errors
 
     cli = LeannCLI()
     asyncio.run(cli.run())
