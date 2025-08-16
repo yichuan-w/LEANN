@@ -18,12 +18,8 @@ from leann import LeannChat, LeannSearcher
 class FinanceBenchEvaluator:
     def __init__(self, index_path: str, openai_api_key: Optional[str] = None):
         self.index_path = index_path
-        self.openai_client = None
+        self.openai_client = openai.OpenAI(api_key=openai_api_key) if openai_api_key else None
 
-        if openai_api_key:
-            self.openai_client = openai.OpenAI(api_key=openai_api_key)
-
-        # Load LEANN
         self.searcher = LeannSearcher(index_path)
         self.chat = LeannChat(index_path) if openai_api_key else None
 
@@ -267,57 +263,20 @@ Golden Answer: {expected_answer}
 
 Your output should be ONLY a boolean value: `True` or `False`, nothing else."""
 
-        try:
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=10,
-            )
-
-            result = response.choices[0].message.content.strip().lower()
-            return "true" in result
-
-        except Exception as e:
-            print(f"LLM evaluation error: {e}")
-            # Fallback to simple number matching
-            return self._simple_answer_check(expected_answer, generated_answer)
-
-    def _simple_answer_check(self, expected: str, generated: str) -> bool:
-        """Simple fallback evaluation"""
-        # Extract numbers and check for matches
-        expected_numbers = re.findall(r"\$?[\d,]+\.?\d*", expected.lower())
-        generated_numbers = re.findall(r"\$?[\d,]+\.?\d*", generated.lower())
-
-        # Check if main numbers match
-        for exp_num in expected_numbers:
-            if exp_num in generated_numbers:
-                return True
-
-        # Check for key phrase overlap
-        key_words = set(expected.lower().split()) - {
-            "the",
-            "a",
-            "an",
-            "is",
-            "are",
-            "was",
-            "were",
-            "for",
-            "of",
-            "in",
-            "on",
-            "at",
-            "to",
-            "and",
-            "or",
-            "but",
-        }
-        gen_words = set(generated.lower().split())
-
-        if len(key_words) > 0:
-            overlap = len(key_words.intersection(gen_words))
-            return overlap / len(key_words) >= 0.3
+        # retry in exponential backoff
+        for i in range(3):
+            try:
+                response = self.openai_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0,
+                    max_tokens=10,
+                )
+                result = response.choices[0].message.content.strip().lower()
+                return "true" in result
+            except Exception as e:
+                print(f"LLM evaluation error: {e}")
+                time.sleep(2**i)
 
         return False
 
