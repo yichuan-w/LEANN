@@ -680,6 +680,52 @@ class HFChat(LLMInterface):
         return response.strip()
 
 
+class GeminiChat(LLMInterface):
+    """LLM interface for Google Gemini models."""
+
+    def __init__(self, model: str = "gemini-2.5-flash", api_key: Optional[str] = None):
+        self.model = model
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+
+        if not self.api_key:
+            raise ValueError(
+                "Gemini API key is required. Set GEMINI_API_KEY environment variable or pass api_key parameter."
+            )
+
+        logger.info(f"Initializing Gemini Chat with model='{model}'")
+
+        try:
+            import google.genai as genai
+
+            self.client = genai.Client(api_key=self.api_key)
+        except ImportError:
+            raise ImportError(
+                "The 'google-genai' library is required for Gemini models. Please install it with 'uv pip install google-genai'."
+            )
+
+    def ask(self, prompt: str, **kwargs) -> str:
+        logger.info(f"Sending request to Gemini with model {self.model}")
+
+        try:
+            # Set generation configuration
+            generation_config = {
+                "temperature": kwargs.get("temperature", 0.7),
+                "max_output_tokens": kwargs.get("max_tokens", 1000),
+            }
+
+            # Handle top_p parameter
+            if "top_p" in kwargs:
+                generation_config["top_p"] = kwargs["top_p"]
+
+            response = self.client.models.generate_content(
+                model=self.model, contents=prompt, config=generation_config
+            )
+            return response.text.strip()
+        except Exception as e:
+            logger.error(f"Error communicating with Gemini: {e}")
+            return f"Error: Could not get a response from Gemini. Details: {e}"
+
+
 class OpenAIChat(LLMInterface):
     """LLM interface for OpenAI models."""
 
@@ -793,6 +839,8 @@ def get_llm(llm_config: Optional[dict[str, Any]] = None) -> LLMInterface:
         return HFChat(model_name=model or "deepseek-ai/deepseek-llm-7b-chat")
     elif llm_type == "openai":
         return OpenAIChat(model=model or "gpt-4o", api_key=llm_config.get("api_key"))
+    elif llm_type == "gemini":
+        return GeminiChat(model=model or "gemini-2.5-flash", api_key=llm_config.get("api_key"))
     elif llm_type == "simulated":
         return SimulatedChat()
     else:
