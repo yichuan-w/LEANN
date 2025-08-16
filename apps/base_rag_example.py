@@ -11,8 +11,6 @@ from typing import Any
 import dotenv
 from leann.api import LeannBuilder, LeannChat
 from leann.registry import register_project_directory
-from llama_index.core.node_parser import SentenceSplitter
-from chunking import create_text_chunks
 
 dotenv.load_dotenv()
 
