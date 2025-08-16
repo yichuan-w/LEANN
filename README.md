@@ -87,17 +87,60 @@ git submodule update --init --recursive
 ```
 
 **macOS:**
+
+Note: DiskANN requires MacOS 13.3 or later.
+
 ```bash
-brew install llvm libomp boost protobuf zeromq pkgconf
-CC=$(brew --prefix llvm)/bin/clang CXX=$(brew --prefix llvm)/bin/clang++ uv sync
+brew install libomp boost protobuf zeromq pkgconf
+uv sync --extra diskann
 ```
 
-**Linux:**
-```bash
-# Ubuntu/Debian (For Arch Linux: sudo pacman -S blas lapack openblas libaio boost protobuf abseil-cpp zeromq)
-sudo apt-get update && sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libabsl-dev libmkl-full-dev libaio-dev libzmq3-dev
+**Linux (Ubuntu/Debian):**
 
-uv sync
+Note: On Ubuntu 20.04, you may need to build a newer Abseil and pin Protobuf (e.g., v3.20.x) for building DiskANN. See [Issue #30](https://github.com/yichuan-w/LEANN/issues/30) for a step-by-step note.
+
+You can manually downloading [Intel MKL](https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-download.html?operatingsystem=linux&linux-install=online) instead of `libmkl-full-dev` for DiskANN. You can also use `libopenblas-dev` for building HNSW only, by removing `--extra diskann` in the command below.
+
+```bash
+sudo apt-get update && sudo apt-get install -y \
+  libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev \
+  pkg-config libabsl-dev libaio-dev libprotobuf-dev \
+  libmkl-full-dev
+
+uv sync --extra diskann
+```
+
+**Linux (Arch Linux):**
+
+```bash
+sudo pacman -Syu && sudo pacman -S --needed base-devel cmake pkgconf git gcc \
+  boost boost-libs protobuf abseil-cpp libaio zeromq
+
+# For MKL in DiskANN
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/paru-bin.git
+cd paru-bin && makepkg -si
+paru -S intel-oneapi-mkl intel-oneapi-compiler
+source /opt/intel/oneapi/setvars.sh
+
+uv sync --extra diskann
+```
+
+**Linux (RHEL / CentOS Stream / Oracle / Rocky / AlmaLinux):**
+
+See [Issue #50](https://github.com/yichuan-w/LEANN/issues/50) for more details.
+
+```bash
+sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y libomp-devel boost-devel protobuf-compiler protobuf-devel \
+  abseil-cpp-devel libaio-devel zeromq-devel pkgconf-pkg-config
+
+# For MKL in DiskANN
+sudo dnf install -y intel-oneapi-mkl intel-oneapi-mkl-devel \
+  intel-oneapi-openmp || sudo dnf install -y intel-oneapi-compiler
+source /opt/intel/oneapi/setvars.sh
+
+uv sync --extra diskann
 ```
 
 </details>
