@@ -40,7 +40,6 @@ class CodeRAG(BaseRAGExample):
         code_group.add_argument(
             "--include-extensions",
             nargs="+",
-            default=[".py", ".java", ".cs", ".ts", ".tsx", ".js", ".jsx", ".cpp", ".c", ".h"],
             default=list(CODE_EXTENSIONS.keys()),
             help="File extensions to include (default: supported code extensions)",
         )
