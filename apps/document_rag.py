@@ -9,7 +9,8 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from base_rag_example import BaseRAGExample, create_text_chunks
+from base_rag_example import BaseRAGExample
+from chunking import create_text_chunks
 from llama_index.core import SimpleDirectoryReader
 
 
@@ -47,7 +48,7 @@ class DocumentRAG(BaseRAGExample):
         doc_group.add_argument(
             "--enable-code-chunking",
             action="store_true",
-            help="Enable AST-aware chunking for code files in the data directory"
+            help="Enable AST-aware chunking for code files in the data directory",
         )
 
     async def load_data(self, args) -> list[str]:
@@ -82,21 +83,21 @@ class DocumentRAG(BaseRAGExample):
         print(f"Loaded {len(documents)} documents")
 
         # Determine chunking strategy
-        use_ast = args.enable_code_chunking or getattr(args, 'use_ast_chunking', False)
-        
+        use_ast = args.enable_code_chunking or getattr(args, "use_ast_chunking", False)
+
         if use_ast:
-            print(f"Using AST-aware chunking for code files")
-            
+            print("Using AST-aware chunking for code files")
+
         # Convert to text chunks with optional AST support
         all_texts = create_text_chunks(
-            documents, 
-            chunk_size=args.chunk_size, 
+            documents,
+            chunk_size=args.chunk_size,
             chunk_overlap=args.chunk_overlap,
             use_ast_chunking=use_ast,
-            ast_chunk_size=getattr(args, 'ast_chunk_size', 512),
-            ast_chunk_overlap=getattr(args, 'ast_chunk_overlap', 64),
-            code_file_extensions=getattr(args, 'code_file_extensions', None),
-            ast_fallback_traditional=getattr(args, 'ast_fallback_traditional', True)
+            ast_chunk_size=getattr(args, "ast_chunk_size", 512),
+            ast_chunk_overlap=getattr(args, "ast_chunk_overlap", 64),
+            code_file_extensions=getattr(args, "code_file_extensions", None),
+            ast_fallback_traditional=getattr(args, "ast_fallback_traditional", True),
         )
 
         # Apply max_items limit if specified

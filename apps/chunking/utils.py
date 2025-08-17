@@ -5,7 +5,7 @@ Provides unified interface for both traditional and AST-based text chunking.
 
 import logging
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Optional
 
 from llama_index.core.node_parser import SentenceSplitter
 
@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 # Code file extensions supported by astchunk
 CODE_EXTENSIONS = {
     ".py": "python",
-    ".java": "java", 
-    ".cs": "c_sharp",
+    ".java": "java",
+    ".cs": "csharp",
     ".ts": "typescript",
     ".tsx": "typescript",
-    ".js": "javascript",
-    ".jsx": "javascript"
+    ".js": "typescript",
+    ".jsx": "typescript",
 }
 
 # Default chunk parameters for different content types
@@ -31,34 +31,34 @@ DEFAULT_CHUNK_PARAMS = {
     "text": {
         "chunk_size": 256,
         "chunk_overlap": 128,
-    }
+    },
 }
 
 
 def detect_code_files(documents, code_extensions=None) -> tuple[list, list]:
     """
     Separate documents into code files and regular text files.
-    
+
     Args:
         documents: List of LlamaIndex Document objects
         code_extensions: Dict mapping file extensions to languages (defaults to CODE_EXTENSIONS)
-        
+
     Returns:
         Tuple of (code_documents, text_documents)
     """
     if code_extensions is None:
         code_extensions = CODE_EXTENSIONS
-        
+
     code_docs = []
     text_docs = []
-    
+
     for doc in documents:
         # Get file path from metadata
         file_path = doc.metadata.get("file_path", "")
         if not file_path:
             # Fallback to file_name
             file_path = doc.metadata.get("file_name", "")
-        
+
         if file_path:
             file_ext = Path(file_path).suffix.lower()
             if file_ext in code_extensions:
@@ -73,7 +73,7 @@ def detect_code_files(documents, code_extensions=None) -> tuple[list, list]:
             # If no file path, treat as text
             doc.metadata["is_code"] = False
             text_docs.append(doc)
-    
+
     logger.info(f"Detected {len(code_docs)} code files and {len(text_docs)} text files")
     return code_docs, text_docs
 
@@ -85,20 +85,20 @@ def get_language_from_extension(file_path: str) -> Optional[str]:
 
 
 def create_ast_chunks(
-    documents, 
+    documents,
     max_chunk_size: int = 512,
     chunk_overlap: int = 64,
-    metadata_template: str = "default"
-) -> List[str]:
+    metadata_template: str = "default",
+) -> list[str]:
     """
     Create AST-aware chunks from code documents using astchunk.
-    
+
     Args:
         documents: List of code documents
         max_chunk_size: Maximum characters per chunk
         chunk_overlap: Number of AST nodes to overlap between chunks
         metadata_template: Template for chunk metadata
-        
+
     Returns:
         List of text chunks with preserved code structure
     """
@@ -108,18 +108,20 @@ def create_ast_chunks(
         logger.error(f"astchunk not available: {e}")
         logger.info("Falling back to traditional chunking for code files")
         return create_traditional_chunks(documents, max_chunk_size, chunk_overlap)
-    
+
     all_chunks = []
-    
+
     for doc in documents:
         # Get language from metadata (set by detect_code_files)
         language = doc.metadata.get("language")
         if not language:
-            logger.warning(f"No language detected for document, falling back to traditional chunking")
+            logger.warning(
+                "No language detected for document, falling back to traditional chunking"
+            )
             traditional_chunks = create_traditional_chunks([doc], max_chunk_size, chunk_overlap)
             all_chunks.extend(traditional_chunks)
             continue
-        
+
         try:
             # Configure astchunk
             configs = {
@@ -128,7 +130,7 @@ def create_ast_chunks(
                 "metadata_template": metadata_template,
                 "chunk_overlap": chunk_overlap if chunk_overlap > 0 else 0,
             }
-            
+
             # Add repository-level metadata if available
             repo_metadata = {
                 "file_path": doc.metadata.get("file_path", ""),
@@ -137,56 +139,56 @@ def create_ast_chunks(
                 "last_modified_date": doc.metadata.get("last_modified_date", ""),
             }
             configs["repo_level_metadata"] = repo_metadata
-            
+
             # Create chunk builder and process
             chunk_builder = ASTChunkBuilder(**configs)
             code_content = doc.get_content()
-            
+
             if not code_content or not code_content.strip():
                 logger.warning("Empty code content, skipping")
                 continue
-                
+
             chunks = chunk_builder.chunkify(code_content)
-            
+
             # Extract text content from chunks
             for chunk in chunks:
-                if hasattr(chunk, 'text'):
+                if hasattr(chunk, "text"):
                     chunk_text = chunk.text
-                elif isinstance(chunk, dict) and 'text' in chunk:
-                    chunk_text = chunk['text']
+                elif isinstance(chunk, dict) and "text" in chunk:
+                    chunk_text = chunk["text"]
                 elif isinstance(chunk, str):
                     chunk_text = chunk
                 else:
                     # Try to convert to string
                     chunk_text = str(chunk)
-                
+
                 if chunk_text and chunk_text.strip():
                     all_chunks.append(chunk_text.strip())
-                    
-            logger.info(f"Created {len(chunks)} AST chunks from {language} file: {doc.metadata.get('file_name', 'unknown')}")
-            
+
+            logger.info(
+                f"Created {len(chunks)} AST chunks from {language} file: {doc.metadata.get('file_name', 'unknown')}"
+            )
+
         except Exception as e:
             logger.warning(f"AST chunking failed for {language} file: {e}")
             logger.info("Falling back to traditional chunking")
             traditional_chunks = create_traditional_chunks([doc], max_chunk_size, chunk_overlap)
             all_chunks.extend(traditional_chunks)
-    
+
     return all_chunks
 
 
 def create_traditional_chunks(
-    documents, 
-    chunk_size: int = 256, 
-    chunk_overlap: int = 128
-) -> List[str]:
+    documents, chunk_size: int = 256, chunk_overlap: int = 128
+) -> list[str]:
     """
     Create traditional text chunks using LlamaIndex SentenceSplitter.
-    
+
     Args:
         documents: List of documents to chunk
         chunk_size: Size of each chunk in characters
         chunk_overlap: Overlap between chunks
-        
+
     Returns:
         List of text chunks
     """
@@ -222,12 +224,12 @@ def create_text_chunks(
     use_ast_chunking: bool = False,
     ast_chunk_size: int = 512,
     ast_chunk_overlap: int = 64,
-    code_file_extensions: Optional[List[str]] = None,
-    ast_fallback_traditional: bool = True
-) -> List[str]:
+    code_file_extensions: Optional[list[str]] = None,
+    ast_fallback_traditional: bool = True,
+) -> list[str]:
     """
     Create text chunks from documents with optional AST support for code files.
-    
+
     Args:
         documents: List of LlamaIndex Document objects
         chunk_size: Size for traditional text chunks
@@ -237,23 +239,23 @@ def create_text_chunks(
         ast_chunk_overlap: Overlap for AST chunks
         code_file_extensions: Custom list of code file extensions
         ast_fallback_traditional: Fall back to traditional chunking on AST errors
-        
+
     Returns:
         List of text chunks
     """
     if not documents:
         logger.warning("No documents provided for chunking")
         return []
-    
+
     # Create a local copy of supported extensions for this function call
     local_code_extensions = CODE_EXTENSIONS.copy()
-    
+
     # Update supported extensions if provided
     if code_file_extensions:
         # Map extensions to languages (simplified mapping)
         ext_mapping = {
             ".py": "python",
-            ".java": "java", 
+            ".java": "java",
             ".cs": "c_sharp",
             ".ts": "typescript",
             ".tsx": "typescript",
@@ -265,21 +267,19 @@ def create_text_chunks(
                     local_code_extensions[ext.lower()] = ext_mapping[ext.lower()]
                 else:
                     logger.warning(f"Unsupported extension {ext}, will use traditional chunking")
-    
+
     all_chunks = []
-    
+
     if use_ast_chunking:
         # Separate code and text documents using local extensions
         code_docs, text_docs = detect_code_files(documents, local_code_extensions)
-        
+
         # Process code files with AST chunking
         if code_docs:
             logger.info(f"Processing {len(code_docs)} code files with AST chunking")
             try:
                 ast_chunks = create_ast_chunks(
-                    code_docs, 
-                    max_chunk_size=ast_chunk_size,
-                    chunk_overlap=ast_chunk_overlap
+                    code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
                 )
                 all_chunks.extend(ast_chunks)
                 logger.info(f"Created {len(ast_chunks)} AST chunks from code files")
@@ -293,7 +293,7 @@ def create_text_chunks(
                     all_chunks.extend(traditional_code_chunks)
                 else:
                     raise
-        
+
         # Process text files with traditional chunking
         if text_docs:
             logger.info(f"Processing {len(text_docs)} text files with traditional chunking")
@@ -304,8 +304,6 @@ def create_text_chunks(
         # Use traditional chunking for all files
         logger.info(f"Processing {len(documents)} documents with traditional chunking")
         all_chunks = create_traditional_chunks(documents, chunk_size, chunk_overlap)
-    
+
     logger.info(f"Total chunks created: {len(all_chunks)}")
     return all_chunks
-
-

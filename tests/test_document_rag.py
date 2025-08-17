@@ -58,7 +58,8 @@ def test_document_rag_simulated(test_data_dir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") == "true", reason="Skip AST chunking tests in CI to avoid dependency issues"
+    os.environ.get("CI") == "true",
+    reason="Skip AST chunking tests in CI to avoid dependency issues",
 )
 def test_document_rag_with_ast_chunking(test_data_dir):
     """Test document_rag with AST-aware chunking enabled."""
@@ -96,7 +97,7 @@ def test_document_rag_with_ast_chunking(test_data_dir):
         output = result.stdout + result.stderr
         assert "Index saved to" in output or "Using existing index" in output
         assert "This is a simulated answer" in output
-        
+
         # Should mention AST chunking if code files are present
         # (might not be relevant for the test data, but command should succeed)
 

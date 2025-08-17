@@ -1,7 +1,8 @@
 import argparse
 import asyncio
+import sys
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
@@ -692,7 +693,7 @@ Examples:
         docs_paths: Union[str, list],
         custom_file_types: Union[str, None] = None,
         include_hidden: bool = False,
-        args=None
+        args: Optional[dict[str, Any]] = None,
     ):
         # Handle both single path (string) and multiple paths (list) for backward compatibility
         if isinstance(docs_paths, str):
@@ -998,39 +999,37 @@ Examples:
         }
 
         print("start chunking documents")
-        
+
         # Check if AST chunking is requested
-        use_ast = getattr(args, 'use_ast_chunking', False)
-        
+        use_ast = getattr(args, "use_ast_chunking", False)
+
         if use_ast:
             print("🧠 Using AST-aware chunking for code files")
             try:
                 # Import enhanced chunking utilities
-                import sys
-                
                 # Add apps directory to path to import chunking utilities
                 apps_dir = Path(__file__).parent.parent.parent.parent.parent / "apps"
                 if apps_dir.exists():
                     sys.path.insert(0, str(apps_dir))
-                
+
                 from chunking import create_text_chunks
-                
+
                 # Use enhanced chunking with AST support
                 all_texts = create_text_chunks(
                     documents,
                     chunk_size=self.node_parser.chunk_size,
                     chunk_overlap=self.node_parser.chunk_overlap,
                     use_ast_chunking=True,
-                    ast_chunk_size=getattr(args, 'ast_chunk_size', 768),
-                    ast_chunk_overlap=getattr(args, 'ast_chunk_overlap', 96),
+                    ast_chunk_size=getattr(args, "ast_chunk_size", 768),
+                    ast_chunk_overlap=getattr(args, "ast_chunk_overlap", 96),
                     code_file_extensions=None,  # Use defaults
-                    ast_fallback_traditional=getattr(args, 'ast_fallback_traditional', True)
+                    ast_fallback_traditional=getattr(args, "ast_fallback_traditional", True),
                 )
-                
+
             except ImportError as e:
                 print(f"⚠️  AST chunking not available ({e}), falling back to traditional chunking")
                 use_ast = False
-        
+
         if not use_ast:
             # Use traditional chunking logic
             for doc in tqdm(documents, desc="Chunking documents", unit="doc"):

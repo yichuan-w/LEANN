@@ -108,36 +108,36 @@ class BaseRAGExample(ABC):
             help="Thinking budget for reasoning models (low/medium/high). Supported by GPT-Oss:20b and other reasoning models.",
         )
 
-        # AST Chunking parameters  
+        # AST Chunking parameters
         ast_group = parser.add_argument_group("AST Chunking Parameters")
         ast_group.add_argument(
             "--use-ast-chunking",
             action="store_true",
-            help="Enable AST-aware chunking for code files (requires astchunk)"
+            help="Enable AST-aware chunking for code files (requires astchunk)",
         )
         ast_group.add_argument(
             "--ast-chunk-size",
             type=int,
             default=512,
-            help="Maximum characters per AST chunk (default: 512)"
+            help="Maximum characters per AST chunk (default: 512)",
         )
         ast_group.add_argument(
-            "--ast-chunk-overlap", 
+            "--ast-chunk-overlap",
             type=int,
             default=64,
-            help="Overlap between AST chunks (default: 64)"
+            help="Overlap between AST chunks (default: 64)",
         )
         ast_group.add_argument(
             "--code-file-extensions",
             nargs="+",
             default=None,
-            help="Additional code file extensions to process with AST chunking (e.g., .py .java .cs .ts)"
+            help="Additional code file extensions to process with AST chunking (e.g., .py .java .cs .ts)",
         )
         ast_group.add_argument(
             "--ast-fallback-traditional",
-            action="store_true", 
+            action="store_true",
             default=True,
-            help="Fall back to traditional chunking if AST chunking fails (default: True)"
+            help="Fall back to traditional chunking if AST chunking fails (default: True)",
         )
 
         # Search parameters
@@ -341,5 +341,3 @@ class BaseRAGExample(ABC):
             await self.run_single_query(args, index_path, args.query)
         else:
             await self.run_interactive_chat(args, index_path)
-
-
