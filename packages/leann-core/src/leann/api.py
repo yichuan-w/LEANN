@@ -613,9 +613,9 @@ class LeannSearcher:
             use_server_if_available=recompute_embeddings,
             zmq_port=zmq_port,
         )
-        # logger.info(f"  Generated embedding shape: {query_embedding.shape}")
-        # time.time() - start_time
-        # logger.info(f"  Embedding time: {embedding_time} seconds")
+        logger.info(f"  Generated embedding shape: {query_embedding.shape}")
+        embedding_time = time.time() - start_time
+        logger.info(f"  Embedding time: {embedding_time} seconds")
 
         start_time = time.time()
         results = self.backend_impl.search(
@@ -629,7 +629,8 @@ class LeannSearcher:
             zmq_port=zmq_port,
             **kwargs,
         )
-        # logger.info(f"  Search time: {search_time} seconds")
+        search_time = time.time() - start_time
+        logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
         enriched_results = []
@@ -708,9 +709,15 @@ class LeannChat:
         index_path: str,
         llm_config: Optional[dict[str, Any]] = None,
         enable_warmup: bool = False,
+        searcher: Optional[LeannSearcher] = None,
         **kwargs,
     ):
-        self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
+        if searcher is None:
+            self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
+            self._owns_searcher = True
+        else:
+            self.searcher = searcher
+            self._owns_searcher = False
         self.llm = get_llm(llm_config)
 
     def ask(
@@ -741,7 +748,7 @@ class LeannChat:
             **search_kwargs,
         )
         search_time = time.time() - search_time
-        # logger.info(f"  Search time: {search_time} seconds")
+        logger.info(f"  Search time: {search_time} seconds")
         context = "\n\n".join([r.text for r in results])
         prompt = (
             "Here is some retrieved context that might help answer your question:\n\n"
@@ -777,7 +784,9 @@ class LeannChat:
         This method should be called after you're done using the chat interface,
         especially in test environments or batch processing scenarios.
         """
-        if hasattr(self.searcher, "cleanup"):
+        # Only stop the embedding server if this LeannChat instance created the searcher.
+        # When a shared searcher is passed in, avoid shutting down the server to enable reuse.
+        if getattr(self, "_owns_searcher", False) and hasattr(self.searcher, "cleanup"):
             self.searcher.cleanup()
 
     # Enable automatic cleanup patterns

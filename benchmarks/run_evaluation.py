@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from leann.api import LeannBuilder, LeannSearcher
+from leann.api import LeannBuilder, LeannChat, LeannSearcher
 
 
 def download_data_if_needed(data_root: Path, download_embeddings: bool = False):
@@ -197,6 +197,19 @@ def main():
     parser.add_argument(
         "--ef-search", type=int, default=120, help="The 'efSearch' parameter for HNSW."
     )
+    parser.add_argument(
+        "--llm-type",
+        type=str,
+        choices=["ollama", "hf", "openai", "gemini", "simulated"],
+        default="ollama",
+        help="LLM backend type to optionally query during evaluation (default: ollama)",
+    )
+    parser.add_argument(
+        "--llm-model",
+        type=str,
+        default="qwen3:1.7b",
+        help="LLM model identifier for the chosen backend (default: qwen3:1.7b)",
+    )
     args = parser.parse_args()
 
     # --- Path Configuration ---
@@ -318,9 +331,14 @@ def main():
 
         for i in range(num_eval_queries):
             start_time = time.time()
-            new_results = searcher.search(queries[i], top_k=args.top_k, ef=args.ef_search)
+            new_results = searcher.search(queries[i], top_k=args.top_k, complexity=args.ef_search)
             search_times.append(time.time() - start_time)
 
+            # Optional: also call the LLM with configurable backend/model (does not affect recall)
+            llm_config = {"type": args.llm_type, "model": args.llm_model}
+            chat = LeannChat(args.index_path, llm_config=llm_config, searcher=searcher)
+            answer = chat.ask(queries[i], top_k=args.top_k, complexity=args.ef_search)
+            print(f"Answer: {answer}")
             # Correct Recall Calculation: Based on TEXT content
             new_texts = {result.text for result in new_results}
 

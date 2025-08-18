@@ -268,7 +268,6 @@ class BaseRAGExample(ABC):
         chat = LeannChat(
             index_path,
             llm_config=self.get_llm_config(args),
-            system_prompt=f"You are a helpful assistant that answers questions about {self.name} data.",
             complexity=args.search_complexity,
         )
 
