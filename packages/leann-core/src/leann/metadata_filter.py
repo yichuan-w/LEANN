@@ -233,13 +233,3 @@ class MetadataFilterEngine:
         except (ValueError, TypeError):
             # Fall back to string comparison if numeric conversion fails
             return compare_func(str(field_value), str(expected_value))
-
-
-def create_filter_engine() -> MetadataFilterEngine:
-    """
-    Factory function to create a new MetadataFilterEngine instance.
-
-    Returns:
-        New MetadataFilterEngine instance
-    """
-    return MetadataFilterEngine()

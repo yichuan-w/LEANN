@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../packages/leann-core/src"))
 
 from leann.api import PassageManager, SearchResult
-from leann.metadata_filter import MetadataFilterEngine, create_filter_engine
+from leann.metadata_filter import MetadataFilterEngine
 
 
 class TestMetadataFilterEngine:
@@ -88,9 +88,9 @@ class TestMetadataFilterEngine:
         assert "contains" in self.engine.operators
         assert "in" in self.engine.operators
 
-    def test_factory_function(self):
-        """Test the factory function creates an engine."""
-        engine = create_filter_engine()
+    def test_direct_instantiation(self):
+        """Test direct instantiation of the engine."""
+        engine = MetadataFilterEngine()
         assert isinstance(engine, MetadataFilterEngine)
 
     def test_no_filters_returns_all_results(self):
