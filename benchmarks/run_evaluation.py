@@ -6,6 +6,8 @@ results and the golden standard results, making the comparison robust to ID chan
 """
 
 import argparse
+import logging
+import os
 import json
 import sys
 import time
@@ -13,6 +15,11 @@ from pathlib import Path
 
 import numpy as np
 from leann.api import LeannBuilder, LeannChat, LeannSearcher
+
+# Configure logging level (default INFO; override with LEANN_LOG_LEVEL)
+_log_level_str = os.getenv("LEANN_LOG_LEVEL", "INFO").upper()
+_log_level = getattr(logging, _log_level_str, logging.INFO)
+logging.basicConfig(level=_log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def download_data_if_needed(data_root: Path, download_embeddings: bool = False):

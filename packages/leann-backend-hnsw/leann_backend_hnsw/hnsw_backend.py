@@ -233,6 +233,18 @@ class HNSWSearcher(BaseSearcher):
         # HNSW-specific batch processing parameter
         params.batch_size = batch_size
 
+        # Log recompute mode and batching for visibility
+        logger.info(
+            "HNSW search: recompute=%s, zmq_port=%s, batch_size=%d, efSearch=%d, beam=%d, prune_ratio=%.3f, strategy=%s",
+            bool(recompute_embeddings),
+            str(zmq_port),
+            int(batch_size),
+            int(complexity),
+            int(beam_width),
+            float(prune_ratio),
+            pruning_strategy,
+        )
+
         batch_size_query = query.shape[0]
         distances = np.empty((batch_size_query, top_k), dtype=np.float32)
         labels = np.empty((batch_size_query, top_k), dtype=np.int64)
