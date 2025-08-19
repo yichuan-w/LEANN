@@ -183,6 +183,9 @@ class Benchmark:
         start_time = time.time()
         with torch.no_grad():
             self.model(input_ids=input_ids, attention_mask=attention_mask)
+        # mps sync
+        if torch.backends.mps.is_available():
+            torch.mps.synchronize()
         end_time = time.time()
 
         return end_time - start_time
