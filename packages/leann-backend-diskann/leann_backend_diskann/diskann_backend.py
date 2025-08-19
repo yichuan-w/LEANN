@@ -4,7 +4,7 @@ import os
 import struct
 import sys
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Union
 
 import numpy as np
 import psutil
@@ -392,6 +392,7 @@ class DiskannSearcher(BaseSearcher):
         zmq_port: Optional[int] = None,
         batch_recompute: bool = False,
         dedup_node_dis: bool = False,
+        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]] = None,
         **kwargs,
     ) -> dict[str, Any]:
         """
@@ -411,6 +412,8 @@ class DiskannSearcher(BaseSearcher):
             zmq_port: ZMQ port for embedding server communication. Must be provided if recompute_embeddings is True.
             batch_recompute: Whether to batch neighbor recomputation (DiskANN-specific)
             dedup_node_dis: Whether to cache and reuse distance computations (DiskANN-specific)
+            metadata_filters: Optional filters to apply to search results based on metadata.
+                Format: {"field_name": {"operator": value}}
             **kwargs: Additional DiskANN-specific parameters (for legacy compatibility)
 
         Returns:

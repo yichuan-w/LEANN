@@ -2,7 +2,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Union
 
 import numpy as np
 from leann.interface import (
@@ -160,6 +160,7 @@ class HNSWSearcher(BaseSearcher):
         recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         batch_size: int = 0,
+        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]] = None,
         **kwargs,
     ) -> dict[str, Any]:
         """
@@ -178,6 +179,8 @@ class HNSWSearcher(BaseSearcher):
                 - "proportional": Base selection on new neighbor count ratio
             zmq_port: ZMQ port for embedding server communication. Must be provided if recompute_embeddings is True.
             batch_size: Neighbor processing batch size, 0=disabled (HNSW-specific)
+            metadata_filters: Optional filters to apply to search results based on metadata.
+                Format: {"field_name": {"operator": value}}
             **kwargs: Additional HNSW-specific parameters (for legacy compatibility)
 
         Returns:
