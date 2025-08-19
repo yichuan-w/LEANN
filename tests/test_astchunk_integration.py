@@ -76,7 +76,7 @@ class TestCodeFileDetection:
         assert "python" in languages
         assert "java" in languages
         assert "typescript" in languages
-        assert "c_sharp" in languages
+        assert "csharp" in languages
 
     def test_detect_code_files_no_file_path(self):
         """Test handling of documents without file paths."""
@@ -97,7 +97,7 @@ class TestCodeFileDetection:
         assert get_language_from_extension("test.py") == "python"
         assert get_language_from_extension("Test.java") == "java"
         assert get_language_from_extension("component.tsx") == "typescript"
-        assert get_language_from_extension("Program.cs") == "c_sharp"
+        assert get_language_from_extension("Program.cs") == "csharp"
         assert get_language_from_extension("document.txt") is None
         assert get_language_from_extension("") is None
 

@@ -192,6 +192,17 @@ def create_traditional_chunks(
     Returns:
         List of text chunks
     """
+    # Handle invalid chunk_size values
+    if chunk_size <= 0:
+        logger.warning(f"Invalid chunk_size={chunk_size}, using default value of 256")
+        chunk_size = 256
+
+    # Ensure chunk_overlap is not negative and not larger than chunk_size
+    if chunk_overlap < 0:
+        chunk_overlap = 0
+    if chunk_overlap >= chunk_size:
+        chunk_overlap = chunk_size // 2
+
     node_parser = SentenceSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
