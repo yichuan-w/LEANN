@@ -198,6 +198,12 @@ def main():
         "--ef-search", type=int, default=120, help="The 'efSearch' parameter for HNSW."
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=0,
+        help="Batch size for HNSW batched search (0 disables batching)",
+    )
+    parser.add_argument(
         "--llm-type",
         type=str,
         choices=["ollama", "hf", "openai", "gemini", "simulated"],
@@ -331,13 +337,23 @@ def main():
 
         for i in range(num_eval_queries):
             start_time = time.time()
-            new_results = searcher.search(queries[i], top_k=args.top_k, complexity=args.ef_search)
+            new_results = searcher.search(
+                queries[i],
+                top_k=args.top_k,
+                complexity=args.ef_search,
+                batch_size=args.batch_size,
+            )
             search_times.append(time.time() - start_time)
 
             # Optional: also call the LLM with configurable backend/model (does not affect recall)
             llm_config = {"type": args.llm_type, "model": args.llm_model}
             chat = LeannChat(args.index_path, llm_config=llm_config, searcher=searcher)
-            answer = chat.ask(queries[i], top_k=args.top_k, complexity=args.ef_search)
+            answer = chat.ask(
+                queries[i],
+                top_k=args.top_k,
+                complexity=args.ef_search,
+                batch_size=args.batch_size,
+            )
             print(f"Answer: {answer}")
             # Correct Recall Calculation: Based on TEXT content
             new_texts = {result.text for result in new_results}
