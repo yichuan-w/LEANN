@@ -7,14 +7,14 @@ operators for different data types including numbers, strings, booleans, and lis
 """
 
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 logger = logging.getLogger(__name__)
 
 # Type alias for filter specifications
 FilterValue = Union[str, int, float, bool, list]
-FilterSpec = Dict[str, FilterValue]
-MetadataFilters = Dict[str, FilterSpec]
+FilterSpec = dict[str, FilterValue]
+MetadataFilters = dict[str, FilterSpec]
 
 
 class MetadataFilterEngine:
@@ -47,8 +47,8 @@ class MetadataFilterEngine:
         }
 
     def apply_filters(
-        self, search_results: List[Dict[str, Any]], metadata_filters: MetadataFilters
-    ) -> List[Dict[str, Any]]:
+        self, search_results: list[dict[str, Any]], metadata_filters: MetadataFilters
+    ) -> list[dict[str, Any]]:
         """
         Apply metadata filters to a list of search results.
 
@@ -74,7 +74,7 @@ class MetadataFilterEngine:
         logger.debug(f"Filtered results count: {len(filtered_results)}")
         return filtered_results
 
-    def _evaluate_filters(self, metadata: Dict[str, Any], filters: MetadataFilters) -> bool:
+    def _evaluate_filters(self, metadata: dict[str, Any], filters: MetadataFilters) -> bool:
         """
         Evaluate all filters against a single metadata dictionary.
 
@@ -93,7 +93,7 @@ class MetadataFilterEngine:
         return True
 
     def _evaluate_field_filter(
-        self, metadata: Dict[str, Any], field_name: str, filter_spec: FilterSpec
+        self, metadata: dict[str, Any], field_name: str, filter_spec: FilterSpec
     ) -> bool:
         """
         Evaluate a single field filter against metadata.

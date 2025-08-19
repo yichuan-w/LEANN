@@ -4,7 +4,7 @@ import os
 import struct
 import sys
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 import psutil
@@ -392,7 +392,7 @@ class DiskannSearcher(BaseSearcher):
         zmq_port: Optional[int] = None,
         batch_recompute: bool = False,
         dedup_node_dis: bool = False,
-        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]] = None,
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         **kwargs,
     ) -> dict[str, Any]:
         """

@@ -2,7 +2,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 from leann.interface import (
@@ -160,7 +160,7 @@ class HNSWSearcher(BaseSearcher):
         recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         batch_size: int = 0,
-        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]] = None,
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         **kwargs,
     ) -> dict[str, Any]:
         """

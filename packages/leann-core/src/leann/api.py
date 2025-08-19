@@ -10,7 +10,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 
@@ -199,7 +199,7 @@ class PassageManager:
     def filter_search_results(
         self,
         search_results: list[SearchResult],
-        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]],
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]],
     ) -> list[SearchResult]:
         """
         Apply metadata filters to search results.
@@ -628,7 +628,7 @@ class LeannSearcher:
         recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         expected_zmq_port: int = 5557,
-        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]] = None,
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         **kwargs,
     ) -> list[SearchResult]:
         """
@@ -810,7 +810,7 @@ class LeannChat:
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         llm_kwargs: Optional[dict[str, Any]] = None,
         expected_zmq_port: int = 5557,
-        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]] = None,
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         **search_kwargs,
     ):
         if llm_kwargs is None:

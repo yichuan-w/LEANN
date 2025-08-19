@@ -12,7 +12,7 @@ Usage:
 
 import os
 import sys
-from typing import Any, Dict, List
+from typing import Any, Optional
 
 # Add LEANN to path (adjust path as needed)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../packages/leann-core/src"))
@@ -22,7 +22,7 @@ from leann.api import LeannBuilder, LeannSearcher
 
 def chunk_book_with_metadata(
     book_text: str, book_title: str = "Sample Book"
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Custom chunker that extracts chapter information and metadata from book text.
 
@@ -117,7 +117,7 @@ def chunk_book_with_metadata(
     return sample_chunks
 
 
-def build_spoiler_free_index(book_chunks: List[Dict[str, Any]], index_name: str) -> str:
+def build_spoiler_free_index(book_chunks: list[dict[str, Any]], index_name: str) -> str:
     """
     Build a LEANN index with book chunks that include spoiler metadata.
 
@@ -152,8 +152,8 @@ def spoiler_free_search(
     query: str,
     max_chapter: int,
     max_spoiler_level: str = "medium",
-    character_filter: List[str] = None,
-) -> List[Dict[str, Any]]:
+    character_filter: Optional[list[str]] = None,
+) -> list[dict[str, Any]]:
     """
     Perform a spoiler-free search on the book index.
 

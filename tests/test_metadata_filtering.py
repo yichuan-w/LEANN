@@ -5,17 +5,16 @@ This module tests the MetadataFilterEngine class and its integration
 with the LEANN search system.
 """
 
-import pytest
-from unittest.mock import Mock, patch
+import os
 
 # Import the modules we're testing
 import sys
-import os
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../packages/leann-core/src"))
 
+from leann.api import PassageManager, SearchResult
 from leann.metadata_filter import MetadataFilterEngine, create_filter_engine
-from leann.api import SearchResult, PassageManager
 
 
 class TestMetadataFilterEngine:
@@ -237,13 +236,14 @@ class TestMetadataFilterEngine:
     def test_type_coercion_numeric(self):
         """Test numeric type coercion in comparisons."""
         # Add a result with string chapter number
-        test_results = self.sample_results + [
+        test_results = [
+            *self.sample_results,
             {
                 "id": "doc5",
                 "score": 0.75,
                 "text": "String chapter test",
                 "metadata": {"chapter": "2", "genre": "test"},
-            }
+            },
         ]
 
         filters = {"chapter": {"<": 3}}
