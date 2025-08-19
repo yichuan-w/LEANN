@@ -199,46 +199,50 @@ class PassageManager:
     def filter_search_results(
         self,
         search_results: list[SearchResult],
-        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]]
+        metadata_filters: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list]]]],
     ) -> list[SearchResult]:
         """
         Apply metadata filters to search results.
-        
+
         Args:
             search_results: List of SearchResult objects
             metadata_filters: Filter specifications to apply
-        
+
         Returns:
             Filtered list of SearchResult objects
         """
         if not metadata_filters:
             return search_results
-        
+
         logger.debug(f"Applying metadata filters to {len(search_results)} results")
-        
+
         # Convert SearchResult objects to dictionaries for the filter engine
         result_dicts = []
         for result in search_results:
-            result_dicts.append({
-                "id": result.id,
-                "score": result.score,
-                "text": result.text,
-                "metadata": result.metadata
-            })
-        
+            result_dicts.append(
+                {
+                    "id": result.id,
+                    "score": result.score,
+                    "text": result.text,
+                    "metadata": result.metadata,
+                }
+            )
+
         # Apply filters using the filter engine
         filtered_dicts = self.filter_engine.apply_filters(result_dicts, metadata_filters)
-        
+
         # Convert back to SearchResult objects
         filtered_results = []
         for result_dict in filtered_dicts:
-            filtered_results.append(SearchResult(
-                id=result_dict["id"],
-                score=result_dict["score"],
-                text=result_dict["text"],
-                metadata=result_dict["metadata"]
-            ))
-        
+            filtered_results.append(
+                SearchResult(
+                    id=result_dict["id"],
+                    score=result_dict["score"],
+                    text=result_dict["text"],
+                    metadata=result_dict["metadata"],
+                )
+            )
+
         logger.debug(f"Filtered results: {len(filtered_results)} remaining")
         return filtered_results
 
