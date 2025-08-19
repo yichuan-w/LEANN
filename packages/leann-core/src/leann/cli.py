@@ -206,6 +206,11 @@ Examples:
             default="global",
             help="Pruning strategy (default: global)",
         )
+        search_parser.add_argument(
+            "--non-interactive",
+            action="store_true",
+            help="Non-interactive mode: automatically select index without prompting",
+        )
 
         # Ask command
         ask_parser = subparsers.add_parser("ask", help="Ask questions")
@@ -405,13 +410,9 @@ Examples:
             print("💡 Get started:")
             print("   leann build my-docs --docs ./documents")
         else:
-            projects_count = len(
-                [
-                    p
-                    for p in valid_projects
-                    if (p / ".leann" / "indexes").exists()
-                    and list((p / ".leann" / "indexes").iterdir())
-                ]
+            # Count only projects that have at least one discoverable index
+            projects_count = sum(
+                1 for p in valid_projects if len(self._discover_indexes_in_project(p)) > 0
             )
             print(f"📊 Total: {total_indexes} indexes across {projects_count} projects")
 
@@ -461,26 +462,35 @@ Examples:
                     )
 
         # 2. Apps format: *.leann.meta.json files anywhere in the project
+        cli_indexes_dir = project_path / ".leann" / "indexes"
         for meta_file in project_path.rglob("*.leann.meta.json"):
             if meta_file.is_file():
-                # Extract index name from filename (remove .leann.meta.json extension)
-                index_name = meta_file.name.replace(".leann.meta.json", "")
+                # Skip CLI-built indexes (which store meta under .leann/indexes/<name>/)
+                try:
+                    if cli_indexes_dir.exists() and cli_indexes_dir in meta_file.parents:
+                        continue
+                except Exception:
+                    pass
+                # Use the parent directory name as the app index display name
+                display_name = meta_file.parent.name
+                # Extract file base used to store files
+                file_base = meta_file.name.replace(".leann.meta.json", "")
 
                 # Apps indexes are considered complete if the .leann.meta.json file exists
                 status = "✅"
 
-                # Calculate total size of all related files
+                # Calculate total size of all related files (use file base)
                 size_mb = 0
                 try:
                     index_dir = meta_file.parent
-                    for related_file in index_dir.glob(f"{index_name}.leann*"):
+                    for related_file in index_dir.glob(f"{file_base}.leann*"):
                         size_mb += related_file.stat().st_size / (1024 * 1024)
                 except (OSError, PermissionError):
                     pass
 
                 indexes.append(
                     {
-                        "name": index_name,
+                        "name": display_name,
                         "type": "app",
                         "status": status,
                         "size_mb": size_mb,
@@ -534,12 +544,78 @@ Examples:
             if not project_path.exists():
                 continue
 
+            # 1) CLI-format index under .leann/indexes/<name>
             index_dir = project_path / ".leann" / "indexes" / index_name
             if index_dir.exists():
                 is_current = project_path == current_path
                 matches.append(
-                    {"project_path": project_path, "index_dir": index_dir, "is_current": is_current}
+                    {
+                        "project_path": project_path,
+                        "index_dir": index_dir,
+                        "is_current": is_current,
+                        "kind": "cli",
+                    }
                 )
+
+            # 2) App-format indexes
+            # We support two ways of addressing apps:
+            #   a) by the file base (e.g., `pdf_documents`)
+            #   b) by the parent directory name (e.g., `new_txt`)
+            seen_app_meta = set()
+
+            # 2a) by file base
+            for meta_file in project_path.rglob(f"{index_name}.leann.meta.json"):
+                if meta_file.is_file():
+                    # Skip CLI-built indexes' meta under .leann/indexes
+                    try:
+                        cli_indexes_dir = project_path / ".leann" / "indexes"
+                        if cli_indexes_dir.exists() and cli_indexes_dir in meta_file.parents:
+                            continue
+                    except Exception:
+                        pass
+                    is_current = project_path == current_path
+                    key = (str(project_path), str(meta_file))
+                    if key in seen_app_meta:
+                        continue
+                    seen_app_meta.add(key)
+                    matches.append(
+                        {
+                            "project_path": project_path,
+                            "files_dir": meta_file.parent,
+                            "meta_file": meta_file,
+                            "is_current": is_current,
+                            "kind": "app",
+                            "display_name": meta_file.parent.name,
+                            "file_base": meta_file.name.replace(".leann.meta.json", ""),
+                        }
+                    )
+
+            # 2b) by parent directory name
+            for meta_file in project_path.rglob("*.leann.meta.json"):
+                if meta_file.is_file() and meta_file.parent.name == index_name:
+                    # Skip CLI-built indexes' meta under .leann/indexes
+                    try:
+                        cli_indexes_dir = project_path / ".leann" / "indexes"
+                        if cli_indexes_dir.exists() and cli_indexes_dir in meta_file.parents:
+                            continue
+                    except Exception:
+                        pass
+                    is_current = project_path == current_path
+                    key = (str(project_path), str(meta_file))
+                    if key in seen_app_meta:
+                        continue
+                    seen_app_meta.add(key)
+                    matches.append(
+                        {
+                            "project_path": project_path,
+                            "files_dir": meta_file.parent,
+                            "meta_file": meta_file,
+                            "is_current": is_current,
+                            "kind": "app",
+                            "display_name": meta_file.parent.name,
+                            "file_base": meta_file.name.replace(".leann.meta.json", ""),
+                        }
+                    )
 
         # Sort: current project first, then by project name
         matches.sort(key=lambda x: (not x["is_current"], x["project_path"].name))
@@ -548,8 +624,8 @@ Examples:
     def _remove_single_match(self, match, index_name: str, force: bool):
         """Handle removal when only one match is found"""
         project_path = match["project_path"]
-        index_dir = match["index_dir"]
         is_current = match["is_current"]
+        kind = match.get("kind", "cli")
 
         if is_current:
             location_info = "current project"
@@ -560,7 +636,10 @@ Examples:
 
         print(f"✅ Found 1 index named '{index_name}':")
         print(f"   {emoji} Location: {location_info}")
-        print(f"   📍 Path: {project_path}")
+        if kind == "cli":
+            print(f"   📍 Path: {project_path / '.leann' / 'indexes' / index_name}")
+        else:
+            print(f"   📍 Meta: {match['meta_file']}")
 
         if not force:
             if not is_current:
@@ -572,9 +651,22 @@ Examples:
                 print("   ❌ Removal cancelled.")
                 return False
 
-        return self._delete_index_directory(
-            index_dir, index_name, project_path if not is_current else None
-        )
+        if kind == "cli":
+            return self._delete_index_directory(
+                match["index_dir"],
+                index_name,
+                project_path if not is_current else None,
+                is_app=False,
+            )
+        else:
+            return self._delete_index_directory(
+                match["files_dir"],
+                match.get("display_name", index_name),
+                project_path if not is_current else None,
+                is_app=True,
+                meta_file=match.get("meta_file"),
+                app_file_base=match.get("file_base"),
+            )
 
     def _remove_from_multiple_matches(self, matches, index_name: str, force: bool):
         """Handle removal when multiple matches are found"""
@@ -585,19 +677,34 @@ Examples:
         for i, match in enumerate(matches, 1):
             project_path = match["project_path"]
             is_current = match["is_current"]
+            kind = match.get("kind", "cli")
 
             if is_current:
-                print(f"   {i}. 🏠 Current project")
-                print(f"      📍 {project_path}")
+                print(f"   {i}. 🏠 Current project ({'CLI' if kind == 'cli' else 'APP'})")
             else:
-                print(f"   {i}. 📂 {project_path.name}")
-                print(f"      📍 {project_path}")
+                print(f"   {i}. 📂 {project_path.name} ({'CLI' if kind == 'cli' else 'APP'})")
+
+            # Show path details
+            if kind == "cli":
+                print(f"      📍 {project_path / '.leann' / 'indexes' / index_name}")
+            else:
+                print(f"      📍 {match['meta_file']}")
 
             # Show size info
             try:
-                size_mb = sum(
-                    f.stat().st_size for f in match["index_dir"].iterdir() if f.is_file()
-                ) / (1024 * 1024)
+                if kind == "cli":
+                    size_mb = sum(
+                        f.stat().st_size for f in match["index_dir"].iterdir() if f.is_file()
+                    ) / (1024 * 1024)
+                else:
+                    file_base = match.get("file_base")
+                    size_mb = 0.0
+                    if file_base:
+                        size_mb = sum(
+                            f.stat().st_size
+                            for f in match["files_dir"].glob(f"{file_base}.leann*")
+                            if f.is_file()
+                        ) / (1024 * 1024)
                 print(f"      📦 Size: {size_mb:.1f} MB")
             except (OSError, PermissionError):
                 pass
@@ -621,8 +728,8 @@ Examples:
             if 0 <= choice_idx < len(matches):
                 selected_match = matches[choice_idx]
                 project_path = selected_match["project_path"]
-                index_dir = selected_match["index_dir"]
                 is_current = selected_match["is_current"]
+                kind = selected_match.get("kind", "cli")
 
                 location = "current project" if is_current else f"'{project_path.name}' project"
                 print(f"   🎯 Selected: Remove from {location}")
@@ -635,9 +742,22 @@ Examples:
                     print("   ❌ Confirmation failed. Removal cancelled.")
                     return False
 
-                return self._delete_index_directory(
-                    index_dir, index_name, project_path if not is_current else None
-                )
+                if kind == "cli":
+                    return self._delete_index_directory(
+                        selected_match["index_dir"],
+                        index_name,
+                        project_path if not is_current else None,
+                        is_app=False,
+                    )
+                else:
+                    return self._delete_index_directory(
+                        selected_match["files_dir"],
+                        selected_match.get("display_name", index_name),
+                        project_path if not is_current else None,
+                        is_app=True,
+                        meta_file=selected_match.get("meta_file"),
+                        app_file_base=selected_match.get("file_base"),
+                    )
             else:
                 print("   ❌ Invalid choice. Removal cancelled.")
                 return False
@@ -647,21 +767,65 @@ Examples:
             return False
 
     def _delete_index_directory(
-        self, index_dir: Path, index_name: str, project_path: Optional[Path] = None
+        self,
+        index_dir: Path,
+        index_display_name: str,
+        project_path: Optional[Path] = None,
+        is_app: bool = False,
+        meta_file: Optional[Path] = None,
+        app_file_base: Optional[str] = None,
     ):
-        """Actually delete the index directory"""
+        """Delete a CLI index directory or APP index files safely."""
         try:
-            import shutil
+            if is_app:
+                removed = 0
+                errors = 0
+                # Delete only files that belong to this app index (based on file base)
+                pattern_base = app_file_base or ""
+                for f in index_dir.glob(f"{pattern_base}.leann*"):
+                    try:
+                        f.unlink()
+                        removed += 1
+                    except Exception:
+                        errors += 1
+                # Best-effort: also remove the meta file if specified and still exists
+                if meta_file and meta_file.exists():
+                    try:
+                        meta_file.unlink()
+                        removed += 1
+                    except Exception:
+                        errors += 1
 
-            shutil.rmtree(index_dir)
-
-            if project_path:
-                print(f"✅ Index '{index_name}' removed from {project_path.name}")
+                if removed > 0 and errors == 0:
+                    if project_path:
+                        print(
+                            f"✅ App index '{index_display_name}' removed from {project_path.name}"
+                        )
+                    else:
+                        print(f"✅ App index '{index_display_name}' removed successfully")
+                    return True
+                elif removed > 0 and errors > 0:
+                    print(
+                        f"⚠️  App index '{index_display_name}' partially removed (some files couldn't be deleted)"
+                    )
+                    return True
+                else:
+                    print(
+                        f"❌ No files found to remove for app index '{index_display_name}' in {index_dir}"
+                    )
+                    return False
             else:
-                print(f"✅ Index '{index_name}' removed successfully")
-            return True
+                import shutil
+
+                shutil.rmtree(index_dir)
+
+                if project_path:
+                    print(f"✅ Index '{index_display_name}' removed from {project_path.name}")
+                else:
+                    print(f"✅ Index '{index_display_name}' removed successfully")
+                return True
         except Exception as e:
-            print(f"❌ Error removing index '{index_name}': {e}")
+            print(f"❌ Error removing index '{index_display_name}': {e}")
             return False
 
     def load_documents(
@@ -1085,13 +1249,101 @@ Examples:
     async def search_documents(self, args):
         index_name = args.index_name
         query = args.query
-        index_path = self.get_index_path(index_name)
 
-        if not self.index_exists(index_name):
-            print(
-                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
-            )
-            return
+        # First try to find the index in current project
+        index_path = self.get_index_path(index_name)
+        if self.index_exists(index_name):
+            # Found in current project, use it
+            pass
+        else:
+            # Search across all registered projects (like list_indexes does)
+            all_matches = self._find_all_matching_indexes(index_name)
+            if not all_matches:
+                print(
+                    f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
+                )
+                return
+            elif len(all_matches) == 1:
+                # Found exactly one match, use it
+                match = all_matches[0]
+                if match["kind"] == "cli":
+                    index_path = str(match["index_dir"] / "documents.leann")
+                else:
+                    # App format: use the meta file to construct the path
+                    meta_file = match["meta_file"]
+                    file_base = match["file_base"]
+                    index_path = str(meta_file.parent / f"{file_base}.leann")
+
+                project_info = (
+                    "current project"
+                    if match["is_current"]
+                    else f"project '{match['project_path'].name}'"
+                )
+                print(f"Using index '{index_name}' from {project_info}")
+            else:
+                # Multiple matches found
+                if args.non_interactive:
+                    # Non-interactive mode: automatically select the best match
+                    # Priority: current project first, then first available
+                    current_matches = [m for m in all_matches if m["is_current"]]
+                    if current_matches:
+                        match = current_matches[0]
+                        location_desc = "current project"
+                    else:
+                        match = all_matches[0]
+                        location_desc = f"project '{match['project_path'].name}'"
+
+                    if match["kind"] == "cli":
+                        index_path = str(match["index_dir"] / "documents.leann")
+                    else:
+                        meta_file = match["meta_file"]
+                        file_base = match["file_base"]
+                        index_path = str(meta_file.parent / f"{file_base}.leann")
+
+                    print(
+                        f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
+                    )
+                else:
+                    # Interactive mode: ask user to choose
+                    print(f"Found {len(all_matches)} indexes named '{index_name}':")
+                    for i, match in enumerate(all_matches, 1):
+                        project_path = match["project_path"]
+                        is_current = match["is_current"]
+                        kind = match.get("kind", "cli")
+
+                        if is_current:
+                            print(
+                                f"   {i}. 🏠 Current project ({'CLI' if kind == 'cli' else 'APP'})"
+                            )
+                        else:
+                            print(
+                                f"   {i}. 📂 {project_path.name} ({'CLI' if kind == 'cli' else 'APP'})"
+                            )
+
+                    try:
+                        choice = input(f"Which index to search? (1-{len(all_matches)}): ").strip()
+                        choice_idx = int(choice) - 1
+                        if 0 <= choice_idx < len(all_matches):
+                            match = all_matches[choice_idx]
+                            if match["kind"] == "cli":
+                                index_path = str(match["index_dir"] / "documents.leann")
+                            else:
+                                meta_file = match["meta_file"]
+                                file_base = match["file_base"]
+                                index_path = str(meta_file.parent / f"{file_base}.leann")
+
+                            project_info = (
+                                "current project"
+                                if match["is_current"]
+                                else f"project '{match['project_path'].name}'"
+                            )
+                            print(f"Using index '{index_name}' from {project_info}")
+                        else:
+                            print("Invalid choice. Aborting search.")
+                            return
+                    except (ValueError, KeyboardInterrupt):
+                        print("Invalid input. Aborting search.")
+                        return
 
         searcher = LeannSearcher(index_path=index_path)
         results = searcher.search(
