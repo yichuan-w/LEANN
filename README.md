@@ -176,7 +176,8 @@ response = chat.ask("How much storage does LEANN save?", top_k=1)
 
 LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, `.md`), Apple Mail, Google Search History, WeChat, and more.
 
-**AST-Aware Code Chunking** - LEANN also features intelligent code chunking that preserves semantic boundaries (functions, classes, methods) for Python, Java, C#, and TypeScript files, providing superior code understanding compared to traditional text-based approaches.
+**AST-Aware Code Chunking** - LEANN also features intelligent code chunking that preserves semantic boundaries (functions, classes, methods) for Python, Java, C#, and TypeScript files, providing improved code understanding compared to traditional text-based approaches.
+📖 Read the [AST Chunking Guide →](docs/ast_chunking_guide.md) to learn more.
 
 ### Generation Model Setup
 

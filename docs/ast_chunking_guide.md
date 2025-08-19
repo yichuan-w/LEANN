@@ -1,4 +1,4 @@
-# AST-Aware Code Chunking Guide
+# AST-Aware Code chunking guide
 
 ## Overview
 
@@ -120,7 +120,7 @@ python -m apps.document_rag --enable-code-chunking --chunk-size 256 --ast-chunk-
 ## References
 
 - [astchunk GitHub Repository](https://github.com/yilinjz/astchunk)
-- [LEANN MCP Integration](../leann_mcp/README.md)
+- [LEANN MCP Integration](../packages/leann-mcp/README.md)
 - [Research Paper](https://arxiv.org/html/2506.15655v1)
 
 ---
