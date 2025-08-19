@@ -91,7 +91,7 @@ def create_hnsw_embedding_server(
     except Exception:
         embedding_dim = 0
     logger.info(
-        f"Loaded PassageManager with {len(passages.global_offset_map)} passages from metadata"
+        f"Loaded PassageManager with {len(passages)} passages from metadata"
     )
 
     # (legacy ZMQ thread removed; using shutdown-capable server only)
