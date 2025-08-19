@@ -206,6 +206,11 @@ Examples:
             default="global",
             help="Pruning strategy (default: global)",
         )
+        search_parser.add_argument(
+            "--non-interactive",
+            action="store_true",
+            help="Non-interactive mode: automatically select index without prompting",
+        )
 
         # Ask command
         ask_parser = subparsers.add_parser("ask", help="Ask questions")
@@ -1244,13 +1249,101 @@ Examples:
     async def search_documents(self, args):
         index_name = args.index_name
         query = args.query
-        index_path = self.get_index_path(index_name)
 
-        if not self.index_exists(index_name):
-            print(
-                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
-            )
-            return
+        # First try to find the index in current project
+        index_path = self.get_index_path(index_name)
+        if self.index_exists(index_name):
+            # Found in current project, use it
+            pass
+        else:
+            # Search across all registered projects (like list_indexes does)
+            all_matches = self._find_all_matching_indexes(index_name)
+            if not all_matches:
+                print(
+                    f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
+                )
+                return
+            elif len(all_matches) == 1:
+                # Found exactly one match, use it
+                match = all_matches[0]
+                if match["kind"] == "cli":
+                    index_path = str(match["index_dir"] / "documents.leann")
+                else:
+                    # App format: use the meta file to construct the path
+                    meta_file = match["meta_file"]
+                    file_base = match["file_base"]
+                    index_path = str(meta_file.parent / f"{file_base}.leann")
+
+                project_info = (
+                    "current project"
+                    if match["is_current"]
+                    else f"project '{match['project_path'].name}'"
+                )
+                print(f"Using index '{index_name}' from {project_info}")
+            else:
+                # Multiple matches found
+                if args.non_interactive:
+                    # Non-interactive mode: automatically select the best match
+                    # Priority: current project first, then first available
+                    current_matches = [m for m in all_matches if m["is_current"]]
+                    if current_matches:
+                        match = current_matches[0]
+                        location_desc = "current project"
+                    else:
+                        match = all_matches[0]
+                        location_desc = f"project '{match['project_path'].name}'"
+
+                    if match["kind"] == "cli":
+                        index_path = str(match["index_dir"] / "documents.leann")
+                    else:
+                        meta_file = match["meta_file"]
+                        file_base = match["file_base"]
+                        index_path = str(meta_file.parent / f"{file_base}.leann")
+
+                    print(
+                        f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
+                    )
+                else:
+                    # Interactive mode: ask user to choose
+                    print(f"Found {len(all_matches)} indexes named '{index_name}':")
+                    for i, match in enumerate(all_matches, 1):
+                        project_path = match["project_path"]
+                        is_current = match["is_current"]
+                        kind = match.get("kind", "cli")
+
+                        if is_current:
+                            print(
+                                f"   {i}. 🏠 Current project ({'CLI' if kind == 'cli' else 'APP'})"
+                            )
+                        else:
+                            print(
+                                f"   {i}. 📂 {project_path.name} ({'CLI' if kind == 'cli' else 'APP'})"
+                            )
+
+                    try:
+                        choice = input(f"Which index to search? (1-{len(all_matches)}): ").strip()
+                        choice_idx = int(choice) - 1
+                        if 0 <= choice_idx < len(all_matches):
+                            match = all_matches[choice_idx]
+                            if match["kind"] == "cli":
+                                index_path = str(match["index_dir"] / "documents.leann")
+                            else:
+                                meta_file = match["meta_file"]
+                                file_base = match["file_base"]
+                                index_path = str(meta_file.parent / f"{file_base}.leann")
+
+                            project_info = (
+                                "current project"
+                                if match["is_current"]
+                                else f"project '{match['project_path'].name}'"
+                            )
+                            print(f"Using index '{index_name}' from {project_info}")
+                        else:
+                            print("Invalid choice. Aborting search.")
+                            return
+                    except (ValueError, KeyboardInterrupt):
+                        print("Invalid input. Aborting search.")
+                        return
 
         searcher = LeannSearcher(index_path=index_path)
         results = searcher.search(
