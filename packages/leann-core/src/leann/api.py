@@ -705,7 +705,6 @@ class LeannSearcher:
             recompute_embeddings=recompute_embeddings,
             pruning_strategy=pruning_strategy,
             zmq_port=zmq_port,
-            metadata_filters=metadata_filters,
             **kwargs,
         )
         # logger.info(f"  Search time: {search_time} seconds")

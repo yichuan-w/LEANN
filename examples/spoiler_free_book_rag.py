@@ -20,23 +20,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../packages/leann-co
 from leann.api import LeannBuilder, LeannSearcher
 
 
-def chunk_book_with_metadata(
-    book_text: str, book_title: str = "Sample Book"
-) -> list[dict[str, Any]]:
+def chunk_book_with_metadata(book_title: str = "Sample Book") -> list[dict[str, Any]]:
     """
-    Custom chunker that extracts chapter information and metadata from book text.
+    Create sample book chunks with metadata for demonstration.
 
     In a real implementation, this would parse actual book files (epub, txt, etc.)
     and extract chapter boundaries, character mentions, etc.
 
     Args:
-        book_text: Raw book text
         book_title: Title of the book
 
     Returns:
         List of chunk dictionaries with text and metadata
     """
-    # Simulate book chunking with metadata
+    # Sample book chunks with metadata
     # In practice, you'd use proper text processing libraries
 
     sample_chunks = [
@@ -48,7 +45,6 @@ def chunk_book_with_metadata(
                 "page": 1,
                 "characters": ["Alice", "Sister"],
                 "themes": ["boredom", "curiosity"],
-                "spoiler_level": "none",
                 "location": "riverbank",
             },
         },
@@ -60,7 +56,6 @@ def chunk_book_with_metadata(
                 "page": 2,
                 "characters": ["Alice", "White Rabbit"],
                 "themes": ["decision", "surprise", "magic"],
-                "spoiler_level": "none",
                 "location": "riverbank",
             },
         },
@@ -72,7 +67,6 @@ def chunk_book_with_metadata(
                 "page": 15,
                 "characters": ["Alice"],
                 "themes": ["falling", "wonder", "transformation"],
-                "spoiler_level": "low",
                 "location": "rabbit hole",
             },
         },
@@ -84,7 +78,6 @@ def chunk_book_with_metadata(
                 "page": 85,
                 "characters": ["Alice", "Cheshire Cat"],
                 "themes": ["madness", "philosophy", "identity"],
-                "spoiler_level": "medium",
                 "location": "Duchess's house",
             },
         },
@@ -96,7 +89,6 @@ def chunk_book_with_metadata(
                 "page": 120,
                 "characters": ["Alice", "Queen of Hearts", "King of Hearts"],
                 "themes": ["justice", "absurdity", "authority"],
-                "spoiler_level": "medium",
                 "location": "Queen's court",
             },
         },
@@ -108,7 +100,6 @@ def chunk_book_with_metadata(
                 "page": 180,
                 "characters": ["Alice", "Sister", "Rabbit"],
                 "themes": ["revelation", "reality", "growth"],
-                "spoiler_level": "high",
                 "location": "riverbank",
             },
         },
@@ -151,7 +142,6 @@ def spoiler_free_search(
     index_path: str,
     query: str,
     max_chapter: int,
-    max_spoiler_level: str = "medium",
     character_filter: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """
@@ -161,7 +151,6 @@ def spoiler_free_search(
         index_path: Path to the LEANN index
         query: Search query
         max_chapter: Maximum chapter number to include
-        max_spoiler_level: Maximum spoiler level ("none", "low", "medium", "high")
         character_filter: Optional list of characters to focus on
 
     Returns:
@@ -169,30 +158,13 @@ def spoiler_free_search(
     """
     print(f"🔍 Searching: '{query}' (up to chapter {max_chapter})")
 
-    # Create searcher
     searcher = LeannSearcher(index_path)
 
-    # Build metadata filters
     metadata_filters = {"chapter": {"<=": max_chapter}}
 
-    # Add spoiler level filter
-    spoiler_levels = ["none"]
-    if max_spoiler_level in ["low", "medium", "high"]:
-        spoiler_levels.append("low")
-    if max_spoiler_level in ["medium", "high"]:
-        spoiler_levels.append("medium")
-    if max_spoiler_level == "high":
-        spoiler_levels.append("high")
-
-    metadata_filters["spoiler_level"] = {"in": spoiler_levels}
-
-    # Add character filter if specified
     if character_filter:
-        # Note: This is a simplified character filter
-        # In practice, you might want more sophisticated character matching
-        pass  # Would need more complex filtering for character lists
+        metadata_filters["characters"] = {"contains": character_filter[0]}
 
-    # Perform filtered search
     results = searcher.search(query=query, top_k=10, metadata_filters=metadata_filters)
 
     return results
@@ -207,7 +179,7 @@ def demo_spoiler_free_rag():
 
     # Step 1: Prepare book data
     book_title = "Alice's Adventures in Wonderland"
-    book_chunks = chunk_book_with_metadata("", book_title)
+    book_chunks = chunk_book_with_metadata(book_title)
 
     print(f"📖 Loaded {len(book_chunks)} chunks from '{book_title}'")
 
@@ -227,25 +199,21 @@ def demo_spoiler_free_rag():
             "description": "Reader who has only read Chapter 1",
             "query": "What can you tell me about the rabbit?",
             "max_chapter": 1,
-            "max_spoiler_level": "none",
         },
         {
             "description": "Reader who has read up to Chapter 5",
             "query": "Tell me about Alice's adventures",
             "max_chapter": 5,
-            "max_spoiler_level": "low",
         },
         {
             "description": "Reader who has read most of the book",
             "query": "What does the Cheshire Cat represent?",
             "max_chapter": 10,
-            "max_spoiler_level": "medium",
         },
         {
             "description": "Reader who has read the whole book",
             "query": "What can you tell me about the rabbit?",
             "max_chapter": 12,
-            "max_spoiler_level": "high",
         },
     ]
 
@@ -258,77 +226,25 @@ def demo_spoiler_free_rag():
                 index_path=index_path,
                 query=scenario["query"],
                 max_chapter=scenario["max_chapter"],
-                max_spoiler_level=scenario["max_spoiler_level"],
             )
 
-            print(f"   📄 Found {len(results)} spoiler-free results:")
+            print(f"   📄 Found {len(results)} results:")
             for i, result in enumerate(results[:3], 1):  # Show top 3
                 chapter = result.metadata.get("chapter", "?")
-                spoiler = result.metadata.get("spoiler_level", "?")
-                print(f"      {i}. Chapter {chapter} ({spoiler} spoiler): {result.text[:80]}...")
+                location = result.metadata.get("location", "?")
+                print(f"      {i}. Chapter {chapter} ({location}): {result.text[:80]}...")
 
         except Exception as e:
             print(f"   ❌ Search failed: {e}")
-
-    print("\n🎉 Demo completed!")
-
-
-def show_filter_examples():
-    """
-    Show examples of different metadata filter patterns for books.
-    """
-    print("\n📋 Metadata Filter Examples for Book RAG")
-    print("=" * 45)
-
-    examples = [
-        {"use_case": "Spoiler prevention (up to chapter 5)", "filter": {"chapter": {"<=": 5}}},
-        {
-            "use_case": "Character-focused search (Alice only)",
-            "filter": {"characters": {"contains": "Alice"}},
-        },
-        {
-            "use_case": "Low spoiler content only",
-            "filter": {"spoiler_level": {"in": ["none", "low"]}},
-        },
-        {"use_case": "Specific location scenes", "filter": {"location": {"==": "riverbank"}}},
-        {"use_case": "Multi-book series (first 3 books)", "filter": {"book_number": {"<=": 3}}},
-        {"use_case": "Content by page range", "filter": {"page": {">=": 50, "<=": 100}}},
-        {
-            "use_case": "Thematic search (adventure themes)",
-            "filter": {"themes": {"contains": "adventure"}},
-        },
-        {
-            "use_case": "Combine multiple filters",
-            "filter": {
-                "chapter": {"<=": 8},
-                "spoiler_level": {"!=": "high"},
-                "characters": {"contains": "Alice"},
-            },
-        },
-    ]
-
-    for example in examples:
-        print(f"\n📌 {example['use_case']}")
-        print(f"   Filter: {example['filter']}")
 
 
 if __name__ == "__main__":
     print("📚 LEANN Spoiler-Free Book RAG Example")
     print("=====================================")
 
-    # Show the filtering concepts even if LEANN isn't fully available
-    show_filter_examples()
-
-    # Try to run the full demo
-    print("\n🚀 Attempting full demo...")
     try:
         demo_spoiler_free_rag()
     except ImportError as e:
-        print(f"❌ Cannot run full demo due to missing dependencies: {e}")
-        print("💡 The metadata filtering logic is implemented and tested!")
-        print("📝 See the filter examples above for usage patterns.")
+        print(f"❌ Cannot run demo due to missing dependencies: {e}")
     except Exception as e:
-        print(f"❌ Demo failed: {e}")
-        print(
-            "💡 The filtering implementation is complete - this would work with a full LEANN setup!"
-        )
+        print(f"❌ Error running demo: {e}")
