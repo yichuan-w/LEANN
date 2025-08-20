@@ -206,6 +206,34 @@ early_series = searcher.search(
 )
 ```
 
+## Running the Example
+
+You can see metadata filtering in action with our spoiler-free book RAG example:
+
+```bash
+# Clone the repository if you haven't already
+git clone https://github.com/yichuan-w/LEANN.git leann
+cd leann
+
+# Set up the environment
+uv venv
+source .venv/bin/activate
+uv pip install leann
+
+# Set your OpenAI API key (required for embeddings, but you can update the example locally and use ollama instead)
+export OPENAI_API_KEY="your-api-key-here"
+
+# Run the spoiler-free book RAG example
+python examples/spoiler_free_book_rag.py
+```
+
+This example demonstrates:
+- Building an index with metadata (chapter numbers, characters, themes, locations)
+- Searching with filters to avoid spoilers (e.g., only show results up to chapter 5)
+- Different scenarios for readers at various points in the book
+
+The example uses Alice's Adventures in Wonderland as sample data and shows how you can search for information without revealing plot points from later chapters.
+
 ## Advanced Patterns
 
 ### Custom Chunking with metadata
