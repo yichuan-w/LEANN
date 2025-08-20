@@ -176,6 +176,9 @@ response = chat.ask("How much storage does LEANN save?", top_k=1)
 
 LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, `.md`), Apple Mail, Google Search History, WeChat, and more.
 
+**AST-Aware Code Chunking** - LEANN also features intelligent code chunking that preserves semantic boundaries (functions, classes, methods) for Python, Java, C#, and TypeScript files, providing improved code understanding compared to traditional text-based approaches.
+📖 Read the [AST Chunking Guide →](docs/ast_chunking_guide.md) to learn more.
+
 ### Generation Model Setup
 
 LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
@@ -295,6 +298,12 @@ python -m apps.document_rag --data-dir "~/Documents/Papers" --chunk-size 1024
 
 # Filter only markdown and Python files with smaller chunks
 python -m apps.document_rag --data-dir "./docs" --chunk-size 256 --file-types .md .py
+
+# Enable AST-aware chunking for code files
+python -m apps.document_rag --enable-code-chunking --data-dir "./my_project"
+
+# Or use the specialized code RAG for better code understanding
+python -m apps.code_rag --repo-dir "./my_codebase" --query "How does authentication work?"
 ```
 
 </details>
@@ -473,6 +482,7 @@ Once the index is built, you can ask questions like:
 
 **Key features:**
 - 🔍 **Semantic code search** across your entire project, fully local index and lightweight
+- 🧠 **AST-aware chunking** preserves code structure (functions, classes)
 - 📚 **Context-aware assistance** for debugging and development
 - 🚀 **Zero-config setup** with automatic language detection
 
@@ -535,7 +545,8 @@ leann remove my-docs
 
 **Key CLI features:**
 - Auto-detects document formats (PDF, TXT, MD, DOCX, PPTX + code files)
-- Smart text chunking with overlap
+- **🧠 AST-aware chunking** for Python, Java, C#, TypeScript files
+- Smart text chunking with overlap for all other content
 - Multiple LLM providers (Ollama, OpenAI, HuggingFace)
 - Organized index storage in `.leann/indexes/` (project-local)
 - Support for advanced search parameters
@@ -674,6 +685,7 @@ results = searcher.search(
 ```bash
 uv pip install -e ".[dev]"  # Install dev dependencies
 python benchmarks/run_evaluation.py    # Will auto-download evaluation data and run benchmarks
+python benchmarks/run_evaluation.py benchmarks/data/indices/rpj_wiki/rpj_wiki --num-queries 2000    # After downloading data, you can run the benchmark with our biggest index
 ```
 
 The evaluation script downloads data automatically on first run. The last three results were tested with partial personal data, and you can reproduce them with your own data!

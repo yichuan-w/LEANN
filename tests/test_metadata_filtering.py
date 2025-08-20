@@ -138,7 +138,7 @@ class TestMetadataFilterEngine:
         """Test greater than (>) filter."""
         filters = {"word_count": {">": 200}}
         result = self.engine.apply_filters(self.sample_results, filters)
-        assert len(result) == 2
+        assert len(result) == 3  # Documents with word_count 250, 300, 400
         word_counts = [r["metadata"]["word_count"] for r in result]
         assert all(wc > 200 for wc in word_counts)
 

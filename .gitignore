@@ -98,3 +98,4 @@ CLAUDE.md
 CLAUDE.local.md
 .claude/*.local.*
 .claude/local/*
+benchmarks/data/

@@ -68,49 +68,54 @@ class MetadataFilterEngine:
 
         filtered_results = []
         for result in search_results:
-            if self._evaluate_filters(result.get("metadata", {}), metadata_filters):
+            if self._evaluate_filters(result, metadata_filters):
                 filtered_results.append(result)
 
         logger.debug(f"Filtered results count: {len(filtered_results)}")
         return filtered_results
 
-    def _evaluate_filters(self, metadata: dict[str, Any], filters: MetadataFilters) -> bool:
+    def _evaluate_filters(self, result: dict[str, Any], filters: MetadataFilters) -> bool:
         """
-        Evaluate all filters against a single metadata dictionary.
+        Evaluate all filters against a single search result.
 
         All filters must pass (AND logic) for the result to be included.
 
         Args:
-            metadata: Metadata dictionary from a search result
+            result: Full search result dictionary (including metadata, text, etc.)
             filters: Filter specifications to evaluate
 
         Returns:
             True if all filters pass, False otherwise
         """
         for field_name, filter_spec in filters.items():
-            if not self._evaluate_field_filter(metadata, field_name, filter_spec):
+            if not self._evaluate_field_filter(result, field_name, filter_spec):
                 return False
         return True
 
     def _evaluate_field_filter(
-        self, metadata: dict[str, Any], field_name: str, filter_spec: FilterSpec
+        self, result: dict[str, Any], field_name: str, filter_spec: FilterSpec
     ) -> bool:
         """
-        Evaluate a single field filter against metadata.
+        Evaluate a single field filter against a search result.
 
         Args:
-            metadata: Metadata dictionary
+            result: Full search result dictionary
             field_name: Name of the field to filter on
             filter_spec: Filter specification for this field
 
         Returns:
             True if the filter passes, False otherwise
         """
-        field_value = metadata.get(field_name)
+        # First check top-level fields, then check metadata
+        field_value = result.get(field_name)
+        if field_value is None:
+            # Try to get from metadata if not found at top level
+            metadata = result.get("metadata", {})
+            field_value = metadata.get(field_name)
 
         # Handle missing fields - they fail all filters except existence checks
         if field_value is None:
-            logger.debug(f"Field '{field_name}' not found in metadata")
+            logger.debug(f"Field '{field_name}' not found in result or metadata")
             return False
 
         # Evaluate each operator in the filter spec
