@@ -632,6 +632,7 @@ class LeannSearcher:
         # Only HNSW supports batching; forward conditionally
         if self.backend_name == "hnsw":
             backend_search_kwargs["batch_size"] = batch_size
+
         # Merge any extra kwargs last
         backend_search_kwargs.update(kwargs)
 
