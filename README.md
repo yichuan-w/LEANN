@@ -657,6 +657,7 @@ Options:
 ```bash
 uv pip install -e ".[dev]"  # Install dev dependencies
 python benchmarks/run_evaluation.py    # Will auto-download evaluation data and run benchmarks
+python benchmarks/run_evaluation.py benchmarks/data/indices/rpj_wiki/rpj_wiki --num-queries 2000    # After downloading data, you can run the benchmark with our biggest index
 ```
 
 The evaluation script downloads data automatically on first run. The last three results were tested with partial personal data, and you can reproduce them with your own data!
