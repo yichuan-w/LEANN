@@ -1,7 +1,8 @@
 import argparse
 import asyncio
+import sys
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
@@ -179,6 +180,29 @@ Examples:
             type=int,
             default=50,
             help="Code chunk overlap (default: 50)",
+        )
+        build_parser.add_argument(
+            "--use-ast-chunking",
+            action="store_true",
+            help="Enable AST-aware chunking for code files (requires astchunk)",
+        )
+        build_parser.add_argument(
+            "--ast-chunk-size",
+            type=int,
+            default=768,
+            help="AST chunk size in characters (default: 768)",
+        )
+        build_parser.add_argument(
+            "--ast-chunk-overlap",
+            type=int,
+            default=96,
+            help="AST chunk overlap in characters (default: 96)",
+        )
+        build_parser.add_argument(
+            "--ast-fallback-traditional",
+            action="store_true",
+            default=True,
+            help="Fall back to traditional chunking if AST chunking fails (default: True)",
         )
 
         # Search command
@@ -833,6 +857,7 @@ Examples:
         docs_paths: Union[str, list],
         custom_file_types: Union[str, None] = None,
         include_hidden: bool = False,
+        args: Optional[dict[str, Any]] = None,
     ):
         # Handle both single path (string) and multiple paths (list) for backward compatibility
         if isinstance(docs_paths, str):
@@ -1138,18 +1163,50 @@ Examples:
         }
 
         print("start chunking documents")
-        # Add progress bar for document chunking
-        for doc in tqdm(documents, desc="Chunking documents", unit="doc"):
-            # Check if this is a code file based on source path
-            source_path = doc.metadata.get("source", "")
-            is_code_file = any(source_path.endswith(ext) for ext in code_file_exts)
 
-            # Use appropriate parser based on file type
-            parser = self.code_parser if is_code_file else self.node_parser
-            nodes = parser.get_nodes_from_documents([doc])
+        # Check if AST chunking is requested
+        use_ast = getattr(args, "use_ast_chunking", False)
 
-            for node in nodes:
-                all_texts.append(node.get_content())
+        if use_ast:
+            print("🧠 Using AST-aware chunking for code files")
+            try:
+                # Import enhanced chunking utilities
+                # Add apps directory to path to import chunking utilities
+                apps_dir = Path(__file__).parent.parent.parent.parent.parent / "apps"
+                if apps_dir.exists():
+                    sys.path.insert(0, str(apps_dir))
+
+                from chunking import create_text_chunks
+
+                # Use enhanced chunking with AST support
+                all_texts = create_text_chunks(
+                    documents,
+                    chunk_size=self.node_parser.chunk_size,
+                    chunk_overlap=self.node_parser.chunk_overlap,
+                    use_ast_chunking=True,
+                    ast_chunk_size=getattr(args, "ast_chunk_size", 768),
+                    ast_chunk_overlap=getattr(args, "ast_chunk_overlap", 96),
+                    code_file_extensions=None,  # Use defaults
+                    ast_fallback_traditional=getattr(args, "ast_fallback_traditional", True),
+                )
+
+            except ImportError as e:
+                print(f"⚠️  AST chunking not available ({e}), falling back to traditional chunking")
+                use_ast = False
+
+        if not use_ast:
+            # Use traditional chunking logic
+            for doc in tqdm(documents, desc="Chunking documents", unit="doc"):
+                # Check if this is a code file based on source path
+                source_path = doc.metadata.get("source", "")
+                is_code_file = any(source_path.endswith(ext) for ext in code_file_exts)
+
+                # Use appropriate parser based on file type
+                parser = self.code_parser if is_code_file else self.node_parser
+                nodes = parser.get_nodes_from_documents([doc])
+
+                for node in nodes:
+                    all_texts.append(node.get_content())
 
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
@@ -1216,7 +1273,7 @@ Examples:
         )
 
         all_texts = self.load_documents(
-            docs_paths, args.file_types, include_hidden=args.include_hidden
+            docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
         )
         if not all_texts:
             print("No documents found")

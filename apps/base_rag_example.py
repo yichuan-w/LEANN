@@ -11,7 +11,6 @@ from typing import Any
 import dotenv
 from leann.api import LeannBuilder, LeannChat
 from leann.registry import register_project_directory
-from llama_index.core.node_parser import SentenceSplitter
 
 dotenv.load_dotenv()
 
@@ -107,6 +106,38 @@ class BaseRAGExample(ABC):
             choices=["low", "medium", "high"],
             default=None,
             help="Thinking budget for reasoning models (low/medium/high). Supported by GPT-Oss:20b and other reasoning models.",
+        )
+
+        # AST Chunking parameters
+        ast_group = parser.add_argument_group("AST Chunking Parameters")
+        ast_group.add_argument(
+            "--use-ast-chunking",
+            action="store_true",
+            help="Enable AST-aware chunking for code files (requires astchunk)",
+        )
+        ast_group.add_argument(
+            "--ast-chunk-size",
+            type=int,
+            default=512,
+            help="Maximum characters per AST chunk (default: 512)",
+        )
+        ast_group.add_argument(
+            "--ast-chunk-overlap",
+            type=int,
+            default=64,
+            help="Overlap between AST chunks (default: 64)",
+        )
+        ast_group.add_argument(
+            "--code-file-extensions",
+            nargs="+",
+            default=None,
+            help="Additional code file extensions to process with AST chunking (e.g., .py .java .cs .ts)",
+        )
+        ast_group.add_argument(
+            "--ast-fallback-traditional",
+            action="store_true",
+            default=True,
+            help="Fall back to traditional chunking if AST chunking fails (default: True)",
         )
 
         # Search parameters
@@ -310,21 +341,3 @@ class BaseRAGExample(ABC):
             await self.run_single_query(args, index_path, args.query)
         else:
             await self.run_interactive_chat(args, index_path)
-
-
-def create_text_chunks(documents, chunk_size=256, chunk_overlap=25) -> list[str]:
-    """Helper function to create text chunks from documents."""
-    node_parser = SentenceSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        separator=" ",
-        paragraph_separator="\n\n",
-    )
-
-    all_texts = []
-    for doc in documents:
-        nodes = node_parser.get_nodes_from_documents([doc])
-        if nodes:
-            all_texts.extend(node.get_content() for node in nodes)
-
-    return all_texts
