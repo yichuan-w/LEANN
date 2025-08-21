@@ -630,6 +630,8 @@ class LeannSearcher:
         self.passage_manager = PassageManager(
             self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
         )
+        # Preserve backend name for conditional parameter forwarding
+        self.backend_name = backend_name
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
@@ -650,6 +652,7 @@ class LeannSearcher:
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         expected_zmq_port: int = 5557,
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
+        batch_size: int = 0,
         **kwargs,
     ) -> list[SearchResult]:
         """
@@ -714,23 +717,33 @@ class LeannSearcher:
             use_server_if_available=recompute_embeddings,
             zmq_port=zmq_port,
         )
-        # logger.info(f"  Generated embedding shape: {query_embedding.shape}")
-        # time.time() - start_time
-        # logger.info(f"  Embedding time: {embedding_time} seconds")
+        logger.info(f"  Generated embedding shape: {query_embedding.shape}")
+        embedding_time = time.time() - start_time
+        logger.info(f"  Embedding time: {embedding_time} seconds")
 
         start_time = time.time()
+        backend_search_kwargs: dict[str, Any] = {
+            "complexity": complexity,
+            "beam_width": beam_width,
+            "prune_ratio": prune_ratio,
+            "recompute_embeddings": recompute_embeddings,
+            "pruning_strategy": pruning_strategy,
+            "zmq_port": zmq_port,
+        }
+        # Only HNSW supports batching; forward conditionally
+        if self.backend_name == "hnsw":
+            backend_search_kwargs["batch_size"] = batch_size
+
+        # Merge any extra kwargs last
+        backend_search_kwargs.update(kwargs)
+
         results = self.backend_impl.search(
             query_embedding,
             top_k,
-            complexity=complexity,
-            beam_width=beam_width,
-            prune_ratio=prune_ratio,
-            recompute_embeddings=recompute_embeddings,
-            pruning_strategy=pruning_strategy,
-            zmq_port=zmq_port,
-            **kwargs,
+            **backend_search_kwargs,
         )
-        # logger.info(f"  Search time: {search_time} seconds")
+        search_time = time.time() - start_time
+        logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
         enriched_results = []
@@ -816,9 +829,15 @@ class LeannChat:
         index_path: str,
         llm_config: Optional[dict[str, Any]] = None,
         enable_warmup: bool = False,
+        searcher: Optional[LeannSearcher] = None,
         **kwargs,
     ):
-        self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
+        if searcher is None:
+            self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
+            self._owns_searcher = True
+        else:
+            self.searcher = searcher
+            self._owns_searcher = False
         self.llm = get_llm(llm_config)
 
     def ask(
@@ -833,6 +852,7 @@ class LeannChat:
         llm_kwargs: Optional[dict[str, Any]] = None,
         expected_zmq_port: int = 5557,
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
+        batch_size: int = 0,
         **search_kwargs,
     ):
         if llm_kwargs is None:
@@ -848,10 +868,11 @@ class LeannChat:
             pruning_strategy=pruning_strategy,
             expected_zmq_port=expected_zmq_port,
             metadata_filters=metadata_filters,
+            batch_size=batch_size,
             **search_kwargs,
         )
         search_time = time.time() - search_time
-        # logger.info(f"  Search time: {search_time} seconds")
+        logger.info(f"  Search time: {search_time} seconds")
         context = "\n\n".join([r.text for r in results])
         prompt = (
             "Here is some retrieved context that might help answer your question:\n\n"
@@ -887,7 +908,9 @@ class LeannChat:
         This method should be called after you're done using the chat interface,
         especially in test environments or batch processing scenarios.
         """
-        if hasattr(self.searcher, "cleanup"):
+        # Only stop the embedding server if this LeannChat instance created the searcher.
+        # When a shared searcher is passed in, avoid shutting down the server to enable reuse.
+        if getattr(self, "_owns_searcher", False) and hasattr(self.searcher, "cleanup"):
             self.searcher.cleanup()
 
     # Enable automatic cleanup patterns

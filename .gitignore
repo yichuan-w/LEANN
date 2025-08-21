@@ -93,6 +93,7 @@ packages/leann-backend-diskann/third_party/DiskANN/_deps/
 batchtest.py
 tests/__pytest_cache__/
 tests/__pycache__/
+paru-bin/
 
 CLAUDE.md
 CLAUDE.local.md

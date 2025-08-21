@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -236,6 +237,7 @@ class HNSWSearcher(BaseSearcher):
         distances = np.empty((batch_size_query, top_k), dtype=np.float32)
         labels = np.empty((batch_size_query, top_k), dtype=np.int64)
 
+        search_time = time.time()
         self._index.search(
             query.shape[0],
             faiss.swig_ptr(query),
@@ -244,7 +246,8 @@ class HNSWSearcher(BaseSearcher):
             faiss.swig_ptr(labels),
             params,
         )
-
+        search_time = time.time() - search_time
+        logger.info(f"  Search time in HNSWSearcher.search() backend: {search_time} seconds")
         string_labels = [[str(int_label) for int_label in batch_labels] for batch_labels in labels]
 
         return {"labels": string_labels, "distances": distances}
