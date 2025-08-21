@@ -94,3 +94,5 @@ batchtest.py
 tests/__pytest_cache__/
 tests/__pycache__/
 paru-bin/
+
+benchmarks/data/

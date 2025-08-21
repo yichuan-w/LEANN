@@ -94,7 +94,7 @@ def handle_request(request):
                         },
                     }
 
-                # Build simplified command
+                # Build simplified command with non-interactive flag for MCP compatibility
                 cmd = [
                     "leann",
                     "search",
@@ -102,6 +102,7 @@ def handle_request(request):
                     args["query"],
                     f"--top-k={args.get('top_k', 5)}",
                     f"--complexity={args.get('complexity', 32)}",
+                    "--non-interactive",
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True)
 
