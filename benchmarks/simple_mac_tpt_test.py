@@ -20,7 +20,7 @@ except ImportError:
 
 @dataclass
 class BenchmarkConfig:
-    model_path: str = "facebook/contriever"
+    model_path: str = "facebook/contriever-msmarco"
     batch_sizes: list[int] = None
     seq_length: int = 256
     num_runs: int = 5
@@ -34,7 +34,7 @@ class BenchmarkConfig:
 
     def __post_init__(self):
         if self.batch_sizes is None:
-            self.batch_sizes = [1, 2, 4, 8, 16, 32, 64]
+            self.batch_sizes = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
 
 
 class MLXBenchmark:
@@ -179,11 +179,14 @@ class Benchmark:
 
     def _run_inference(self, input_ids: torch.Tensor) -> float:
         attention_mask = torch.ones_like(input_ids)
-
+        # print shape of input_ids and attention_mask
+        print(f"input_ids shape: {input_ids.shape}")
+        print(f"attention_mask shape: {attention_mask.shape}")
         start_time = time.time()
         with torch.no_grad():
             self.model(input_ids=input_ids, attention_mask=attention_mask)
-        # mps sync
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         if torch.backends.mps.is_available():
             torch.mps.synchronize()
         end_time = time.time()
