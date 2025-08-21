@@ -176,8 +176,7 @@ response = chat.ask("How much storage does LEANN save?", top_k=1)
 
 LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, `.md`), Apple Mail, Google Search History, WeChat, and more.
 
-**AST-Aware Code Chunking** - LEANN also features intelligent code chunking that preserves semantic boundaries (functions, classes, methods) for Python, Java, C#, and TypeScript files, providing improved code understanding compared to traditional text-based approaches.
-📖 Read the [AST Chunking Guide →](docs/ast_chunking_guide.md) to learn more.
+
 
 ### Generation Model Setup
 
@@ -477,6 +476,15 @@ Once the index is built, you can ask questions like:
 
 ### 🚀 Claude Code Integration: Transform Your Development Workflow!
 
+<details>
+<summary><strong>NEW!! AST‑Aware Code Chunking</strong></summary>
+
+LEANN features intelligent code chunking that preserves semantic boundaries (functions, classes, methods) for Python, Java, C#, and TypeScript, improving code understanding compared to text-based chunking.
+
+📖 Read the [AST Chunking Guide →](docs/ast_chunking_guide.md)
+
+</details>
+
 **The future of code assistance is here.** Transform your development workflow with LEANN's native MCP integration for Claude Code. Index your entire codebase and get intelligent code assistance directly in your IDE.
 
 **Key features:**
@@ -696,6 +704,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## 🙏 Acknowledgments
 
 Core Contributors: [Yichuan Wang](https://yichuan-w.github.io/) & [Zhifei Li](https://github.com/andylizf).
+
+Active Contributors: [Gabriel Dehan](https://github.com/gabriel-dehan)
+
 
 We welcome more contributors! Feel free to open issues or submit PRs.
 
