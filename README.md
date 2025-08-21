@@ -220,7 +220,8 @@ ollama pull llama3.2:1b
 
 </details>
 
-### ⭐ Flexible Configuration
+
+## ⭐ Flexible Configuration
 
 LEANN provides flexible parameters for embedding models, search strategies, and data processing to fit your specific needs.
 
@@ -625,6 +626,33 @@ Options:
 ```
 
 </details>
+
+## 🚀 Advanced Features
+
+### 🎯 Metadata Filtering
+
+LEANN supports a simple metadata filtering system to enable sophisticated use cases like document filtering by date/type, code search by file extension, and content management based on custom criteria.
+
+```python
+# Add metadata during indexing
+builder.add_text(
+    "def authenticate_user(token): ...",
+    metadata={"file_extension": ".py", "lines_of_code": 25}
+)
+
+# Search with filters
+results = searcher.search(
+    query="authentication function",
+    metadata_filters={
+        "file_extension": {"==": ".py"},
+        "lines_of_code": {"<": 100}
+    }
+)
+```
+
+**Supported operators**: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not_in`, `contains`, `starts_with`, `ends_with`, `is_true`, `is_false`
+
+📖 **[Complete Metadata filtering guide →](docs/metadata_filtering.md)**
 
 ## 🏗️ Architecture & How It Works
 

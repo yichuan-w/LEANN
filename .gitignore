@@ -95,4 +95,8 @@ tests/__pytest_cache__/
 tests/__pycache__/
 paru-bin/
 
+CLAUDE.md
+CLAUDE.local.md
+.claude/*.local.*
+.claude/local/*
 benchmarks/data/
