@@ -10,7 +10,8 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from base_rag_example import BaseRAGExample, create_text_chunks
+from base_rag_example import BaseRAGExample
+from chunking import create_text_chunks
 
 from .history_data.history import ChromeHistoryReader
 

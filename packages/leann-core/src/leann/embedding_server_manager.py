@@ -192,6 +192,7 @@ class EmbeddingServerManager:
             stderr_target = None  # Direct to console for visible logs
 
         # Start embedding server subprocess
+        logger.info(f"Starting server process with command: {' '.join(command)}")
         self.server_process = subprocess.Popen(
             command,
             cwd=project_root,

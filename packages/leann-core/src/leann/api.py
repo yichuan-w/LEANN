@@ -10,7 +10,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 
@@ -18,6 +18,7 @@ from leann.interface import LeannBackendSearcherInterface
 
 from .chat import get_llm
 from .interface import LeannBackendFactoryInterface
+from .metadata_filter import MetadataFilterEngine
 from .registry import BACKEND_REGISTRY
 
 logger = logging.getLogger(__name__)
@@ -119,9 +120,13 @@ class PassageManager:
     def __init__(
         self, passage_sources: list[dict[str, Any]], metadata_file_path: Optional[str] = None
     ):
-        self.offset_maps = {}
-        self.passage_files = {}
-        self.global_offset_map = {}  # Combined map for fast lookup
+        self.offset_maps: dict[str, dict[str, int]] = {}
+        self.passage_files: dict[str, str] = {}
+        # Avoid materializing a single gigantic global map to reduce memory
+        # footprint on very large corpora (e.g., 60M+ passages). Instead, keep
+        # per-shard maps and do a lightweight per-shard lookup on demand.
+        self._total_count: int = 0
+        self.filter_engine = MetadataFilterEngine()  # Initialize filter engine
 
         # Derive index base name for standard sibling fallbacks, e.g., <index_name>.passages.*
         index_name_base = None
@@ -142,12 +147,25 @@ class PassageManager:
                 default_name: Optional[str],
                 source_dict: dict[str, Any],
             ) -> list[Path]:
+                """
+                Build an ordered list of candidate paths. For relative paths specified in
+                metadata, prefer resolution relative to the metadata file directory first,
+                then fall back to CWD-based resolution, and finally to conventional
+                sibling defaults (e.g., <index_base>.passages.idx / .jsonl).
+                """
                 candidates: list[Path] = []
-                # 1) Primary as-is (absolute or relative)
+                # 1) Primary path
                 if primary:
                     p = Path(primary)
-                    candidates.append(p if p.is_absolute() else (Path.cwd() / p))
-                # 2) metadata-relative explicit relative key
+                    if p.is_absolute():
+                        candidates.append(p)
+                    else:
+                        # Prefer metadata-relative resolution for relative paths
+                        if metadata_file_path:
+                            candidates.append(Path(metadata_file_path).parent / p)
+                        # Also consider CWD-relative as a fallback for legacy layouts
+                        candidates.append(Path.cwd() / p)
+                # 2) metadata-relative explicit relative key (if present)
                 if metadata_file_path and source_dict.get(relative_key):
                     candidates.append(Path(metadata_file_path).parent / source_dict[relative_key])
                 # 3) metadata-relative standard sibling filename
@@ -177,22 +195,77 @@ class PassageManager:
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
 
             with open(index_file, "rb") as f:
-                offset_map = pickle.load(f)
+                offset_map: dict[str, int] = pickle.load(f)
                 self.offset_maps[passage_file] = offset_map
                 self.passage_files[passage_file] = passage_file
-
-                # Build global map for O(1) lookup
-                for passage_id, offset in offset_map.items():
-                    self.global_offset_map[passage_id] = (passage_file, offset)
+                self._total_count += len(offset_map)
 
     def get_passage(self, passage_id: str) -> dict[str, Any]:
-        if passage_id in self.global_offset_map:
-            passage_file, offset = self.global_offset_map[passage_id]
-            # Lazy file opening - only open when needed
-            with open(passage_file, encoding="utf-8") as f:
-                f.seek(offset)
-                return json.loads(f.readline())
+        # Fast path: check each shard map (there are typically few shards).
+        # This avoids building a massive combined dict while keeping lookups
+        # bounded by the number of shards.
+        for passage_file, offset_map in self.offset_maps.items():
+            try:
+                offset = offset_map[passage_id]
+                with open(passage_file, encoding="utf-8") as f:
+                    f.seek(offset)
+                    return json.loads(f.readline())
+            except KeyError:
+                continue
         raise KeyError(f"Passage ID not found: {passage_id}")
+
+    def filter_search_results(
+        self,
+        search_results: list[SearchResult],
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]],
+    ) -> list[SearchResult]:
+        """
+        Apply metadata filters to search results.
+
+        Args:
+            search_results: List of SearchResult objects
+            metadata_filters: Filter specifications to apply
+
+        Returns:
+            Filtered list of SearchResult objects
+        """
+        if not metadata_filters:
+            return search_results
+
+        logger.debug(f"Applying metadata filters to {len(search_results)} results")
+
+        # Convert SearchResult objects to dictionaries for the filter engine
+        result_dicts = []
+        for result in search_results:
+            result_dicts.append(
+                {
+                    "id": result.id,
+                    "score": result.score,
+                    "text": result.text,
+                    "metadata": result.metadata,
+                }
+            )
+
+        # Apply filters using the filter engine
+        filtered_dicts = self.filter_engine.apply_filters(result_dicts, metadata_filters)
+
+        # Convert back to SearchResult objects
+        filtered_results = []
+        for result_dict in filtered_dicts:
+            filtered_results.append(
+                SearchResult(
+                    id=result_dict["id"],
+                    score=result_dict["score"],
+                    text=result_dict["text"],
+                    metadata=result_dict["metadata"],
+                )
+            )
+
+        logger.debug(f"Filtered results: {len(filtered_results)} remaining")
+        return filtered_results
+
+    def __len__(self) -> int:
+        return self._total_count
 
 
 class LeannBuilder:
@@ -573,6 +646,8 @@ class LeannSearcher:
         self.passage_manager = PassageManager(
             self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
         )
+        # Preserve backend name for conditional parameter forwarding
+        self.backend_name = backend_name
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
@@ -592,15 +667,44 @@ class LeannSearcher:
         recompute_embeddings: bool = True,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         expected_zmq_port: int = 5557,
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
+        batch_size: int = 0,
         **kwargs,
     ) -> list[SearchResult]:
+        """
+        Search for nearest neighbors with optional metadata filtering.
+
+        Args:
+            query: Text query to search for
+            top_k: Number of nearest neighbors to return
+            complexity: Search complexity/candidate list size, higher = more accurate but slower
+            beam_width: Number of parallel search paths/IO requests per iteration
+            prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
+            recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored codes
+            pruning_strategy: Candidate selection strategy - "global" (default), "local", or "proportional"
+            expected_zmq_port: ZMQ port for embedding server communication
+            metadata_filters: Optional filters to apply to search results based on metadata.
+                Format: {"field_name": {"operator": value}}
+                Supported operators:
+                - Comparison: "==", "!=", "<", "<=", ">", ">="
+                - Membership: "in", "not_in"
+                - String: "contains", "starts_with", "ends_with"
+                Example: {"chapter": {"<=": 5}, "tags": {"in": ["fiction", "drama"]}}
+            **kwargs: Backend-specific parameters
+
+        Returns:
+            List of SearchResult objects with text, metadata, and similarity scores
+        """
         logger.info("🔍 LeannSearcher.search() called:")
         logger.info(f"  Query: '{query}'")
         logger.info(f"  Top_k: {top_k}")
+        logger.info(f"  Metadata filters: {metadata_filters}")
         logger.info(f"  Additional kwargs: {kwargs}")
 
         # Smart top_k detection and adjustment
-        total_docs = len(self.passage_manager.global_offset_map)
+        # Use PassageManager length (sum of shard sizes) to avoid
+        # depending on a massive combined map
+        total_docs = len(self.passage_manager)
         original_top_k = top_k
         if top_k > total_docs:
             top_k = total_docs
@@ -629,23 +733,33 @@ class LeannSearcher:
             use_server_if_available=recompute_embeddings,
             zmq_port=zmq_port,
         )
-        # logger.info(f"  Generated embedding shape: {query_embedding.shape}")
-        # time.time() - start_time
-        # logger.info(f"  Embedding time: {embedding_time} seconds")
+        logger.info(f"  Generated embedding shape: {query_embedding.shape}")
+        embedding_time = time.time() - start_time
+        logger.info(f"  Embedding time: {embedding_time} seconds")
 
         start_time = time.time()
+        backend_search_kwargs: dict[str, Any] = {
+            "complexity": complexity,
+            "beam_width": beam_width,
+            "prune_ratio": prune_ratio,
+            "recompute_embeddings": recompute_embeddings,
+            "pruning_strategy": pruning_strategy,
+            "zmq_port": zmq_port,
+        }
+        # Only HNSW supports batching; forward conditionally
+        if self.backend_name == "hnsw":
+            backend_search_kwargs["batch_size"] = batch_size
+
+        # Merge any extra kwargs last
+        backend_search_kwargs.update(kwargs)
+
         results = self.backend_impl.search(
             query_embedding,
             top_k,
-            complexity=complexity,
-            beam_width=beam_width,
-            prune_ratio=prune_ratio,
-            recompute_embeddings=recompute_embeddings,
-            pruning_strategy=pruning_strategy,
-            zmq_port=zmq_port,
-            **kwargs,
+            **backend_search_kwargs,
         )
-        # logger.info(f"  Search time: {search_time} seconds")
+        search_time = time.time() - start_time
+        logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
         enriched_results = []
@@ -683,6 +797,13 @@ class LeannSearcher:
                     logger.error(
                         f"   {RED}✗{RESET} [{i + 1:2d}] ID: '{string_id}' -> {RED}ERROR: Passage not found!{RESET}"
                     )
+
+        # Apply metadata filters if specified
+        if metadata_filters:
+            logger.info(f"  🔍 Applying metadata filters: {metadata_filters}")
+            enriched_results = self.passage_manager.filter_search_results(
+                enriched_results, metadata_filters
+            )
 
         # Define color codes outside the loop for final message
         GREEN = "\033[92m"
@@ -724,9 +845,15 @@ class LeannChat:
         index_path: str,
         llm_config: Optional[dict[str, Any]] = None,
         enable_warmup: bool = False,
+        searcher: Optional[LeannSearcher] = None,
         **kwargs,
     ):
-        self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
+        if searcher is None:
+            self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
+            self._owns_searcher = True
+        else:
+            self.searcher = searcher
+            self._owns_searcher = False
         self.llm = get_llm(llm_config)
 
     def ask(
@@ -740,6 +867,8 @@ class LeannChat:
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         llm_kwargs: Optional[dict[str, Any]] = None,
         expected_zmq_port: int = 5557,
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
+        batch_size: int = 0,
         **search_kwargs,
     ):
         if llm_kwargs is None:
@@ -754,10 +883,12 @@ class LeannChat:
             recompute_embeddings=recompute_embeddings,
             pruning_strategy=pruning_strategy,
             expected_zmq_port=expected_zmq_port,
+            metadata_filters=metadata_filters,
+            batch_size=batch_size,
             **search_kwargs,
         )
         search_time = time.time() - search_time
-        # logger.info(f"  Search time: {search_time} seconds")
+        logger.info(f"  Search time: {search_time} seconds")
         context = "\n\n".join([r.text for r in results])
         prompt = (
             "Here is some retrieved context that might help answer your question:\n\n"
@@ -793,7 +924,9 @@ class LeannChat:
         This method should be called after you're done using the chat interface,
         especially in test environments or batch processing scenarios.
         """
-        if hasattr(self.searcher, "cleanup"):
+        # Only stop the embedding server if this LeannChat instance created the searcher.
+        # When a shared searcher is passed in, avoid shutting down the server to enable reuse.
+        if getattr(self, "_owns_searcher", False) and hasattr(self.searcher, "cleanup"):
             self.searcher.cleanup()
 
     # Enable automatic cleanup patterns
