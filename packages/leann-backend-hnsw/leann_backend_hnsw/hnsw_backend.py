@@ -89,6 +89,15 @@ class HNSWBuilder(LeannBackendBuilderInterface):
         index_file = index_dir / f"{index_prefix}.index"
         faiss.write_index(index, str(index_file))
 
+        # Persist ID map so searcher can map FAISS integer labels back to passage IDs
+        try:
+            idmap_file = index_dir / f"{index_prefix}.ids.txt"
+            with open(idmap_file, "w", encoding="utf-8") as f:
+                for id_str in ids:
+                    f.write(str(id_str) + "\n")
+        except Exception as e:
+            logger.warning(f"Failed to write ID map: {e}")
+
         if self.is_compact:
             self._convert_to_csr(index_file)
 
@@ -148,6 +157,16 @@ class HNSWSearcher(BaseSearcher):
         )  # In C++ code, it's called is_recompute, but it's only for loading IIUC.
 
         self._index = faiss.read_index(str(index_file), faiss.IO_FLAG_MMAP, hnsw_config)
+
+        # Load ID map if available
+        self._id_map: list[str] = []
+        try:
+            idmap_file = self.index_dir / f"{self.index_path.stem}.ids.txt"
+            if idmap_file.exists():
+                with open(idmap_file, encoding="utf-8") as f:
+                    self._id_map = [line.rstrip("\n") for line in f]
+        except Exception as e:
+            logger.warning(f"Failed to load ID map: {e}")
 
     def search(
         self,
@@ -244,7 +263,17 @@ class HNSWSearcher(BaseSearcher):
             faiss.swig_ptr(labels),
             params,
         )
+        if self._id_map:
 
-        string_labels = [[str(int_label) for int_label in batch_labels] for batch_labels in labels]
+            def map_label(x: int) -> str:
+                if 0 <= x < len(self._id_map):
+                    return self._id_map[x]
+                return str(x)
+
+            string_labels = [[map_label(int(l)) for l in batch_labels] for batch_labels in labels]
+        else:
+            string_labels = [
+                [str(int_label) for int_label in batch_labels] for batch_labels in labels
+            ]
 
         return {"labels": string_labels, "distances": distances}
