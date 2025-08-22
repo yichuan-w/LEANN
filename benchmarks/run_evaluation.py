@@ -204,6 +204,15 @@ def main():
         help="Batch size for HNSW batched search (0 disables batching)",
     )
     parser.add_argument(
+        "--queries-file",
+        type=str,
+        default="nq_open.jsonl",
+        help=(
+            "Queries file to use. Provide a filename under benchmarks/data/queries "
+            "or an absolute path to a .jsonl file (default: nq_open.jsonl)."
+        ),
+    )
+    parser.add_argument(
         "--llm-type",
         type=str,
         choices=["ollama", "hf", "openai", "gemini", "simulated"],
@@ -314,8 +323,52 @@ def main():
         dataset_type = Path(args.index_path).name
         print(f"WARNING: Could not detect dataset type from path, inferred '{dataset_type}'.")
 
-    queries_file = data_root / "queries" / "nq_open.jsonl"
-    golden_results_file = data_root / "ground_truth" / dataset_type / "flat_results_nq_k3.json"
+    # Resolve queries file (supports absolute path or name under data/queries)
+    queries_file_candidate = Path(args.queries_file)
+    if queries_file_candidate.is_absolute():
+        queries_file = queries_file_candidate
+    else:
+        queries_file = data_root / "queries" / args.queries_file
+
+    if not queries_file.exists():
+        print(f"Error: Queries file not found: {queries_file}")
+        print("Tip: Use --queries-file with a filename under benchmarks/data/queries or an absolute path.")
+        sys.exit(1)
+
+    # Infer ground-truth file from the queries filename
+    qname = queries_file.name.lower()
+    if "hotpot" in qname:
+        task_key = "hotpot"
+    elif "trivia" in qname:
+        task_key = "trivia"
+    elif "gpqa" in qname:
+        task_key = "gpqa"
+    elif "nq" in qname:
+        task_key = "nq"
+    else:
+        print(
+            "Error: Could not infer task from queries filename. Supported names include 'nq', 'hotpot', 'trivia', 'gpqa'."
+        )
+        print(f"Filename was: {queries_file.name}")
+        sys.exit(1)
+
+    golden_results_file = data_root / "ground_truth" / dataset_type / f"flat_results_{task_key}_k3.json"
+    if not golden_results_file.exists():
+        gt_dir = data_root / "ground_truth" / dataset_type
+        try:
+            available = sorted(p.name for p in gt_dir.glob("flat_results_*_k3.json"))
+        except Exception:
+            available = []
+        print(
+            f"Error: Ground truth file not found for task '{task_key}' under dataset '{dataset_type}': {golden_results_file}"
+        )
+        if available:
+            print("Available ground truth files:")
+            for name in available:
+                print(f"  - {name}")
+        else:
+            print(f"No ground truth files found in {gt_dir}")
+        sys.exit(1)
 
     print(f"INFO: Detected dataset type: {dataset_type}")
     print(f"INFO: Using queries file: {queries_file}")
@@ -346,15 +399,15 @@ def main():
             search_times.append(time.time() - start_time)
 
             # Optional: also call the LLM with configurable backend/model (does not affect recall)
-            llm_config = {"type": args.llm_type, "model": args.llm_model}
-            chat = LeannChat(args.index_path, llm_config=llm_config, searcher=searcher)
-            answer = chat.ask(
-                queries[i],
-                top_k=args.top_k,
-                complexity=args.ef_search,
-                batch_size=args.batch_size,
-            )
-            print(f"Answer: {answer}")
+            # llm_config = {"type": args.llm_type, "model": args.llm_model}
+            # chat = LeannChat(args.index_path, llm_config=llm_config, searcher=searcher)
+            # answer = chat.ask(
+            #     queries[i],
+            #     top_k=args.top_k,
+            #     complexity=args.ef_search,
+            #     batch_size=args.batch_size,
+            # )
+            # print(f"Answer: {answer}")
             # Correct Recall Calculation: Based on TEXT content
             new_texts = {result.text for result in new_results}
 
@@ -378,9 +431,15 @@ def main():
         avg_recall = np.mean(recall_scores) if recall_scores else 0
         avg_time = np.mean(search_times) if search_times else 0
 
+        print(f"search time: {search_times}")
+
         print("\n🎉 --- Evaluation Complete ---")
         print(f"Avg. Recall@{args.top_k} (efSearch={args.ef_search}): {avg_recall:.4f}")
         print(f"Avg. Search Time: {avg_time:.4f}s")
+
+        # avg last 10 search times
+        avg_last_10_search_times = np.mean(search_times[-10:])
+        print(f"Avg. Last 10 Search Times: {avg_last_10_search_times:.4f}s")
 
     except Exception as e:
         print(f"\n❌ An error occurred during evaluation: {e}")

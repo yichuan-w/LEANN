@@ -99,4 +99,12 @@ CLAUDE.md
 CLAUDE.local.md
 .claude/*.local.*
 .claude/local/*
+
 benchmarks/data/
+!benchmarks/data/prompts_g5/*.txt
+!benchmarks/run_all.sh
+!benchmarks/run_speed_bench_all.sh
+!benchmarks/simple_mac_tpt_test.py
+!benchmarks/run_speed_bench_all.sh
+!benchmarks/run_speed_bench_all.sh
+!benchmarks/run_speed_bench_all.sh

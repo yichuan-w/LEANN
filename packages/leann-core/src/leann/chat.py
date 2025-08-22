@@ -522,6 +522,8 @@ class OllamaChat(LLMInterface):
         logger.debug(f"Sending request to Ollama: {payload}")
         try:
             logger.info("Sending request to Ollama and waiting for response...")
+            max_tokens = kwargs.get("max_tokens", 1000)
+            payload["options"]["max_tokens"] = max_tokens
             response = requests.post(full_url, data=json.dumps(payload))
             response.raise_for_status()
 
@@ -620,8 +622,8 @@ class HFChat(LLMInterface):
         is_qwen_model = "qwen" in self.model.config._name_or_path.lower()
 
         # For Qwen models, automatically add /no_think to the prompt
-        if is_qwen_model and "/no_think" not in prompt and "/think" not in prompt:
-            prompt = prompt + " /no_think"
+        # if is_qwen_model and "/no_think" not in prompt and "/think" not in prompt:
+        #     prompt = prompt + " /no_think"
 
         # Prepare chat template
         messages = [{"role": "user", "content": prompt}]

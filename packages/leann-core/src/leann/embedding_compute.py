@@ -21,6 +21,9 @@ logger.setLevel(log_level)
 # Global model cache to avoid repeated loading
 _model_cache: dict[str, Any] = {}
 
+# Enable fast tokenizer multithreading by default
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "true")
+
 
 def compute_embeddings(
     texts: list[str],
@@ -30,7 +33,7 @@ def compute_embeddings(
     batch_size: int = 32,
     adaptive_optimization: bool = True,
     manual_tokenize: bool = False,
-    max_length: int = 512,
+    max_length: int = 256,
 ) -> np.ndarray:
     """
     Unified embedding computation entry point
@@ -70,15 +73,18 @@ def compute_embeddings(
 
 def compute_embeddings_sentence_transformers(
     texts: list[str],
-    model_name: str,
+    model_name: str, 
     use_fp16: bool = True,
     device: str = "auto",
     batch_size: int = 32,
     is_build: bool = False,
     adaptive_optimization: bool = True,
     manual_tokenize: bool = False,
-    max_length: int = 512,
+    max_length: int = 256,
 ) -> np.ndarray:
+    manual_tokenize = False
+    batch_size = 512
+    
     """
     Compute embeddings using SentenceTransformer with model caching and adaptive optimization
 
@@ -119,7 +125,7 @@ def compute_embeddings_sentence_transformers(
         # Keep original batch_size for CPU
 
     # Create cache key
-    cache_key = f"sentence_transformers_{model_name}_{device}_{use_fp16}_optimized"
+    cache_key = f"sentence_transformers_{model_name}_{device}_{use_fp16}_optimized_len{max_length}"
 
     # Check if model is already cached
     if cache_key in _model_cache:
@@ -158,13 +164,18 @@ def compute_embeddings_sentence_transformers(
             "torch_dtype": torch.float16 if use_fp16 else torch.float32,
             "low_cpu_mem_usage": True,
             "_fast_init": True,
-            "attn_implementation": "eager",  # Use eager attention for speed
         }
+        # Prefer SDPA on CUDA; fall back to eager elsewhere
+        if device == "cuda":
+            model_kwargs["attn_implementation"] = "sdpa"
+        else:
+            model_kwargs["attn_implementation"] = "eager"
 
         tokenizer_kwargs = {
             "use_fast": True,
-            "padding": True,
+            "padding": "max_length",
             "truncation": True,
+            "max_length": max_length,
         }
 
         try:
@@ -216,6 +227,13 @@ def compute_embeddings_sentence_transformers(
         for param in model.parameters():
             param.requires_grad_(False)
 
+        # Enforce max sequence length for encode path
+        try:
+            if hasattr(model, "max_seq_length"):
+                model.max_seq_length = max_length
+        except Exception:
+            pass
+
         # Cache the model
         _model_cache[cache_key] = model
         logger.info(f"Model cached: {cache_key}")
@@ -228,22 +246,43 @@ def compute_embeddings_sentence_transformers(
     start_time = time.time()
     if not manual_tokenize:
         # Use SentenceTransformer's optimized encode path (default)
+        # print text shapr
         with torch.inference_mode():
+            # print avg len of texts
+            avg_len = sum(len(text) for text in texts) / len(texts)
+            logger.info(f"Avg len of texts: {avg_len}")
+            # print the precision of the model
+            logger.info(f"Model precision: {model.dtype}")
+            time_start = time.time()
             embeddings = model.encode(
                 texts,
                 batch_size=batch_size,
                 show_progress_bar=is_build,  # Don't show progress bar in server environment
-                convert_to_numpy=True,
+                convert_to_tensor=True,
                 normalize_embeddings=False,
                 device=device,
+                max_length=max_length,
             )
+
         # Synchronize if CUDA to measure accurate wall time
         try:
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
+            # if torch.cuda.is_available():
+            #     torch.cuda.synchronize()
+            time_end = time.time()
+            embedding_time, embedding_tpt = (
+                time_end - time_start,
+                embeddings.shape[0] / (time_end - time_start),
+            )
+            logger.info(
+                f"Time taken in embedding {batch_size} texts in embedding model: {embedding_time} seconds, embedding tpt: {embedding_tpt} seqs/s"
+            )
         except Exception:
             pass
+        # Single CPU copy after timing (avoid per-batch D2H sync)
+        if isinstance(embeddings, torch.Tensor):
+            embeddings = embeddings.float().cpu().numpy()
     else:
+        time_start = time.time()
         # Manual tokenization + forward pass using HF AutoTokenizer/AutoModel
         try:
             from transformers import AutoModel, AutoTokenizer  # type: ignore
@@ -251,8 +290,8 @@ def compute_embeddings_sentence_transformers(
             raise ImportError(f"transformers is required for manual_tokenize=True: {e}")
 
         # Cache tokenizer and model
-        tok_cache_key = f"hf_tokenizer_{model_name}"
-        mdl_cache_key = f"hf_model_{model_name}_{device}_{use_fp16}"
+        tok_cache_key = f"hf_tokenizer_{model_name}_len{max_length}_padmax"
+        mdl_cache_key = f"hf_model_{model_name}_{device}_{use_fp16}_len{max_length}"
         if tok_cache_key in _model_cache and mdl_cache_key in _model_cache:
             hf_tokenizer = _model_cache[tok_cache_key]
             hf_model = _model_cache[mdl_cache_key]
@@ -273,9 +312,10 @@ def compute_embeddings_sentence_transformers(
             _model_cache[tok_cache_key] = hf_tokenizer
             _model_cache[mdl_cache_key] = hf_model
 
-        all_embeddings: list[np.ndarray] = []
+        emb_list: list[torch.Tensor] = []
         # Progress bar when building or for large inputs
         show_progress = is_build or len(texts) > 32
+        show_progress = False
         try:
             if show_progress:
                 from tqdm import tqdm  # type: ignore
@@ -298,28 +338,36 @@ def compute_embeddings_sentence_transformers(
                 tokenize_start_time = time.time()
                 inputs = hf_tokenizer(
                     batch_texts,
-                    padding=True,
+                    padding="max_length",
                     truncation=True,
                     max_length=max_length,
                     return_tensors="pt",
                 )
                 tokenize_end_time = time.time()
-                logger.info(
+                logger.debug(
                     f"Tokenize time taken: {tokenize_end_time - tokenize_start_time} seconds"
                 )
-                # Print shapes of all input tensors for debugging
-                for k, v in inputs.items():
-                    print(f"inputs[{k!r}] shape: {getattr(v, 'shape', type(v))}")
                 to_device_start_time = time.time()
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                # Pin CPU memory then transfer non-blocking to GPU when available
+                inputs = {
+                    k: (v.pin_memory() if (device == "cuda" and v.device.type == "cpu") else v)
+                    for k, v in inputs.items()
+                }
+                inputs = {
+                    k: v.to(device, non_blocking=(device == "cuda")) for k, v in inputs.items()
+                }
                 to_device_end_time = time.time()
-                logger.info(
+                logger.debug(
                     f"To device time taken: {to_device_end_time - to_device_start_time} seconds"
                 )
+                # if device == "cuda":
+                #     torch.cuda.synchronize()
                 forward_start_time = time.time()
                 outputs = hf_model(**inputs)
+                # if device == "cuda":
+                #     torch.cuda.synchronize()
                 forward_end_time = time.time()
-                logger.info(f"Forward time taken: {forward_end_time - forward_start_time} seconds")
+                logger.debug(f"Forward time taken: {forward_end_time - forward_start_time} seconds")
                 last_hidden_state = outputs.last_hidden_state  # (B, L, H)
                 attention_mask = inputs.get("attention_mask")
                 if attention_mask is None:
@@ -330,18 +378,27 @@ def compute_embeddings_sentence_transformers(
                     masked = last_hidden_state * mask
                     lengths = mask.sum(dim=1).clamp(min=1)
                     pooled = masked.sum(dim=1) / lengths
-                # Move to CPU float32
-                batch_embeddings = pooled.detach().to("cpu").float().numpy()
-                all_embeddings.append(batch_embeddings)
+                # Accumulate on-device; single D2H copy after loop
+                emb_list.append(pooled.detach())
 
-        embeddings = np.vstack(all_embeddings).astype(np.float32, copy=False)
-        try:
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-        except Exception:
-            pass
+        # Concatenate and single-copy to CPU/NumPy
+        embeddings_tensor = torch.cat(emb_list, dim=0)
+        embeddings = embeddings_tensor.float().cpu().numpy()
+        # try:
+        #     if torch.cuda.is_available():
+        #         torch.cuda.synchronize()
+        # except Exception:
+        #     pass
         end_time = time.time()
         logger.info(f"Manual tokenize time taken: {end_time - start_time_manual} seconds")
+        time_end = time.time()
+        tokenize_time, tokenize_tpt = (
+            time_end - time_start,
+            embeddings.shape[0] / (time_end - time_start),
+        )
+        logger.info(
+            f"Tokenize time taken: {tokenize_time} seconds, tokenize tpt: {tokenize_tpt} seqs/s"
+        )
     end_time = time.time()
     logger.info(f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}")
     logger.info(f"Time taken: {end_time - start_time} seconds")
