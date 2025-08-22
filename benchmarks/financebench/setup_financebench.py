@@ -5,6 +5,7 @@ Downloads all PDFs and builds full LEANN datastore
 """
 
 import argparse
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -139,14 +140,15 @@ class FinanceBenchSetup:
 
         start_time = time.time()
 
-        # Initialize builder
+        # Initialize builder with standard compact configuration
         builder = LeannBuilder(
             backend_name=backend,
             embedding_model=embedding_model,
             embedding_mode="sentence-transformers",
             graph_degree=32,
             complexity=64,
-            is_recompute=False,  # Store embeddings for speed
+            is_recompute=True,  # Enable recompute (no stored embeddings)
+            is_compact=True,  # Enable compact storage (pruned)
             num_threads=4,
         )
 
@@ -184,6 +186,87 @@ class FinanceBenchSetup:
             print(f"   ⚠️  Failed PDFs: {failed_pdfs}")
 
         return str(index_path)
+
+    def build_faiss_flat_baseline(self, index_path: str, output_dir: str = "baseline"):
+        """Build FAISS flat baseline using the same embeddings as LEANN index"""
+        print("🔨 Building FAISS Flat baseline...")
+
+        import os
+        import pickle
+
+        import numpy as np
+        from leann.api import compute_embeddings
+        from leann_backend_hnsw import faiss
+
+        os.makedirs(output_dir, exist_ok=True)
+        baseline_path = os.path.join(output_dir, "faiss_flat.index")
+        metadata_path = os.path.join(output_dir, "metadata.pkl")
+
+        if os.path.exists(baseline_path) and os.path.exists(metadata_path):
+            print(f"✅ Baseline already exists at {baseline_path}")
+            return baseline_path
+
+        # Read metadata from the built index
+        meta_path = f"{index_path}.meta.json"
+        with open(meta_path) as f:
+            import json
+
+            meta = json.loads(f.read())
+
+        embedding_model = meta["embedding_model"]
+        passage_source = meta["passage_sources"][0]
+        passage_file = passage_source["path"]
+
+        # Convert relative path to absolute
+        if not os.path.isabs(passage_file):
+            index_dir = os.path.dirname(index_path)
+            passage_file = os.path.join(index_dir, os.path.basename(passage_file))
+
+        print(f"📊 Loading passages from {passage_file}...")
+        print(f"🤖 Using embedding model: {embedding_model}")
+
+        # Load all passages for baseline
+        passages = []
+        passage_ids = []
+        with open(passage_file, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    data = json.loads(line)
+                    passages.append(data["text"])
+                    passage_ids.append(data["id"])
+
+        print(f"📄 Loaded {len(passages)} passages")
+
+        # Compute embeddings using the same method as LEANN
+        print("🧮 Computing embeddings...")
+        embeddings = compute_embeddings(
+            passages,
+            embedding_model,
+            mode="sentence-transformers",
+            use_server=False,
+        )
+
+        print(f"📐 Embedding shape: {embeddings.shape}")
+
+        # Build FAISS flat index
+        print("🏗️  Building FAISS IndexFlatIP...")
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatIP(dimension)
+
+        # Add embeddings to flat index
+        embeddings_f32 = embeddings.astype(np.float32)
+        index.add(embeddings_f32.shape[0], faiss.swig_ptr(embeddings_f32))
+
+        # Save index and metadata
+        faiss.write_index(index, baseline_path)
+        with open(metadata_path, "wb") as f:
+            pickle.dump(passage_ids, f)
+
+        print(f"✅ FAISS baseline saved to {baseline_path}")
+        print(f"✅ Metadata saved to {metadata_path}")
+        print(f"📊 Total vectors: {index.ntotal}")
+
+        return baseline_path
 
     def extract_pdf_text(self, pdf_path: Path) -> list[dict]:
         """Extract and chunk text from a PDF file"""
@@ -300,6 +383,11 @@ def main():
     parser.add_argument("--max-workers", type=int, default=5, help="Parallel download workers")
     parser.add_argument("--skip-download", action="store_true", help="Skip PDF download")
     parser.add_argument("--skip-build", action="store_true", help="Skip index building")
+    parser.add_argument(
+        "--build-baseline-only",
+        action="store_true",
+        help="Only build FAISS baseline from existing index",
+    )
 
     args = parser.parse_args()
 
@@ -309,6 +397,24 @@ def main():
     setup = FinanceBenchSetup(args.data_dir)
 
     try:
+        if args.build_baseline_only:
+            # Only build baseline from existing index
+            index_path = setup.index_dir / f"financebench_full_{args.backend}"
+            index_file = f"{index_path}.index"
+            meta_file = f"{index_path}.leann.meta.json"
+
+            if not os.path.exists(index_file) or not os.path.exists(meta_file):
+                print("❌ Index files not found:")
+                print(f"   Index: {index_file}")
+                print(f"   Meta: {meta_file}")
+                print("💡 Run without --build-baseline-only to build the index first")
+                exit(1)
+
+            print(f"🔨 Building baseline from existing index: {index_path}")
+            baseline_path = setup.build_faiss_flat_baseline(str(index_path))
+            print(f"✅ Baseline built at {baseline_path}")
+            return
+
         # Step 1: Download dataset
         setup.download_dataset()
 
@@ -324,7 +430,12 @@ def main():
                 backend=args.backend, embedding_model=args.embedding_model
             )
 
-            # Step 4: Verify setup
+            # Step 4: Build FAISS flat baseline
+            print("\n🔨 Building FAISS flat baseline...")
+            baseline_path = setup.build_faiss_flat_baseline(index_path)
+            print(f"✅ Baseline built at {baseline_path}")
+
+            # Step 5: Verify setup
             setup.verify_setup(index_path)
         else:
             print("⏭️  Skipping index building")
