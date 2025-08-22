@@ -76,7 +76,7 @@ class LAIONSetup:
         # Collect sample metadata first (fast)
         print("📋 Collecting sample metadata...")
         candidates = []
-        for i, sample in enumerate(dataset):
+        for sample in dataset:
             if len(candidates) >= num_samples * 3:  # Get 3x more candidates in case some fail
                 break
 
@@ -377,7 +377,7 @@ class LAIONSetup:
     def _add_passages_with_embeddings(self, builder, passages_file: Path, embeddings: np.ndarray):
         """Helper to add passages with pre-computed CLIP embeddings"""
         with open(passages_file, encoding="utf-8") as f:
-            for i, line in enumerate(tqdm(f, desc="Adding passages")):
+            for line in tqdm(f, desc="Adding passages"):
                 if line.strip():
                     passage = json.loads(line)
 

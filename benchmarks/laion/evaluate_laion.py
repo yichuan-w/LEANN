@@ -259,7 +259,7 @@ class LAIONEvaluator:
 
         for caption in test_queries:
             start_time = time.time()
-            search_results = non_compact_searcher.search(
+            _ = non_compact_searcher.search(
                 caption, top_k=3, complexity=complexity, recompute_embeddings=False
             )
             search_time = time.time() - start_time
@@ -271,7 +271,7 @@ class LAIONEvaluator:
 
         for caption in test_queries:
             start_time = time.time()
-            search_results = compact_searcher.search(
+            _ = compact_searcher.search(
                 caption, top_k=3, complexity=complexity, recompute_embeddings=True
             )
             search_time = time.time() - start_time
