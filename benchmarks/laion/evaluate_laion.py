@@ -138,7 +138,9 @@ class LAIONEvaluator:
         sizes["index_only_mb"] = index_mb
 
         # Other files for reference (not counted in index_only_mb)
-        sizes["metadata_mb"] = meta_file.stat().st_size / (1024 * 1024) if meta_file.exists() else 0.0
+        sizes["metadata_mb"] = (
+            meta_file.stat().st_size / (1024 * 1024) if meta_file.exists() else 0.0
+        )
         sizes["passages_text_mb"] = (
             passages_file.stat().st_size / (1024 * 1024) if passages_file.exists() else 0.0
         )
@@ -308,25 +310,41 @@ class LAIONEvaluator:
         print("\n🎯 LAION MULTIMODAL BENCHMARK RESULTS")
         print("=" * 60)
 
-        # Index comparison analysis
+        # Index comparison analysis (prefer .index-only view if present)
         if "current_index" in timing_metrics and "non_compact_index" in timing_metrics:
-            print("\n📏 Index Comparison Analysis:")
             current = timing_metrics["current_index"]
             non_compact = timing_metrics["non_compact_index"]
 
-            print(f"  Compact index (current): {current.get('total_with_embeddings', 0):.1f} MB")
-            print(
-                f"  Non-compact index (with embeddings): {non_compact.get('total_with_embeddings', 0):.1f} MB"
-            )
-            print(
-                f"  Storage saving by compact: {timing_metrics.get('storage_saving_percent', 0):.1f}%"
-            )
-
-            print("  Component breakdown (non-compact):")
-            print(f"    - Main index: {non_compact.get('index', 0):.1f} MB")
-            print(f"    - Passages text: {non_compact.get('passages_text', 0):.1f} MB")
-            print(f"    - Passages index: {non_compact.get('passages_index', 0):.1f} MB")
-            print(f"    - Metadata: {non_compact.get('metadata', 0):.1f} MB")
+            if "index_only_mb" in current and "index_only_mb" in non_compact:
+                print("\n📏 Index Comparison Analysis (.index only):")
+                print(f"  Compact index (current): {current.get('index_only_mb', 0):.1f} MB")
+                print(f"  Non-compact index: {non_compact.get('index_only_mb', 0):.1f} MB")
+                print(
+                    f"  Storage saving by compact: {timing_metrics.get('storage_saving_percent', 0):.1f}%"
+                )
+                # Show excluded components for reference if available
+                if any(k in non_compact for k in ("passages_text_mb", "passages_index_mb", "metadata_mb")):
+                    print("  (passages excluded in totals, shown for reference):")
+                    print(
+                        f"    - Passages text: {non_compact.get('passages_text_mb', 0):.1f} MB, "
+                        f"Passages index: {non_compact.get('passages_index_mb', 0):.1f} MB, "
+                        f"Metadata: {non_compact.get('metadata_mb', 0):.3f} MB"
+                    )
+            else:
+                # Fallback to legacy totals if running with older metrics
+                print("\n📏 Index Comparison Analysis:")
+                print(f"  Compact index (current): {current.get('total_with_embeddings', 0):.1f} MB")
+                print(
+                    f"  Non-compact index (with embeddings): {non_compact.get('total_with_embeddings', 0):.1f} MB"
+                )
+                print(
+                    f"  Storage saving by compact: {timing_metrics.get('storage_saving_percent', 0):.1f}%"
+                )
+                print("  Component breakdown (non-compact):")
+                print(f"    - Main index: {non_compact.get('index', 0):.1f} MB")
+                print(f"    - Passages text: {non_compact.get('passages_text', 0):.1f} MB")
+                print(f"    - Passages index: {non_compact.get('passages_index', 0):.1f} MB")
+                print(f"    - Metadata: {non_compact.get('metadata', 0):.1f} MB")
 
         # Performance comparison
         if "performance_comparison" in timing_metrics:
@@ -433,7 +451,7 @@ def main():
 
             # Binary search for 90% recall complexity
             target_recall = 0.9
-            min_complexity, max_complexity = 1, 64
+            min_complexity, max_complexity = 1, 128
 
             print(f"🔍 Binary search for {target_recall * 100}% recall complexity...")
             print(f"Search range: {min_complexity} to {max_complexity}")
@@ -548,9 +566,7 @@ def main():
             print(
                 f"  Compact index (current): {compact_size_metrics.get('index_only_mb', 0):.1f} MB"
             )
-            print(
-                f"  Non-compact index: {non_compact_size_metrics.get('index_only_mb', 0):.1f} MB"
-            )
+            print(f"  Non-compact index: {non_compact_size_metrics.get('index_only_mb', 0):.1f} MB")
 
             storage_saving = 0.0
             if non_compact_size_metrics.get("index_only_mb", 0) > 0:
