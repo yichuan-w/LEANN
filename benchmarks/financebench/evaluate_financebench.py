@@ -482,7 +482,7 @@ class FinanceBenchEvaluator:
         self, generated_answer: str, ground_truth: str, question: str
     ) -> bool:
         """Check if generated answer matches ground truth using LLM as judge"""
-        judge_prompt = f"""You are an expert judge evaluating financial question answering. 
+        judge_prompt = f"""You are an expert judge evaluating financial question answering.
 
 Question: {question}
 

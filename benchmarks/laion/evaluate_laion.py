@@ -323,7 +323,10 @@ class LAIONEvaluator:
                     f"  Storage saving by compact: {timing_metrics.get('storage_saving_percent', 0):.1f}%"
                 )
                 # Show excluded components for reference if available
-                if any(k in non_compact for k in ("passages_text_mb", "passages_index_mb", "metadata_mb")):
+                if any(
+                    k in non_compact
+                    for k in ("passages_text_mb", "passages_index_mb", "metadata_mb")
+                ):
                     print("  (passages excluded in totals, shown for reference):")
                     print(
                         f"    - Passages text: {non_compact.get('passages_text_mb', 0):.1f} MB, "
@@ -333,7 +336,9 @@ class LAIONEvaluator:
             else:
                 # Fallback to legacy totals if running with older metrics
                 print("\n📏 Index Comparison Analysis:")
-                print(f"  Compact index (current): {current.get('total_with_embeddings', 0):.1f} MB")
+                print(
+                    f"  Compact index (current): {current.get('total_with_embeddings', 0):.1f} MB"
+                )
                 print(
                     f"  Non-compact index (with embeddings): {non_compact.get('total_with_embeddings', 0):.1f} MB"
                 )
