@@ -14,5 +14,3 @@
 [submodule "packages/leann-backend-hnsw/third_party/libzmq"]
 	path = packages/leann-backend-hnsw/third_party/libzmq
 	url = https://github.com/zeromq/libzmq.git
-
-# Ensure CI can update this submodule; used only for Arch packaging and not required for builds.
