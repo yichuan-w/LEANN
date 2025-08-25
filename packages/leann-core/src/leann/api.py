@@ -445,6 +445,17 @@ class LeannBuilder:
             is_build=True,
         )
         string_ids = [chunk["id"] for chunk in self.chunks]
+        # Persist ID map alongside index so backends that return integer labels can remap to passage IDs
+        try:
+            idmap_file = (
+                index_dir
+                / f"{index_name[: -len('.leann')] if index_name.endswith('.leann') else index_name}.ids.txt"
+            )
+            with open(idmap_file, "w", encoding="utf-8") as f:
+                for sid in string_ids:
+                    f.write(str(sid) + "\n")
+        except Exception:
+            pass
         current_backend_kwargs = {**self.backend_kwargs, "dimensions": self.dimensions}
         builder_instance = self.backend_factory.builder(**current_backend_kwargs)
         builder_instance.build(embeddings, string_ids, index_path, **current_backend_kwargs)
@@ -563,6 +574,17 @@ class LeannBuilder:
 
         # Build the vector index using precomputed embeddings
         string_ids = [str(id_val) for id_val in ids]
+        # Persist ID map (order == embeddings order)
+        try:
+            idmap_file = (
+                index_dir
+                / f"{index_name[: -len('.leann')] if index_name.endswith('.leann') else index_name}.ids.txt"
+            )
+            with open(idmap_file, "w", encoding="utf-8") as f:
+                for sid in string_ids:
+                    f.write(str(sid) + "\n")
+        except Exception:
+            pass
         current_backend_kwargs = {**self.backend_kwargs, "dimensions": self.dimensions}
         builder_instance = self.backend_factory.builder(**current_backend_kwargs)
         builder_instance.build(embeddings, string_ids, index_path)

@@ -343,7 +343,8 @@ class DiskannSearcher(BaseSearcher):
                 "full_index_prefix": full_index_prefix,
                 "num_threads": self.num_threads,
                 "num_nodes_to_cache": kwargs.get("num_nodes_to_cache", 0),
-                "cache_mechanism": 1,
+                # 1 -> initialize cache using sample_data; 2 -> ready cache without init; others disable cache
+                "cache_mechanism": kwargs.get("cache_mechanism", 1),
                 "pq_prefix": "",
                 "partition_prefix": partition_prefix,
             }
