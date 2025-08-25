@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-"""
-Run DiskANN with real NQ queries (search-only timing).
-
-Steps:
-- Load queries from nq_open.jsonl
-- Compute embeddings (facebook/contriever-msmarco) once upfront
-- Search via DiskANN (no recompute, no batching), measure per-query latency
-
-Example:
-  python benchmarks/bm25_diskann_baselines/run_diskann_nq.py \
-    --index-dir benchmarks/data/indices/diskann_rpj_wiki \
-    --index-prefix ann \
-    --queries-file benchmarks/data/queries/nq_open.jsonl \
-    --num-queries 200 --top-k 10 --complexity 120 --threads 1 --beam-width 1
-"""
+# /// script
+# dependencies = [
+#   "leann-backend-diskann"
+# ]
+# ///
 
 import argparse
 import json
@@ -47,7 +36,7 @@ def main() -> None:
     ap.add_argument("--queries-file", default="benchmarks/data/queries/nq_open.jsonl")
     ap.add_argument("--num-queries", type=int, default=200)
     ap.add_argument("--top-k", type=int, default=10)
-    ap.add_argument("--complexity", type=int, default=120)
+    ap.add_argument("--complexity", type=int, default=62)
     ap.add_argument("--threads", type=int, default=1)
     ap.add_argument("--beam-width", type=int, default=1)
     ap.add_argument("--cache-mechanism", type=int, default=2)

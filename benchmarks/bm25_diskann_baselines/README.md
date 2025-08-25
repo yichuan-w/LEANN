@@ -9,12 +9,12 @@ aws s3 sync s3://powerrag-diskann-rpj-wiki-20250824-224037-194d640c/diskann_rpj_
 - Machine-specific; results measured locally with the current repo.
 
 DiskANN (NQ queries, search-only)
-- Command: `uv run benchmarks/bm25_diskann_baselines/run_diskann.py`
+- Command: `uv run --script benchmarks/bm25_diskann_baselines/run_diskann.py`
 - Settings: `recompute_embeddings=False`, embeddings precomputed (excluded from timing), batching off, caching off (`cache_mechanism=2`, `num_nodes_to_cache=0`)
 - Result: avg 0.019339 s/query, QPS 51.71 (p50 ~0.018936 s, p95 ~0.023573 s)
 
 BM25
-- Command: `uv run --script ./benchmarks/run_bm25.py`
+- Command: `uv run --script benchmarks/bm25_diskann_baselines/run_bm25.py`
 - Settings: `k=10`, `k1=0.9`, `b=0.4`, queries=100
 - Result: avg 0.026976 s/query, QPS 37.07 (p50 0.024729 s, p90 0.042158 s, p95 0.047099 s, p99 0.053520 s)
 
