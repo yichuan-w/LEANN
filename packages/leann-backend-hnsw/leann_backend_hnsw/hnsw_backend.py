@@ -274,7 +274,9 @@ class HNSWSearcher(BaseSearcher):
                     return self._id_map[x]
                 return str(x)
 
-            string_labels = [[map_label(int(l)) for l in batch_labels] for batch_labels in labels]
+            string_labels = [
+                [map_label(int(label)) for label in batch_labels] for batch_labels in labels
+            ]
         else:
             string_labels = [
                 [str(int_label) for int_label in batch_labels] for batch_labels in labels

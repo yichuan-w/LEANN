@@ -416,6 +416,7 @@ def main():
 
         # Build non-compact index for fast binary search (recompute_embeddings=False)
         from pathlib import Path
+
         index_path = Path(args.index)
         non_compact_index_path = str(index_path.parent / f"{index_path.stem}_noncompact.leann")
         enron_eval.create_non_compact_index_for_comparison(non_compact_index_path)
@@ -428,6 +429,7 @@ def main():
         results_out["stage3"] = sweep
         # Persist default stage 3 results near the index for Stage 4 auto-pickup
         from pathlib import Path
+
         default_stage3_path = Path(args.index).parent / "enron_stage3_results.json"
         with open(default_stage3_path, "w", encoding="utf-8") as f:
             json.dump({"stage3": sweep}, f, indent=2)
@@ -476,7 +478,9 @@ def main():
                         prev = json.load(f)
                     complexity = prev.get("stage3", {}).get("best_complexity")
                     if complexity is None:
-                        raise SystemExit("❌ Stage 4: No --complexity and no best_complexity found in saved Stage 3 results")
+                        raise SystemExit(
+                            "❌ Stage 4: No --complexity and no best_complexity found in saved Stage 3 results"
+                        )
                     print(f"📥 Using best complexity from saved Stage 3: {complexity}")
                 else:
                     raise SystemExit(
