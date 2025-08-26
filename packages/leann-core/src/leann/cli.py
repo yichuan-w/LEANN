@@ -324,7 +324,9 @@ Examples:
 
     def _should_exclude_file(self, relative_path: Path, gitignore_matches) -> bool:
         """Check if a file should be excluded using gitignore parser."""
-        return gitignore_matches(str(relative_path))
+        # gitignore_parser expects paths relative to the .gitignore location
+        # Convert Path to string with forward slashes for consistent matching
+        return gitignore_matches(relative_path.as_posix())
 
     def _is_git_submodule(self, path: Path) -> bool:
         """Check if a path is a git submodule."""
@@ -1034,7 +1036,8 @@ Examples:
                         relative_path = file_path.relative_to(docs_path)
                         if not include_hidden and _path_has_hidden_segment(relative_path):
                             continue
-                        if self._should_exclude_file(relative_path, gitignore_matches):
+                        # gitignore_parser needs absolute path for checking
+                        if gitignore_matches(str(file_path)):
                             continue
                     except ValueError:
                         # Skip files that can't be made relative to docs_path
@@ -1077,10 +1080,8 @@ Examples:
                 ) -> bool:
                     """Return True if file should be included (not excluded)"""
                     try:
-                        docs_path_obj = Path(docs_dir)
-                        file_path_obj = Path(file_path)
-                        relative_path = file_path_obj.relative_to(docs_path_obj)
-                        return not self._should_exclude_file(relative_path, gitignore_matches)
+                        # gitignore_parser expects absolute paths
+                        return not gitignore_matches(file_path)
                     except (ValueError, OSError):
                         return True  # Include files that can't be processed
 
