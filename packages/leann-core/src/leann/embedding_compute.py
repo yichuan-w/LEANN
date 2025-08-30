@@ -113,7 +113,7 @@ def compute_embeddings_sentence_transformers(
         if device == "mps":
             batch_size = 128  # MPS optimal batch size from benchmark
             if model_name == "Qwen/Qwen3-Embedding-0.6B":
-                batch_size = 32
+                batch_size = 8  # Reduced for large datasets to avoid memory overflow
         elif device == "cuda":
             batch_size = 256  # CUDA optimal batch size
         # Keep original batch_size for CPU
@@ -644,7 +644,7 @@ def compute_embeddings_ollama(
         if torch.cuda.is_available():
             batch_size = 128  # CUDA gets larger batch size
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            batch_size = 32  # MPS gets smaller batch size
+            batch_size = 8  # MPS gets smaller batch size for large datasets
     except ImportError:
         # If torch is not available, use conservative batch size
         batch_size = 32

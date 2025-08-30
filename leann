@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# LEANN CLI wrapper script
+
+# Get the directory of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Activate virtual environment and run the CLI
+source "$SCRIPT_DIR/.venv/bin/activate"
+python -m leann.cli "$@"

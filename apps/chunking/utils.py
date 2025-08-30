@@ -20,6 +20,7 @@ CODE_EXTENSIONS = {
     ".tsx": "typescript",
     ".js": "typescript",
     ".jsx": "typescript",
+    ".go": "go",
 }
 
 # Default chunk parameters for different content types
@@ -106,8 +107,8 @@ def create_ast_chunks(
         from astchunk import ASTChunkBuilder
     except ImportError as e:
         logger.error(f"astchunk not available: {e}")
-        logger.info("Falling back to traditional chunking for code files")
-        return create_traditional_chunks(documents, max_chunk_size, chunk_overlap)
+        logger.info("Trying local AST chunkers before falling back to traditional chunking")
+        return create_ast_chunks_with_local_chunkers(documents, max_chunk_size, chunk_overlap)
 
     all_chunks = []
 
@@ -121,6 +122,20 @@ def create_ast_chunks(
             traditional_chunks = create_traditional_chunks([doc], max_chunk_size, chunk_overlap)
             all_chunks.extend(traditional_chunks)
             continue
+
+        # Special handling for Go - use local chunker since external astchunk doesn't support it
+        if language == "go":
+            logger.debug("Using local Go AST chunker for Go file")
+            try:
+                local_chunks = create_ast_chunks_with_local_chunkers([doc], max_chunk_size, chunk_overlap)
+                all_chunks.extend(local_chunks)
+                continue
+            except Exception as e:
+                logger.warning(f"Local Go AST chunking failed: {e}")
+                logger.info("Falling back to traditional chunking for Go file")
+                traditional_chunks = create_traditional_chunks([doc], max_chunk_size, chunk_overlap)
+                all_chunks.extend(traditional_chunks)
+                continue
 
         try:
             # Configure astchunk
@@ -171,10 +186,87 @@ def create_ast_chunks(
 
         except Exception as e:
             logger.warning(f"AST chunking failed for {language} file: {e}")
+            
+            # For Go files, try local chunker before falling back to traditional chunking
+            if language == "go":
+                logger.info("Trying local Go AST chunker as fallback")
+                try:
+                    local_chunks = create_ast_chunks_with_local_chunkers([doc], max_chunk_size, chunk_overlap)
+                    all_chunks.extend(local_chunks)
+                    continue
+                except Exception as local_e:
+                    logger.warning(f"Local Go AST chunker also failed: {local_e}")
+            
             logger.info("Falling back to traditional chunking")
             traditional_chunks = create_traditional_chunks([doc], max_chunk_size, chunk_overlap)
             all_chunks.extend(traditional_chunks)
 
+    return all_chunks
+
+
+def create_ast_chunks_with_local_chunkers(
+    documents,
+    max_chunk_size: int = 512,
+    chunk_overlap: int = 64,
+) -> list[str]:
+    """
+    Create AST-aware chunks using local chunker implementations.
+    
+    Args:
+        documents: List of code documents
+        max_chunk_size: Maximum characters per chunk
+        chunk_overlap: Number of characters to overlap between chunks
+        
+    Returns:
+        List of text chunks with preserved code structure
+    """
+    all_chunks = []
+    
+    for doc in documents:
+        language = doc.metadata.get("language")
+        if not language:
+            logger.warning("No language detected for document, falling back to traditional chunking")
+            traditional_chunks = create_traditional_chunks([doc], max_chunk_size, chunk_overlap)
+            all_chunks.extend(traditional_chunks)
+            continue
+            
+        try:
+            code_content = doc.get_content()
+            if not code_content or not code_content.strip():
+                logger.warning("Empty code content, skipping")
+                continue
+                
+            chunks = []
+            
+            # Use appropriate local chunker based on language
+            if language == "go":
+                logger.debug("Using local Go AST chunker")
+                try:
+                    from .ast_chunkers.go import chunk_go_code
+                    chunk_dicts = chunk_go_code(code_content, max_chunk_size, chunk_overlap)
+                    chunks = [chunk_dict["text"] for chunk_dict in chunk_dicts if chunk_dict.get("text")]
+                except ImportError as e:
+                    logger.warning(f"Local Go chunker not available: {e}")
+                    raise
+            else:
+                # No local chunker available for this language
+                logger.info(f"No local AST chunker available for {language}, using traditional chunking")
+                raise ValueError(f"No local chunker for {language}")
+            
+            if chunks:
+                all_chunks.extend(chunks)
+                logger.info(f"Created {len(chunks)} local AST chunks from {language} file: {doc.metadata.get('file_name', 'unknown')}")
+            else:
+                logger.warning(f"No chunks created from {language} file, falling back to traditional chunking")
+                traditional_chunks = create_traditional_chunks([doc], max_chunk_size, chunk_overlap)
+                all_chunks.extend(traditional_chunks)
+                
+        except Exception as e:
+            logger.warning(f"Local AST chunking failed for {language} file: {e}")
+            logger.info("Falling back to traditional chunking")
+            traditional_chunks = create_traditional_chunks([doc], max_chunk_size, chunk_overlap)
+            all_chunks.extend(traditional_chunks)
+    
     return all_chunks
 
 
