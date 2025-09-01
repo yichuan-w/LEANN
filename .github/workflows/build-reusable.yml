@@ -54,6 +54,17 @@ jobs:
             python: '3.12'
           - os: ubuntu-22.04
             python: '3.13'
+          # ARM64 Linux builds
+          - os: ubuntu-24.04-arm
+            python: '3.9'
+          - os: ubuntu-24.04-arm
+            python: '3.10'
+          - os: ubuntu-24.04-arm
+            python: '3.11'
+          - os: ubuntu-24.04-arm
+            python: '3.12'
+          - os: ubuntu-24.04-arm
+            python: '3.13'
           - os: macos-14
             python: '3.9'
           - os: macos-14
@@ -108,13 +119,38 @@ jobs:
             pkg-config libabsl-dev libaio-dev libprotobuf-dev \
             patchelf
 
-          # Install Intel MKL for DiskANN
+          # Debug: Show system information
+          echo "🔍 System Information:"
+          echo "Architecture: $(uname -m)"
+          echo "OS: $(uname -a)"
+          echo "CPU info: $(lscpu | head -5)"
+
+          # Install Intel MKL for DiskANN (supports both x86_64 and aarch64)
           wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940.sh
           sudo sh intel-onemkl-2025.0.0.940.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
           source /opt/intel/oneapi/setvars.sh
           echo "MKLROOT=/opt/intel/oneapi/mkl/latest" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/intel/oneapi/mkl/latest/lib/intel64" >> $GITHUB_ENV
+
+          # Debug: Check MKL installation
+          echo "🔍 MKL Installation Check:"
+          ls -la /opt/intel/oneapi/mkl/latest/ || echo "MKL directory not found"
+          ls -la /opt/intel/oneapi/mkl/latest/lib/ || echo "MKL lib directory not found"
+
+          # Set library paths based on architecture
+          ARCH=$(uname -m)
+          echo "🔍 Setting library paths for architecture: $ARCH"
+          if [[ "$ARCH" == "x86_64" ]]; then
+            echo "LD_LIBRARY_PATH=/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin" >> $GITHUB_ENV
+            echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/intel/oneapi/mkl/latest/lib/intel64" >> $GITHUB_ENV
+            echo "✅ Set x86_64 library paths"
+          elif [[ "$ARCH" == "aarch64" ]]; then
+            echo "LD_LIBRARY_PATH=/opt/intel/oneapi/compiler/latest/linux/compiler/lib" >> $GITHUB_ENV
+            echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/intel/oneapi/mkl/latest/lib" >> $GITHUB_ENV
+            echo "✅ Set ARM64 library paths"
+          fi
+
+          # Debug: Show final library paths
+          echo "🔍 Final LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
