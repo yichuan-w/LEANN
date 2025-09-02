@@ -6,10 +6,10 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "leann-backend-hnsw"
-version = "0.3.2"
+version = "0.3.3"
 description = "Custom-built HNSW (Faiss) backend for the Leann toolkit."
 dependencies = [
-    "leann-core==0.3.2",
+    "leann-core==0.3.3",
     "numpy",
     "pyzmq>=23.0.0",
     "msgpack>=1.0.0",

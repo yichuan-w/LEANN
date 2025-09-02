@@ -322,9 +322,17 @@ Examples:
 
         return basic_matches
 
-    def _should_exclude_file(self, relative_path: Path, gitignore_matches) -> bool:
-        """Check if a file should be excluded using gitignore parser."""
-        return gitignore_matches(str(relative_path))
+    def _should_exclude_file(self, file_path: Path, gitignore_matches) -> bool:
+        """Check if a file should be excluded using gitignore parser.
+
+        Always match against absolute, posix-style paths for consistency with
+        gitignore_parser expectations.
+        """
+        try:
+            absolute_path = file_path.resolve()
+        except Exception:
+            absolute_path = Path(str(file_path))
+        return gitignore_matches(absolute_path.as_posix())
 
     def _is_git_submodule(self, path: Path) -> bool:
         """Check if a path is a git submodule."""
@@ -396,7 +404,9 @@ Examples:
         print(f"   {current_path}")
         print("   " + "─" * 45)
 
-        current_indexes = self._discover_indexes_in_project(current_path)
+        current_indexes = self._discover_indexes_in_project(
+            current_path, exclude_dirs=other_projects
+        )
         if current_indexes:
             for idx in current_indexes:
                 total_indexes += 1
@@ -435,9 +445,14 @@ Examples:
             print("   leann build my-docs --docs ./documents")
         else:
             # Count only projects that have at least one discoverable index
-            projects_count = sum(
-                1 for p in valid_projects if len(self._discover_indexes_in_project(p)) > 0
-            )
+            projects_count = 0
+            for p in valid_projects:
+                if p == current_path:
+                    discovered = self._discover_indexes_in_project(p, exclude_dirs=other_projects)
+                else:
+                    discovered = self._discover_indexes_in_project(p)
+                if len(discovered) > 0:
+                    projects_count += 1
             print(f"📊 Total: {total_indexes} indexes across {projects_count} projects")
 
             if current_indexes_count > 0:
@@ -454,9 +469,22 @@ Examples:
                 print("\n💡 Create your first index:")
                 print("   leann build my-docs --docs ./documents")
 
-    def _discover_indexes_in_project(self, project_path: Path):
-        """Discover all indexes in a project directory (both CLI and apps formats)"""
+    def _discover_indexes_in_project(
+        self, project_path: Path, exclude_dirs: Optional[list[Path]] = None
+    ):
+        """Discover all indexes in a project directory (both CLI and apps formats)
+
+        exclude_dirs: when provided, skip any APP-format index files that are
+        located under these directories. This prevents duplicates when the
+        current project is a parent directory of other registered projects.
+        """
         indexes = []
+        exclude_dirs = exclude_dirs or []
+        # normalize to resolved paths once for comparison
+        try:
+            exclude_dirs_resolved = [p.resolve() for p in exclude_dirs]
+        except Exception:
+            exclude_dirs_resolved = exclude_dirs
 
         # 1. CLI format: .leann/indexes/index_name/
         cli_indexes_dir = project_path / ".leann" / "indexes"
@@ -494,6 +522,17 @@ Examples:
                     if cli_indexes_dir.exists() and cli_indexes_dir in meta_file.parents:
                         continue
                 except Exception:
+                    pass
+                # Skip meta files that live under excluded directories
+                try:
+                    meta_parent_resolved = meta_file.parent.resolve()
+                    if any(
+                        meta_parent_resolved.is_relative_to(ex_dir)
+                        for ex_dir in exclude_dirs_resolved
+                    ):
+                        continue
+                except Exception:
+                    # best effort; if resolve or comparison fails, do not exclude
                     pass
                 # Use the parent directory name as the app index display name
                 display_name = meta_file.parent.name
@@ -1022,7 +1061,8 @@ Examples:
 
             # Try to use better PDF parsers first, but only if PDFs are requested
             documents = []
-            docs_path = Path(docs_dir)
+            # Use resolved absolute paths to avoid mismatches (symlinks, relative vs absolute)
+            docs_path = Path(docs_dir).resolve()
 
             # Check if we should process PDFs
             should_process_pdfs = custom_file_types is None or ".pdf" in custom_file_types
@@ -1031,10 +1071,15 @@ Examples:
                 for file_path in docs_path.rglob("*.pdf"):
                     # Check if file matches any exclude pattern
                     try:
+                        # Ensure both paths are resolved before computing relativity
+                        file_path_resolved = file_path.resolve()
+                        # Determine directory scope using the non-resolved path to avoid
+                        # misclassifying symlinked entries as outside the docs directory
                         relative_path = file_path.relative_to(docs_path)
                         if not include_hidden and _path_has_hidden_segment(relative_path):
                             continue
-                        if self._should_exclude_file(relative_path, gitignore_matches):
+                        # Use absolute path for gitignore matching
+                        if self._should_exclude_file(file_path_resolved, gitignore_matches):
                             continue
                     except ValueError:
                         # Skip files that can't be made relative to docs_path
@@ -1077,10 +1122,11 @@ Examples:
                 ) -> bool:
                     """Return True if file should be included (not excluded)"""
                     try:
-                        docs_path_obj = Path(docs_dir)
-                        file_path_obj = Path(file_path)
-                        relative_path = file_path_obj.relative_to(docs_path_obj)
-                        return not self._should_exclude_file(relative_path, gitignore_matches)
+                        docs_path_obj = Path(docs_dir).resolve()
+                        file_path_obj = Path(file_path).resolve()
+                        # Use absolute path for gitignore matching
+                        _ = file_path_obj.relative_to(docs_path_obj)  # validate scope
+                        return not self._should_exclude_file(file_path_obj, gitignore_matches)
                     except (ValueError, OSError):
                         return True  # Include files that can't be processed
 

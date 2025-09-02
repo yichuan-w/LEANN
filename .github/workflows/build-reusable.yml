@@ -54,6 +54,17 @@ jobs:
             python: '3.12'
           - os: ubuntu-22.04
             python: '3.13'
+          # ARM64 Linux builds
+          - os: ubuntu-24.04-arm
+            python: '3.9'
+          - os: ubuntu-24.04-arm
+            python: '3.10'
+          - os: ubuntu-24.04-arm
+            python: '3.11'
+          - os: ubuntu-24.04-arm
+            python: '3.12'
+          - os: ubuntu-24.04-arm
+            python: '3.13'
           - os: macos-14
             python: '3.9'
           - os: macos-14
@@ -108,13 +119,46 @@ jobs:
             pkg-config libabsl-dev libaio-dev libprotobuf-dev \
             patchelf
 
-          # Install Intel MKL for DiskANN
-          wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940.sh
-          sudo sh intel-onemkl-2025.0.0.940.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
-          source /opt/intel/oneapi/setvars.sh
-          echo "MKLROOT=/opt/intel/oneapi/mkl/latest" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/intel/oneapi/mkl/latest/lib/intel64" >> $GITHUB_ENV
+          # Debug: Show system information
+          echo "🔍 System Information:"
+          echo "Architecture: $(uname -m)"
+          echo "OS: $(uname -a)"
+          echo "CPU info: $(lscpu | head -5)"
+
+          # Install math library based on architecture
+          ARCH=$(uname -m)
+          echo "🔍 Setting up math library for architecture: $ARCH"
+
+          if [[ "$ARCH" == "x86_64" ]]; then
+            # Install Intel MKL for DiskANN on x86_64
+            echo "📦 Installing Intel MKL for x86_64..."
+            wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/79153e0f-74d7-45af-b8c2-258941adf58a/intel-onemkl-2025.0.0.940.sh
+            sudo sh intel-onemkl-2025.0.0.940.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
+            source /opt/intel/oneapi/setvars.sh
+            echo "MKLROOT=/opt/intel/oneapi/mkl/latest" >> $GITHUB_ENV
+            echo "LD_LIBRARY_PATH=/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin" >> $GITHUB_ENV
+            echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/intel/oneapi/mkl/latest/lib/intel64" >> $GITHUB_ENV
+            echo "✅ Intel MKL installed for x86_64"
+
+            # Debug: Check MKL installation
+            echo "🔍 MKL Installation Check:"
+            ls -la /opt/intel/oneapi/mkl/latest/ || echo "MKL directory not found"
+            ls -la /opt/intel/oneapi/mkl/latest/lib/ || echo "MKL lib directory not found"
+
+          elif [[ "$ARCH" == "aarch64" ]]; then
+            # Use OpenBLAS for ARM64 (MKL installer not compatible with ARM64)
+            echo "📦 Installing OpenBLAS for ARM64..."
+            sudo apt-get install -y libopenblas-dev liblapack-dev liblapacke-dev
+            echo "✅ OpenBLAS installed for ARM64"
+
+            # Debug: Check OpenBLAS installation
+            echo "🔍 OpenBLAS Installation Check:"
+            dpkg -l | grep openblas || echo "OpenBLAS package not found"
+            ls -la /usr/lib/aarch64-linux-gnu/openblas/ || echo "OpenBLAS directory not found"
+          fi
+
+          # Debug: Show final library paths
+          echo "🔍 Final LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
