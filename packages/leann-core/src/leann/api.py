@@ -6,8 +6,8 @@ with the correct, original embedding logic from the user's reference code.
 import json
 import logging
 import pickle
-import subprocess
 import re
+import subprocess
 import time
 import warnings
 from dataclasses import dataclass, field
@@ -685,7 +685,7 @@ class LeannSearcher:
         # Handle grep search
         if use_grep:
             return self._grep_search(query, top_k)
-            
+
         logger.info("🔍 LeannSearcher.search() called:")
         logger.info(f"  Query: '{query}'")
         logger.info(f"  Top_k: {top_k}")
@@ -809,7 +809,7 @@ class LeannSearcher:
             index_path / "documents.leann.passages.jsonl",
             index_path.parent / "documents.leann.passages.jsonl",
         ]
-        
+
         for file_path in potential_files:
             if file_path.exists():
                 return str(file_path)
@@ -820,41 +820,43 @@ class LeannSearcher:
         jsonl_file = self._find_jsonl_file()
         if not jsonl_file:
             raise FileNotFoundError("No .jsonl passages file found for grep search")
-        
+
         try:
             cmd = ["grep", "-i", "-n", query, jsonl_file]
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            
+
             if result.returncode == 1:
                 return []
             elif result.returncode != 0:
                 raise RuntimeError(f"Grep failed: {result.stderr}")
-            
+
             matches = []
-            for line in result.stdout.strip().split('\n'):
+            for line in result.stdout.strip().split("\n"):
                 if not line:
                     continue
-                parts = line.split(':', 1)
+                parts = line.split(":", 1)
                 if len(parts) != 2:
                     continue
-                
+
                 try:
                     data = json.loads(parts[1])
-                    text = data.get('text', '')
+                    text = data.get("text", "")
                     score = text.lower().count(query.lower())
-                    
-                    matches.append(SearchResult(
-                        id=data.get('id', parts[0]),
-                        text=text,
-                        metadata=data.get('metadata', {}),
-                        score=float(score)
-                    ))
+
+                    matches.append(
+                        SearchResult(
+                            id=data.get("id", parts[0]),
+                            text=text,
+                            metadata=data.get("metadata", {}),
+                            score=float(score),
+                        )
+                    )
                 except json.JSONDecodeError:
                     continue
-            
+
             matches.sort(key=lambda x: x.score, reverse=True)
             return matches[:top_k]
-            
+
         except FileNotFoundError:
             return self._python_regex_search(query, top_k)
 
@@ -863,24 +865,26 @@ class LeannSearcher:
         jsonl_file = self._find_jsonl_file()
         if not jsonl_file:
             raise FileNotFoundError("No .jsonl file found")
-        
+
         pattern = re.compile(re.escape(query), re.IGNORECASE)
         matches = []
-        
-        with open(jsonl_file, 'r', encoding='utf-8') as f:
+
+        with open(jsonl_file, encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
                 if pattern.search(line):
                     try:
                         data = json.loads(line.strip())
-                        matches.append(SearchResult(
-                            id=data.get('id', str(line_num)),
-                            text=data.get('text', ''),
-                            metadata=data.get('metadata', {}),
-                            score=float(len(pattern.findall(data.get('text', ''))))
-                        ))
+                        matches.append(
+                            SearchResult(
+                                id=data.get("id", str(line_num)),
+                                text=data.get("text", ""),
+                                metadata=data.get("metadata", {}),
+                                score=float(len(pattern.findall(data.get("text", "")))),
+                            )
+                        )
                     except json.JSONDecodeError:
                         continue
-        
+
         matches.sort(key=lambda x: x.score, reverse=True)
         return matches[:top_k]
 
