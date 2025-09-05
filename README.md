@@ -169,9 +169,6 @@ builder.build_index(INDEX_PATH)
 searcher = LeannSearcher(INDEX_PATH)
 results = searcher.search("fantastical AI-generated creatures", top_k=1)
 
-# Grep search for exact text matches
-grep_results = searcher.search("banana‑crocodile", use_grep=True, top_k=1)
-
 # Chat with your data
 chat = LeannChat(INDEX_PATH, llm_config={"type": "hf", "model": "Qwen/Qwen3-0.6B"})
 response = chat.ask("How much storage does LEANN save?", top_k=1)
@@ -658,6 +655,19 @@ results = searcher.search(
 **Supported operators**: `==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not_in`, `contains`, `starts_with`, `ends_with`, `is_true`, `is_false`
 
 📖 **[Complete Metadata filtering guide →](docs/metadata_filtering.md)**
+
+### 🔍 Grep Search
+
+For exact text matching instead of semantic search, use the `use_grep` parameter:
+
+```python
+# Exact text search
+results = searcher.search("banana‑crocodile", use_grep=True, top_k=1)
+```
+
+**Use cases**: Finding specific code patterns, error messages, function names, or exact phrases where semantic similarity isn't needed.
+
+📖 **[Complete grep search guide →](docs/grep_search.md)**
 
 ## 🏗️ Architecture & How It Works
 
