@@ -858,7 +858,9 @@ class LeannSearcher:
             return matches[:top_k]
 
         except FileNotFoundError:
-            return self._python_regex_search(query, top_k)
+            raise RuntimeError(
+                "grep command not found. Please install grep or use semantic search."
+            )
 
     def _python_regex_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Fallback regex search"""
