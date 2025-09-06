@@ -7,7 +7,7 @@ This module provides AST (Abstract Syntax Tree) aware chunking for various progr
 Traditional text chunking breaks code arbitrarily, potentially splitting functions, classes, or other logical units. AST-aware chunking understands code structure and creates semantically meaningful chunks that preserve:
 
 - Function and method boundaries
-- Class and struct definitions  
+- Class and struct definitions
 - Import statements and dependencies
 - Comments and documentation
 - Semantic metadata for better retrieval
@@ -107,7 +107,7 @@ File language is automatically detected from extensions:
 ```python
 CODE_EXTENSIONS = {
     ".py": "python",
-    ".java": "java", 
+    ".java": "java",
     ".cs": "csharp",
     ".ts": "typescript",
     ".tsx": "typescript",
@@ -194,7 +194,7 @@ The chunker produces:
         "text": "package main\n\nimport \"fmt\"",
         "metadata": {
             "type": "package",
-            "name": "main", 
+            "name": "main",
             "language": "go",
             "start_line": 1,
             "end_line": 3,
@@ -206,7 +206,7 @@ The chunker produces:
         "metadata": {
             "type": "function",
             "name": "Hello",
-            "language": "go", 
+            "language": "go",
             "start_line": 5,
             "end_line": 8,
             "package_name": "main",
@@ -223,7 +223,7 @@ The chunker produces:
 Comprehensive test suite covers:
 
 - Basic language construct chunking
-- Error handling and fallback mechanisms  
+- Error handling and fallback mechanisms
 - Integration with LEANN components
 - Performance with large codebases
 - Edge cases and malformed code
@@ -253,7 +253,7 @@ class LanguageASTChunker:
         self.max_chunk_size = max_chunk_size
         self.chunk_overlap = chunk_overlap
         self._init_parser()
-    
+
     def parse_code(self, source_code: str) -> List[CodeBlock]:
         # Implementation here
         pass

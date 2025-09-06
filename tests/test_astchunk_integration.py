@@ -401,7 +401,7 @@ class TestGoASTChunking:
 
     def test_go_basic_function_chunking(self):
         """Test chunking of basic Go functions."""
-        go_code = '''package main
+        go_code = """package main
 
 import "fmt"
 
@@ -414,28 +414,28 @@ func Hello(name string) {
 func Add(a, b int) int {
     return a + b
 }
-'''
+"""
 
         docs = [MockDocument(go_code, "/test/functions.go", {"language": "go"})]
-        
+
         try:
             chunks = create_ast_chunks(docs, max_chunk_size=200, chunk_overlap=50)
-            
+
             assert len(chunks) > 0
             assert all(isinstance(chunk, str) for chunk in chunks)
-            
+
             # Should contain function definitions
             combined_content = " ".join(chunks)
             assert "func Hello" in combined_content
             assert "func Add" in combined_content
-            
+
         except Exception as e:
             logger.warning(f"Go AST chunking test failed, expected in some environments: {e}")
             assert True  # Test passes if chunking fails due to missing dependencies
 
     def test_go_struct_and_methods(self):
         """Test chunking of Go structs with methods."""
-        go_code = '''package user
+        go_code = """package user
 
 // User represents a user in the system
 type User struct {
@@ -461,29 +461,29 @@ func (u User) Validate() error {
     }
     return nil
 }
-'''
+"""
 
         docs = [MockDocument(go_code, "/test/user.go", {"language": "go"})]
-        
+
         try:
             chunks = create_ast_chunks(docs, max_chunk_size=300, chunk_overlap=50)
-            
+
             assert len(chunks) > 0
             combined_content = " ".join(chunks)
-            
+
             # Should contain struct and methods
             assert "type User struct" in combined_content
             assert "func (u *User) GetName" in combined_content or "GetName" in combined_content
             assert "func (u *User) SetName" in combined_content or "SetName" in combined_content
             assert "func (u User) Validate" in combined_content or "Validate" in combined_content
-            
+
         except Exception as e:
             logger.warning(f"Go struct chunking test failed: {e}")
             assert True
 
     def test_go_interface_chunking(self):
         """Test chunking of Go interfaces."""
-        go_code = '''package storage
+        go_code = """package storage
 
 import "context"
 
@@ -491,13 +491,13 @@ import "context"
 type Storage interface {
     // Get retrieves a value by key
     Get(ctx context.Context, key string) ([]byte, error)
-    
+
     // Put stores a value with a key
     Put(ctx context.Context, key string, value []byte) error
-    
+
     // Delete removes a key
     Delete(ctx context.Context, key string) error
-    
+
     // List returns all keys with optional prefix
     List(ctx context.Context, prefix string) ([]string, error)
 }
@@ -507,27 +507,27 @@ type ReadOnlyStorage interface {
     Get(ctx context.Context, key string) ([]byte, error)
     List(ctx context.Context, prefix string) ([]string, error)
 }
-'''
+"""
 
         docs = [MockDocument(go_code, "/test/storage.go", {"language": "go"})]
-        
+
         try:
             chunks = create_ast_chunks(docs, max_chunk_size=400, chunk_overlap=50)
-            
+
             assert len(chunks) > 0
             combined_content = " ".join(chunks)
-            
+
             # Should contain interfaces
             assert "type Storage interface" in combined_content
             assert "type ReadOnlyStorage interface" in combined_content
-            
+
         except Exception as e:
             logger.warning(f"Go interface chunking test failed: {e}")
             assert True
 
     def test_go_generic_types(self):
         """Test chunking of Go generic types and functions (Go 1.18+)."""
-        go_code = '''package generics
+        go_code = """package generics
 
 // Stack is a generic stack data structure
 type Stack[T any] struct {
@@ -559,20 +559,20 @@ func Map[T, R any](slice []T, fn func(T) R) []R {
     }
     return result
 }
-'''
+"""
 
         docs = [MockDocument(go_code, "/test/generics.go", {"language": "go"})]
-        
+
         try:
             chunks = create_ast_chunks(docs, max_chunk_size=400, chunk_overlap=50)
-            
+
             assert len(chunks) > 0
             combined_content = " ".join(chunks)
-            
+
             # Should handle generic syntax
             assert "Stack[T any]" in combined_content or "Stack" in combined_content
             assert "Map[T, R any]" in combined_content or "func Map" in combined_content
-            
+
         except Exception as e:
             logger.warning(f"Go generics chunking test failed: {e}")
             assert True
@@ -582,7 +582,7 @@ func Map[T, R any](slice []T, fn func(T) R) []R {
         # Create a large Go file with multiple functions
         functions = []
         for i in range(20):
-            functions.append(f'''
+            functions.append(f"""
 // Function{i} performs operation {i}
 func Function{i}(param{i} int) int {{
     // This is a comment for function {i}
@@ -591,39 +591,39 @@ func Function{i}(param{i} int) int {{
         return result - 50
     }}
     return result
-}}''')
-        
-        go_code = f'''package large
+}}""")
+
+        go_code = f"""package large
 
 import "fmt"
 {"".join(functions)}
 
 func main() {{
     fmt.Println("Large file example")
-}}'''
+}}"""
 
         docs = [MockDocument(go_code, "/test/large.go", {"language": "go"})]
-        
+
         try:
             chunks = create_ast_chunks(docs, max_chunk_size=300, chunk_overlap=50)
-            
+
             # Should create multiple chunks due to size
             assert len(chunks) > 1
             assert all(len(chunk) <= 500 for chunk in chunks)  # Reasonable size check
-            
+
             # Verify content preservation
             combined_content = " ".join(chunks)
             assert "func Function0" in combined_content
             assert "func Function19" in combined_content
             assert "func main" in combined_content
-            
+
         except Exception as e:
             logger.warning(f"Go large file chunking test failed: {e}")
             assert True
 
     def test_go_error_handling(self):
         """Test Go chunking with malformed code."""
-        malformed_go_code = '''package main
+        malformed_go_code = """package main
 
 // Missing closing brace
 func BrokenFunction() {
@@ -634,13 +634,13 @@ func BrokenFunction() {
 func ValidFunction() {
     fmt.Println("This function is valid")
 }
-'''
+"""
 
         docs = [MockDocument(malformed_go_code, "/test/broken.go", {"language": "go"})]
-        
+
         # Should handle malformed code gracefully
         chunks = create_ast_chunks(docs, max_chunk_size=200, chunk_overlap=50)
-        
+
         # Should still return some chunks (fallback behavior)
         assert isinstance(chunks, list)
         assert len(chunks) >= 0
@@ -651,7 +651,7 @@ class TestLocalASTChunkers:
 
     def test_local_go_chunker_fallback(self):
         """Test local Go AST chunker when external astchunk is not available."""
-        go_code = '''package main
+        go_code = """package main
 
 import "fmt"
 
@@ -676,34 +676,36 @@ func main() {
     person := Person{Name: "Alice", Age: 30}
     person.Greet()
 }
-'''
+"""
 
         docs = [MockDocument(go_code, "/test/main.go", {"language": "go"})]
 
         try:
             # Try to use the local chunker integration
             from chunking import create_ast_chunks_with_local_chunkers
-            
-            chunks = create_ast_chunks_with_local_chunkers(docs, max_chunk_size=300, chunk_overlap=50)
-            
+
+            chunks = create_ast_chunks_with_local_chunkers(
+                docs, max_chunk_size=300, chunk_overlap=50
+            )
+
             # Should create multiple chunks
             assert len(chunks) > 0
             assert all(isinstance(chunk, str) for chunk in chunks)
             assert all(len(chunk.strip()) > 0 for chunk in chunks if chunk.strip())
-            
+
             # Check that Go constructs are preserved in some form
             combined_content = " ".join(chunks)
             assert "func Hello" in combined_content
             assert "type Person" in combined_content
             assert "func main" in combined_content
-            
+
         except ImportError:
             # If local chunker integration is not available, skip this test
             pytest.skip("Local Go chunker integration not available")
 
     def test_go_chunker_direct_import(self):
         """Test direct import and usage of Go AST chunker."""
-        go_code = '''package calculator
+        go_code = """package calculator
 
 import "math"
 
@@ -729,22 +731,25 @@ func (c *Calculator) recordOperation(op string, a, b, result float64) {
 func Sqrt(x float64) float64 {
     return math.Sqrt(x)
 }
-'''
+"""
 
         try:
             # Import the Go chunker directly
             import sys
             from pathlib import Path
-            sys.path.insert(0, str(Path(__file__).parent.parent / "apps" / "chunking" / "ast_chunkers"))
-            
+
+            sys.path.insert(
+                0, str(Path(__file__).parent.parent / "apps" / "chunking" / "ast_chunkers")
+            )
+
             from go import chunk_go_code
-            
+
             chunks = chunk_go_code(go_code, max_chunk_size=400, chunk_overlap=50)
-            
+
             # Should create chunks
             assert len(chunks) > 0
             assert all("text" in chunk and "metadata" in chunk for chunk in chunks)
-            
+
             # Check metadata structure
             for chunk in chunks:
                 metadata = chunk["metadata"]
@@ -753,24 +758,24 @@ func Sqrt(x float64) float64 {
                 assert metadata["language"] == "go"
                 assert "start_line" in metadata
                 assert "end_line" in metadata
-                
+
                 # Text should not be empty (unless it's a structural chunk)
                 text = chunk["text"]
                 if text.strip():  # Skip empty chunks
                     assert len(text) > 0
-            
+
             # Verify that different Go constructs are identified
             chunk_types = {chunk["metadata"]["type"] for chunk in chunks}
-            
+
             # Should have some variety in chunk types (even if using fallback)
             assert len(chunk_types) >= 1
-            
+
         except ImportError as e:
             pytest.skip(f"Go chunker not available: {e}")
 
     def test_go_chunker_error_handling(self):
         """Test Go chunker handles malformed code gracefully."""
-        malformed_go_code = '''package main
+        malformed_go_code = """package main
 
 // Missing import statement for fmt
 func main() {
@@ -779,28 +784,31 @@ func main() {
     func broken() {
         if true {
     // Missing closing braces
-'''
+"""
 
         try:
             import sys
             from pathlib import Path
-            sys.path.insert(0, str(Path(__file__).parent.parent / "apps" / "chunking" / "ast_chunkers"))
-            
+
+            sys.path.insert(
+                0, str(Path(__file__).parent.parent / "apps" / "chunking" / "ast_chunkers")
+            )
+
             from go import chunk_go_code
-            
+
             # Should handle malformed code without crashing
             chunks = chunk_go_code(malformed_go_code, max_chunk_size=200, chunk_overlap=20)
-            
+
             # Should return some result (even if it's fallback chunking)
             assert isinstance(chunks, list)
             # May be empty or contain fallback chunks
-            
+
         except ImportError:
             pytest.skip("Go chunker not available")
 
     def test_go_chunker_complex_constructs(self):
         """Test Go chunker with complex language constructs."""
-        complex_go_code = '''package advanced
+        complex_go_code = """package advanced
 
 import (
     "context"
@@ -831,13 +839,13 @@ func (c *Container[T]) Add(item T) {
 func (c *Container[T]) Find(target T) (T, bool) {
     c.mu.RLock()
     defer c.mu.RUnlock()
-    
+
     for _, item := range c.items {
         if item.Compare(target) == 0 {
             return item, true
         }
     }
-    
+
     var zero T
     return zero, false
 }
@@ -856,27 +864,30 @@ func ProcessWithContext[T any](ctx context.Context, items []T, processor func(T)
     }
     return nil
 }
-'''
+"""
 
         try:
             import sys
             from pathlib import Path
-            sys.path.insert(0, str(Path(__file__).parent.parent / "apps" / "chunking" / "ast_chunkers"))
-            
+
+            sys.path.insert(
+                0, str(Path(__file__).parent.parent / "apps" / "chunking" / "ast_chunkers")
+            )
+
             from go import chunk_go_code
-            
+
             chunks = chunk_go_code(complex_go_code, max_chunk_size=600, chunk_overlap=50)
-            
+
             # Should handle complex constructs
             assert len(chunks) > 0
             assert all("text" in chunk and "metadata" in chunk for chunk in chunks)
-            
+
             # Check that complex constructs are captured
             combined_content = " ".join(chunk["text"] for chunk in chunks)
             assert "Comparable[T]" in combined_content or "Comparable" in combined_content
             assert "Container[T]" in combined_content or "Container" in combined_content
             assert "ProcessWithContext" in combined_content
-            
+
         except ImportError:
             pytest.skip("Go chunker not available")
 

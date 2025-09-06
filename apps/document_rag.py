@@ -10,8 +10,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from base_rag_example import BaseRAGExample
-from chunking import create_text_chunks
 from llama_index.core import SimpleDirectoryReader
+
+from chunking import create_text_chunks
 
 
 class DocumentRAG(BaseRAGExample):

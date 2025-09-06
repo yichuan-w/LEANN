@@ -79,7 +79,7 @@ python -m apps.code_rag \
 
 The Go AST chunker provides intelligent handling of:
 - **Functions and methods** with proper receiver grouping
-- **Structs and interfaces** with embedded type awareness  
+- **Structs and interfaces** with embedded type awareness
 - **Package declarations** with import preservation
 - **Generics support** (Go 1.18+) for type parameters
 - **Comment preservation** for documentation context
