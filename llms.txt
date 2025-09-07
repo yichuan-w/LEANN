@@ -1,0 +1,28 @@
+# llms.txt — LEANN MCP and Agent Integration
+product: LEANN
+homepage: https://github.com/yichuan-w/LEANN
+contact: https://github.com/yichuan-w/LEANN/issues
+
+# Installation
+install: uv tool install leann-core --with leann
+
+# MCP Server Entry Point
+mcp.server: leann_mcp
+mcp.protocol_version: 2024-11-05
+
+# Tools
+mcp.tools: leann_list, leann_search
+
+mcp.tool.leann_list.description: List available LEANN indexes
+mcp.tool.leann_list.input: {}
+
+mcp.tool.leann_search.description: Semantic search across a named LEANN index
+mcp.tool.leann_search.input.index_name: string, required
+mcp.tool.leann_search.input.query: string, required
+mcp.tool.leann_search.input.top_k: integer, optional, default=5, min=1, max=20
+mcp.tool.leann_search.input.complexity: integer, optional, default=32, min=16, max=128
+
+# Notes
+note: Build indexes with `leann build <name> --docs <files...>` before searching.
+example.add: claude mcp add --scope user leann-server -- leann_mcp
+example.verify: claude mcp list | cat

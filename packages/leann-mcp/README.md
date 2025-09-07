@@ -2,6 +2,8 @@
 
 Transform your development workflow with intelligent code assistance using LEANN's semantic search directly in Claude Code.
 
+For agent-facing discovery details, see `llms.txt` in the repository root.
+
 ## Prerequisites
 
 Install LEANN globally for MCP integration (with default backend):

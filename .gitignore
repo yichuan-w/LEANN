@@ -22,6 +22,7 @@ demo/experiment_results/**/*.json
 *.sh
 *.txt
 !CMakeLists.txt
+!llms.txt
 latency_breakdown*.json
 experiment_results/eval_results/diskann/*.json
 aws/
