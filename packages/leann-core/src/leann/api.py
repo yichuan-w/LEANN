@@ -476,9 +476,7 @@ class LeannBuilder:
             is_compact = self.backend_kwargs.get("is_compact", True)
             is_recompute = self.backend_kwargs.get("is_recompute", True)
             meta_data["is_compact"] = is_compact
-            meta_data["is_pruned"] = (
-                is_compact and is_recompute
-            )  # Pruned only if compact and recompute
+            meta_data["is_pruned"] = bool(is_recompute)
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
 
@@ -598,7 +596,7 @@ class LeannBuilder:
             is_compact = self.backend_kwargs.get("is_compact", True)
             is_recompute = self.backend_kwargs.get("is_recompute", True)
             meta_data["is_compact"] = is_compact
-            meta_data["is_pruned"] = is_compact and is_recompute
+            meta_data["is_pruned"] = bool(is_recompute)
 
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)

@@ -133,10 +133,12 @@ class HNSWSearcher(BaseSearcher):
         if metric_enum is None:
             raise ValueError(f"Unsupported distance_metric '{self.distance_metric}'.")
 
-        self.is_compact, self.is_pruned = (
-            self.meta.get("is_compact", True),
-            self.meta.get("is_pruned", True),
+        backend_meta_kwargs = self.meta.get("backend_kwargs", {})
+        self.is_compact = self.meta.get(
+            "is_compact", backend_meta_kwargs.get("is_compact", True)
         )
+        default_pruned = backend_meta_kwargs.get("is_recompute", self.is_compact)
+        self.is_pruned = bool(self.meta.get("is_pruned", default_pruned))
 
         index_file = self.index_dir / f"{self.index_path.stem}.index"
         if not index_file.exists():
