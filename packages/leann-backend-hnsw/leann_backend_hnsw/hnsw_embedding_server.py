@@ -24,13 +24,26 @@ logger = logging.getLogger(__name__)
 log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
 logger.setLevel(log_level)
 
-# Ensure we have a handler if none exists
+# Ensure we have handlers if none exist
 if not logger.handlers:
-    handler = logging.StreamHandler()
+    stream_handler = logging.StreamHandler()
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.propagate = False
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
+log_path = os.getenv("LEANN_HNSW_LOG_PATH")
+if log_path:
+    try:
+        file_handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+        file_formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - [pid=%(process)d] %(message)s"
+        )
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
+    except Exception as exc:  # pragma: no cover - best effort logging
+        logger.warning(f"Failed to attach file handler for log path {log_path}: {exc}")
+
+logger.propagate = False
 
 
 def create_hnsw_embedding_server(
