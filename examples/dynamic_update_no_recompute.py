@@ -12,7 +12,7 @@ Run it with ``uv`` (optionally pointing LEANN_HNSW_LOG_PATH at a file to inspect
 ZMQ activity)::
 
     LEANN_HNSW_LOG_PATH=embedding_fetch.log \
-    uv run python examples/dynamic_update_no_recompute.py \
+    uv run -m examples.dynamic_update_no_recompute \
       --index-path .leann/examples/leann-demo.leann
 
 By default the script builds an index from ``data/2501.14312v1 (1).pdf`` and
@@ -40,7 +40,7 @@ from leann.registry import register_project_directory
 
 from apps.chunking import create_text_chunks
 
-REPO_ROOT = Path(__file__).parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_QUERY = "What's LEANN?"
 DEFAULT_INITIAL_FILES = [REPO_ROOT / "data" / "2501.14312v1 (1).pdf"]
