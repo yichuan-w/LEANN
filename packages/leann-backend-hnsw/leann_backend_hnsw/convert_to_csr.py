@@ -5,6 +5,7 @@ import os
 import struct
 import sys
 import time
+from typing import Any
 
 import numpy as np
 
@@ -235,6 +236,163 @@ def write_compact_format(
     # Write storage data if not NULL (only after neighbors)
     if storage_fourcc != NULL_INDEX_FOURCC and storage_data:
         f_out.write(storage_data)
+
+
+def write_original_format(
+    f_out,
+    original_hnsw_data,
+    assign_probas_np,
+    cum_nneighbor_per_level_np,
+    levels_np,
+    offsets_np,
+    neighbors_np,
+    storage_fourcc,
+    storage_data,
+):
+    """Write non-compact HNSW data in original FAISS order."""
+
+    f_out.write(struct.pack("<I", original_hnsw_data["index_fourcc"]))
+    f_out.write(struct.pack("<i", original_hnsw_data["d"]))
+    f_out.write(struct.pack("<q", original_hnsw_data["ntotal"]))
+    f_out.write(struct.pack("<q", original_hnsw_data["dummy1"]))
+    f_out.write(struct.pack("<q", original_hnsw_data["dummy2"]))
+    f_out.write(struct.pack("<?", original_hnsw_data["is_trained"]))
+    f_out.write(struct.pack("<i", original_hnsw_data["metric_type"]))
+    if original_hnsw_data["metric_type"] > 1:
+        f_out.write(struct.pack("<f", original_hnsw_data["metric_arg"]))
+
+    write_numpy_vector(f_out, assign_probas_np, "d")
+    write_numpy_vector(f_out, cum_nneighbor_per_level_np, "i")
+    write_numpy_vector(f_out, levels_np, "i")
+
+    write_numpy_vector(f_out, offsets_np, "Q")
+    write_numpy_vector(f_out, neighbors_np, "i")
+
+    f_out.write(struct.pack("<i", original_hnsw_data["entry_point"]))
+    f_out.write(struct.pack("<i", original_hnsw_data["max_level"]))
+    f_out.write(struct.pack("<i", original_hnsw_data["efConstruction"]))
+    f_out.write(struct.pack("<i", original_hnsw_data["efSearch"]))
+    f_out.write(struct.pack("<i", original_hnsw_data["dummy_upper_beam"]))
+
+    f_out.write(struct.pack("<I", storage_fourcc))
+    if storage_fourcc != NULL_INDEX_FOURCC and storage_data:
+        f_out.write(storage_data)
+
+
+def prune_hnsw_embeddings(input_filename: str, output_filename: str) -> bool:
+    """Rewrite an HNSW index while dropping the embedded storage section."""
+
+    start_time = time.time()
+    try:
+        with open(input_filename, "rb") as f_in, open(output_filename, "wb") as f_out:
+            original_hnsw_data: dict[str, Any] = {}
+
+            hnsw_index_fourcc = read_struct(f_in, "<I")
+            if hnsw_index_fourcc not in EXPECTED_HNSW_FOURCCS:
+                print(
+                    f"Error: Expected HNSW Index FourCC ({list(EXPECTED_HNSW_FOURCCS)}), got {hnsw_index_fourcc:08x}.",
+                    file=sys.stderr,
+                )
+                return False
+
+            original_hnsw_data["index_fourcc"] = hnsw_index_fourcc
+            original_hnsw_data["d"] = read_struct(f_in, "<i")
+            original_hnsw_data["ntotal"] = read_struct(f_in, "<q")
+            original_hnsw_data["dummy1"] = read_struct(f_in, "<q")
+            original_hnsw_data["dummy2"] = read_struct(f_in, "<q")
+            original_hnsw_data["is_trained"] = read_struct(f_in, "?")
+            original_hnsw_data["metric_type"] = read_struct(f_in, "<i")
+            original_hnsw_data["metric_arg"] = 0.0
+            if original_hnsw_data["metric_type"] > 1:
+                original_hnsw_data["metric_arg"] = read_struct(f_in, "<f")
+
+            assign_probas_np = read_numpy_vector(f_in, np.float64, "d")
+            cum_nneighbor_per_level_np = read_numpy_vector(f_in, np.int32, "i")
+            levels_np = read_numpy_vector(f_in, np.int32, "i")
+
+            ntotal = len(levels_np)
+            if ntotal != original_hnsw_data["ntotal"]:
+                original_hnsw_data["ntotal"] = ntotal
+
+            pos_before_compact = f_in.tell()
+            is_compact_flag = None
+            try:
+                is_compact_flag = read_struct(f_in, "<?")
+            except EOFError:
+                is_compact_flag = None
+
+            if is_compact_flag:
+                compact_level_ptr = read_numpy_vector(f_in, np.uint64, "Q")
+                compact_node_offsets_np = read_numpy_vector(f_in, np.uint64, "Q")
+
+                original_hnsw_data["entry_point"] = read_struct(f_in, "<i")
+                original_hnsw_data["max_level"] = read_struct(f_in, "<i")
+                original_hnsw_data["efConstruction"] = read_struct(f_in, "<i")
+                original_hnsw_data["efSearch"] = read_struct(f_in, "<i")
+                original_hnsw_data["dummy_upper_beam"] = read_struct(f_in, "<i")
+
+                storage_fourcc = read_struct(f_in, "<I")
+                compact_neighbors_data_np = read_numpy_vector(f_in, np.int32, "i")
+                compact_neighbors_data = compact_neighbors_data_np.tolist()
+                storage_data = f_in.read()
+
+                write_compact_format(
+                    f_out,
+                    original_hnsw_data,
+                    assign_probas_np,
+                    cum_nneighbor_per_level_np,
+                    levels_np,
+                    compact_level_ptr,
+                    compact_node_offsets_np,
+                    compact_neighbors_data,
+                    NULL_INDEX_FOURCC,
+                    b"",
+                )
+            else:
+                f_in.seek(pos_before_compact)
+
+                pos_before_probe = f_in.tell()
+                try:
+                    suspected_flag = read_struct(f_in, "<B")
+                    if suspected_flag != 0x00:
+                        f_in.seek(pos_before_probe)
+                except EOFError:
+                    f_in.seek(pos_before_probe)
+
+                offsets_np = read_numpy_vector(f_in, np.uint64, "Q")
+                neighbors_np = read_numpy_vector(f_in, np.int32, "i")
+
+                original_hnsw_data["entry_point"] = read_struct(f_in, "<i")
+                original_hnsw_data["max_level"] = read_struct(f_in, "<i")
+                original_hnsw_data["efConstruction"] = read_struct(f_in, "<i")
+                original_hnsw_data["efSearch"] = read_struct(f_in, "<i")
+                original_hnsw_data["dummy_upper_beam"] = read_struct(f_in, "<i")
+
+                storage_fourcc = None
+                storage_data = b""
+                try:
+                    storage_fourcc = read_struct(f_in, "<I")
+                    storage_data = f_in.read()
+                except EOFError:
+                    storage_fourcc = NULL_INDEX_FOURCC
+
+                write_original_format(
+                    f_out,
+                    original_hnsw_data,
+                    assign_probas_np,
+                    cum_nneighbor_per_level_np,
+                    levels_np,
+                    offsets_np,
+                    neighbors_np,
+                    NULL_INDEX_FOURCC,
+                    b"",
+                )
+
+        print(f"[{time.time() - start_time:.2f}s] Pruned embeddings from {input_filename}")
+        return True
+    except Exception as exc:
+        print(f"Failed to prune embeddings: {exc}", file=sys.stderr)
+        return False
 
 
 # --- Main Conversion Logic ---
@@ -698,6 +856,29 @@ def convert_hnsw_graph_to_csr(input_filename, output_filename, prune_embeddings=
                 gc.collect()
         except NameError:
             pass
+
+
+def prune_hnsw_embeddings_inplace(index_filename: str) -> bool:
+    """Convenience wrapper to prune embeddings in-place."""
+
+    temp_path = f"{index_filename}.prune.tmp"
+    success = prune_hnsw_embeddings(index_filename, temp_path)
+    if success:
+        try:
+            os.replace(temp_path, index_filename)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error(f"Failed to replace original index with pruned version: {exc}")
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            return False
+    else:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+    return success
 
 
 # --- Script Execution ---

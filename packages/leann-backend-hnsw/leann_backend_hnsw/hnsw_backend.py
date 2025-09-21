@@ -15,6 +15,7 @@ from leann.registry import register_backend
 from leann.searcher_base import BaseSearcher
 
 from .convert_to_csr import convert_hnsw_graph_to_csr
+from .convert_to_csr import prune_hnsw_embeddings_inplace
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,8 @@ class HNSWBuilder(LeannBackendBuilderInterface):
 
         if self.is_compact:
             self._convert_to_csr(index_file)
+        elif self.is_recompute:
+            prune_hnsw_embeddings_inplace(str(index_file))
 
     def _convert_to_csr(self, index_file: Path):
         """Convert built index to CSR format"""

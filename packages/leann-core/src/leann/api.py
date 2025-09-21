@@ -22,6 +22,7 @@ from .chat import get_llm
 from .interface import LeannBackendFactoryInterface
 from .metadata_filter import MetadataFilterEngine
 from .registry import BACKEND_REGISTRY
+from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 
 logger = logging.getLogger(__name__)
 
@@ -641,6 +642,11 @@ class LeannBuilder:
         distance_metric = meta_backend_kwargs.get(
             "distance_metric", self.backend_kwargs.get("distance_metric", "mips")
         ).lower()
+        needs_recompute = bool(
+            meta.get("is_pruned")
+            or meta_backend_kwargs.get("is_recompute")
+            or self.backend_kwargs.get("is_recompute")
+        )
 
         with open(offset_file, "rb") as f:
             offset_map: dict[str, int] = pickle.load(f)
@@ -686,9 +692,14 @@ class LeannBuilder:
 
         index = faiss.read_index(str(index_file))
         if hasattr(index, "is_recompute"):
-            index.is_recompute = bool(
-                meta.get("is_pruned") or meta_backend_kwargs.get("is_recompute")
-            )
+            index.is_recompute = needs_recompute
+        if getattr(index, "storage", None) is None:
+            if index.metric_type == faiss.METRIC_INNER_PRODUCT:
+                storage_index = faiss.IndexFlatIP(index.d)
+            else:
+                storage_index = faiss.IndexFlatL2(index.d)
+            index.storage = storage_index
+            index.own_fields = True
         if index.d != embedding_dim:
             raise ValueError(
                 f"Existing index dimension ({index.d}) does not match new embeddings ({embedding_dim})."
@@ -733,6 +744,9 @@ class LeannBuilder:
         )
 
         self.chunks.clear()
+
+        if needs_recompute:
+            prune_hnsw_embeddings_inplace(str(index_file))
 
 
 class LeannSearcher:
