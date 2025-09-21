@@ -5,7 +5,8 @@ import os
 import struct
 import sys
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import numpy as np
 
@@ -238,6 +239,131 @@ def write_compact_format(
         f_out.write(storage_data)
 
 
+@dataclass
+class HNSWComponents:
+    original_hnsw_data: dict[str, Any]
+    assign_probas_np: np.ndarray
+    cum_nneighbor_per_level_np: np.ndarray
+    levels_np: np.ndarray
+    is_compact: bool
+    compact_level_ptr: Optional[np.ndarray] = None
+    compact_node_offsets_np: Optional[np.ndarray] = None
+    compact_neighbors_data: Optional[list[int]] = None
+    offsets_np: Optional[np.ndarray] = None
+    neighbors_np: Optional[np.ndarray] = None
+    storage_fourcc: int = NULL_INDEX_FOURCC
+    storage_data: bytes = b""
+
+
+def _read_hnsw_structure(f) -> HNSWComponents:
+    original_hnsw_data: dict[str, Any] = {}
+
+    hnsw_index_fourcc = read_struct(f, "<I")
+    if hnsw_index_fourcc not in EXPECTED_HNSW_FOURCCS:
+        raise ValueError(
+            f"Unexpected HNSW FourCC: {hnsw_index_fourcc:08x}. Expected one of {EXPECTED_HNSW_FOURCCS}."
+        )
+
+    original_hnsw_data["index_fourcc"] = hnsw_index_fourcc
+    original_hnsw_data["d"] = read_struct(f, "<i")
+    original_hnsw_data["ntotal"] = read_struct(f, "<q")
+    original_hnsw_data["dummy1"] = read_struct(f, "<q")
+    original_hnsw_data["dummy2"] = read_struct(f, "<q")
+    original_hnsw_data["is_trained"] = read_struct(f, "?")
+    original_hnsw_data["metric_type"] = read_struct(f, "<i")
+    original_hnsw_data["metric_arg"] = 0.0
+    if original_hnsw_data["metric_type"] > 1:
+        original_hnsw_data["metric_arg"] = read_struct(f, "<f")
+
+    assign_probas_np = read_numpy_vector(f, np.float64, "d")
+    cum_nneighbor_per_level_np = read_numpy_vector(f, np.int32, "i")
+    levels_np = read_numpy_vector(f, np.int32, "i")
+
+    ntotal = len(levels_np)
+    if ntotal != original_hnsw_data["ntotal"]:
+        original_hnsw_data["ntotal"] = ntotal
+
+    pos_before_compact = f.tell()
+    is_compact_flag = None
+    try:
+        is_compact_flag = read_struct(f, "<?")
+    except EOFError:
+        is_compact_flag = None
+
+    if is_compact_flag:
+        compact_level_ptr = read_numpy_vector(f, np.uint64, "Q")
+        compact_node_offsets_np = read_numpy_vector(f, np.uint64, "Q")
+
+        original_hnsw_data["entry_point"] = read_struct(f, "<i")
+        original_hnsw_data["max_level"] = read_struct(f, "<i")
+        original_hnsw_data["efConstruction"] = read_struct(f, "<i")
+        original_hnsw_data["efSearch"] = read_struct(f, "<i")
+        original_hnsw_data["dummy_upper_beam"] = read_struct(f, "<i")
+
+        storage_fourcc = read_struct(f, "<I")
+        compact_neighbors_data_np = read_numpy_vector(f, np.int32, "i")
+        compact_neighbors_data = compact_neighbors_data_np.tolist()
+        storage_data = f.read()
+
+        return HNSWComponents(
+            original_hnsw_data=original_hnsw_data,
+            assign_probas_np=assign_probas_np,
+            cum_nneighbor_per_level_np=cum_nneighbor_per_level_np,
+            levels_np=levels_np,
+            is_compact=True,
+            compact_level_ptr=compact_level_ptr,
+            compact_node_offsets_np=compact_node_offsets_np,
+            compact_neighbors_data=compact_neighbors_data,
+            storage_fourcc=storage_fourcc,
+            storage_data=storage_data,
+        )
+
+    # Non-compact case
+    f.seek(pos_before_compact)
+
+    pos_before_probe = f.tell()
+    try:
+        suspected_flag = read_struct(f, "<B")
+        if suspected_flag != 0x00:
+            f.seek(pos_before_probe)
+    except EOFError:
+        f.seek(pos_before_probe)
+
+    offsets_np = read_numpy_vector(f, np.uint64, "Q")
+    neighbors_np = read_numpy_vector(f, np.int32, "i")
+
+    original_hnsw_data["entry_point"] = read_struct(f, "<i")
+    original_hnsw_data["max_level"] = read_struct(f, "<i")
+    original_hnsw_data["efConstruction"] = read_struct(f, "<i")
+    original_hnsw_data["efSearch"] = read_struct(f, "<i")
+    original_hnsw_data["dummy_upper_beam"] = read_struct(f, "<i")
+
+    storage_fourcc = NULL_INDEX_FOURCC
+    storage_data = b""
+    try:
+        storage_fourcc = read_struct(f, "<I")
+        storage_data = f.read()
+    except EOFError:
+        storage_fourcc = NULL_INDEX_FOURCC
+
+    return HNSWComponents(
+        original_hnsw_data=original_hnsw_data,
+        assign_probas_np=assign_probas_np,
+        cum_nneighbor_per_level_np=cum_nneighbor_per_level_np,
+        levels_np=levels_np,
+        is_compact=False,
+        offsets_np=offsets_np,
+        neighbors_np=neighbors_np,
+        storage_fourcc=storage_fourcc,
+        storage_data=storage_data,
+    )
+
+
+def _read_hnsw_structure_from_file(path: str) -> HNSWComponents:
+    with open(path, "rb") as f:
+        return _read_hnsw_structure(f)
+
+
 def write_original_format(
     f_out,
     original_hnsw_data,
@@ -331,10 +457,10 @@ def prune_hnsw_embeddings(input_filename: str, output_filename: str) -> bool:
                 original_hnsw_data["efSearch"] = read_struct(f_in, "<i")
                 original_hnsw_data["dummy_upper_beam"] = read_struct(f_in, "<i")
 
-                storage_fourcc = read_struct(f_in, "<I")
+                _storage_fourcc = read_struct(f_in, "<I")
                 compact_neighbors_data_np = read_numpy_vector(f_in, np.int32, "i")
                 compact_neighbors_data = compact_neighbors_data_np.tolist()
-                storage_data = f_in.read()
+                _storage_data = f_in.read()
 
                 write_compact_format(
                     f_out,
@@ -368,13 +494,13 @@ def prune_hnsw_embeddings(input_filename: str, output_filename: str) -> bool:
                 original_hnsw_data["efSearch"] = read_struct(f_in, "<i")
                 original_hnsw_data["dummy_upper_beam"] = read_struct(f_in, "<i")
 
-                storage_fourcc = None
-                storage_data = b""
+                _storage_fourcc = None
+                _storage_data = b""
                 try:
-                    storage_fourcc = read_struct(f_in, "<I")
-                    storage_data = f_in.read()
+                    _storage_fourcc = read_struct(f_in, "<I")
+                    _storage_data = f_in.read()
                 except EOFError:
-                    storage_fourcc = NULL_INDEX_FOURCC
+                    _storage_fourcc = NULL_INDEX_FOURCC
 
                 write_original_format(
                     f_out,

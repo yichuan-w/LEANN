@@ -14,8 +14,7 @@ from leann.interface import (
 from leann.registry import register_backend
 from leann.searcher_base import BaseSearcher
 
-from .convert_to_csr import convert_hnsw_graph_to_csr
-from .convert_to_csr import prune_hnsw_embeddings_inplace
+from .convert_to_csr import convert_hnsw_graph_to_csr, prune_hnsw_embeddings_inplace
 
 logger = logging.getLogger(__name__)
 

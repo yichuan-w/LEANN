@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional, Union
 
 import numpy as np
+from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 
 from leann.interface import LeannBackendSearcherInterface
 
@@ -22,7 +23,6 @@ from .chat import get_llm
 from .interface import LeannBackendFactoryInterface
 from .metadata_filter import MetadataFilterEngine
 from .registry import BACKEND_REGISTRY
-from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 
 logger = logging.getLogger(__name__)
 
