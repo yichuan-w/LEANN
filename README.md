@@ -182,7 +182,10 @@ LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, 
 
 ### Generation Model Setup
 
-LEANN supports multiple LLM providers for text generation (OpenAI API, HuggingFace, Ollama).
+#### LLM Backend
+
+LEANN supports many LLM providers for text generation (HuggingFace, Ollama, and Any OpenAI compatible API).
+
 
 <details>
 <summary><strong>🔑 OpenAI API Setup (Default)</strong></summary>
@@ -192,6 +195,68 @@ Set your OpenAI API key as an environment variable:
 ```bash
 export OPENAI_API_KEY="your-api-key-here"
 ```
+
+Make sure to use `--llm openai` flag when using the CLI.
+You can also specify the model name with `--llm-model <model-name>` flag.
+
+</details>
+
+<details>
+<summary><strong>🛠️ Supported LLM & Embedding Providers (via OpenAI Compatibility)</strong></summary>
+
+Thanks to the widespread adoption of the OpenAI API format, LEANN is compatible out-of-the-box with a vast array of LLM and embedding providers. Simply set the `OPENAI_BASE_URL` and `OPENAI_API_KEY` environment variables to connect to your preferred service.
+
+```sh
+export OPENAI_API_KEY="xxx"
+export OPENAI_BASE_URL="http://localhost:1234/v1" # base url of the provider
+```
+
+To use OpenAI compatible endpoint with the CLI interface:
+
+If you are using it for text generation, make sure to use `--llm openai` flag and specify the model name with `--llm-model <model-name>` flag.
+
+If you are using it for embedding, set the `--embedding-mode openai` flag and specify the model name with `--embedding-model <MODEL>`.
+
+-----
+
+
+Below is a list of base URLs for common providers to get you started.
+
+
+### 🖥️ Local Inference Engines (Recommended for full privacy)
+
+| Provider         | Sample Base URL             |
+| ---------------- | --------------------------- |
+| **Ollama** | `http://localhost:11434/v1` |
+| **LM Studio** | `http://localhost:1234/v1`  |
+| **vLLM** | `http://localhost:8000/v1`  |
+| **llama.cpp** | `http://localhost:8080/v1`  |
+| **SGLang** | `http://localhost:30000/v1` |
+| **LiteLLM** | `http://localhost:4000`     |
+
+-----
+
+### ☁️ Cloud Providers
+
+> **🚨 A Note on Privacy:** Before choosing a cloud provider, carefully review their privacy and data retention policies. Depending on their terms, your data may be used for their own purposes, including but not limited to human reviews and model training, which can lead to serious consequences if not handled properly.
+
+
+| Provider         | Base URL                                                   |
+| ---------------- | ---------------------------------------------------------- |
+| **OpenAI** | `https://api.openai.com/v1`                                |
+| **OpenRouter** | `https://openrouter.ai/api/v1`                             |
+| **Gemini** | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| **x.AI (Grok)** | `https://api.x.ai/v1`                                      |
+| **Groq AI** | `https://api.groq.com/openai/v1`                           |
+| **DeepSeek** | `https://api.deepseek.com/v1`                              |
+| **SiliconFlow** | `https://api.siliconflow.cn/v1`                            |
+| **Zhipu (BigModel)** | `https://open.bigmodel.cn/api/paas/v4/`                |
+| **Mistral AI** | `https://api.mistral.ai/v1`                                |
+
+
+
+
+If your provider isn't on this list, don't worry! Check their documentation for an OpenAI-compatible endpoint—chances are, it's OpenAI Compatible too!
 
 </details>
 
