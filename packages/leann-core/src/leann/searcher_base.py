@@ -41,6 +41,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             print("WARNING: embedding_model not found in meta.json. Recompute will fail.")
 
         self.embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
+        self.embedding_options = self.meta.get("embedding_options", {})
 
         self.embedding_server_manager = EmbeddingServerManager(
             backend_module_name=backend_module_name,
@@ -77,6 +78,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             passages_file=passages_source_file,
             distance_metric=distance_metric,
             enable_warmup=kwargs.get("enable_warmup", False),
+            provider_options=self.embedding_options,
         )
         if not server_started:
             raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
@@ -125,7 +127,12 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         from .embedding_compute import compute_embeddings
 
         embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
-        return compute_embeddings([query], self.embedding_model, embedding_mode)
+        return compute_embeddings(
+            [query],
+            self.embedding_model,
+            embedding_mode,
+            provider_options=self.embedding_options,
+        )
 
     def _compute_embedding_via_server(self, chunks: list, zmq_port: int) -> np.ndarray:
         """Compute embeddings using the ZMQ embedding server."""

@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .settings import encode_provider_options
+
 # Lightweight, self-contained server manager with no cross-process inspection
 
 # Set up logging based on environment variable
@@ -82,16 +84,40 @@ class EmbeddingServerManager:
     ) -> tuple[bool, int]:
         """Start the embedding server."""
         # passages_file may be present in kwargs for server CLI, but we don't need it here
+        provider_options = kwargs.pop("provider_options", None)
+
+        config_signature = {
+            "model_name": model_name,
+            "passages_file": kwargs.get("passages_file", ""),
+            "embedding_mode": embedding_mode,
+            "provider_options": provider_options or {},
+        }
 
         # If this manager already has a live server, just reuse it
-        if self.server_process and self.server_process.poll() is None and self.server_port:
+        if (
+            self.server_process
+            and self.server_process.poll() is None
+            and self.server_port
+            and self._server_config == config_signature
+        ):
             logger.info("Reusing in-process server")
             return True, self.server_port
+
+        # Configuration changed, stop existing server before starting a new one
+        if self.server_process and self.server_process.poll() is None:
+            logger.info("Existing server configuration differs; restarting embedding server")
+            self.stop_server()
 
         # For Colab environment, use a different strategy
         if _is_colab_environment():
             logger.info("Detected Colab environment, using alternative startup strategy")
-            return self._start_server_colab(port, model_name, embedding_mode, **kwargs)
+            return self._start_server_colab(
+                port,
+                model_name,
+                embedding_mode,
+                provider_options=provider_options,
+                **kwargs,
+            )
 
         # Always pick a fresh available port
         try:
@@ -101,13 +127,21 @@ class EmbeddingServerManager:
             return False, port
 
         # Start a new server
-        return self._start_new_server(actual_port, model_name, embedding_mode, **kwargs)
+        return self._start_new_server(
+            actual_port,
+            model_name,
+            embedding_mode,
+            provider_options=provider_options,
+            config_signature=config_signature,
+            **kwargs,
+        )
 
     def _start_server_colab(
         self,
         port: int,
         model_name: str,
         embedding_mode: str = "sentence-transformers",
+        provider_options: Optional[dict] = None,
         **kwargs,
     ) -> tuple[bool, int]:
         """Start server with Colab-specific configuration."""
@@ -125,8 +159,20 @@ class EmbeddingServerManager:
 
         try:
             # In Colab, we'll use a more direct approach
-            self._launch_server_process_colab(command, actual_port)
-            return self._wait_for_server_ready_colab(actual_port)
+            self._launch_server_process_colab(
+                command,
+                actual_port,
+                provider_options=provider_options,
+            )
+            started, ready_port = self._wait_for_server_ready_colab(actual_port)
+            if started:
+                self._server_config = {
+                    "model_name": model_name,
+                    "passages_file": kwargs.get("passages_file", ""),
+                    "embedding_mode": embedding_mode,
+                    "provider_options": provider_options or {},
+                }
+            return started, ready_port
         except Exception as e:
             logger.error(f"Failed to start embedding server in Colab: {e}")
             return False, actual_port
@@ -134,7 +180,13 @@ class EmbeddingServerManager:
     # Note: No compatibility check needed; manager is per-searcher and configs are stable per instance
 
     def _start_new_server(
-        self, port: int, model_name: str, embedding_mode: str, **kwargs
+        self,
+        port: int,
+        model_name: str,
+        embedding_mode: str,
+        provider_options: Optional[dict] = None,
+        config_signature: Optional[dict] = None,
+        **kwargs,
     ) -> tuple[bool, int]:
         """Start a new embedding server on the given port."""
         logger.info(f"Starting embedding server on port {port}...")
@@ -142,8 +194,20 @@ class EmbeddingServerManager:
         command = self._build_server_command(port, model_name, embedding_mode, **kwargs)
 
         try:
-            self._launch_server_process(command, port)
-            return self._wait_for_server_ready(port)
+            self._launch_server_process(
+                command,
+                port,
+                provider_options=provider_options,
+            )
+            started, ready_port = self._wait_for_server_ready(port)
+            if started:
+                self._server_config = config_signature or {
+                    "model_name": model_name,
+                    "passages_file": kwargs.get("passages_file", ""),
+                    "embedding_mode": embedding_mode,
+                    "provider_options": provider_options or {},
+                }
+            return started, ready_port
         except Exception as e:
             logger.error(f"Failed to start embedding server: {e}")
             return False, port
@@ -173,7 +237,12 @@ class EmbeddingServerManager:
 
         return command
 
-    def _launch_server_process(self, command: list, port: int) -> None:
+    def _launch_server_process(
+        self,
+        command: list,
+        port: int,
+        provider_options: Optional[dict] = None,
+    ) -> None:
         """Launch the server process."""
         project_root = Path(__file__).parent.parent.parent.parent.parent
         logger.info(f"Command: {' '.join(command)}")
@@ -193,14 +262,20 @@ class EmbeddingServerManager:
 
         # Start embedding server subprocess
         logger.info(f"Starting server process with command: {' '.join(command)}")
+        env = os.environ.copy()
+        encoded_options = encode_provider_options(provider_options)
+        if encoded_options:
+            env["LEANN_EMBEDDING_OPTIONS"] = encoded_options
+
         self.server_process = subprocess.Popen(
             command,
             cwd=project_root,
             stdout=stdout_target,
             stderr=stderr_target,
+            env=env,
         )
         self.server_port = port
-        # Record config for in-process reuse
+        # Record config for in-process reuse (best effort; refined later when ready)
         try:
             self._server_config = {
                 "model_name": command[command.index("--model-name") + 1]
@@ -212,12 +287,14 @@ class EmbeddingServerManager:
                 "embedding_mode": command[command.index("--embedding-mode") + 1]
                 if "--embedding-mode" in command
                 else "sentence-transformers",
+                "provider_options": provider_options or {},
             }
         except Exception:
             self._server_config = {
                 "model_name": "",
                 "passages_file": "",
                 "embedding_mode": "sentence-transformers",
+                "provider_options": provider_options or {},
             }
         logger.info(f"Server process started with PID: {self.server_process.pid}")
 
@@ -322,16 +399,27 @@ class EmbeddingServerManager:
         # Removed: cross-process adoption no longer supported
         return
 
-    def _launch_server_process_colab(self, command: list, port: int) -> None:
+    def _launch_server_process_colab(
+        self,
+        command: list,
+        port: int,
+        provider_options: Optional[dict] = None,
+    ) -> None:
         """Launch the server process with Colab-specific settings."""
         logger.info(f"Colab Command: {' '.join(command)}")
 
         # In Colab, we need to be more careful about process management
+        env = os.environ.copy()
+        encoded_options = encode_provider_options(provider_options)
+        if encoded_options:
+            env["LEANN_EMBEDDING_OPTIONS"] = encoded_options
+
         self.server_process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=env,
         )
         self.server_port = port
         logger.info(f"Colab server process started with PID: {self.server_process.pid}")
@@ -345,6 +433,7 @@ class EmbeddingServerManager:
             "model_name": "",
             "passages_file": "",
             "embedding_mode": "sentence-transformers",
+            "provider_options": provider_options or {},
         }
 
     def _wait_for_server_ready_colab(self, port: int) -> tuple[bool, int]:

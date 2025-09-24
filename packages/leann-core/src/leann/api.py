@@ -39,6 +39,7 @@ def compute_embeddings(
     use_server: bool = True,
     port: Optional[int] = None,
     is_build=False,
+    provider_options: Optional[dict[str, Any]] = None,
 ) -> np.ndarray:
     """
     Computes embeddings using different backends.
@@ -72,6 +73,7 @@ def compute_embeddings(
             model_name,
             mode=mode,
             is_build=is_build,
+            provider_options=provider_options,
         )
 
 
@@ -278,6 +280,7 @@ class LeannBuilder:
         embedding_model: str = "facebook/contriever",
         dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
+        embedding_options: Optional[dict[str, Any]] = None,
         **backend_kwargs,
     ):
         self.backend_name = backend_name
@@ -300,6 +303,7 @@ class LeannBuilder:
         self.embedding_model = embedding_model
         self.dimensions = dimensions
         self.embedding_mode = embedding_mode
+        self.embedding_options = embedding_options or {}
 
         # Check if we need to use cosine distance for normalized embeddings
         normalized_embeddings_models = {
@@ -407,6 +411,7 @@ class LeannBuilder:
                     self.embedding_model,
                     self.embedding_mode,
                     use_server=False,
+                    provider_options=self.embedding_options,
                 )[0]
             )
         path = Path(index_path)
@@ -446,6 +451,7 @@ class LeannBuilder:
             self.embedding_mode,
             use_server=False,
             is_build=True,
+            provider_options=self.embedding_options,
         )
         string_ids = [chunk["id"] for chunk in self.chunks]
         current_backend_kwargs = {**self.backend_kwargs, "dimensions": self.dimensions}
@@ -471,6 +477,9 @@ class LeannBuilder:
                 }
             ],
         }
+
+        if self.embedding_options:
+            meta_data["embedding_options"] = self.embedding_options
 
         # Add storage status flags for HNSW backend
         if self.backend_name == "hnsw":
@@ -592,6 +601,9 @@ class LeannBuilder:
             "embeddings_source": str(embeddings_file),
         }
 
+        if self.embedding_options:
+            meta_data["embedding_options"] = self.embedding_options
+
         # Add storage status flags for HNSW backend
         if self.backend_name == "hnsw":
             is_compact = self.backend_kwargs.get("is_compact", True)
@@ -673,6 +685,7 @@ class LeannBuilder:
             self.embedding_mode,
             use_server=False,
             is_build=True,
+            provider_options=self.embedding_options,
         )
 
         embedding_dim = embeddings.shape[1]
@@ -771,6 +784,7 @@ class LeannSearcher:
         self.embedding_model = self.meta_data["embedding_model"]
         # Support both old and new format
         self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
+        self.embedding_options = self.meta_data.get("embedding_options", {})
         # Delegate portability handling to PassageManager
         self.passage_manager = PassageManager(
             self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
@@ -782,6 +796,8 @@ class LeannSearcher:
             raise ValueError(f"Backend '{backend_name}' not found.")
         final_kwargs = {**self.meta_data.get("backend_kwargs", {}), **backend_kwargs}
         final_kwargs["enable_warmup"] = enable_warmup
+        if self.embedding_options:
+            final_kwargs.setdefault("embedding_options", self.embedding_options)
         self.backend_impl: LeannBackendSearcherInterface = backend_factory.searcher(
             index_path, **final_kwargs
         )

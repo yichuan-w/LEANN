@@ -83,6 +83,81 @@ ollama pull nomic-embed-text
 
 </details>
 
+## Local & Remote Inference Endpoints
+
+> Applies to both LLMs (`leann ask`) and embeddings (`leann build`).
+
+LEANN now treats Ollama, LM Studio, and other OpenAI-compatible runtimes as first-class providers. You can point LEANN at any compatible endpoint – either on the same machine or across the network – with a couple of flags or environment variables.
+
+### One-Time Environment Setup
+
+```bash
+# Works for OpenAI-compatible runtimes such as LM Studio, vLLM, SGLang, llamafile, etc.
+export OPENAI_API_KEY="your-key"            # or leave unset for local servers that do not check keys
+export OPENAI_BASE_URL="http://localhost:1234/v1"
+
+# Ollama-compatible runtimes (Ollama, Ollama on another host, llamacpp-server, etc.)
+export LEANN_OLLAMA_HOST="http://localhost:11434"   # falls back to OLLAMA_HOST or LOCAL_LLM_ENDPOINT
+```
+
+LEANN also recognises `LEANN_LOCAL_LLM_HOST` (highest priority), `LEANN_OPENAI_BASE_URL`, and `LOCAL_OPENAI_BASE_URL`, so existing scripts continue to work.
+
+### Passing Hosts Per Command
+
+```bash
+# Build an index with a remote embedding server
+leann build my-notes \
+  --docs ./notes \
+  --embedding-mode openai \
+  --embedding-model text-embedding-qwen3-embedding-0.6b \
+  --embedding-api-base http://192.168.1.50:1234/v1 \
+  --embedding-api-key local-dev-key
+
+# Query using a local LM Studio instance via OpenAI-compatible API
+leann ask my-notes \
+  --llm openai \
+  --llm-model qwen3-8b \
+  --api-base http://localhost:1234/v1 \
+  --api-key local-dev-key
+
+# Query an Ollama instance running on another box
+leann ask my-notes \
+  --llm ollama \
+  --llm-model qwen3:14b \
+  --host http://192.168.1.101:11434
+```
+
+⚠️ **Make sure the endpoint is reachable**: when your inference server runs on a home/workstation and the index/search job runs in the cloud, the server must be able to reach the host you configured. Typical options include:
+
+- Expose a public IP (and open the relevant port) on the machine that hosts LM Studio/Ollama.
+- Configure router or cloud provider port forwarding.
+- Tunnel traffic through tools like `tailscale`, `cloudflared`, or `ssh -R`.
+
+When you set these options while building an index, LEANN stores them in `meta.json`. Any subsequent `leann ask` or searcher process automatically reuses the same provider settings – even when we spawn background embedding servers. This makes the “server without GPU talking to my local workstation” workflow from [issue #80](https://github.com/yichuan-w/LEANN/issues/80#issuecomment-2287230548) work out-of-the-box.
+
+**Tip:** If your runtime does not require an API key (many local stacks don’t), leave `--api-key` unset. LEANN will skip injecting credentials.
+
+### Python API Usage
+
+You can pass the same configuration from Python:
+
+```python
+from leann.api import LeannBuilder
+
+builder = LeannBuilder(
+    backend_name="hnsw",
+    embedding_mode="openai",
+    embedding_model="text-embedding-qwen3-embedding-0.6b",
+    embedding_options={
+        "base_url": "http://192.168.1.50:1234/v1",
+        "api_key": "local-dev-key",
+    },
+)
+builder.build_index("./indexes/my-notes", chunks)
+```
+
+`embedding_options` is persisted to the index `meta.json`, so subsequent `LeannSearcher` or `LeannChat` sessions automatically reuse the same provider settings (the embedding server manager forwards them to the provider for you).
+
 ## Index Selection: Matching Your Scale
 
 ### HNSW (Hierarchical Navigable Small World)

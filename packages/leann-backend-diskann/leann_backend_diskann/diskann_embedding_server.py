@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import zmq
@@ -30,6 +30,16 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.propagate = False
+
+
+_RAW_PROVIDER_OPTIONS = os.getenv("LEANN_EMBEDDING_OPTIONS")
+try:
+    PROVIDER_OPTIONS: dict[str, Any] = (
+        json.loads(_RAW_PROVIDER_OPTIONS) if _RAW_PROVIDER_OPTIONS else {}
+    )
+except json.JSONDecodeError:
+    logger.warning("Failed to parse LEANN_EMBEDDING_OPTIONS; ignoring provider options")
+    PROVIDER_OPTIONS = {}
 
 
 def create_diskann_embedding_server(
@@ -181,7 +191,12 @@ def create_diskann_embedding_server(
                     logger.debug(f"Text lengths: {[len(t) for t in texts[:5]]}")  # Show first 5
 
                 # Process embeddings using unified computation
-                embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
+                embeddings = compute_embeddings(
+                    texts,
+                    model_name,
+                    mode=embedding_mode,
+                    provider_options=PROVIDER_OPTIONS,
+                )
                 logger.info(
                     f"Computed embeddings for {len(texts)} texts, shape: {embeddings.shape}"
                 )
@@ -296,7 +311,12 @@ def create_diskann_embedding_server(
                             continue
 
                     # Process the request
-                    embeddings = compute_embeddings(texts, model_name, mode=embedding_mode)
+                    embeddings = compute_embeddings(
+                        texts,
+                        model_name,
+                        mode=embedding_mode,
+                        provider_options=PROVIDER_OPTIONS,
+                    )
                     logger.info(f"Computed embeddings shape: {embeddings.shape}")
 
                     # Validation

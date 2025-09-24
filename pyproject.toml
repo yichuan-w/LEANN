@@ -104,7 +104,11 @@ astchunk = { path = "packages/astchunk-leann", editable = true }
 [tool.ruff]
 target-version = "py39"
 line-length = 100
-extend-exclude = ["third_party"]
+extend-exclude = [
+    "third_party",
+    "apps/multimodal/vision-based-pdf-multi-vector/multi-vector-leann.py",
+    "apps/multimodal/vision-based-pdf-multi-vector/multi-vector-leann-similarity-map.py"
+]
 
 
 [tool.ruff.lint]

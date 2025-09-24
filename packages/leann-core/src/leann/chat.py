@@ -12,6 +12,8 @@ from typing import Any, Optional
 
 import torch
 
+from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -310,11 +312,12 @@ def search_hf_models(query: str, limit: int = 10) -> list[str]:
 
 
 def validate_model_and_suggest(
-    model_name: str, llm_type: str, host: str = "http://localhost:11434"
+    model_name: str, llm_type: str, host: Optional[str] = None
 ) -> Optional[str]:
     """Validate model name and provide suggestions if invalid"""
     if llm_type == "ollama":
-        available_models = check_ollama_models(host)
+        resolved_host = resolve_ollama_host(host)
+        available_models = check_ollama_models(resolved_host)
         if available_models and model_name not in available_models:
             error_msg = f"Model '{model_name}' not found in your local Ollama installation."
 
@@ -457,19 +460,19 @@ class LLMInterface(ABC):
 class OllamaChat(LLMInterface):
     """LLM interface for Ollama models."""
 
-    def __init__(self, model: str = "llama3:8b", host: str = "http://localhost:11434"):
+    def __init__(self, model: str = "llama3:8b", host: Optional[str] = None):
         self.model = model
-        self.host = host
-        logger.info(f"Initializing OllamaChat with model='{model}' and host='{host}'")
+        self.host = resolve_ollama_host(host)
+        logger.info(f"Initializing OllamaChat with model='{model}' and host='{self.host}'")
         try:
             import requests
 
             # Check if the Ollama server is responsive
-            if host:
-                requests.get(host)
+            if self.host:
+                requests.get(self.host)
 
             # Pre-check model availability with helpful suggestions
-            model_error = validate_model_and_suggest(model, "ollama", host)
+            model_error = validate_model_and_suggest(model, "ollama", self.host)
             if model_error:
                 raise ValueError(model_error)
 
@@ -478,9 +481,11 @@ class OllamaChat(LLMInterface):
                 "The 'requests' library is required for Ollama. Please install it with 'pip install requests'."
             )
         except requests.exceptions.ConnectionError:
-            logger.error(f"Could not connect to Ollama at {host}. Please ensure Ollama is running.")
+            logger.error(
+                f"Could not connect to Ollama at {self.host}. Please ensure Ollama is running."
+            )
             raise ConnectionError(
-                f"Could not connect to Ollama at {host}. Please ensure Ollama is running."
+                f"Could not connect to Ollama at {self.host}. Please ensure Ollama is running."
             )
 
     def ask(self, prompt: str, **kwargs) -> str:
@@ -737,21 +742,31 @@ class GeminiChat(LLMInterface):
 class OpenAIChat(LLMInterface):
     """LLM interface for OpenAI models."""
 
-    def __init__(self, model: str = "gpt-4o", api_key: Optional[str] = None):
+    def __init__(
+        self,
+        model: str = "gpt-4o",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
         self.model = model
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.base_url = resolve_openai_base_url(base_url)
+        self.api_key = resolve_openai_api_key(api_key)
 
         if not self.api_key:
             raise ValueError(
                 "OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass api_key parameter."
             )
 
-        logger.info(f"Initializing OpenAI Chat with model='{model}'")
+        logger.info(
+            "Initializing OpenAI Chat with model='%s' and base_url='%s'",
+            model,
+            self.base_url,
+        )
 
         try:
             import openai
 
-            self.client = openai.OpenAI(api_key=self.api_key)
+            self.client = openai.OpenAI(api_key=self.api_key, base_url=self.base_url)
         except ImportError:
             raise ImportError(
                 "The 'openai' library is required for OpenAI models. Please install it with 'pip install openai'."
@@ -841,12 +856,16 @@ def get_llm(llm_config: Optional[dict[str, Any]] = None) -> LLMInterface:
     if llm_type == "ollama":
         return OllamaChat(
             model=model or "llama3:8b",
-            host=llm_config.get("host", "http://localhost:11434"),
+            host=llm_config.get("host"),
         )
     elif llm_type == "hf":
         return HFChat(model_name=model or "deepseek-ai/deepseek-llm-7b-chat")
     elif llm_type == "openai":
-        return OpenAIChat(model=model or "gpt-4o", api_key=llm_config.get("api_key"))
+        return OpenAIChat(
+            model=model or "gpt-4o",
+            api_key=llm_config.get("api_key"),
+            base_url=llm_config.get("base_url"),
+        )
     elif llm_type == "gemini":
         return GeminiChat(model=model or "gemini-2.5-flash", api_key=llm_config.get("api_key"))
     elif llm_type == "simulated":
