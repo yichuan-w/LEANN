@@ -8,6 +8,7 @@ from llama_index.core.node_parser import SentenceSplitter
 from tqdm import tqdm
 
 from .api import LeannBuilder, LeannChat, LeannSearcher
+from .interactive_utils import create_cli_session
 from .registry import register_project_directory
 from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
 
@@ -1556,22 +1557,13 @@ Examples:
         initial_query = (args.query or "").strip()
 
         if args.interactive:
+            # Create interactive session
+            session = create_cli_session(index_name)
+
             if initial_query:
                 _ask_once(initial_query)
 
-            print("LEANN Assistant ready! Type 'quit' to exit")
-            print("=" * 40)
-
-            while True:
-                user_input = input("\nYou: ").strip()
-                if user_input.lower() in ["quit", "exit", "q"]:
-                    print("Goodbye!")
-                    break
-
-                if not user_input:
-                    continue
-
-                _ask_once(user_input)
+            session.run_interactive_loop(_ask_once)
         else:
             query = initial_query or input("Enter your question: ").strip()
             if not query:

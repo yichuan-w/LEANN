@@ -10,6 +10,7 @@ from typing import Any
 
 import dotenv
 from leann.api import LeannBuilder, LeannChat
+from leann.interactive_utils import create_rag_session
 from leann.registry import register_project_directory
 from leann.settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
 
@@ -307,37 +308,26 @@ class BaseRAGExample(ABC):
             complexity=args.search_complexity,
         )
 
-        print(f"\n[Interactive Mode] Chat with your {self.name} data!")
-        print("Type 'quit' or 'exit' to stop.\n")
+        # Create interactive session
+        session = create_rag_session(
+            app_name=self.name.lower().replace(" ", "_"), data_description=self.name
+        )
 
-        while True:
-            try:
-                query = input("You: ").strip()
-                if query.lower() in ["quit", "exit", "q"]:
-                    print("Goodbye!")
-                    break
+        def handle_query(query: str):
+            # Prepare LLM kwargs with thinking budget if specified
+            llm_kwargs = {}
+            if hasattr(args, "thinking_budget") and args.thinking_budget:
+                llm_kwargs["thinking_budget"] = args.thinking_budget
 
-                if not query:
-                    continue
+            response = chat.ask(
+                query,
+                top_k=args.top_k,
+                complexity=args.search_complexity,
+                llm_kwargs=llm_kwargs,
+            )
+            print(f"\nAssistant: {response}\n")
 
-                # Prepare LLM kwargs with thinking budget if specified
-                llm_kwargs = {}
-                if hasattr(args, "thinking_budget") and args.thinking_budget:
-                    llm_kwargs["thinking_budget"] = args.thinking_budget
-
-                response = chat.ask(
-                    query,
-                    top_k=args.top_k,
-                    complexity=args.search_complexity,
-                    llm_kwargs=llm_kwargs,
-                )
-                print(f"\nAssistant: {response}\n")
-
-            except KeyboardInterrupt:
-                print("\nGoodbye!")
-                break
-            except Exception as e:
-                print(f"Error: {e}")
+        session.run_interactive_loop(handle_query)
 
     async def run_single_query(self, args, index_path: str, query: str):
         """Run a single query against the index."""

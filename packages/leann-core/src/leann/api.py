@@ -17,6 +17,7 @@ from typing import Any, Literal, Optional, Union
 import numpy as np
 from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 
+from leann.interactive_utils import create_api_session
 from leann.interface import LeannBackendSearcherInterface
 
 from .chat import get_llm
@@ -1164,19 +1165,14 @@ class LeannChat:
         return ans
 
     def start_interactive(self):
-        print("\nLeann Chat started (type 'quit' to exit)")
-        while True:
-            try:
-                user_input = input("You: ").strip()
-                if user_input.lower() in ["quit", "exit"]:
-                    break
-                if not user_input:
-                    continue
-                response = self.ask(user_input)
-                print(f"Leann: {response}")
-            except (KeyboardInterrupt, EOFError):
-                print("\nGoodbye!")
-                break
+        """Start interactive chat session."""
+        session = create_api_session()
+
+        def handle_query(user_input: str):
+            response = self.ask(user_input)
+            print(f"Leann: {response}")
+
+        session.run_interactive_loop(handle_query)
 
     def cleanup(self):
         """Explicitly cleanup embedding server resources.
