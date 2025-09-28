@@ -7,43 +7,55 @@ CLI, API, and RAG example interactive modes.
 
 import atexit
 import os
-import readline
 from pathlib import Path
 from typing import Callable, Optional
 
+# Try to import readline with fallback for Windows
+try:
+    import readline
+
+    HAS_READLINE = True
+except ImportError:
+    # Windows doesn't have readline by default
+    HAS_READLINE = False
+    readline = None
+
 
 class InteractiveSession:
-    """Manages interactive session with readline support and common commands."""
+    """Manages interactive session with optional readline support and common commands."""
 
     def __init__(
         self,
         history_name: str,
         prompt: str = "You: ",
         welcome_message: str = "",
-        enable_commands: bool = True,
-        custom_commands: Optional[dict[str, Callable[[str], bool]]] = None,
     ):
         """
-        Initialize interactive session with readline support.
+        Initialize interactive session with optional readline support.
 
         Args:
             history_name: Name for history file (e.g., "cli", "api_chat")
+                         (ignored if readline not available)
             prompt: Input prompt to display
             welcome_message: Message to show when starting session
-            enable_commands: Enable built-in commands (help, clear, history)
-            custom_commands: Additional commands {command: handler_func}
-                           Handler should return True if it handled the command
+
+        Note:
+            On systems without readline (e.g., Windows), falls back to basic input()
+            with limited functionality (no history, no line editing).
         """
         self.history_name = history_name
         self.prompt = prompt
         self.welcome_message = welcome_message
-        self.enable_commands = enable_commands
-        self.custom_commands = custom_commands or {}
         self._setup_complete = False
 
     def setup_readline(self):
-        """Setup readline with history support."""
+        """Setup readline with history support (if available)."""
         if self._setup_complete:
+            return
+
+        if not HAS_READLINE:
+            # Readline not available (likely Windows), skip setup
+            self._setup_complete = True
             return
 
         # History file setup
@@ -66,44 +78,6 @@ class InteractiveSession:
 
         self._setup_complete = True
 
-    def handle_builtin_command(self, user_input: str) -> bool:
-        """
-        Handle built-in commands.
-
-        Args:
-            user_input: The user's input string
-
-        Returns:
-            True if command was handled, False if not a built-in command
-        """
-        if not self.enable_commands:
-            return False
-
-        command = user_input.lower().strip()
-
-        if command in ["quit", "exit", "q"]:
-            print("Goodbye!")
-            return "quit"
-
-        elif command == "help":
-            self._show_help()
-            return True
-
-        elif command == "clear":
-            os.system("clear" if os.name != "nt" else "cls")
-            return True
-
-        elif command == "history":
-            self._show_history()
-            return True
-
-        # Check custom commands
-        for cmd_name, handler in self.custom_commands.items():
-            if command == cmd_name.lower():
-                return handler(user_input)
-
-        return False
-
     def _show_help(self):
         """Show available commands."""
         print("Commands:")
@@ -112,13 +86,12 @@ class InteractiveSession:
         print("  clear - Clear screen")
         print("  history - Show command history")
 
-        # Show custom commands
-        if self.custom_commands:
-            for cmd_name in self.custom_commands.keys():
-                print(f"  {cmd_name} - Custom command")
-
     def _show_history(self):
         """Show command history."""
+        if not HAS_READLINE:
+            print("  History not available (readline not supported on this system)")
+            return
+
         history_length = readline.get_current_history_length()
         if history_length == 0:
             print("  No history available")
@@ -131,27 +104,16 @@ class InteractiveSession:
 
     def get_user_input(self) -> Optional[str]:
         """
-        Get user input with readline support and command handling.
+        Get user input with readline support.
 
         Returns:
-            User input string, None if quit command, or continues loop for built-in commands
+            User input string, or None if EOF (Ctrl+D)
         """
         try:
-            user_input = input(self.prompt).strip()
-
-            # Handle built-in commands
-            result = self.handle_builtin_command(user_input)
-            if result == "quit":
-                return None
-            elif result is True:  # Command was handled, continue loop
-                return self.get_user_input()
-
-            # Return the input for the caller to process
-            return user_input
-
+            return input(self.prompt).strip()
         except KeyboardInterrupt:
             print("\n(Use 'quit' to exit)")
-            return self.get_user_input()
+            return ""  # Return empty string to continue
         except EOFError:
             print("\nGoodbye!")
             return None
@@ -172,16 +134,29 @@ class InteractiveSession:
         while True:
             user_input = self.get_user_input()
 
-            if user_input is None:  # Quit command or EOF
+            if user_input is None:  # EOF (Ctrl+D)
                 break
 
-            if not user_input:  # Empty input
+            if not user_input:  # Empty input or KeyboardInterrupt
                 continue
 
-            try:
-                handler_func(user_input)
-            except Exception as e:
-                print(f"Error: {e}")
+            # Handle built-in commands
+            command = user_input.lower()
+            if command in ["quit", "exit", "q"]:
+                print("Goodbye!")
+                break
+            elif command == "help":
+                self._show_help()
+            elif command == "clear":
+                os.system("clear" if os.name != "nt" else "cls")
+            elif command == "history":
+                self._show_history()
+            else:
+                # Regular user input - pass to handler
+                try:
+                    handler_func(user_input)
+                except Exception as e:
+                    print(f"Error: {e}")
 
 
 def create_cli_session(index_name: str) -> InteractiveSession:
@@ -191,7 +166,6 @@ def create_cli_session(index_name: str) -> InteractiveSession:
         prompt="\nYou: ",
         welcome_message="LEANN Assistant ready! Type 'quit' to exit, 'help' for commands\n"
         + "=" * 40,
-        enable_commands=True,
     )
 
 
@@ -202,7 +176,6 @@ def create_api_session() -> InteractiveSession:
         prompt="You: ",
         welcome_message="Leann Chat started (type 'quit' to exit, 'help' for commands)\n"
         + "=" * 40,
-        enable_commands=True,
     )
 
 
@@ -213,5 +186,4 @@ def create_rag_session(app_name: str, data_description: str) -> InteractiveSessi
         prompt="You: ",
         welcome_message=f"[Interactive Mode] Chat with your {data_description} data!\nType 'quit' or 'exit' to stop, 'help' for commands.\n"
         + "=" * 40,
-        enable_commands=True,
     )
