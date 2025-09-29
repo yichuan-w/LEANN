@@ -9,6 +9,11 @@ import json
 import sys
 from datetime import datetime
 
+# Check platform before importing macOS-specific modules
+if sys.platform != "darwin":
+    print("This script requires macOS (uses Spotlight)")
+    sys.exit(1)
+
 from Foundation import NSDate, NSMetadataQuery, NSPredicate, NSRunLoop
 
 # EDIT THIS LIST: Add or remove folders to search

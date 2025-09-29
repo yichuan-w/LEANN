@@ -131,9 +131,19 @@ def search_files(query, top_k=15):
                 date_str = metadata.get("modification_date") or metadata.get("creation_date")
 
                 if date_str:
-                    # Compare dates
-                    if start_time <= date_str <= end_time:
-                        filtered_results.append(result)
+                    # Convert strings to datetime objects for proper comparison
+                    try:
+                        file_date = datetime.fromisoformat(date_str)
+                        start_dt = datetime.fromisoformat(start_time)
+                        end_dt = datetime.fromisoformat(end_time)
+
+                        # Compare dates properly
+                        if start_dt <= file_date <= end_dt:
+                            filtered_results.append(result)
+                    except (ValueError, TypeError):
+                        # Handle invalid date formats
+                        print(f"Warning: Invalid date format in metadata: {date_str}")
+                        continue
 
         results = filtered_results
 
