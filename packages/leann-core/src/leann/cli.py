@@ -106,7 +106,7 @@ Examples:
             help="Documents directories and/or files (default: current directory)",
         )
         build_parser.add_argument(
-            "--backend",
+            "--backend-name",
             type=str,
             default="hnsw",
             choices=["hnsw", "diskann"],
