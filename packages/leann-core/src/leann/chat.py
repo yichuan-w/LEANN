@@ -834,8 +834,10 @@ class OpenAIChat(LLMInterface):
 
         try:
             response = self.client.chat.completions.create(**params)
-            print(f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}")
-            if response.choices[0].finish_reason=="length":
+            print(
+                f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}"
+            )
+            if response.choices[0].finish_reason == "length":
                 print("The query is exceeding the maximum allowed number of tokens")
             return response.choices[0].message.content.strip()
         except Exception as e:
