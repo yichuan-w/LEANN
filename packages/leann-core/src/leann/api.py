@@ -820,10 +820,10 @@ class LeannBuilder:
                             actual_port,
                             requested_zmq_port,
                         )
-                    try:
-                        index.hnsw.zmq_port = actual_port
-                    except AttributeError:
-                        pass
+                    if hasattr(index.hnsw, "set_zmq_port"):
+                        index.hnsw.set_zmq_port(actual_port)
+                    elif hasattr(index, "set_zmq_port"):
+                        index.set_zmq_port(actual_port)
 
                 if needs_recompute:
                     for i in range(embeddings.shape[0]):

@@ -215,6 +215,8 @@ class HNSWSearcher(BaseSearcher):
         if recompute_embeddings:
             if zmq_port is None:
                 raise ValueError("zmq_port must be provided if recompute_embeddings is True")
+            if hasattr(self._index, "set_zmq_port"):
+                self._index.set_zmq_port(zmq_port)
 
         if query.dtype != np.float32:
             query = query.astype(np.float32)
