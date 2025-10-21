@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import time
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -1542,6 +1543,7 @@ Examples:
             llm_kwargs["thinking_budget"] = args.thinking_budget
 
         def _ask_once(prompt: str) -> None:
+            query_start_time = time.time()
             response = chat.ask(
                 prompt,
                 top_k=args.top_k,
@@ -1552,7 +1554,9 @@ Examples:
                 pruning_strategy=args.pruning_strategy,
                 llm_kwargs=llm_kwargs,
             )
+            query_completion_time = time.time() - query_start_time
             print(f"LEANN: {response}")
+            print(f"The query took {query_completion_time:.3f} seconds to finish")
 
         initial_query = (args.query or "").strip()
 
