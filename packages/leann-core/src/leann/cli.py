@@ -1187,6 +1187,7 @@ Examples:
                 for doc in other_docs:
                     file_path = doc.metadata.get("file_path", "")
                     if file_filter(file_path):
+                        doc.metadata["source"] = file_path
                         filtered_docs.append(doc)
 
                 documents.extend(filtered_docs)
@@ -1291,7 +1292,8 @@ Examples:
                 nodes = parser.get_nodes_from_documents([doc])
 
                 for node in nodes:
-                    all_texts.append(node.get_content())
+                    text_with_source = "Chunk source:" + source_path + "\n" + node.get_content().replace("\n", " ")
+                    all_texts.append(text_with_source)
 
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
@@ -1389,7 +1391,9 @@ Examples:
             num_threads=args.num_threads,
         )
 
-        for chunk_text in all_texts:
+        for chunk_text_with_source in all_texts:
+            chunk_source = chunk_text_with_source.split("\n")[0].split(":")[1]
+            chunk_text = chunk_text_with_source.split("\n")[1]
             builder.add_text(chunk_text)
 
         builder.build_index(index_path)
@@ -1512,6 +1516,7 @@ Examples:
         for i, result in enumerate(results, 1):
             print(f"{i}. Score: {result.score:.3f}")
             print(f"   {result.text[:200]}...")
+            print(f"   Source: {result.metadata.get('source', '')}")
             print()
 
     async def ask_questions(self, args):
