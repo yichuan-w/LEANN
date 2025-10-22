@@ -1292,7 +1292,9 @@ Examples:
                 nodes = parser.get_nodes_from_documents([doc])
 
                 for node in nodes:
-                    text_with_source = "Chunk source:" + source_path + "\n" + node.get_content().replace("\n", " ")
+                    text_with_source = (
+                        "Chunk source:" + source_path + "\n" + node.get_content().replace("\n", " ")
+                    )
                     all_texts.append(text_with_source)
 
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
@@ -1394,7 +1396,7 @@ Examples:
         for chunk_text_with_source in all_texts:
             chunk_source = chunk_text_with_source.split("\n")[0].split(":")[1]
             chunk_text = chunk_text_with_source.split("\n")[1]
-            builder.add_text(chunk_text)
+            builder.add_text(chunk_text, {"source": chunk_source})
 
         builder.build_index(index_path)
         print(f"Index built at {index_path}")
