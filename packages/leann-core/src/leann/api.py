@@ -1244,8 +1244,11 @@ class LeannChat:
             chunk_id = r.id
             chunk_content = r.text[:60]
             chunk_source = r.metadata.get("source", "")[:80]
-            print(f"{chunk_relevance:<10} | {chunk_id:<10} | {chunk_content:<60} | {chunk_source:<80}")
+            print(
+                f"{chunk_relevance:<10} | {chunk_id:<10} | {chunk_content:<60} | {chunk_source:<80}"
+            )
 
+        
         ask_time = time.time()
         ans = self.llm.ask(prompt, **llm_kwargs)
         ask_time = time.time() - ask_time
