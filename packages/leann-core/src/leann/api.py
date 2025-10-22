@@ -1238,7 +1238,7 @@ class LeannChat:
 
         print("The context provided to the LLM is:")
         print(f"{'Relevance':<10} | {'Chunk id':<10} | {'Content':<60} | {'Source':<80}")
-        print("-"*150)
+        print("-" * 150)
         for r in results:
             chunk_relevance = f"{r.score:.3f}"
             chunk_id = r.id
