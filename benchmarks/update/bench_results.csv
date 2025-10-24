@@ -1,5 +1,5 @@
 run_id,scenario,cache_enabled,ef_construction,max_initial,max_updates,total_time_s,add_only_s,latency_ms_per_passage,zmq_nodes,stageA_time_s,stageBC_time_s,model_name,embedding_mode,distance_metric
-20251024-173716,baseline,1,200,300,1,5.202051,1.679818,1679.817677,65,0.777783,0.706268,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
-20251024-173716,no_cache_baseline,0,200,300,1,35.89429,32.07162,32071.620464,4033,0.760667,31.055047,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
-20251024-173716,disable_forward_rng,1,200,300,1,4.600804,0.828522,828.522205,1,0.809602,0.013537,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
-20251024-173716,disable_forward_and_reverse_rng,1,200,300,1,4.740996,0.768126,768.125772,1,0.748822,0.013987,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
+20251024-133101,baseline,1,200,300,1,3.391856,1.120359,1120.359421,126,0.507821,0.601608,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
+20251024-133101,no_cache_baseline,0,200,300,1,34.941514,32.91376,32913.760185,4033,0.506933,32.159928,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
+20251024-133101,disable_forward_rng,1,200,300,1,2.746756,0.8202,820.200443,66,0.474354,0.338454,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
+20251024-133101,disable_forward_and_reverse_rng,1,200,300,1,2.396566,0.521478,521.478415,1,0.508973,0.006938,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips

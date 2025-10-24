@@ -341,7 +341,7 @@ def main() -> None:
     parser.add_argument(
         "--csv-path",
         type=Path,
-        default=Path("offline_vs_update.csv"),
+        default=Path("benchmarks/update/offline_vs_update.csv"),
         help="Where to append results (CSV).",
     )
 

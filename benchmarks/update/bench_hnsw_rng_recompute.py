@@ -462,7 +462,7 @@ def main() -> None:
     parser.add_argument(
         "--csv-path",
         type=Path,
-        default=Path("bench_results.csv"),
+        default=Path("benchmarks/update/bench_results.csv"),
         help="Where to append per-scenario results as CSV.",
     )
 

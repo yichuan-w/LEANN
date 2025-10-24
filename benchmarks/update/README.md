@@ -55,6 +55,7 @@ uv run -m benchmarks.update.bench_hnsw_rng_recompute \
   (including ms/passage) for each run.
 - `.leann/bench/hnsw_server.log` – detailed ZMQ/server logs (path controlled by
   `LEANN_HNSW_LOG_PATH`).
+  _The reference CSVs checked into this branch were generated on a workstation with an NVIDIA RTX 4090 GPU; throughput numbers will differ on other hardware._
 
 ### 2. Sequential vs. Offline Update Benchmark
 
@@ -96,6 +97,7 @@ print timing summaries to stdout and append the results to CSV.
   Scenario A and B.
 - Console output includes Scenario B’s merged top‑k preview for quick sanity
   checks.
+  _The sample results committed here come from runs on an RTX 4090-equipped machine; expect variations if you benchmark on different GPUs._
 
 ### 3. Visualisation
 

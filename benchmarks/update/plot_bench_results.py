@@ -128,7 +128,7 @@ def main():
     ap.add_argument(
         "--csv",
         type=Path,
-        default=Path("bench_results.csv"),
+        default=Path("benchmarks/update/bench_results.csv"),
         help="Path to results CSV (defaults to bench_results.csv)",
     )
     ap.add_argument(
@@ -140,7 +140,7 @@ def main():
     ap.add_argument(
         "--csv-right",
         type=Path,
-        default=Path("offline_vs_update.csv"),
+        default=Path("benchmarks/update/offline_vs_update.csv"),
         help="Optional: offline_vs_update.csv to render right subplot (A vs B)",
     )
     ap.add_argument(
