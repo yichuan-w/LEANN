@@ -1,0 +1,5 @@
+run_id,scenario,cache_enabled,ef_construction,max_initial,max_updates,total_time_s,add_only_s,latency_ms_per_passage,zmq_nodes,stageA_time_s,stageBC_time_s,model_name,embedding_mode,distance_metric
+20251024-173716,baseline,1,200,300,1,5.202051,1.679818,1679.817677,65,0.777783,0.706268,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
+20251024-173716,no_cache_baseline,0,200,300,1,35.89429,32.07162,32071.620464,4033,0.760667,31.055047,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
+20251024-173716,disable_forward_rng,1,200,300,1,4.600804,0.828522,828.522205,1,0.809602,0.013537,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
+20251024-173716,disable_forward_and_reverse_rng,1,200,300,1,4.740996,0.768126,768.125772,1,0.748822,0.013987,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips

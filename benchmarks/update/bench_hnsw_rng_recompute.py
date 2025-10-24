@@ -17,8 +17,6 @@ if you want a larger or different workload, and change the embedding model via
 ``--model-name``.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import logging
@@ -489,6 +487,7 @@ def main() -> None:
 
     # CSV setup
     import csv
+
     run_id = time.strftime("%Y%m%d-%H%M%S")
     csv_fields = [
         "run_id",
@@ -652,7 +651,7 @@ def main() -> None:
                 return None
 
             def _fmt_ms(v: float) -> str:
-                return f"{v/1000:.1f}k" if v >= 1000 else f"{v:.1f}"
+                return f"{v / 1000:.1f}k" if v >= 1000 else f"{v:.1f}"
 
             colors = ["#4e79a7", "#f28e2c", "#e15759", "#76b7b2"]
 
@@ -661,7 +660,9 @@ def main() -> None:
                 second = s[1] if len(s) >= 2 else (s[0] if s else 0.0)
                 lower_cap = args.lower_cap_y if args.lower_cap_y is not None else second * 1.1
                 upper_start = (
-                    args.upper_start_y if args.upper_start_y is not None else max(second * 1.2, lower_cap * 1.02)
+                    args.upper_start_y
+                    if args.upper_start_y is not None
+                    else max(second * 1.2, lower_cap * 1.02)
                 )
                 ymax = max(values) * 1.10 if values else 1.0
                 fig, (ax_top, ax_bottom) = plt.subplots(
@@ -678,7 +679,14 @@ def main() -> None:
                 ax_top.set_ylim(upper_start, ymax)
                 for i, v in enumerate(values):
                     if v <= lower_cap:
-                        ax_bottom.text(i, v + lower_cap * 0.02, _fmt_ms(v), ha="center", va="bottom", fontsize=9)
+                        ax_bottom.text(
+                            i,
+                            v + lower_cap * 0.02,
+                            _fmt_ms(v),
+                            ha="center",
+                            va="bottom",
+                            fontsize=9,
+                        )
                     else:
                         ax_top.text(i, v, _fmt_ms(v), ha="center", va="bottom", fontsize=9)
                 ax_top.spines["bottom"].set_visible(False)
@@ -709,12 +717,33 @@ def main() -> None:
                             bars[-1].set_hatch("//")
                             ax.text(i, cap * 1.02, _fmt_ms(v), ha="center", va="bottom", fontsize=9)
                         else:
-                            ax.text(i, show + max(1.0, 0.01 * (cap or show)), _fmt_ms(v), ha="center", va="bottom", fontsize=9)
+                            ax.text(
+                                i,
+                                show + max(1.0, 0.01 * (cap or show)),
+                                _fmt_ms(v),
+                                ha="center",
+                                va="bottom",
+                                fontsize=9,
+                            )
                     ax.set_ylim(0, cap * 1.10)
-                    ax.plot([0.02 - 0.02, 0.02 + 0.02], [0.98 + 0.02, 0.98 - 0.02], transform=ax.transAxes, color="k", lw=1)
-                    ax.plot([0.98 - 0.02, 0.98 + 0.02], [0.98 + 0.02, 0.98 - 0.02], transform=ax.transAxes, color="k", lw=1)
+                    ax.plot(
+                        [0.02 - 0.02, 0.02 + 0.02],
+                        [0.98 + 0.02, 0.98 - 0.02],
+                        transform=ax.transAxes,
+                        color="k",
+                        lw=1,
+                    )
+                    ax.plot(
+                        [0.98 - 0.02, 0.98 + 0.02],
+                        [0.98 + 0.02, 0.98 - 0.02],
+                        transform=ax.transAxes,
+                        color="k",
+                        lw=1,
+                    )
                     if any(v > cap for v in values):
-                        ax.legend([bars[0]], ["capped"], fontsize=8, frameon=False, loc="upper right")
+                        ax.legend(
+                            [bars[0]], ["capped"], fontsize=8, frameon=False, loc="upper right"
+                        )
                     ax.set_xticks(range(len(labels)))
                     ax.set_xticklabels(labels)
                 else:

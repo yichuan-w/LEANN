@@ -1,0 +1,3 @@
+run_id,scenario,max_initial,num_updates,k,total_time_s,add_total_s,search_time_s,emb_time_s,makespan_s,model_name,embedding_mode,distance_metric
+20251024-174233,A,300,1,10,6.503296,6.266438,0.105281,0.011177,0.0,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
+20251024-174233,B,300,1,10,0.0,0.0,0.111914,0.009667,0.113101,sentence-transformers/all-MiniLM-L6-v2,sentence-transformers,mips
