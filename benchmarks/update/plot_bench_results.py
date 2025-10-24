@@ -164,13 +164,13 @@ def main():
         "--lower-cap-y",
         type=float,
         default=None,
-        help="Lower axes upper bound for broken Y (ms). Default = 1.1×second-highest.",
+        help="Lower axes upper bound for broken Y (ms). Default = 1.1x second-highest.",
     )
     ap.add_argument(
         "--upper-start-y",
         type=float,
         default=None,
-        help="Upper axes lower bound for broken Y (ms). Default = 1.2×second-highest.",
+        help="Upper axes lower bound for broken Y (ms). Default = 1.2x second-highest.",
     )
     args = ap.parse_args()
 
@@ -334,12 +334,16 @@ def main():
 
             # Draw break marks (matching paper_fig.py style)
             d = 0.015
-            kwargs = dict(
-                transform=ax_left_top.transAxes, color="k", clip_on=False, linewidth=0.8, zorder=10
-            )
+            kwargs = {
+                "transform": ax_left_top.transAxes,
+                "color": "k",
+                "clip_on": False,
+                "linewidth": 0.8,
+                "zorder": 10,
+            }
             ax_left_top.plot((-d, +d), (-d, +d), **kwargs)
             ax_left_top.plot((1 - d, 1 + d), (-d, +d), **kwargs)
-            kwargs.update(transform=ax_left_bottom.transAxes)
+            kwargs.update({"transform": ax_left_bottom.transAxes})
             ax_left_bottom.plot((-d, +d), (1 - d, 1 + d), **kwargs)
             ax_left_bottom.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
 
@@ -535,12 +539,16 @@ def main():
 
         # Diagonal lines at the break (matching paper_fig.py style)
         d = 0.015
-        kwargs = dict(
-            transform=ax_top.transAxes, color="k", clip_on=False, linewidth=0.8, zorder=10
-        )
+        kwargs = {
+            "transform": ax_top.transAxes,
+            "color": "k",
+            "clip_on": False,
+            "linewidth": 0.8,
+            "zorder": 10,
+        }
         ax_top.plot((-d, +d), (-d, +d), **kwargs)  # top-left diagonal
         ax_top.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-right diagonal
-        kwargs.update(transform=ax_bottom.transAxes)
+        kwargs.update({"transform": ax_bottom.transAxes})
         ax_bottom.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
         ax_bottom.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-right diagonal
 
@@ -558,7 +566,7 @@ def main():
         if cap is not None:
             show_vals = [min(v, cap) for v in values]
             bars = []
-            for i, (lab, val, show) in enumerate(zip(labels, values, show_vals)):
+            for i, (_label, val, show) in enumerate(zip(labels, values, show_vals)):
                 bar = ax.bar(i, show, color=colors[i], width=0.8)
                 bars.append(bar[0])
                 # Hatch and annotate when capped

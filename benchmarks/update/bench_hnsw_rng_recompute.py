@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO)
 
+
 def _find_repo_root() -> Path:
     """Locate project root by walking up until pyproject.toml is found."""
     current = Path(__file__).resolve()
@@ -60,7 +61,7 @@ REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from apps.chunking import create_text_chunks
+from apps.chunking import create_text_chunks  # noqa: E402
 
 DEFAULT_INITIAL_FILES = [
     REPO_ROOT / "data" / "2501.14312v1 (1).pdf",
@@ -238,8 +239,6 @@ def benchmark_update_with_mode(
 
     rollback_size = passages_file.stat().st_size if passages_file.exists() else 0
     offset_map_backup = offset_map.copy()
-
-    start_time = time.time()
 
     try:
         with open(passages_file, "a", encoding="utf-8") as f:
@@ -452,13 +451,13 @@ def main() -> None:
         "--lower-cap-y",
         type=float,
         default=None,
-        help="Lower axes upper bound for broken Y (ms). Default=1.1×second-highest.",
+        help="Lower axes upper bound for broken Y (ms). Default=1.1x second-highest.",
     )
     parser.add_argument(
         "--upper-start-y",
         type=float,
         default=None,
-        help="Upper axes lower bound for broken Y (ms). Default=1.2×second-highest.",
+        help="Upper axes lower bound for broken Y (ms). Default=1.2x second-highest.",
     )
     parser.add_argument(
         "--csv-path",
@@ -707,10 +706,10 @@ def main() -> None:
                 ax_top.tick_params(labeltop=False)
                 ax_bottom.xaxis.tick_bottom()
                 d = 0.015
-                kwargs = dict(transform=ax_top.transAxes, color="k", clip_on=False)
+                kwargs = {"transform": ax_top.transAxes, "color": "k", "clip_on": False}
                 ax_top.plot((-d, +d), (-d, +d), **kwargs)
                 ax_top.plot((1 - d, 1 + d), (-d, +d), **kwargs)
-                kwargs.update(transform=ax_bottom.transAxes)
+                kwargs.update({"transform": ax_bottom.transAxes})
                 ax_bottom.plot((-d, +d), (1 - d, 1 + d), **kwargs)
                 ax_bottom.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
                 ax_bottom.set_xticks(range(len(labels)))

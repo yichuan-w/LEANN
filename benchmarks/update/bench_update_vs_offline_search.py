@@ -55,6 +55,7 @@ logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO)
 
+
 def _find_repo_root() -> Path:
     """Locate project root by walking up until pyproject.toml is found."""
     current = Path(__file__).resolve()
@@ -69,7 +70,7 @@ REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from apps.chunking import create_text_chunks
+from apps.chunking import create_text_chunks  # noqa: E402
 
 DEFAULT_INITIAL_FILES = [
     REPO_ROOT / "data" / "2501.14312v1 (1).pdf",
@@ -249,10 +250,16 @@ def _append_passages_for_updates(
 
 def _search(index: Any, q: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
     q = np.ascontiguousarray(q, dtype=np.float32)
-    D = np.zeros((1, k), dtype=np.float32)
-    I = np.zeros((1, k), dtype=np.int64)
-    index.search(1, faiss.swig_ptr(q), k, faiss.swig_ptr(D), faiss.swig_ptr(I))
-    return D[0], I[0]
+    distances = np.zeros((1, k), dtype=np.float32)
+    indices = np.zeros((1, k), dtype=np.int64)
+    index.search(
+        1,
+        faiss.swig_ptr(q),
+        k,
+        faiss.swig_ptr(distances),
+        faiss.swig_ptr(indices),
+    )
+    return distances[0], indices[0]
 
 
 def _score_for_metric(dist: float, metric: str) -> float:
@@ -269,10 +276,10 @@ def _merge_results(
     k: int,
     metric: str,
 ) -> list[tuple[str, float]]:
-    D, I = index_results
+    distances, indices = index_results
     merged: list[tuple[str, float]] = []
-    for d, idx in zip(D.tolist(), I.tolist()):
-        merged.append((f"idx:{idx}", _score_for_metric(d, metric)))
+    for distance, idx in zip(distances.tolist(), indices.tolist()):
+        merged.append((f"idx:{idx}", _score_for_metric(distance, metric)))
     for j, s in offline_scores:
         merged.append((f"offline:{j}", s))
     merged.sort(key=lambda x: x[1], reverse=True)
@@ -368,8 +375,6 @@ def main() -> None:
 
     # Prepare index object and meta
     meta_path = args.index_path.parent / f"{args.index_path.name}.meta.json"
-    with open(meta_path, encoding="utf-8") as f:
-        meta = json.load(f)
     index = _read_index_for_search(args.index_path)
 
     # CSV setup
@@ -615,9 +620,9 @@ def main() -> None:
             def _worker_search():
                 nonlocal search_time, index_results
                 t = time.time()
-                D, I = _search(index_no_update, q_vec, args.k)
+                distances, indices = _search(index_no_update, q_vec, args.k)
                 search_time = time.time() - t
-                index_results = (D, I)
+                index_results = (distances, indices)
 
             # Run two workers concurrently
             t0 = time.time()
