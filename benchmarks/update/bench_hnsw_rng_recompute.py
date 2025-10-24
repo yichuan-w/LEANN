@@ -6,9 +6,9 @@ so that we build a non-compact ``is_recompute=True`` index, spin up the
 standard HNSW embedding server, and measure how long incremental ``add`` takes
 when RNG pruning is fully enabled vs. partially/fully disabled.
 
-Example usage (will download the sentence-transformers model on first run)::
+Example usage (run from the repo root; downloads the model on first run)::
 
-    uv run -m examples.bench_hnsw_rng_recompute \
+    uv run -m benchmarks.update.bench_hnsw_rng_recompute \
         --index-path .leann/bench/leann-demo.leann \
         --runs 1
 
@@ -23,6 +23,7 @@ import logging
 import os
 import pickle
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -41,13 +42,25 @@ from leann.registry import register_project_directory
 from leann_backend_hnsw import faiss  # type: ignore
 from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 
-from apps.chunking import create_text_chunks
-
 logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+def _find_repo_root() -> Path:
+    """Locate project root by walking up until pyproject.toml is found."""
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    # Fallback: assume repo is two levels up (../..)
+    return current.parents[2]
+
+
+REPO_ROOT = _find_repo_root()
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from apps.chunking import create_text_chunks
 
 DEFAULT_INITIAL_FILES = [
     REPO_ROOT / "data" / "2501.14312v1 (1).pdf",

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
 Plot latency bars from the benchmark CSV produced by
-examples/bench_hnsw_rng_recompute.py.
+benchmarks/update/bench_hnsw_rng_recompute.py.
 
 If you also provide an offline_vs_update.csv via --csv-right
-(from examples/bench_update_vs_offline_search.py), this script will
+(from benchmarks/update/bench_update_vs_offline_search.py), this script will
 output a side-by-side figure:
 - Left: ms/passage bars (four RNG scenarios).
 - Right: seconds bars (Scenario A seq add+search vs Scenario B offline+search).
 
 Usage:
-  uv run scripts/plot_bench_results.py --csv bench_results.csv \
-      --out bench_latency_from_csv.png
+  uv run python benchmarks/update/plot_bench_results.py \
+      --csv benchmarks/update/bench_results.csv \
+      --out benchmarks/update/bench_latency_from_csv.png
 
 The script selects the latest run_id in the CSV and plots four bars for
 the default scenarios:

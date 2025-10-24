@@ -20,8 +20,8 @@ This script reuses the model/data loading conventions of
 examples/bench_hnsw_rng_recompute.py but focuses on end-to-end latency
 comparison for the two execution strategies above.
 
-Example:
-  uv run -m examples.bench_update_vs_offline_search \
+Example (from the repository root):
+  uv run -m benchmarks.update.bench_update_vs_offline_search \
     --index-path .leann/bench/offline_vs_update.leann \
     --max-initial 300 --num-updates 5 --k 10
 """
@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import pickle
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -50,13 +51,25 @@ from leann.embedding_server_manager import EmbeddingServerManager
 from leann.registry import register_project_directory
 from leann_backend_hnsw import faiss  # type: ignore
 
-from apps.chunking import create_text_chunks
-
 logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+def _find_repo_root() -> Path:
+    """Locate project root by walking up until pyproject.toml is found."""
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    # Fallback: assume repo is two levels up (../..)
+    return current.parents[2]
+
+
+REPO_ROOT = _find_repo_root()
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from apps.chunking import create_text_chunks
 
 DEFAULT_INITIAL_FILES = [
     REPO_ROOT / "data" / "2501.14312v1 (1).pdf",
