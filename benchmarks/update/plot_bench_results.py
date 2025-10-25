@@ -38,10 +38,10 @@ DEFAULT_SCENARIOS = [
 ]
 
 SCENARIO_LABELS = {
-    "baseline": "Cache",
-    "no_cache_baseline": "Baseline",
-    "disable_forward_rng": "w/o\nFwd RNG",
-    "disable_forward_and_reverse_rng": "w/o\nRNG",
+    "baseline": "+ Cache",
+    "no_cache_baseline": "Naive \n Recompute",
+    "disable_forward_rng": "+ w/o \n Fwd RNG",
+    "disable_forward_and_reverse_rng": "+ w/o \n Bwd RNG",
 }
 
 # Paper-style colors and hatches for scenarios
@@ -134,7 +134,7 @@ def main():
     ap.add_argument(
         "--out",
         type=Path,
-        default=Path("bench_latency_from_csv_broken3.pdf"),
+        default=Path("add_ablation.pdf"),
         help="Output image path",
     )
     ap.add_argument(
@@ -231,9 +231,9 @@ def main():
         if args.broken_y:
             # Use broken axis for left subplot
             # Auto-adjust width ratios: left has 4 bars, right has 2 bars
-            fig = plt.figure(figsize=(6, 2.25))  # Increased width from 5 to 7
+            fig = plt.figure(figsize=(4.8, 1.8))  # Scaled down to 80%
             gs = gridspec.GridSpec(
-                2, 2, height_ratios=[1, 3], width_ratios=[1.5, 1], hspace=0.08, wspace=0.4
+                2, 2, height_ratios=[1, 3], width_ratios=[1.5, 1], hspace=0.08, wspace=0.35
             )
             ax_left_top = fig.add_subplot(gs[0, 0])
             ax_left_bottom = fig.add_subplot(gs[1, 0], sharex=ax_left_top)
@@ -274,7 +274,7 @@ def main():
             # Redraw bars with s values (paper style: white fill + colored edge + hatch)
             ax_left_bottom.clear()
             ax_left_top.clear()
-            bar_width = 0.60  # Reduced for wider spacing between bars
+            bar_width = 0.50  # Reduced for wider spacing between bars
             for i, (scenario_name, v) in enumerate(zip(scenarios, values_s)):
                 style = SCENARIO_STYLES.get(scenario_name, {"edgecolor": "black", "hatch": ""})
                 # Draw in bottom axis for all bars
@@ -285,7 +285,7 @@ def main():
                     color="white",
                     edgecolor=style["edgecolor"],
                     hatch=style["hatch"],
-                    linewidth=1.5,
+                    linewidth=1.2,
                 )
                 # Only draw in top axis if the bar is tall enough to reach the upper range
                 if v > upper_start_s:
@@ -296,7 +296,7 @@ def main():
                         color="white",
                         edgecolor=style["edgecolor"],
                         hatch=style["hatch"],
-                        linewidth=1.5,
+                        linewidth=1.2,
                     )
             ax_left_bottom.set_ylim(0, lower_cap_s)
             ax_left_top.set_ylim(upper_start_s, ymax_s)
@@ -309,17 +309,17 @@ def main():
                         f"{v:.2f}",
                         ha="center",
                         va="bottom",
-                        fontsize=10,
+                        fontsize=8,
                         fontweight="bold",
                     )
                 else:
                     ax_left_top.text(
                         i,
                         v + (ymax_s - upper_start_s) * 0.02,
-                        f"{v:.1f}",
+                        f"{v:.2f}",
                         ha="center",
                         va="bottom",
-                        fontsize=10,
+                        fontsize=8,
                         fontweight="bold",
                     )
 
@@ -348,11 +348,14 @@ def main():
             ax_left_bottom.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
 
             ax_left_bottom.set_xticks(x)
-            ax_left_bottom.set_xticklabels(labels, rotation=0, fontsize=10)
+            ax_left_bottom.set_xticklabels(labels, rotation=0, fontsize=7)
             # Don't set ylabel here - will use fig.text for alignment
-            ax_left_bottom.tick_params(axis="y", labelsize=12)
-            ax_left_top.tick_params(axis="y", labelsize=12)
-            ax_left_top.set_title("RNG Configuration", fontsize=11, pad=10, fontweight="bold")
+            ax_left_bottom.tick_params(axis="y", labelsize=10)
+            ax_left_top.tick_params(axis="y", labelsize=10)
+            # Add subtle grid for better readability
+            ax_left_bottom.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+            ax_left_top.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+            ax_left_top.set_title("Add Operation Latency", fontsize=11, pad=10, fontweight="bold")
 
             # Set x-axis limits to match bar width with right subplot
             ax_left_bottom.set_xlim(-0.6, 3.6)
@@ -361,7 +364,7 @@ def main():
             ax_left = ax_left_bottom  # for compatibility
         else:
             # Regular side-by-side layout
-            fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(11.2, 4.2))
+            fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(8.4, 3.15))
 
             if cap is not None:
                 show_vals = [min(v, cap) for v in values]
@@ -399,7 +402,7 @@ def main():
             )
 
         # Right subplot (A vs B, seconds) - paper style
-        r_labels = ["Sequential", "Offline"]
+        r_labels = ["Sequential", "Delayed \n Add+Search"]
         r_values = [a_total or 0.0, b_makespan or 0.0]
         r_styles = [
             {"edgecolor": "#59a14f", "hatch": "xxxxx"},
@@ -407,7 +410,7 @@ def main():
         ]
         # 2 bars, centered with proper spacing
         xr = [0, 1]
-        bar_width = 0.60  # Reduced for wider spacing between bars
+        bar_width = 0.50  # Reduced for wider spacing between bars
         for i, (v, style) in enumerate(zip(r_values, r_styles)):
             ax_right.bar(
                 xr[i],
@@ -416,7 +419,7 @@ def main():
                 color="white",
                 edgecolor=style["edgecolor"],
                 hatch=style["hatch"],
-                linewidth=1.5,
+                linewidth=1.2,
             )
         for i, v in enumerate(r_values):
             max_v = max(r_values) if r_values else 1.0
@@ -424,17 +427,19 @@ def main():
             ax_right.text(
                 xr[i],
                 v + offset,
-                f"{v:.3f}",
+                f"{v:.2f}",
                 ha="center",
                 va="bottom",
-                fontsize=10,
+                fontsize=8,
                 fontweight="bold",
             )
         ax_right.set_xticks(xr)
-        ax_right.set_xticklabels(r_labels, rotation=0, fontsize=10)
+        ax_right.set_xticklabels(r_labels, rotation=0, fontsize=7)
         # Don't set ylabel here - will use fig.text for alignment
-        ax_right.tick_params(axis="y", labelsize=12)
-        ax_right.set_title("Update Strategy", fontsize=11, pad=10, fontweight="bold")
+        ax_right.tick_params(axis="y", labelsize=10)
+        # Add subtle grid for better readability
+        ax_right.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+        ax_right.set_title("Batched Add Comparison", fontsize=11, pad=10, fontweight="bold")
 
         # Set x-axis limits to match left subplot's bar width visually
         # Accounting for width_ratios=[1.5, 1]:
@@ -499,7 +504,7 @@ def main():
             2,
             1,
             sharex=True,
-            figsize=(10, 9),
+            figsize=(7.5, 6.75),
             gridspec_kw={"height_ratios": [1, 3], "hspace": 0.08},
         )
 
@@ -560,7 +565,7 @@ def main():
         if cap is None and not args.no_auto_cap:
             cap = _auto_cap(values)
 
-        plt.figure(figsize=(7.2, 4.2))
+        plt.figure(figsize=(5.4, 3.15))
         ax = plt.gca()
 
         if cap is not None:
@@ -617,7 +622,7 @@ def main():
             fontweight="bold",
         )
         fig.suptitle(
-            "RNG Configuration",
+            "Add Operation Latency",
             fontsize=11,
             y=0.98,
             fontweight="bold",
@@ -625,7 +630,7 @@ def main():
         plt.tight_layout(rect=(0.03, 0.04, 1, 0.96))
     else:
         plt.ylabel("Latency (s)", fontsize=11, fontweight="bold")
-        plt.title("RNG Configuration", fontsize=11, fontweight="bold")
+        plt.title("Add Operation Latency", fontsize=11, fontweight="bold")
         plt.tight_layout()
 
     plt.savefig(args.out, bbox_inches="tight", pad_inches=0.05)
