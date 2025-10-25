@@ -355,7 +355,7 @@ def main():
             # Add subtle grid for better readability
             ax_left_bottom.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
             ax_left_top.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
-            ax_left_top.set_title("Add Operation Latency", fontsize=11, pad=10, fontweight="bold")
+            ax_left_top.set_title("Single Add Operation", fontsize=11, pad=10, fontweight="bold")
 
             # Set x-axis limits to match bar width with right subplot
             ax_left_bottom.set_xlim(-0.6, 3.6)
@@ -439,7 +439,7 @@ def main():
         ax_right.tick_params(axis="y", labelsize=10)
         # Add subtle grid for better readability
         ax_right.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
-        ax_right.set_title("Batched Add Comparison", fontsize=11, pad=10, fontweight="bold")
+        ax_right.set_title("Batched Add Operation", fontsize=11, pad=10, fontweight="bold")
 
         # Set x-axis limits to match left subplot's bar width visually
         # Accounting for width_ratios=[1.5, 1]:
