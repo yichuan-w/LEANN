@@ -265,10 +265,7 @@ def create_ast_chunks(
                     # Merge document metadata + astchunk metadata
                     combined_metadata = {**doc_metadata, **astchunk_metadata}
 
-                    all_chunks.append({
-                        "text": chunk_text.strip(),
-                        "metadata": combined_metadata
-                    })
+                    all_chunks.append({"text": chunk_text.strip(), "metadata": combined_metadata})
 
             logger.info(
                 f"Created {len(chunks)} AST chunks from {language} file: {doc.metadata.get('file_name', 'unknown')}"
@@ -320,18 +317,12 @@ def create_traditional_chunks(
             nodes = node_parser.get_nodes_from_documents([doc])
             if nodes:
                 for node in nodes:
-                    result.append({
-                        "text": node.get_content(),
-                        "metadata": doc_metadata
-                    })
+                    result.append({"text": node.get_content(), "metadata": doc_metadata})
         except Exception as e:
             logger.error(f"Traditional chunking failed for document: {e}")
             content = doc.get_content()
             if content and content.strip():
-                result.append({
-                    "text": content.strip(),
-                    "metadata": doc_metadata
-                })
+                result.append({"text": content.strip(), "metadata": doc_metadata})
 
     return result
 

@@ -162,11 +162,17 @@ class Calculator:
             assert len(chunks) > 0
             # R3: Expect dict format with "text" and "metadata" keys
             assert all(isinstance(chunk, dict) for chunk in chunks), "All chunks should be dicts"
-            assert all("text" in chunk and "metadata" in chunk for chunk in chunks), "Each chunk should have 'text' and 'metadata' keys"
-            assert all(len(chunk["text"].strip()) > 0 for chunk in chunks), "Each chunk text should be non-empty"
+            assert all("text" in chunk and "metadata" in chunk for chunk in chunks), (
+                "Each chunk should have 'text' and 'metadata' keys"
+            )
+            assert all(len(chunk["text"].strip()) > 0 for chunk in chunks), (
+                "Each chunk text should be non-empty"
+            )
 
             # Check metadata is present
-            assert all("file_path" in chunk["metadata"] for chunk in chunks), "Each chunk should have file_path metadata"
+            assert all("file_path" in chunk["metadata"] for chunk in chunks), (
+                "Each chunk should have file_path metadata"
+            )
 
             # Check that code structure is somewhat preserved
             combined_content = " ".join([c["text"] for c in chunks])
@@ -203,7 +209,9 @@ class Calculator:
         assert len(chunks) > 0
         # R3: Traditional chunking should also return dict format for consistency
         assert all(isinstance(chunk, dict) for chunk in chunks), "All chunks should be dicts"
-        assert all("text" in chunk and "metadata" in chunk for chunk in chunks), "Each chunk should have 'text' and 'metadata' keys"
+        assert all("text" in chunk and "metadata" in chunk for chunk in chunks), (
+            "Each chunk should have 'text' and 'metadata' keys"
+        )
 
     def test_create_text_chunks_ast_mode(self):
         """Test text chunking in AST mode."""
@@ -224,7 +232,9 @@ class Calculator:
         assert len(chunks) > 0
         # R3: AST mode should also return dict format
         assert all(isinstance(chunk, dict) for chunk in chunks), "All chunks should be dicts"
-        assert all("text" in chunk and "metadata" in chunk for chunk in chunks), "Each chunk should have 'text' and 'metadata' keys"
+        assert all("text" in chunk and "metadata" in chunk for chunk in chunks), (
+            "Each chunk should have 'text' and 'metadata' keys"
+        )
 
     def test_create_text_chunks_custom_extensions(self):
         """Test text chunking with custom code file extensions."""
@@ -392,20 +402,22 @@ class TestASTContentExtraction:
                 "line_count": 2,
                 "start_line_no": 0,
                 "end_line_no": 1,
-                "node_count": 1
-            }
+                "node_count": 1,
+            },
         }
         mock_builder.chunkify.return_value = [astchunk_format_chunk]
 
         # Create mock document
-        doc = MockDocument("def hello():\n    print('world')", "/test/test.py", {"language": "python"})
+        doc = MockDocument(
+            "def hello():\n    print('world')", "/test/test.py", {"language": "python"}
+        )
 
         # Mock the astchunk module and its ASTChunkBuilder class
         mock_astchunk = Mock()
         mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
 
         # Patch sys.modules to inject our mock before the import
-        with patch.dict('sys.modules', {'astchunk': mock_astchunk}):
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
             # Call create_ast_chunks
             chunks = create_ast_chunks([doc])
 
@@ -423,8 +435,7 @@ class TestASTContentExtraction:
         # CRITICAL: Should NOT contain stringified dict markers in the text field
         # These assertions will FAIL with current buggy code
         assert "'content':" not in chunk_text, (
-            "Chunk text contains stringified dict - extraction failed! "
-            f"Got: {chunk_text[:100]}..."
+            f"Chunk text contains stringified dict - extraction failed! Got: {chunk_text[:100]}..."
         )
         assert "'metadata':" not in chunk_text, (
             "Chunk text contains stringified metadata - extraction failed! "
@@ -439,7 +450,9 @@ class TestASTContentExtraction:
         assert "print('world')" in chunk_text, "Should extract complete code content"
 
         # R3: Should preserve astchunk metadata
-        assert "filepath" in chunk["metadata"] or "file_path" in chunk["metadata"], "Should preserve file path metadata"
+        assert "filepath" in chunk["metadata"] or "file_path" in chunk["metadata"], (
+            "Should preserve file path metadata"
+        )
 
     def test_extract_text_key_fallback(self):
         """Test that 'text' key still works for backward compatibility.
@@ -450,19 +463,19 @@ class TestASTContentExtraction:
         mock_builder = Mock()
 
         # Some chunks might use "text" key
-        text_key_chunk = {
-            "text": "def legacy_function():\n    return True"
-        }
+        text_key_chunk = {"text": "def legacy_function():\n    return True"}
         mock_builder.chunkify.return_value = [text_key_chunk]
 
         # Create mock document
-        doc = MockDocument("def legacy_function():\n    return True", "/test/legacy.py", {"language": "python"})
+        doc = MockDocument(
+            "def legacy_function():\n    return True", "/test/legacy.py", {"language": "python"}
+        )
 
         # Mock the astchunk module
         mock_astchunk = Mock()
         mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
 
-        with patch.dict('sys.modules', {'astchunk': mock_astchunk}):
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
             # Call create_ast_chunks
             chunks = create_ast_chunks([doc])
 
@@ -494,13 +507,15 @@ class TestASTContentExtraction:
         mock_builder.chunkify.return_value = [plain_string_chunk]
 
         # Create mock document
-        doc = MockDocument("def simple_function():\n    pass", "/test/simple.py", {"language": "python"})
+        doc = MockDocument(
+            "def simple_function():\n    pass", "/test/simple.py", {"language": "python"}
+        )
 
         # Mock the astchunk module
         mock_astchunk = Mock()
         mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
 
-        with patch.dict('sys.modules', {'astchunk': mock_astchunk}):
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
             # Call create_ast_chunks
             chunks = create_ast_chunks([doc])
 
@@ -512,7 +527,9 @@ class TestASTContentExtraction:
 
         chunk_text = chunk["text"]
 
-        assert chunk_text == plain_string_chunk.strip(), "Should preserve plain string chunk content"
+        assert chunk_text == plain_string_chunk.strip(), (
+            "Should preserve plain string chunk content"
+        )
         assert "def simple_function()" in chunk_text
         assert "pass" in chunk_text
 
@@ -541,7 +558,7 @@ class TestASTContentExtraction:
         mock_astchunk = Mock()
         mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
 
-        with patch.dict('sys.modules', {'astchunk': mock_astchunk}):
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
             # Call create_ast_chunks
             chunks = create_ast_chunks([doc])
 
@@ -557,7 +574,9 @@ class TestASTContentExtraction:
             chunk_text = chunk["text"]
             # None should be stringified dicts
             assert "'content':" not in chunk_text, f"Chunk {i} text is stringified (has 'content':)"
-            assert "'metadata':" not in chunk_text, f"Chunk {i} text is stringified (has 'metadata':)"
+            assert "'metadata':" not in chunk_text, (
+                f"Chunk {i} text is stringified (has 'metadata':)"
+            )
             assert "'text':" not in chunk_text, f"Chunk {i} text is stringified (has 'text':)"
 
         # Verify actual content is present
@@ -582,13 +601,15 @@ class TestASTContentExtraction:
         ]
         mock_builder.chunkify.return_value = chunks_with_empty
 
-        doc = MockDocument("def valid():\n    return True", "/test/empty.py", {"language": "python"})
+        doc = MockDocument(
+            "def valid():\n    return True", "/test/empty.py", {"language": "python"}
+        )
 
         # Mock the astchunk module
         mock_astchunk = Mock()
         mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
 
-        with patch.dict('sys.modules', {'astchunk': mock_astchunk}):
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
             chunks = create_ast_chunks([doc])
 
         # R3: Should only have the valid chunk (empty ones filtered out)
@@ -643,7 +664,7 @@ class DataProcessor:
                 "file_name": "utils.py",
                 "creation_date": "2024-01-15T10:30:00",
                 "last_modified_date": "2024-10-31T15:45:00",
-            }
+            },
         )
 
         # Mock astchunk to return chunks with metadata
@@ -656,8 +677,8 @@ class DataProcessor:
                     "line_count": 2,
                     "start_line_no": 1,
                     "end_line_no": 2,
-                    "node_count": 1
-                }
+                    "node_count": 1,
+                },
             },
             {
                 "content": "class DataProcessor:\n    def process(self, data):\n        return [x * 2 for x in data]",
@@ -666,16 +687,16 @@ class DataProcessor:
                     "line_count": 3,
                     "start_line_no": 5,
                     "end_line_no": 7,
-                    "node_count": 2
-                }
-            }
+                    "node_count": 2,
+                },
+            },
         ]
         mock_builder.chunkify.return_value = astchunk_chunks
 
         mock_astchunk = Mock()
         mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
 
-        with patch.dict('sys.modules', {'astchunk': mock_astchunk}):
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
             chunks = create_ast_chunks([doc])
 
         # CRITICAL: These assertions will FAIL with current list[str] return type
@@ -691,20 +712,27 @@ class DataProcessor:
             # Document metadata preservation - WILL FAIL
             metadata = chunk["metadata"]
             assert "file_path" in metadata, f"Chunk {i} should preserve file_path"
-            assert metadata["file_path"] == "/project/src/utils.py", f"Chunk {i} file_path incorrect"
+            assert metadata["file_path"] == "/project/src/utils.py", (
+                f"Chunk {i} file_path incorrect"
+            )
 
             assert "file_name" in metadata, f"Chunk {i} should preserve file_name"
             assert metadata["file_name"] == "utils.py", f"Chunk {i} file_name incorrect"
 
             assert "creation_date" in metadata, f"Chunk {i} should preserve creation_date"
-            assert metadata["creation_date"] == "2024-01-15T10:30:00", f"Chunk {i} creation_date incorrect"
+            assert metadata["creation_date"] == "2024-01-15T10:30:00", (
+                f"Chunk {i} creation_date incorrect"
+            )
 
             assert "last_modified_date" in metadata, f"Chunk {i} should preserve last_modified_date"
-            assert metadata["last_modified_date"] == "2024-10-31T15:45:00", f"Chunk {i} last_modified_date incorrect"
+            assert metadata["last_modified_date"] == "2024-10-31T15:45:00", (
+                f"Chunk {i} last_modified_date incorrect"
+            )
 
         # Verify metadata is consistent across chunks from same document
-        assert chunks[0]["metadata"]["file_path"] == chunks[1]["metadata"]["file_path"], \
+        assert chunks[0]["metadata"]["file_path"] == chunks[1]["metadata"]["file_path"], (
             "All chunks from same document should have same file_path"
+        )
 
         # Verify text content is present and not stringified
         assert "def calculate_sum" in chunks[0]["text"]
@@ -736,7 +764,7 @@ def function_two():
                 "language": "python",
                 "file_path": "/test/code.py",
                 "file_name": "code.py",
-            }
+            },
         )
 
         # Mock astchunk with detailed metadata
@@ -750,7 +778,7 @@ def function_two():
                     "start_line_no": 1,
                     "end_line_no": 4,
                     "node_count": 5,  # function, assignments, return
-                }
+                },
             },
             {
                 "content": "def function_two():\n    return 42",
@@ -760,15 +788,15 @@ def function_two():
                     "start_line_no": 7,
                     "end_line_no": 8,
                     "node_count": 2,  # function, return
-                }
-            }
+                },
+            },
         ]
         mock_builder.chunkify.return_value = astchunk_chunks
 
         mock_astchunk = Mock()
         mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
 
-        with patch.dict('sys.modules', {'astchunk': mock_astchunk}):
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
             chunks = create_ast_chunks([doc])
 
         # CRITICAL: These will FAIL with current list[str] return
@@ -832,7 +860,7 @@ def function_two():
                     "file_path": "/docs/readme.txt",
                     "file_name": "readme.txt",
                     "creation_date": "2024-01-01",
-                }
+                },
             ),
             MockDocument(
                 "Second document with different metadata. It also has content that needs chunking.",
@@ -841,7 +869,7 @@ def function_two():
                     "file_path": "/docs/guide.md",
                     "file_name": "guide.md",
                     "last_modified_date": "2024-10-31",
-                }
+                },
             ),
         ]
 
@@ -876,13 +904,15 @@ def function_two():
 
         # Verify creation_date is preserved for readme chunks
         for chunk in readme_chunks:
-            assert chunk["metadata"].get("creation_date") == "2024-01-01", \
+            assert chunk["metadata"].get("creation_date") == "2024-01-01", (
                 "readme.txt chunks should preserve creation_date"
+            )
 
         # Verify last_modified_date is preserved for guide chunks
         for chunk in guide_chunks:
-            assert chunk["metadata"].get("last_modified_date") == "2024-10-31", \
+            assert chunk["metadata"].get("last_modified_date") == "2024-10-31", (
                 "guide.md chunks should preserve last_modified_date"
+            )
 
         # Verify text content is present
         all_text = " ".join([c["text"] for c in chunks])

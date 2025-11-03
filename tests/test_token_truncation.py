@@ -13,7 +13,6 @@ implementation does not exist yet.
 
 import pytest
 import tiktoken
-
 from leann.embedding_compute import (
     EMBEDDING_MODEL_LIMITS,
     get_model_token_limit,
@@ -80,12 +79,10 @@ class TestModelTokenLimits:
         known nomic models with correct token limits.
         """
         assert isinstance(EMBEDDING_MODEL_LIMITS, dict), "Should be a dictionary"
-        assert (
-            "nomic-embed-text" in EMBEDDING_MODEL_LIMITS
-        ), "Should contain nomic-embed-text"
-        assert (
-            "nomic-embed-text-v1.5" in EMBEDDING_MODEL_LIMITS
-        ), "Should contain nomic-embed-text-v1.5"
+        assert "nomic-embed-text" in EMBEDDING_MODEL_LIMITS, "Should contain nomic-embed-text"
+        assert "nomic-embed-text-v1.5" in EMBEDDING_MODEL_LIMITS, (
+            "Should contain nomic-embed-text-v1.5"
+        )
         assert EMBEDDING_MODEL_LIMITS["nomic-embed-text"] == 2048
         assert EMBEDDING_MODEL_LIMITS["nomic-embed-text-v1.5"] == 2048
         assert EMBEDDING_MODEL_LIMITS["nomic-embed-text-v2"] == 512
@@ -109,9 +106,7 @@ class TestTokenTruncation:
         """
         text = "This is a short text that is well under the token limit."
         token_count = len(tokenizer.encode(text))
-        assert (
-            token_count < 100
-        ), f"Test setup: text should be short (has {token_count} tokens)"
+        assert token_count < 100, f"Test setup: text should be short (has {token_count} tokens)"
 
         # Truncate with generous limit
         result = truncate_to_token_limit([text], token_limit=512)
@@ -128,9 +123,9 @@ class TestTokenTruncation:
         # Create a text that definitely exceeds limit
         text = "word " * 200  # ~200 tokens (each "word " is typically 1-2 tokens)
         original_token_count = len(tokenizer.encode(text))
-        assert (
-            original_token_count > 50
-        ), f"Test setup: text should be long (has {original_token_count} tokens)"
+        assert original_token_count > 50, (
+            f"Test setup: text should be long (has {original_token_count} tokens)"
+        )
 
         # Truncate to 50 tokens
         result = truncate_to_token_limit([text], token_limit=50)
@@ -141,9 +136,9 @@ class TestTokenTruncation:
 
         # Verify truncated text is within token limit
         truncated_token_count = len(tokenizer.encode(result[0]))
-        assert (
-            truncated_token_count <= 50
-        ), f"Truncated text should be ≤50 tokens, got {truncated_token_count}"
+        assert truncated_token_count <= 50, (
+            f"Truncated text should be ≤50 tokens, got {truncated_token_count}"
+        )
 
     def test_truncate_multiple_texts_mixed_lengths(self, tokenizer):
         """Verify multiple texts with mixed lengths are handled correctly.
@@ -164,13 +159,11 @@ class TestTokenTruncation:
         for i, text in enumerate(texts):
             token_count = len(tokenizer.encode(text))
             if i in [1, 3]:
-                assert (
-                    token_count > 50
-                ), f"Text {i} should be over limit (has {token_count} tokens)"
+                assert token_count > 50, f"Text {i} should be over limit (has {token_count} tokens)"
             else:
-                assert (
-                    token_count < 50
-                ), f"Text {i} should be under limit (has {token_count} tokens)"
+                assert token_count < 50, (
+                    f"Text {i} should be under limit (has {token_count} tokens)"
+                )
 
         # Truncate with 50 token limit
         result = truncate_to_token_limit(texts, token_limit=50)
@@ -180,15 +173,11 @@ class TestTokenTruncation:
         # Verify each text individually
         for i, (original, truncated) in enumerate(zip(texts, result)):
             token_count = len(tokenizer.encode(truncated))
-            assert (
-                token_count <= 50
-            ), f"Text {i} should be ≤50 tokens, got {token_count}"
+            assert token_count <= 50, f"Text {i} should be ≤50 tokens, got {token_count}"
 
             # Short texts should be unchanged
             if i in [0, 2]:
-                assert (
-                    truncated == original
-                ), f"Short text {i} should be unchanged"
+                assert truncated == original, f"Short text {i} should be unchanged"
             # Long texts should be truncated
             else:
                 assert len(truncated) < len(original), f"Long text {i} should be truncated"
@@ -237,9 +226,9 @@ class TestTokenTruncation:
 
         assert len(result) == 1
         truncated_token_count = len(tokenizer.encode(result[0]))
-        assert (
-            truncated_token_count <= 100
-        ), f"Should truncate to ≤100 tokens, got {truncated_token_count}"
+        assert truncated_token_count <= 100, (
+            f"Should truncate to ≤100 tokens, got {truncated_token_count}"
+        )
         assert len(result[0]) < len(text) // 10, "Should significantly reduce text length"
 
     def test_truncate_exact_token_limit(self, tokenizer):
@@ -266,12 +255,14 @@ class TestTokenTruncation:
             text = tokenizer.decode(tokens)
 
         # Verify we have exactly target_tokens
-        assert len(tokenizer.encode(text)) == target_tokens, "Test setup: should have exactly 50 tokens"
+        assert len(tokenizer.encode(text)) == target_tokens, (
+            "Test setup: should have exactly 50 tokens"
+        )
 
         result = truncate_to_token_limit([text], token_limit=target_tokens)
 
         assert len(result) == 1
         result_tokens = len(tokenizer.encode(result[0]))
-        assert (
-            result_tokens <= target_tokens
-        ), f"Should be ≤{target_tokens} tokens, got {result_tokens}"
+        assert result_tokens <= target_tokens, (
+            f"Should be ≤{target_tokens} tokens, got {result_tokens}"
+        )

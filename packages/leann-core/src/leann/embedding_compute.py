@@ -15,89 +15,6 @@ import torch
 
 from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
 
-
-def truncate_to_token_limit(texts: list[str], max_tokens: int = 512) -> list[str]:
-    """
-    Truncate texts to token limit using tiktoken or conservative character truncation.
-
-    Args:
-        texts: List of texts to truncate
-        max_tokens: Maximum tokens allowed per text
-
-    Returns:
-        List of truncated texts that should fit within token limit
-    """
-    try:
-        import tiktoken
-
-        encoder = tiktoken.get_encoding("cl100k_base")
-        truncated = []
-
-        for text in texts:
-            tokens = encoder.encode(text)
-            if len(tokens) > max_tokens:
-                # Truncate to max_tokens and decode back to text
-                truncated_tokens = tokens[:max_tokens]
-                truncated_text = encoder.decode(truncated_tokens)
-                truncated.append(truncated_text)
-                logger.warning(
-                    f"Truncated text from {len(tokens)} to {max_tokens} tokens "
-                    f"(from {len(text)} to {len(truncated_text)} characters)"
-                )
-            else:
-                truncated.append(text)
-        return truncated
-
-    except ImportError:
-        # Fallback: Conservative character truncation
-        # Assume worst case: 1.5 tokens per character for code content
-        char_limit = int(max_tokens / 1.5)
-        truncated = []
-
-        for text in texts:
-            if len(text) > char_limit:
-                truncated_text = text[:char_limit]
-                truncated.append(truncated_text)
-                logger.warning(
-                    f"Truncated text from {len(text)} to {char_limit} characters "
-                    f"(conservative estimate for {max_tokens} tokens)"
-                )
-            else:
-                truncated.append(text)
-        return truncated
-
-
-def get_model_token_limit(model_name: str) -> int:
-    """
-    Get token limit for a given embedding model.
-
-    Args:
-        model_name: Name of the embedding model
-
-    Returns:
-        Token limit for the model, defaults to 512 if unknown
-    """
-    # Handle versioned model names (e.g., "nomic-embed-text:latest" -> "nomic-embed-text")
-    base_model_name = model_name.split(":")[0]
-
-    # Check exact match first
-    if model_name in EMBEDDING_MODEL_LIMITS:
-        return EMBEDDING_MODEL_LIMITS[model_name]
-
-    # Check base name match
-    if base_model_name in EMBEDDING_MODEL_LIMITS:
-        return EMBEDDING_MODEL_LIMITS[base_model_name]
-
-    # Check partial matches for common patterns
-    for known_model, limit in EMBEDDING_MODEL_LIMITS.items():
-        if known_model in base_model_name or base_model_name in known_model:
-            return limit
-
-    # Default to conservative 512 token limit
-    logger.warning(f"Unknown model '{model_name}', using default 512 token limit")
-    return 512
-
-
 # Set up logger with proper level
 logger = logging.getLogger(__name__)
 LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
@@ -149,8 +66,26 @@ def get_model_token_limit(
             if limit:
                 return limit
 
-    # Fallback to known model registry
-    return EMBEDDING_MODEL_LIMITS.get(model_name, default)
+    # Fallback to known model registry with version handling (from PR #154)
+    # Handle versioned model names (e.g., "nomic-embed-text:latest" -> "nomic-embed-text")
+    base_model_name = model_name.split(":")[0]
+
+    # Check exact match first
+    if model_name in EMBEDDING_MODEL_LIMITS:
+        return EMBEDDING_MODEL_LIMITS[model_name]
+
+    # Check base name match
+    if base_model_name in EMBEDDING_MODEL_LIMITS:
+        return EMBEDDING_MODEL_LIMITS[base_model_name]
+
+    # Check partial matches for common patterns
+    for known_model, limit in EMBEDDING_MODEL_LIMITS.items():
+        if known_model in base_model_name or base_model_name in known_model:
+            return limit
+
+    # Default fallback
+    logger.warning(f"Unknown model '{model_name}', using default {default} token limit")
+    return default
 
 
 def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
