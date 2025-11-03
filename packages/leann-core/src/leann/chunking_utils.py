@@ -11,6 +11,9 @@ from llama_index.core.node_parser import SentenceSplitter
 
 logger = logging.getLogger(__name__)
 
+# Flag to ensure AST token warning only shown once per session
+_ast_token_warning_shown = False
+
 
 def estimate_token_count(text: str) -> int:
     """
@@ -198,16 +201,20 @@ def create_ast_chunks(
             continue
 
         try:
-            # Warn if AST chunk size + overlap might exceed common token limits
+            # Warn once if AST chunk size + overlap might exceed common token limits
+            # Note: Actual truncation happens at embedding time with dynamic model limits
+            global _ast_token_warning_shown
             estimated_max_tokens = int(
                 (max_chunk_size + chunk_overlap) * 1.2
             )  # Conservative estimate
-            if estimated_max_tokens > 512:
+            if estimated_max_tokens > 512 and not _ast_token_warning_shown:
                 logger.warning(
                     f"AST chunk size ({max_chunk_size}) + overlap ({chunk_overlap}) = {max_chunk_size + chunk_overlap} chars "
                     f"may exceed 512 token limit (~{estimated_max_tokens} tokens estimated). "
-                    f"Consider reducing --ast-chunk-size to {int(400 / 1.2)} or --ast-chunk-overlap to {int(50 / 1.2)}"
+                    f"Consider reducing --ast-chunk-size to {int(400 / 1.2)} or --ast-chunk-overlap to {int(50 / 1.2)}. "
+                    f"Note: Chunks will be auto-truncated at embedding time based on your model's actual token limit."
                 )
+                _ast_token_warning_shown = True
 
             configs = {
                 "max_chunk_size": max_chunk_size,
