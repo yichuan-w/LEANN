@@ -109,9 +109,14 @@ logger.setLevel(log_level)
 # Ollama models use dynamic discovery via /api/show
 EMBEDDING_MODEL_LIMITS = {
     # Nomic models (common across servers)
-    "nomic-embed-text": 2048,
+    "nomic-embed-text": 2048,  # Corrected from 512 - verified via /api/show
     "nomic-embed-text-v1.5": 2048,
     "nomic-embed-text-v2": 512,
+    # Other embedding models
+    "mxbai-embed-large": 512,
+    "all-minilm": 512,
+    "bge-m3": 8192,
+    "snowflake-arctic-embed": 512,
     # OpenAI models
     "text-embedding-3-small": 8192,
     "text-embedding-3-large": 8192,
@@ -215,17 +220,6 @@ def _query_ollama_context_limit(model_name: str, base_url: str) -> Optional[int]
 
 # Global model cache to avoid repeated loading
 _model_cache: dict[str, Any] = {}
-
-# Known embedding model token limits
-EMBEDDING_MODEL_LIMITS = {
-    "nomic-embed-text": 512,
-    "nomic-embed-text-v2": 512,
-    "mxbai-embed-large": 512,
-    "all-minilm": 512,
-    "bge-m3": 8192,
-    "snowflake-arctic-embed": 512,
-    # Add more models as needed
-}
 
 
 def compute_embeddings(

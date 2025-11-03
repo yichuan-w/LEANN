@@ -406,13 +406,6 @@ def create_text_chunks(
 
     logger.info(f"Total chunks created: {len(all_chunks)}")
 
-    # Validate chunk token limits (default to 512 for safety)
-    # This provides a safety net for embedding models with token limits
-    validated_chunks, num_truncated = validate_chunk_token_limits(all_chunks, max_tokens=512)
-
-    if num_truncated > 0:
-        logger.info(
-            f"Post-chunking validation: {num_truncated} chunks were truncated to fit 512 token limit"
-        )
-
-    return validated_chunks
+    # Note: Token truncation is now handled at embedding time with dynamic model limits
+    # See get_model_token_limit() and truncate_to_token_limit() in embedding_compute.py
+    return all_chunks
