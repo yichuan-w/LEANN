@@ -1279,13 +1279,8 @@ Examples:
                     ast_fallback_traditional=getattr(args, "ast_fallback_traditional", True),
                 )
 
-                # Note: AST chunking currently returns plain text chunks without metadata
-                # We preserve basic file info by associating chunks with their source documents
-                # For better metadata preservation, documents list order should be maintained
-                for chunk_text in chunk_texts:
-                    # TODO: Enhance create_text_chunks to return metadata alongside text
-                    # For now, we store chunks with empty metadata
-                    all_texts.append({"text": chunk_text, "metadata": {}})
+                # create_text_chunks now returns list[dict] with metadata preserved
+                all_texts.extend(chunk_texts)
 
             except ImportError as e:
                 print(

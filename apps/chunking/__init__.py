@@ -15,6 +15,7 @@ try:
         create_ast_chunks,
         create_text_chunks,
         create_traditional_chunks,
+        _traditional_chunks_as_dicts,
         detect_code_files,
         get_language_from_extension,
     )
@@ -28,6 +29,7 @@ except Exception:  # pragma: no cover - best-effort fallback for dev environment
             create_ast_chunks,
             create_text_chunks,
             create_traditional_chunks,
+            _traditional_chunks_as_dicts,
             detect_code_files,
             get_language_from_extension,
         )
@@ -39,6 +41,7 @@ __all__ = [
     "create_ast_chunks",
     "create_text_chunks",
     "create_traditional_chunks",
+    "_traditional_chunks_as_dicts",
     "detect_code_files",
     "get_language_from_extension",
 ]
