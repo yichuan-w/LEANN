@@ -106,9 +106,15 @@ def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
     enc = tiktoken.get_encoding("cl100k_base")
 
     truncated_texts = []
-    for text in texts:
+    truncation_count = 0
+    total_tokens_removed = 0
+    max_original_length = 0
+
+    for i, text in enumerate(texts):
         tokens = enc.encode(text)
-        if len(tokens) <= token_limit:
+        original_length = len(tokens)
+
+        if original_length <= token_limit:
             # Text is within limit, keep as is
             truncated_texts.append(text)
         else:
@@ -116,6 +122,32 @@ def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
             truncated_tokens = tokens[:token_limit]
             truncated_text = enc.decode(truncated_tokens)
             truncated_texts.append(truncated_text)
+
+            # Track truncation statistics
+            truncation_count += 1
+            tokens_removed = original_length - token_limit
+            total_tokens_removed += tokens_removed
+            max_original_length = max(max_original_length, original_length)
+
+            # Log individual truncation at WARNING level (first few only)
+            if truncation_count <= 3:
+                logger.warning(
+                    f"Text {i + 1} truncated: {original_length} → {token_limit} tokens "
+                    f"({tokens_removed} tokens removed)"
+                )
+            elif truncation_count == 4:
+                logger.warning("Further truncation warnings suppressed...")
+
+    # Log summary at INFO level
+    if truncation_count > 0:
+        logger.warning(
+            f"Truncation summary: {truncation_count}/{len(texts)} texts truncated "
+            f"(removed {total_tokens_removed} tokens total, longest was {max_original_length} tokens)"
+        )
+    else:
+        logger.debug(
+            f"No truncation needed - all {len(texts)} texts within {token_limit} token limit"
+        )
 
     return truncated_texts
 
@@ -858,8 +890,8 @@ def compute_embeddings_ollama(
     logger.info(f"Model '{model_name}' token limit: {token_limit}")
 
     # Apply truncation to all texts before batch processing
+    # Function logs truncation details internally
     texts = truncate_to_token_limit(texts, token_limit)
-    logger.info(f"Texts truncated to {token_limit} tokens where necessary")
 
     def get_batch_embeddings(batch_texts):
         """Get embeddings for a batch of texts using /api/embed endpoint."""
