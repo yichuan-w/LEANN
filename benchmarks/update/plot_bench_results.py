@@ -353,8 +353,8 @@ def main():
             ax_left_bottom.tick_params(axis="y", labelsize=10)
             ax_left_top.tick_params(axis="y", labelsize=10)
             # Add subtle grid for better readability
-            ax_left_bottom.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
-            ax_left_top.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+            ax_left_bottom.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
+            ax_left_top.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
             ax_left_top.set_title("Single Add Operation", fontsize=11, pad=10, fontweight="bold")
 
             # Set x-axis limits to match bar width with right subplot
@@ -438,7 +438,7 @@ def main():
         # Don't set ylabel here - will use fig.text for alignment
         ax_right.tick_params(axis="y", labelsize=10)
         # Add subtle grid for better readability
-        ax_right.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
+        ax_right.grid(axis="y", alpha=0.3, linestyle="--", linewidth=0.5)
         ax_right.set_title("Batched Add Operation", fontsize=11, pad=10, fontweight="bold")
 
         # Set x-axis limits to match left subplot's bar width visually
