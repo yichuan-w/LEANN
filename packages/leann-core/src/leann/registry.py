@@ -34,7 +34,7 @@ def autodiscover_backends():
     for dist in importlib.metadata.distributions():
         dist_name = dist.metadata["name"]
         if dist_name is None:
-            continue;
+            continue
         if dist_name.startswith("leann-backend-"):
             backend_module_name = dist_name.replace("-", "_")
             discovered_backends.append(backend_module_name)
