@@ -61,6 +61,15 @@ def resolve_openai_api_key(explicit: str | None = None) -> str | None:
     return os.getenv("OPENAI_API_KEY")
 
 
+def resolve_anthropic_api_key(explicit: str | None = None) -> str | None:
+    """Resolve the API key for Anthropic services."""
+
+    if explicit:
+        return explicit
+
+    return os.getenv("ANTHROPIC_API_KEY")
+
+
 def encode_provider_options(options: dict[str, Any] | None) -> str | None:
     """Serialize provider options for child processes."""
 

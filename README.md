@@ -201,7 +201,7 @@ LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, 
 
 #### LLM Backend
 
-LEANN supports many LLM providers for text generation (HuggingFace, Ollama, and Any OpenAI compatible API).
+LEANN supports many LLM providers for text generation (HuggingFace, Ollama, Anthropic, and Any OpenAI compatible API).
 
 
 <details>
@@ -269,6 +269,7 @@ Below is a list of base URLs for common providers to get you started.
 | **SiliconFlow** | `https://api.siliconflow.cn/v1`                            |
 | **Zhipu (BigModel)** | `https://open.bigmodel.cn/api/paas/v4/`                |
 | **Mistral AI** | `https://api.mistral.ai/v1`                                |
+| **Anthropic** | `https://api.anthropic.com/v1`                                |
 
 
 
@@ -328,7 +329,7 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 --embedding-mode MODE        # sentence-transformers, openai, mlx, or ollama
 
 # LLM Parameters (Text generation models)
---llm TYPE                   # LLM backend: openai, ollama, or hf (default: openai)
+--llm TYPE                   # LLM backend: openai, ollama, hf, or anthropic (default: openai)
 --llm-model MODEL            # Model name (default: gpt-4o) e.g., gpt-4o-mini, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
 --thinking-budget LEVEL      # Thinking budget for reasoning models: low/medium/high (supported by o3, o3-mini, GPT-Oss:20b, and other reasoning models)
 
@@ -1057,10 +1058,10 @@ Options:
 leann ask INDEX_NAME [OPTIONS]
 
 Options:
-  --llm {ollama,openai,hf}    LLM provider (default: ollama)
-  --model MODEL               Model name (default: qwen3:8b)
-  --interactive              Interactive chat mode
-  --top-k N                  Retrieval count (default: 20)
+  --llm {ollama,openai,hf,anthropic}    LLM provider (default: ollama)
+  --model MODEL                         Model name (default: qwen3:8b)
+  --interactive                         Interactive chat mode
+  --top-k N                             Retrieval count (default: 20)
 ```
 
 **List Command:**
