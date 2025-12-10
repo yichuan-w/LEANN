@@ -1251,15 +1251,15 @@ class LeannChat:
             "Please provide the best answer you can based on this context and your knowledge."
         )
 
-        print("The context provided to the LLM is:")
-        print(f"{'Relevance':<10} | {'Chunk id':<10} | {'Content':<60} | {'Source':<80}")
-        print("-" * 150)
+        logger.info("The context provided to the LLM is:")
+        logger.info(f"{'Relevance':<10} | {'Chunk id':<10} | {'Content':<60} | {'Source':<80}")
+        logger.info("-" * 150)
         for r in results:
             chunk_relevance = f"{r.score:.3f}"
             chunk_id = r.id
             chunk_content = r.text[:60]
             chunk_source = r.metadata.get("source", "")[:80]
-            print(
+            logger.info(
                 f"{chunk_relevance:<10} | {chunk_id:<10} | {chunk_content:<60} | {chunk_source:<80}"
             )
         ask_time = time.time()
