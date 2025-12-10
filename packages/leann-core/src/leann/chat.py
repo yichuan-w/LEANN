@@ -14,6 +14,7 @@ import torch
 
 from .settings import (
     resolve_anthropic_api_key,
+    resolve_anthropic_base_url,
     resolve_ollama_host,
     resolve_openai_api_key,
     resolve_openai_base_url,
@@ -853,8 +854,14 @@ class OpenAIChat(LLMInterface):
 class AnthropicChat(LLMInterface):
     """LLM interface for Anthropic Claude models."""
 
-    def __init__(self, model: str = "claude-haiku-4-5", api_key: Optional[str] = None):
+    def __init__(
+        self,
+        model: str = "claude-haiku-4-5",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
         self.model = model
+        self.base_url = resolve_anthropic_base_url(base_url)
         self.api_key = resolve_anthropic_api_key(api_key)
 
         if not self.api_key:
@@ -862,12 +869,20 @@ class AnthropicChat(LLMInterface):
                 "Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable or pass api_key parameter."
             )
 
-        logger.info(f"Initializing Anthropic Chat with model='{model}'")
+        logger.info(
+            "Initializing Anthropic Chat with model='%s' and base_url='%s'",
+            model,
+            self.base_url,
+        )
 
         try:
             import anthropic
 
-            self.client = anthropic.Anthropic(api_key=self.api_key)
+            # Allow custom Anthropic-compatible endpoints via base_url
+            self.client = anthropic.Anthropic(
+                api_key=self.api_key,
+                base_url=self.base_url,
+            )
         except ImportError:
             raise ImportError(
                 "The 'anthropic' library is required for Anthropic models. Please install it with 'pip install anthropic'."
@@ -967,6 +982,7 @@ def get_llm(llm_config: Optional[dict[str, Any]] = None) -> LLMInterface:
         return AnthropicChat(
             model=model or "claude-3-5-sonnet-20241022",
             api_key=llm_config.get("api_key"),
+            base_url=llm_config.get("base_url"),
         )
     elif llm_type == "simulated":
         return SimulatedChat()

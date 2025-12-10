@@ -9,6 +9,7 @@ from typing import Any
 # Default fallbacks to preserve current behaviour while keeping them in one place.
 _DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+_DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 
 
 def _clean_url(value: str) -> str:
@@ -50,6 +51,23 @@ def resolve_openai_base_url(explicit: str | None = None) -> str:
             return _clean_url(candidate)
 
     return _clean_url(_DEFAULT_OPENAI_BASE_URL)
+
+
+def resolve_anthropic_base_url(explicit: str | None = None) -> str:
+    """Resolve the base URL for Anthropic-compatible services."""
+
+    candidates = (
+        explicit,
+        os.getenv("LEANN_ANTHROPIC_BASE_URL"),
+        os.getenv("ANTHROPIC_BASE_URL"),
+        os.getenv("LOCAL_ANTHROPIC_BASE_URL"),
+    )
+
+    for candidate in candidates:
+        if candidate:
+            return _clean_url(candidate)
+
+    return _clean_url(_DEFAULT_ANTHROPIC_BASE_URL)
 
 
 def resolve_openai_api_key(explicit: str | None = None) -> str | None:
