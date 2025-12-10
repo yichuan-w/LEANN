@@ -454,7 +454,7 @@ leann search my-index "your query" \
 
 ### 2) Run remote builds with SkyPilot (cloud GPU)
 
-Offload embedding generation and index building to a GPU VM using [SkyPilot](https://skypilot.readthedocs.io/en/latest/). A template is provided at `sky/leann-build.yaml`.
+Offload embedding generation and index building to a GPU VM using [SkyPilot](https://docs.skypilot.co/en/latest/docs/index.html). A template is provided at `sky/leann-build.yaml`.
 
 ```bash
 # One-time: install and configure SkyPilot
