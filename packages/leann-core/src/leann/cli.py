@@ -12,10 +12,10 @@ from .api import LeannBuilder, LeannChat, LeannSearcher
 from .interactive_utils import create_cli_session
 from .registry import register_project_directory
 from .settings import (
+    resolve_anthropic_base_url,
     resolve_ollama_host,
     resolve_openai_api_key,
     resolve_openai_base_url,
-    resolve_anthropic_base_url,
 )
 
 
