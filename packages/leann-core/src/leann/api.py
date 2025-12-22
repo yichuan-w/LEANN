@@ -338,6 +338,11 @@ class PassageManager:
 
 
 class LeannBuilder:
+    """
+    Class responsible for building, updating, and managing LEANN vector indices.
+    Handles integration with different backends (such as HNSW), embedding generation,
+    and persistence of metadata and text passages.
+    """
     def __init__(
         self,
         backend_name: str,
@@ -347,6 +352,17 @@ class LeannBuilder:
         embedding_options: Optional[dict[str, Any]] = None,
         **backend_kwargs,
     ):
+        """
+        Initializes the index builder.
+
+        Args:
+            backend_name: Name of the search engine backend (e.g. 'hnsw').
+            embedding_model: Identifier of the embedding model to use.
+            dimensions: Vector dimensionality. If None, it is inferred from the model.
+            embedding_mode: Embedding execution mode (e.g. 'openai', 'voyage').
+            embedding_options: Additional configuration for the embedding provider.
+            **backend_kwargs: Backend-specific arguments.
+        """
         self.backend_name = backend_name
         # Normalize incompatible combinations early (for consistent metadata)
         if backend_name == "hnsw":
@@ -401,7 +417,7 @@ class LeannBuilder:
                 is_normalized = True
                 break
 
-        # Check patterns
+        # Pattern-based check if no exact match was found
         if not is_normalized:
             # OpenAI patterns
             if "openai" in current_mode_lower or "openai" in current_model_lower:
@@ -419,6 +435,7 @@ class LeannBuilder:
                     is_normalized = True
 
         # Handle distance metric
+        # Automatic adjustment to 'cosine' if the model generates normalized vectors
         if is_normalized and "distance_metric" not in backend_kwargs:
             backend_kwargs["distance_metric"] = "cosine"
             warnings.warn(
@@ -442,6 +459,13 @@ class LeannBuilder:
         self.chunks: list[dict[str, Any]] = []
 
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
+        """
+        Adds a text passage to the index processing queue.
+
+        Args:
+            text: Text content to be indexed.
+            metadata: Optional dictionary with additional information (e.g. external IDs).
+        """
         if metadata is None:
             metadata = {}
         passage_id = metadata.get("id", str(len(self.chunks)))
@@ -449,9 +473,24 @@ class LeannBuilder:
         self.chunks.append(chunk_data)
 
     def build_index(self, index_path: str):
+        """
+        Processes added texts, generates embeddings, and creates index files on disk.
+
+        Args:
+            index_path: Base path where index files will be stored.
+
+        Executes the complete indexing pipeline:
+        
+        1. Fragment cleanup.
+        2. JSONL persistence and offset map creation (.idx).
+        3. Embedding calculation.
+        4. Vector graph construction using the backend factory.
+        5. Index metadata creation.
+        """
         if not self.chunks:
             raise ValueError("No chunks added.")
 
+        # ... [Lógica de validación y limpieza]
         # Filter out invalid/empty text chunks early to keep passage and embedding counts aligned
         valid_chunks: list[dict[str, Any]] = []
         skipped = 0
@@ -468,6 +507,7 @@ class LeannBuilder:
             self.chunks = valid_chunks
             if not self.chunks:
                 raise ValueError("All provided chunks are empty or invalid. Nothing to index.")
+        # Infer dimensions if not specified
         if self.dimensions is None:
             self.dimensions = len(
                 compute_embeddings(
@@ -482,6 +522,8 @@ class LeannBuilder:
         index_dir = path.parent
         index_name = path.name
         index_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare support files (.jsonl and .idx)
         passages_file = index_dir / f"{index_name}.passages.jsonl"
         offset_file = index_dir / f"{index_name}.passages.idx"
         offset_map = {}
@@ -508,6 +550,8 @@ class LeannBuilder:
                 offset_map[chunk["id"]] = offset
         with open(offset_file, "wb") as f:
             pickle.dump(offset_map, f)
+
+        # Vector generation
         texts_to_embed = [c["text"] for c in self.chunks]
         embeddings = compute_embeddings(
             texts_to_embed,
@@ -518,7 +562,8 @@ class LeannBuilder:
             provider_options=self.embedding_options,
         )
         string_ids = [chunk["id"] for chunk in self.chunks]
-        # Persist ID map alongside index so backends that return integer labels can remap to passage IDs
+
+        # Persist ID map for backends that use integer labels
         try:
             idmap_file = (
                 index_dir
@@ -529,9 +574,13 @@ class LeannBuilder:
                     f.write(str(sid) + "\n")
         except Exception:
             pass
+
+        # Index construction via backend
         current_backend_kwargs = {**self.backend_kwargs, "dimensions": self.dimensions}
         builder_instance = self.backend_factory.builder(**current_backend_kwargs)
         builder_instance.build(embeddings, string_ids, index_path, **current_backend_kwargs)
+
+        # Create central metadata file (.meta.json)
         leann_meta_path = index_dir / f"{index_name}.meta.json"
         meta_data = {
             "version": "1.0",
@@ -556,7 +605,7 @@ class LeannBuilder:
         if self.embedding_options:
             meta_data["embedding_options"] = self.embedding_options
 
-        # Add storage status flags for HNSW backend
+        # HNSW-specific storage flags
         if self.backend_name == "hnsw":
             is_compact = self.backend_kwargs.get("is_compact", True)
             is_recompute = self.backend_kwargs.get("is_recompute", True)
@@ -703,7 +752,15 @@ class LeannBuilder:
         logger.info(f"Index built successfully from precomputed embeddings: {index_path}")
 
     def update_index(self, index_path: str):
-        """Append new passages and vectors to an existing HNSW index."""
+        """
+        Incrementally adds new passages and vectors to an existing HNSW index.
+        Adds new data to an existing index without rebuilding it from scratch.
+        Implements a temporary recompute server if the index is compact
+        and handles transactions with rollback capability in case of failures.
+    
+        Args:
+            index_path: Path to the existing index to update.
+        """
         if not self.chunks:
             raise ValueError("No new chunks provided for update.")
 
@@ -716,7 +773,8 @@ class LeannBuilder:
         passages_file = index_dir / f"{index_name}.passages.jsonl"
         offset_file = index_dir / f"{index_name}.passages.idx"
         index_file = index_dir / f"{index_prefix}.index"
-
+        
+        # Validate existing index files
         if not meta_path.exists() or not passages_file.exists() or not offset_file.exists():
             raise FileNotFoundError("Index metadata or passage files are missing; cannot update.")
         if not index_file.exists():
@@ -750,6 +808,7 @@ class LeannBuilder:
             offset_map: dict[str, int] = pickle.load(f)
         existing_ids = set(offset_map.keys())
 
+        # Validate new chunks to avoid duplicate passage IDs
         valid_chunks: list[dict[str, Any]] = []
         for chunk in self.chunks:
             text = chunk.get("text", "")
@@ -764,6 +823,7 @@ class LeannBuilder:
         if not valid_chunks:
             raise ValueError("No valid chunks to append.")
 
+        # Generate new embeddings
         texts_to_embed = [chunk["text"] for chunk in valid_chunks]
         embeddings = compute_embeddings(
             texts_to_embed,
@@ -789,10 +849,12 @@ class LeannBuilder:
             norms[norms == 0] = 1
             embeddings = embeddings / norms
 
+        # Load existing Faiss index
         index = faiss.read_index(str(index_file))
         if hasattr(index, "is_recompute"):
             index.is_recompute = needs_recompute
             print(f"index.is_recompute: {index.is_recompute}")
+        # Manage temporary Faiss storage if required
         if getattr(index, "storage", None) is None:
             if index.metric_type == faiss.METRIC_INNER_PRODUCT:
                 storage_index = faiss.IndexFlatIP(index.d)
@@ -822,19 +884,22 @@ class LeannBuilder:
         passage_meta_mode = meta.get("embedding_mode", self.embedding_mode)
         passage_provider_options = meta.get("embedding_options", self.embedding_options)
 
+        # Assign new incremental IDs
         base_id = index.ntotal
         for offset, chunk in enumerate(valid_chunks):
             new_id = str(base_id + offset)
             chunk.setdefault("metadata", {})["id"] = new_id
             chunk["id"] = new_id
 
+        # Save rollback checkpoints in case of failure
         # Append passages/offsets before we attempt index.add so the ZMQ server
         # can resolve newly assigned IDs during recompute. Keep rollback hooks
         # so we can restore files if the update fails mid-way.
         rollback_passages_size = passages_file.stat().st_size if passages_file.exists() else 0
         offset_map_backup = offset_map.copy()
-
+        
         try:
+            # Append passages and offsets
             with open(passages_file, "a", encoding="utf-8") as f:
                 for chunk in valid_chunks:
                     offset = f.tell()
@@ -858,6 +923,7 @@ class LeannBuilder:
             requested_zmq_port = int(os.getenv("LEANN_UPDATE_ZMQ_PORT", "5557"))
 
             try:
+                # Start ZMQ server if recompute is required
                 if needs_recompute:
                     server_manager = EmbeddingServerManager(
                         backend_module_name="leann_backend_hnsw.hnsw_embedding_server"
@@ -886,6 +952,7 @@ class LeannBuilder:
                     elif hasattr(index, "set_zmq_port"):
                         index.set_zmq_port(actual_port)
 
+                # Add vectors to the Faiss index
                 if needs_recompute:
                     for i in range(embeddings.shape[0]):
                         print(f"add {i} embeddings")
@@ -898,7 +965,7 @@ class LeannBuilder:
                     server_manager.stop_server()
 
         except Exception:
-            # Roll back appended passages/offset map to keep files consistent.
+            # Roll back files in case of exception - appended passages/offset map to keep files consistent.
             if passages_file.exists():
                 with open(passages_file, "rb+") as f:
                     f.truncate(rollback_passages_size)
@@ -907,6 +974,7 @@ class LeannBuilder:
                 pickle.dump(offset_map, f)
             raise
 
+        # Update total metadata counters
         meta["total_passages"] = len(offset_map)
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
@@ -920,6 +988,7 @@ class LeannBuilder:
 
         self.chunks.clear()
 
+        # Final pruning if recompute mode is enabled
         if needs_recompute:
             prune_hnsw_embeddings_inplace(str(index_file))
 
