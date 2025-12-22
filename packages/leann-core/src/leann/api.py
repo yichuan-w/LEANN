@@ -32,6 +32,12 @@ logger = logging.getLogger(__name__)
 
 def get_registered_backends() -> list[str]:
     """Get list of registered backend names."""
+    """
+    Retrieves the installed and registered search backends.
+    
+    Returns:
+        list[str]: Names of the available backends (e.g., 'hnsw').
+    """
     return list(BACKEND_REGISTRY.keys())
 
 
@@ -45,7 +51,8 @@ def compute_embeddings(
     provider_options: Optional[dict[str, Any]] = None,
 ) -> np.ndarray:
     """
-    Computes embeddings using different backends.
+    Universal entry point for vector generation (embeddings).
+    Depending on the workflow (Building vs. Searching), it decides whether to load the model locally or make an RPC request through a ZMQ server.
 
     Args:
         chunks: List of text chunks to embed
@@ -81,11 +88,17 @@ def compute_embeddings(
 
 
 def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int) -> np.ndarray:
-    """Computes embeddings using sentence-transformers.
+    """
+    Computes embeddings using sentence-transformers.
+    It performs embedding computation by delegating the load to a ZMQ server.
+    This method is critical for the Lean architecture, allowing the client to retrieve embeddings in real time without loading the heavy model into their own process.
 
     Args:
-        chunks: List of text chunks to embed
-        model_name: Name of the sentence transformer model
+        chunks (list[str]): Texts to process.
+        model_name (str): Name of the sentence transformer model that the server should use.
+        port (int): TCP port where the embeddings server listens.
+    Returns:
+        np.ndarray: Resulting vectors in float32 format.
     """
     logger.info(
         f"Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}' (via embedding server)..."
