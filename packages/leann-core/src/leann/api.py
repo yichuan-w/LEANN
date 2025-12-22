@@ -995,11 +995,22 @@ class LeannBuilder:
 
 class LeannSearcher:
     def __init__(self, index_path: str, enable_warmup: bool = False, **backend_kwargs):
+        """
+        Initializes the LEANN searcher by loading metadata and configuring the backend.
+
+        Args:
+            index_path: Base path to the index and metadata file.
+            enable_warmup: If True, performs a backend warm-up to optimize the first search.
+            **backend_kwargs: Additional arguments to customize backend behavior.
+        """
         # Fix path resolution for Colab and other environments
         if not Path(index_path).is_absolute():
             index_path = str(Path(index_path).resolve())
 
+        # Build metadata file path (.json)
         self.meta_path_str = f"{index_path}.meta.json"
+        
+        # Validate metadata file existence before proceeding
         if not Path(self.meta_path_str).exists():
             parent_dir = Path(index_path).parent
             print(
@@ -1009,26 +1020,44 @@ class LeannSearcher:
             raise FileNotFoundError(
                 f"Leann metadata file not found at {self.meta_path_str}, \033[91m you may need to rm -rf {parent_dir}\033[0m"
             )
+
+        # Load index configuration from JSON metadata file
         with open(self.meta_path_str, encoding="utf-8") as f:
             self.meta_data = json.load(f)
+
+        # Extract key configuration parameters
         backend_name = self.meta_data["backend_name"]
         self.embedding_model = self.meta_data["embedding_model"]
+        
+        # Backward compatibility handling for old and new metadata formats
         # Support both old and new format
         self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
         self.embedding_options = self.meta_data.get("embedding_options", {})
+
+        # Initialize passage manager for retrieving original text and metadata
         # Delegate portability handling to PassageManager
         self.passage_manager = PassageManager(
             self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
         )
+
+        # Store backend name for conditional search logic
         # Preserve backend name for conditional parameter forwarding
         self.backend_name = backend_name
+
+        # Retrieve backend factory from global registry
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
+
+        # Merge backend arguments: persisted metadata + runtime overrides
         final_kwargs = {**self.meta_data.get("backend_kwargs", {}), **backend_kwargs}
         final_kwargs["enable_warmup"] = enable_warmup
+
+        # Inject embedding options if present
         if self.embedding_options:
             final_kwargs.setdefault("embedding_options", self.embedding_options)
+
+        # Instantiate the actual backend search implementation
         self.backend_impl: LeannBackendSearcherInterface = backend_factory.searcher(
             index_path, **final_kwargs
         )
@@ -1073,21 +1102,26 @@ class LeannSearcher:
         Returns:
             List of SearchResult objects with text, metadata, and similarity scores
         """
+
+        # Fallback to lexical search if grep is explicitly requested
         # Handle grep search
         if use_grep:
             return self._grep_search(query, top_k)
 
+        # Detailed logging of the search request
         logger.info("🔍 LeannSearcher.search() called:")
         logger.info(f"  Query: '{query}'")
         logger.info(f"  Top_k: {top_k}")
         logger.info(f"  Metadata filters: {metadata_filters}")
         logger.info(f"  Additional kwargs: {kwargs}")
 
-        # Smart top_k detection and adjustment
+        # Smart top_k adjustment: cannot return more documents than exist
         # Use PassageManager length (sum of shard sizes) to avoid
         # depending on a massive combined map
         total_docs = len(self.passage_manager)
         original_top_k = top_k
+
+        # Manage inference (ZMQ) server if new embeddings must be computed
         if top_k > total_docs:
             top_k = total_docs
             logger.warning(
@@ -1097,6 +1131,7 @@ class LeannSearcher:
 
         zmq_port = None
 
+        # Select query prompt template (priority: provider > new meta > old meta)
         start_time = time.time()
         if recompute_embeddings:
             zmq_port = self.backend_impl._ensure_server_running(
@@ -1123,6 +1158,7 @@ class LeannSearcher:
         elif "prompt_template" in self.embedding_options:
             query_template = self.embedding_options["prompt_template"]
 
+        # Transform query text into a numeric embedding vector
         query_embedding = self.backend_impl.compute_query_embedding(
             query,
             use_server_if_available=recompute_embeddings,
@@ -1134,6 +1170,8 @@ class LeannSearcher:
         logger.info(f"  Embedding time: {embedding_time} seconds")
 
         start_time = time.time()
+
+        # Prepare parameters for vector backend execution
         backend_search_kwargs: dict[str, Any] = {
             "complexity": complexity,
             "beam_width": beam_width,
@@ -1142,13 +1180,17 @@ class LeannSearcher:
             "pruning_strategy": pruning_strategy,
             "zmq_port": zmq_port,
         }
+
+        # Enable batching only for HNSW backend
         # Only HNSW supports batching; forward conditionally
         if self.backend_name == "hnsw":
             backend_search_kwargs["batch_size"] = batch_size
 
+        # Include additional dynamic arguments
         # Merge any extra kwargs last
         backend_search_kwargs.update(kwargs)
 
+        # Execute vector search in the backend (e.g. HNSW or FAISS)
         results = self.backend_impl.search(
             query_embedding,
             top_k,
@@ -1158,6 +1200,7 @@ class LeannSearcher:
         logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
+        # Enrichment step: convert raw IDs into full SearchResult objects
         enriched_results = []
         if "labels" in results and "distances" in results:
             logger.info(f"  Processing {len(results['labels'][0])} passage IDs:")
@@ -1166,6 +1209,7 @@ class LeannSearcher:
                 zip(results["labels"][0], results["distances"][0])
             ):
                 try:
+                    # Retrieve associated text and metadata for the passage ID
                     passage_data = self.passage_manager.get_passage(string_id)
                     enriched_results.append(
                         SearchResult(
@@ -1176,7 +1220,7 @@ class LeannSearcher:
                         )
                     )
 
-                    # Color codes for better logging
+                    # Styled logging for visual debugging of results
                     GREEN = "\033[92m"
                     BLUE = "\033[94m"
                     YELLOW = "\033[93m"
@@ -1188,13 +1232,14 @@ class LeannSearcher:
                         f"   {GREEN}✓{RESET} {BLUE}[{i + 1:2d}]{RESET} {YELLOW}ID:{RESET} '{string_id}' {YELLOW}Score:{RESET} {dist:.4f} {YELLOW}Text:{RESET} {display_text}"
                     )
                 except KeyError:
+                    # Error handling if a returned ID is missing from passage manager
                     RED = "\033[91m"
                     RESET = "\033[0m"
                     logger.error(
                         f"   {RED}✗{RESET} [{i + 1:2d}] ID: '{string_id}' -> {RED}ERROR: Passage not found!{RESET}"
                     )
 
-        # Apply metadata filters if specified
+        # Apply boolean metadata filters on the retrieved results
         if metadata_filters:
             logger.info(f"  🔍 Applying metadata filters: {metadata_filters}")
             enriched_results = self.passage_manager.filter_search_results(
@@ -1227,12 +1272,13 @@ class LeannSearcher:
             raise FileNotFoundError("No .jsonl passages file found for grep search")
 
         try:
+             # Execute grep command (case-insensitive)
             cmd = ["grep", "-i", "-n", query, jsonl_file]
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
-            if result.returncode == 1:
+            if result.returncode == 1: # No matches
                 return []
-            elif result.returncode != 0:
+            elif result.returncode != 0: # Execution error
                 raise RuntimeError(f"Grep failed: {result.stderr}")
 
             matches = []
@@ -1244,8 +1290,10 @@ class LeannSearcher:
                     continue
 
                 try:
+                    # Parse JSON line returned by grep
                     data = json.loads(parts[1])
                     text = data.get("text", "")
+                    # Simple score based on keyword frequency
                     score = text.lower().count(query.lower())
 
                     matches.append(
@@ -1259,6 +1307,7 @@ class LeannSearcher:
                 except json.JSONDecodeError:
                     continue
 
+            # Sort by frequency score (descending)
             matches.sort(key=lambda x: x.score, reverse=True)
             return matches[:top_k]
 
@@ -1268,7 +1317,10 @@ class LeannSearcher:
             )
 
     def _python_regex_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """Fallback regex search"""
+        """
+        Fallback regex search
+        using Python regular expressions (slower than grep).
+        """
         jsonl_file = self._find_jsonl_file()
         if not jsonl_file:
             raise FileNotFoundError("No .jsonl file found")
@@ -1296,7 +1348,8 @@ class LeannSearcher:
         return matches[:top_k]
 
     def cleanup(self):
-        """Explicitly cleanup embedding server resources.
+        """
+        Explicitly cleanup embedding server resources.
         This method should be called after you're done using the searcher,
         especially in test environments or batch processing scenarios.
         """
@@ -1305,20 +1358,23 @@ class LeannSearcher:
             backend.stop_server()
 
     # Enable automatic cleanup patterns
+    # Context manager support ('with' statement)
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        """Ensure cleanup when exiting a 'with' block."""
         try:
             self.cleanup()
         except Exception:
             pass
 
     def __del__(self):
+        """Automatic cleanup when the object is garbage-collected."""
         try:
             self.cleanup()
         except Exception:
-            # Avoid noisy errors during interpreter shutdown
+            # Silence errors during interpreter shutdown to avoid unnecessary noise
             pass
 
 
