@@ -190,10 +190,16 @@ class PassageManager:
                 source_dict: dict[str, Any],
             ) -> list[Path]:
                 """
-                Build an ordered list of candidate paths. For relative paths specified in
-                metadata, prefer resolution relative to the metadata file directory first,
-                then fall back to CWD-based resolution, and finally to conventional
-                sibling defaults (e.g., <index_base>.passages.idx / .jsonl).
+                Build a hierarchy of candidate paths to locate files. For relative paths 
+                specified in metadata, prefer resolution relative to the metadata file 
+                directory first, then fall back to CWD-based resolution, and finally to 
+                conventional sibling defaults (e.g., <index_base>.passages.idx / .jsonl).
+
+                Priority: 
+                1. Absolute path, 
+                2. Relative to metadata, 
+                3. Relative to CWD, 
+                4. Standard convention.
                 """
                 candidates: list[Path] = []
                 # 1) Primary path
@@ -216,6 +222,7 @@ class PassageManager:
                 return candidates
 
             # Build candidate lists and pick first existing; otherwise keep last candidate for error message
+            # Resolution of index files (.idx) and passages (.jsonl)
             idx_default = f"{index_name_base}.passages.idx" if index_name_base else None
             idx_candidates = _resolve_candidates(
                 index_file, "index_path_relative", idx_default, source
@@ -232,10 +239,11 @@ class PassageManager:
 
             index_file = _pick_existing(idx_candidates)
             passage_file = _pick_existing(pas_candidates)
-
+            
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
 
+            # Loading the offset map using pickle for quick random access
             with open(index_file, "rb") as f:
                 offset_map: dict[str, int] = pickle.load(f)
                 self.offset_maps[passage_file] = offset_map
@@ -294,6 +302,7 @@ class PassageManager:
         logger.debug(f"Applying metadata filters to {len(search_results)} results")
 
         # Convert SearchResult objects to dictionaries for the filter engine
+        # Preparación de datos para el motor de filtrado
         result_dicts = []
         for result in search_results:
             result_dicts.append(
@@ -306,6 +315,7 @@ class PassageManager:
             )
 
         # Apply filters using the filter engine
+        # Re-encapsulamiento en objetos SearchResult
         filtered_dicts = self.filter_engine.apply_filters(result_dicts, metadata_filters)
 
         # Convert back to SearchResult objects
