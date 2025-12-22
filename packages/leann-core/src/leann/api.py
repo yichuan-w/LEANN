@@ -1386,13 +1386,27 @@ class LeannChat:
         enable_warmup: bool = False,
         searcher: Optional[LeannSearcher] = None,
         **kwargs,
-    ):
+    ):        
+        """
+        Initializes the RAG (Retrieval-Augmented Generation) chat interface.
+    
+        Args:
+            index_path: Path to the LEANN index.
+            llm_config: Configuration specific to the language model.
+            enable_warmup: If True, prepares the searcher for a faster initial response.
+            searcher: Existing LeannSearcher instance (optional).
+            **kwargs: Additional arguments passed to the searcher.
+        """
+        # Ownership logic: if no searcher is provided, create one and mark it as owned
         if searcher is None:
             self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
-            self._owns_searcher = True
+            self._owns_searcher = True # Indicates this class must shut down the server on cleanup
         else:
+            # If provided externally, use it but do not mark it for automatic cleanup
             self.searcher = searcher
             self._owns_searcher = False
+
+        # Initialize the language model via the global factory
         self.llm = get_llm(llm_config)
 
     def ask(
@@ -1411,8 +1425,14 @@ class LeannChat:
         use_grep: bool = False,
         **search_kwargs,
     ):
+        """
+        Performs a complete query: retrieves relevant context and generates an answer using the LLM.
+        """
+        # Ensure LLM arguments are a valid dictionary
         if llm_kwargs is None:
             llm_kwargs = {}
+
+        # --- PHASE 1: Retrieval ---
         search_time = time.time()
         results = self.searcher.search(
             question,
@@ -1429,6 +1449,9 @@ class LeannChat:
         )
         search_time = time.time() - search_time
         logger.info(f"  Search time: {search_time} seconds")
+        
+        # --- PHASE 2: Context and Prompt Preparation ---
+        # Concatenate retrieved chunks to inject them into the prompt
         context = "\n\n".join([r.text for r in results])
         prompt = (
             "Here is some retrieved context that might help answer your question:\n\n"
@@ -1437,6 +1460,7 @@ class LeannChat:
             "Please provide the best answer you can based on this context and your knowledge."
         )
 
+        # Detailed logging of the information passed to the LLM
         logger.info("The context provided to the LLM is:")
         logger.info(f"{'Relevance':<10} | {'Chunk id':<10} | {'Content':<60} | {'Source':<80}")
         logger.info("-" * 150)
@@ -1448,24 +1472,30 @@ class LeannChat:
             logger.info(
                 f"{chunk_relevance:<10} | {chunk_id:<10} | {chunk_content:<60} | {chunk_source:<80}"
             )
+
+        # --- PHASE 3: Generation ---
         ask_time = time.time()
+        # Send the enriched prompt to the language model
         ans = self.llm.ask(prompt, **llm_kwargs)
         ask_time = time.time() - ask_time
         logger.info(f"  Ask time: {ask_time} seconds")
         return ans
 
     def start_interactive(self):
-        """Start interactive chat session."""
+        """Starts an interactive chat session in the terminal."""
         session = create_api_session()
 
+        # Callback function that processes user input
         def handle_query(user_input: str):
             response = self.ask(user_input)
             print(f"Leann: {response}")
 
+        # Run the infinite interaction loop
         session.run_interactive_loop(handle_query)
 
     def cleanup(self):
-        """Explicitly cleanup embedding server resources.
+        """Explicitly cleanup embedding server resources. Only acts if this instance 
+        owns the searcher to avoid shutting down shared servers.
 
         This method should be called after you're done using the chat interface,
         especially in test environments or batch processing scenarios.
@@ -1475,18 +1505,24 @@ class LeannChat:
         if getattr(self, "_owns_searcher", False) and hasattr(self.searcher, "cleanup"):
             self.searcher.cleanup()
 
+    # --- LIFECYCLE PROTOCOL IMPLEMENTATIONS ---
     # Enable automatic cleanup patterns
+    
     def __enter__(self):
+        """Allows usage like: 'with LeannChat(...) as chat:'"""
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        """Ensures resource cleanup when exiting the context block."""
         try:
             self.cleanup()
         except Exception:
             pass
 
     def __del__(self):
+        """Final cleanup guarantee when the object is destroyed by Python."""
         try:
             self.cleanup()
         except Exception:
+            # Silenced to avoid noisy errors during interpreter shutdown
             pass
