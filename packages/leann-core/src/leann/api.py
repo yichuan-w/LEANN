@@ -131,6 +131,15 @@ def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int)
 
 @dataclass
 class SearchResult:
+    """
+    Represents a single result retrieved from the index.
+    
+    Attributes:
+        id (str): Unique identifier of the passage.
+        score (float): Similarity score (distance) relative to the query.
+        text (str): Textual content of the passage.
+        metadata (dict): Additional associated information (source, date, etc.).
+    """
     id: str
     score: float
     text: str
@@ -138,9 +147,21 @@ class SearchResult:
 
 
 class PassageManager:
+    """
+    Manages efficient access to texts stored on disk (JSONL format).
+    
+    Avoids the materialization of large corpora in RAM by using fragment offset maps, enabling O(1) searches on large files.
+    """
     def __init__(
         self, passage_sources: list[dict[str, Any]], metadata_file_path: Optional[str] = None
     ):
+        """
+        Initializes the manager by loading the displacement indices (.idx).
+        
+        Args:
+            passage_sources: List of dictionaries with paths to .jsonl and .idx files.
+            metadata_file_path: Path to the .meta.json file for relative path resolution.
+        """
         self.offset_maps: dict[str, dict[str, int]] = {}
         self.passage_files: dict[str, str] = {}
         # Avoid materializing a single gigantic global map to reduce memory
@@ -222,6 +243,23 @@ class PassageManager:
                 self._total_count += len(offset_map)
 
     def get_passage(self, passage_id: str) -> dict[str, Any]:
+        """
+        Retrieves the complete content of a passage from disk and performs a lightweight 
+        search across fragment maps to find the offset and extracts only the necessary 
+        line using random access.
+        
+        Args:
+        
+            passage_id (str): ID of the passage to search for.
+        
+        Returns:
+        
+            dict: JSON object containing the text and metadata of the passage.
+        
+        Raises:
+        
+            KeyError: If the ID does not exist in any loaded fragment.
+        """
         # Fast path: check each shard map (there are typically few shards).
         # This avoids building a massive combined dict while keeping lookups
         # bounded by the number of shards.
