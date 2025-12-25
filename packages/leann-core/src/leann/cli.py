@@ -51,7 +51,7 @@ def suppress_cpp_output(suppress: bool = True):
         os.close(old_stderr_fd)
 
 
-def extract_pdf_text_with_pymupdf(file_path: str) -> str:
+def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
     """Extract text from PDF using PyMuPDF for better quality."""
     try:
         import fitz  # PyMuPDF
@@ -67,7 +67,7 @@ def extract_pdf_text_with_pymupdf(file_path: str) -> str:
         return None
 
 
-def extract_pdf_text_with_pdfplumber(file_path: str) -> str:
+def extract_pdf_text_with_pdfplumber(file_path: str) -> str | None:
     """Extract text from PDF using pdfplumber for better quality."""
     try:
         import pdfplumber

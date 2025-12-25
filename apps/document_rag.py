@@ -5,7 +5,7 @@ Supports PDF, TXT, MD, and other document formats.
 
 import sys
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -52,7 +52,7 @@ class DocumentRAG(BaseRAGExample):
             help="Enable AST-aware chunking for code files in the data directory",
         )
 
-    async def load_data(self, args) -> list[Union[str, dict[str, Any]]]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load documents and convert to text chunks."""
         print(f"Loading documents from: {args.data_dir}")
         if args.file_types:
@@ -66,16 +66,12 @@ class DocumentRAG(BaseRAGExample):
             raise ValueError(f"Data directory not found: {args.data_dir}")
 
         # Load documents
-        reader_kwargs = {
-            "recursive": True,
-            "encoding": "utf-8",
-        }
-        if args.file_types:
-            reader_kwargs["required_exts"] = args.file_types
-
-        documents = SimpleDirectoryReader(args.data_dir, **reader_kwargs).load_data(
-            show_progress=True
-        )
+        documents = SimpleDirectoryReader(
+            args.data_dir,
+            recursive=True,
+            encoding="utf-8",
+            required_exts=args.file_types if args.file_types else None,
+        ).load_data(show_progress=True)
 
         if not documents:
             print(f"No documents found in {args.data_dir} with extensions {args.file_types}")

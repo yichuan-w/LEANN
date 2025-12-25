@@ -6,7 +6,7 @@ Provides common parameters and functionality for all RAG examples.
 import argparse
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import dotenv
 from leann.api import LeannBuilder, LeannChat
@@ -257,8 +257,8 @@ class BaseRAGExample(ABC):
         pass
 
     @abstractmethod
-    async def load_data(self, args) -> list[Union[str, dict[str, Any]]]:
-        """Load data from the source. Returns list of text chunks (strings or dicts with 'text' key)."""
+    async def load_data(self, args) -> list[dict[str, Any]]:
+        """Load data from the source. Returns list of text chunks as dicts with 'text' and 'metadata' keys."""
         pass
 
     def get_llm_config(self, args) -> dict[str, Any]:
@@ -282,8 +282,8 @@ class BaseRAGExample(ABC):
 
         return config
 
-    async def build_index(self, args, texts: list[Union[str, dict[str, Any]]]) -> str:
-        """Build LEANN index from texts (accepts strings or dicts with 'text' key)."""
+    async def build_index(self, args, texts: list[dict[str, Any]]) -> str:
+        """Build LEANN index from text chunks (dicts with 'text' and 'metadata' keys)."""
         index_path = str(Path(args.index_dir) / f"{self.default_index_name}.leann")
 
         print(f"\n[Building Index] Creating {self.name} index...")

@@ -11,14 +11,15 @@ from pathlib import Path
 from typing import Callable, Optional
 
 # Try to import readline with fallback for Windows
+HAS_READLINE = False
+readline = None  # type: ignore[assignment]
 try:
-    import readline
+    import readline  # type: ignore[no-redef]
 
     HAS_READLINE = True
 except ImportError:
     # Windows doesn't have readline by default
-    HAS_READLINE = False
-    readline = None
+    pass
 
 
 class InteractiveSession:

@@ -451,7 +451,8 @@ def compute_embeddings_sentence_transformers(
             # TODO: Haven't tested this yet
             torch.set_num_threads(min(8, os.cpu_count() or 4))
             try:
-                torch.backends.mkldnn.enabled = True
+                # PyTorch's ContextProp type is complex; cast for type checker
+                torch.backends.mkldnn.enabled = True  # type: ignore[assignment]
             except AttributeError:
                 pass
 

@@ -5,7 +5,7 @@ import argparse
 import faulthandler
 import os
 import time
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 from PIL import Image
@@ -223,7 +223,7 @@ if need_to_build_index:
         # Use filenames as identifiers instead of full paths for cleaner metadata
         filepaths = [os.path.basename(fp) for fp in filepaths]
     elif USE_HF_DATASET:
-        from datasets import load_dataset, concatenate_datasets, DatasetDict
+        from datasets import Dataset, DatasetDict, concatenate_datasets, load_dataset
 
         # Determine which datasets to load
         if DATASET_NAMES is not None:
@@ -281,12 +281,12 @@ if need_to_build_index:
                 splits_to_load = DATASET_SPLITS
 
             # Load and concatenate multiple splits for this dataset
-            datasets_to_concat = []
+            datasets_to_concat: list[Dataset] = []
             for split in splits_to_load:
                 if split not in dataset_dict:
                     print(f"  Warning: Split '{split}' not found in dataset. Available splits: {list(dataset_dict.keys())}")
                     continue
-                split_dataset = dataset_dict[split]
+                split_dataset = cast(Dataset, dataset_dict[split])
                 print(f"  Loaded split '{split}': {len(split_dataset)} pages")
                 datasets_to_concat.append(split_dataset)
 

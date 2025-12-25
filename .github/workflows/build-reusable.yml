@@ -28,15 +28,36 @@ jobs:
         run: |
           uv run --only-group lint pre-commit run --all-files --show-diff-on-failure
 
+  type-check:
+    name: Type Check with ty
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install ty
+        run: uv tool install ty
+
+      - name: Run ty type checker
+        run: |
+          # Run ty on core packages, apps, and tests
+          ty check packages/leann-core/src apps tests
 
   build:
-    needs: lint
+    needs: [lint, type-check]
     name: Build ${{ matrix.os }} Python ${{ matrix.python }}
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
-            python: '3.9'
+          # Note: Python 3.9 dropped - uses PEP 604 union syntax (str | None)
+          # which requires Python 3.10+
           - os: ubuntu-22.04
             python: '3.10'
           - os: ubuntu-22.04
@@ -47,8 +68,6 @@ jobs:
             python: '3.13'
           # ARM64 Linux builds
           - os: ubuntu-24.04-arm
-            python: '3.9'
-          - os: ubuntu-24.04-arm
             python: '3.10'
           - os: ubuntu-24.04-arm
             python: '3.11'
@@ -56,8 +75,6 @@ jobs:
             python: '3.12'
           - os: ubuntu-24.04-arm
             python: '3.13'
-          - os: macos-14
-            python: '3.9'
           - os: macos-14
             python: '3.10'
           - os: macos-14
@@ -67,8 +84,6 @@ jobs:
           - os: macos-14
             python: '3.13'
           - os: macos-15
-            python: '3.9'
-          - os: macos-15
             python: '3.10'
           - os: macos-15
             python: '3.11'
@@ -76,16 +91,24 @@ jobs:
             python: '3.12'
           - os: macos-15
             python: '3.13'
-          - os: macos-13
-            python: '3.9'
-          - os: macos-13
+          # Intel Mac builds (x86_64) - replaces deprecated macos-13
+          # Note: Python 3.13 excluded - PyTorch has no wheels for macOS x86_64 + Python 3.13
+          # (PyTorch <=2.4.1 lacks cp313, PyTorch >=2.5.0 dropped Intel Mac support)
+          - os: macos-15-intel
             python: '3.10'
-          - os: macos-13
+          - os: macos-15-intel
             python: '3.11'
-          - os: macos-13
+          - os: macos-15-intel
             python: '3.12'
-          # Note: macos-13 + Python 3.13 excluded due to PyTorch compatibility
-          # (PyTorch 2.5+ supports Python 3.13 but not Intel Mac x86_64)
+          # macOS 26 (beta) - arm64
+          - os: macos-26
+            python: '3.10'
+          - os: macos-26
+            python: '3.11'
+          - os: macos-26
+            python: '3.12'
+          - os: macos-26
+            python: '3.13'
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -204,13 +227,16 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            # Homebrew libraries on each macOS version require matching minimum version
-            if [[ "${{ matrix.os }}" == "macos-13" ]]; then
-              export MACOSX_DEPLOYMENT_TARGET=13.0
-            elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
-              export MACOSX_DEPLOYMENT_TARGET=14.0
-            elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+            # Set deployment target based on runner
+            # macos-15-intel runs macOS 15, so target 15.0 (system libraries require it)
+            if [[ "${{ matrix.os }}" == "macos-15-intel" ]]; then
               export MACOSX_DEPLOYMENT_TARGET=15.0
+            elif [[ "${{ matrix.os }}" == macos-14* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=14.0
+            elif [[ "${{ matrix.os }}" == macos-15* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=15.0
+            elif [[ "${{ matrix.os }}" == macos-26* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=26.0
             fi
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
@@ -224,14 +250,16 @@ jobs:
             # Use system clang for better compatibility
             export CC=clang
             export CXX=clang++
-            # DiskANN requires macOS 13.3+ for sgesdd_ LAPACK function
-            # But Homebrew libraries on each macOS version require matching minimum version
-            if [[ "${{ matrix.os }}" == "macos-13" ]]; then
-              export MACOSX_DEPLOYMENT_TARGET=13.3
-            elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
-              export MACOSX_DEPLOYMENT_TARGET=14.0
-            elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+            # Set deployment target based on runner
+            # macos-15-intel runs macOS 15, so target 15.0 (system libraries require it)
+            if [[ "${{ matrix.os }}" == "macos-15-intel" ]]; then
               export MACOSX_DEPLOYMENT_TARGET=15.0
+            elif [[ "${{ matrix.os }}" == macos-14* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=14.0
+            elif [[ "${{ matrix.os }}" == macos-15* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=15.0
+            elif [[ "${{ matrix.os }}" == macos-26* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=26.0
             fi
             uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
@@ -269,16 +297,19 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           # Determine deployment target based on runner OS
-          # Must match the Homebrew libraries for each macOS version
-          if [[ "${{ matrix.os }}" == "macos-13" ]]; then
-            HNSW_TARGET="13.0"
-            DISKANN_TARGET="13.3"
-          elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
-            HNSW_TARGET="14.0"
-            DISKANN_TARGET="14.0"
-          elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+          # macos-15-intel runs macOS 15, so target 15.0 (system libraries require it)
+          if [[ "${{ matrix.os }}" == "macos-15-intel" ]]; then
             HNSW_TARGET="15.0"
             DISKANN_TARGET="15.0"
+          elif [[ "${{ matrix.os }}" == macos-14* ]]; then
+            HNSW_TARGET="14.0"
+            DISKANN_TARGET="14.0"
+          elif [[ "${{ matrix.os }}" == macos-15* ]]; then
+            HNSW_TARGET="15.0"
+            DISKANN_TARGET="15.0"
+          elif [[ "${{ matrix.os }}" == macos-26* ]]; then
+            HNSW_TARGET="26.0"
+            DISKANN_TARGET="26.0"
           fi
 
           # Repair HNSW wheel
@@ -334,12 +365,15 @@ jobs:
           PY_TAG=$($UV_PY -c "import sys; print(f'cp{sys.version_info[0]}{sys.version_info[1]}')")
 
           if [[ "$RUNNER_OS" == "macOS" ]]; then
-            if [[ "${{ matrix.os }}" == "macos-13" ]]; then
-              export MACOSX_DEPLOYMENT_TARGET=13.3
-            elif [[ "${{ matrix.os }}" == "macos-14" ]]; then
-              export MACOSX_DEPLOYMENT_TARGET=14.0
-            elif [[ "${{ matrix.os }}" == "macos-15" ]]; then
+            # macos-15-intel runs macOS 15, so target 15.0 (system libraries require it)
+            if [[ "${{ matrix.os }}" == "macos-15-intel" ]]; then
               export MACOSX_DEPLOYMENT_TARGET=15.0
+            elif [[ "${{ matrix.os }}" == macos-14* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=14.0
+            elif [[ "${{ matrix.os }}" == macos-15* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=15.0
+            elif [[ "${{ matrix.os }}" == macos-26* ]]; then
+              export MACOSX_DEPLOYMENT_TARGET=26.0
             fi
           fi
 

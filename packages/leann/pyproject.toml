@@ -7,7 +7,7 @@ name = "leann"
 version = "0.3.5"
 description = "LEANN - The smallest vector index in the world. RAG Everything with LEANN!"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
     { name = "LEANN Team" }
@@ -18,10 +18,10 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 # Default installation: core + hnsw + diskann

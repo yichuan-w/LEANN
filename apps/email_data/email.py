@@ -127,11 +127,12 @@ class EmlxMboxReader(MboxReader):
 
     def load_data(
         self,
-        directory: Path,
+        file: Path,  # Note: for EmlxMboxReader, this is actually a directory
         extra_info: dict | None = None,
         fs: AbstractFileSystem | None = None,
     ) -> list[Document]:
         """Parse .emlx files from directory into strings using MboxReader logic."""
+        directory = file  # Rename for clarity - this is a directory of .emlx files
         import os
         import tempfile
 
