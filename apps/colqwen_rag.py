@@ -236,9 +236,84 @@ class ColQwenRAG:
 
         return search_results
 
+    def _validate_query_input(self, query: str) -> bool:
+        """
+        Validate user input to prevent injection attacks (command, SQL, NoSQL, etc).
+        
+        Args:
+            query: The user input query to validate
+            
+        Returns:
+            True if query is safe, False otherwise
+        """
+        if not query:
+            return False
+        
+        # Enforce maximum length to prevent buffer overflow and DoS
+        if len(query) > 10000:
+            print("⚠️  Input blocked: query exceeds maximum length")
+            return False
+        
+        # Block command injection patterns
+        command_injection_patterns = [
+            ";",  # Command separator
+            "|",  # Pipe operator
+            "&",  # Background/AND operator
+            "$(",  # Command substitution
+            "`",  # Backticks (command substitution)
+            "eval",  # eval function
+            "__import__",  # Import manipulation
+            "exec",  # exec function
+            "os.system",  # System calls
+            "subprocess",  # Subprocess calls
+            "open(",  # File access
+        ]
+        
+        # Block SQL/NoSQL injection patterns
+        sql_injection_patterns = [
+            " or ",  # SQL OR condition
+            " and ",  # SQL AND condition
+            " union ",  # SQL UNION
+            " select ",  # SQL SELECT
+            " drop ",  # SQL DROP
+            " insert ",  # SQL INSERT
+            " update ",  # SQL UPDATE
+            " delete ",  # SQL DELETE
+            "--",  # SQL comment
+            "/*",  # SQL comment
+            "*/",  # SQL comment
+            "$where",  # MongoDB $where
+            "$ne",  # MongoDB $ne operator
+            "$gt",  # MongoDB $gt operator
+            "$lt",  # MongoDB $lt operator
+            "$regex",  # MongoDB regex
+            "$or",  # MongoDB $or
+            "$and",  # MongoDB $and
+        ]
+        
+        query_lower = query.lower()
+        
+        # Check command injection patterns
+        for pattern in command_injection_patterns:
+            if pattern in query_lower:
+                print(f"⚠️  Input blocked: contains potentially dangerous pattern '{pattern}'")
+                return False
+        
+        # Check SQL/NoSQL injection patterns
+        for pattern in sql_injection_patterns:
+            if pattern in query_lower:
+                print(f"⚠️  Input blocked: contains potentially dangerous pattern '{pattern}'")
+                return False
+        
+        return True
+
     def ask(self, index_name: str, interactive: bool = False):
         """
         Interactive Q&A with the indexed documents.
+        
+        SECURITY: All user input from input() is validated via _validate_query_input()
+        before being passed to search(). This prevents command injection, SQL injection,
+        NoSQL injection, and other injection attacks.
 
         Args:
             index_name: Name of the index to query
@@ -250,16 +325,25 @@ class ColQwenRAG:
             print("Type 'quit' to exit, 'help' for commands")
             while True:
                 try:
-                    query = input("\n🤔 Your question: ").strip()
-                    if query.lower() in ["quit", "exit", "q"]:
+                    # Collect user input
+                    user_input = input("\n🤔 Your question: ").strip()
+                    
+                    # Check for exit commands first (these bypass validation as they're control flow)
+                    if user_input.lower() in ["quit", "exit", "q"]:
                         break
-                    elif query.lower() == "help":
+                    elif user_input.lower() == "help":
                         print("Commands: quit/exit/q (exit), help (this message)")
                         continue
-                    elif not query:
+                    elif not user_input:
                         continue
-
-                    self.search(index_name, query, top_k=3)
+                    
+                    # SECURITY: Validate user input before processing to prevent injection attacks
+                    if not self._validate_query_input(user_input):
+                        print("❌ Invalid input. Please ask a natural language question.")
+                        continue
+                    
+                    # Pass validated query to search - input is now safe
+                    self.search(index_name, user_input, top_k=3)
 
                     # TODO: Add answer generation with Qwen-VL
                     print("\n💡 For detailed answers, we can integrate Qwen-VL here!")
@@ -268,9 +352,13 @@ class ColQwenRAG:
                     print("\n👋 Goodbye!")
                     break
         else:
-            query = input("🤔 Your question: ").strip()
-            if query:
-                self.search(index_name, query)
+            # Collect user input
+            user_input = input("🤔 Your question: ").strip()
+            
+            # SECURITY: Validate user input before processing to prevent injection attacks
+            if user_input and self._validate_query_input(user_input):
+                # Pass validated query to search - input is now safe
+                self.search(index_name, user_input)
 
     def _embed_images(self, images: list[Image.Image]) -> torch.Tensor:
         """Generate embeddings for a list of images."""

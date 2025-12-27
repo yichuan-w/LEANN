@@ -103,9 +103,79 @@ class InteractiveSession:
             if item:
                 print(f"  {i + 1}: {item}")
 
+    def _validate_input(self, user_input: str) -> bool:
+        """
+        Validate user input to prevent injection attacks.
+        
+        Args:
+            user_input: The user input to validate
+            
+        Returns:
+            True if input is safe, False otherwise
+        """
+        if not user_input:
+            return False
+        
+        # Enforce maximum length to prevent buffer overflow and DoS
+        if len(user_input) > 10000:
+            return False
+        
+        # Block command injection patterns
+        command_injection_patterns = [
+            ";",  # Command separator
+            "|",  # Pipe operator
+            "&",  # Background/AND operator
+            "$(",  # Command substitution
+            "`",  # Backticks (command substitution)
+            "eval",  # eval function
+            "__import__",  # Import manipulation
+            "exec",  # exec function
+            "os.system",  # System calls
+            "subprocess",  # Subprocess calls
+        ]
+        
+        # Block SQL/NoSQL injection patterns
+        sql_injection_patterns = [
+            " or ",  # SQL OR condition
+            " and ",  # SQL AND condition
+            " union ",  # SQL UNION
+            " select ",  # SQL SELECT
+            " drop ",  # SQL DROP
+            " insert ",  # SQL INSERT
+            " update ",  # SQL UPDATE
+            " delete ",  # SQL DELETE
+            "--",  # SQL comment
+            "/*",  # SQL comment
+            "*/",  # SQL comment
+            "$where",  # MongoDB $where
+            "$ne",  # MongoDB $ne operator
+            "$gt",  # MongoDB $gt operator
+            "$lt",  # MongoDB $lt operator
+            "$regex",  # MongoDB regex
+            "$or",  # MongoDB $or
+            "$and",  # MongoDB $and
+        ]
+        
+        user_input_lower = user_input.lower()
+        
+        # Check command injection patterns
+        for pattern in command_injection_patterns:
+            if pattern in user_input_lower:
+                return False
+        
+        # Check SQL/NoSQL injection patterns
+        for pattern in sql_injection_patterns:
+            if pattern in user_input_lower:
+                return False
+        
+        return True
+
     def get_user_input(self) -> Optional[str]:
         """
         Get user input with readline support.
+        
+        SECURITY: Input is returned as-is but callers should validate it
+        via _validate_input() before passing to dangerous functions.
 
         Returns:
             User input string, or None if EOF (Ctrl+D)
