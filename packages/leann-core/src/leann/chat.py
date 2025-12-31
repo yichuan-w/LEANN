@@ -8,7 +8,7 @@ import difflib
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import torch
 
@@ -462,6 +462,21 @@ class LLMInterface(ABC):
         # """
         pass
 
+    def ask_stream(self, prompt: str, **kwargs) -> Iterator[str]:
+        """
+        Stream LLM response token by token. Default implementation yields complete response.
+
+        Override this method in subclasses to provide true streaming support.
+
+        Args:
+            prompt: The input prompt for the LLM.
+            **kwargs: Additional keyword arguments for the LLM backend.
+
+        Yields:
+            String tokens from the LLM response.
+        """
+        yield self.ask(prompt, **kwargs)
+
 
 class OllamaChat(LLMInterface):
     """LLM interface for Ollama models."""
@@ -774,10 +789,12 @@ class OpenAIChat(LLMInterface):
         model: str = "gpt-4o",
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        ssl_cert: Optional[str] = None,
     ):
         self.model = model
         self.base_url = resolve_openai_base_url(base_url)
         self.api_key = resolve_openai_api_key(api_key)
+        self.ssl_cert = ssl_cert
 
         if not self.api_key:
             raise ValueError(
@@ -793,8 +810,22 @@ class OpenAIChat(LLMInterface):
         try:
             import openai
 
-            self.client = openai.OpenAI(api_key=self.api_key, base_url=self.base_url)
-        except ImportError:
+            # Create httpx client with SSL cert if provided
+            http_client = None
+            if self.ssl_cert:
+                import httpx
+
+                http_client = httpx.Client(verify=self.ssl_cert)
+                logger.info(f"Using SSL certificate: {self.ssl_cert}")
+
+            self.client = openai.OpenAI(
+                api_key=self.api_key, base_url=self.base_url, http_client=http_client
+            )
+        except ImportError as e:
+            if "httpx" in str(e):
+                raise ImportError(
+                    "The 'httpx' library is required for SSL certificate support. Please install it with 'pip install httpx'."
+                )
             raise ImportError(
                 "The 'openai' library is required for OpenAI models. Please install it with 'pip install openai'."
             )
@@ -808,7 +839,8 @@ class OpenAIChat(LLMInterface):
         }
 
         # Handle max_tokens vs max_completion_tokens based on model
-        max_tokens = kwargs.get("max_tokens", 1000)
+        logger.info("!!TESTE!!")
+        max_tokens = kwargs.get("max_tokens", 10000)
         if "o3" in self.model or "o4" in self.model or "o1" in self.model:
             # o-series models use max_completion_tokens
             params["max_completion_tokens"] = max_tokens
@@ -849,6 +881,50 @@ class OpenAIChat(LLMInterface):
         except Exception as e:
             logger.error(f"Error communicating with OpenAI: {e}")
             return f"Error: Could not get a response from OpenAI. Details: {e}"
+
+    def ask_stream(self, prompt: str, **kwargs) -> Iterator[str]:
+        """Stream OpenAI response token by token."""
+        # Default parameters for OpenAI
+        params = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": kwargs.get("temperature", 0.7),
+            "stream": True,  # Enable streaming
+        }
+
+        # Handle max_tokens vs max_completion_tokens based on model
+        max_tokens = kwargs.get("max_tokens", 10000)
+        if "o3" in self.model or "o4" in self.model or "o1" in self.model:
+            # o-series models use max_completion_tokens
+            params["max_completion_tokens"] = max_tokens
+            params["temperature"] = 1.0
+        else:
+            # Other models use max_tokens
+            params["max_tokens"] = max_tokens
+
+        # Handle thinking budget for reasoning models
+        thinking_budget = kwargs.get("thinking_budget")
+        if thinking_budget and thinking_budget in ["low", "medium", "high"]:
+            o_series_models = ["o3", "o3-mini", "o4-mini", "o1", "o3-pro", "o3-deep-research"]
+            if any(model in self.model for model in o_series_models):
+                params["reasoning_effort"] = thinking_budget
+                logger.info(f"Applied reasoning_effort={thinking_budget} to model {self.model}")
+
+        # Add other kwargs (excluding processed ones)
+        for k, v in kwargs.items():
+            if k not in ["max_tokens", "temperature", "thinking_budget"]:
+                params[k] = v
+
+        logger.info(f"Sending streaming request to OpenAI with model {self.model}")
+
+        try:
+            stream = self.client.chat.completions.create(**params)
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            logger.error(f"OpenAI streaming error: {e}")
+            yield f"Error: {e}"
 
 
 class AnthropicChat(LLMInterface):

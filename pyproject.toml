@@ -27,6 +27,12 @@ dependencies = [
     # breaks our Python 3.9 test matrix when pulled in by sentence-transformers.
     "transformers<4.46",
     "openai>=1.0.0",
+    # FastAPI and HTTP server dependencies
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    "websockets>=12.0",
+    "httpx>=0.24.0",
     # PDF parsing dependencies - essential for document processing
     "PyPDF2>=3.0.0",
     "pdfplumber>=0.11.0",

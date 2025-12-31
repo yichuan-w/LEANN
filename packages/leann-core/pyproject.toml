@@ -49,6 +49,7 @@ colab = [
 [project.scripts]
 leann = "leann.cli:main"
 leann_mcp = "leann.mcp:main"
+leann_http = "leann.http_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
