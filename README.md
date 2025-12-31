@@ -1103,7 +1103,7 @@ leann remove my-docs
 <details>
 <summary><strong>📋 Click to expand: Complete CLI Reference</strong></summary>
 
-You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
+You can use `leann --help`, or `leann build --help`, `leann update --help`, `leann search --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
 
 **Build Command:**
 ```bash
@@ -1117,6 +1117,27 @@ Options:
   --force                      Force rebuild existing index
   --compact / --no-compact     Use compact storage (default: true). Must be `no-compact` for `no-recompute` build.
   --recompute / --no-recompute Enable recomputation (default: true)
+```
+
+**Update Command:**
+```bash
+leann update INDEX_NAME --docs DIRECTORY|FILE [DIRECTORY|FILE ...] [OPTIONS]
+
+# Add new documents to an existing index
+# Note: Only works with HNSW indices built with --no-compact
+
+Options:
+  --file-types TYPES           File extensions to include (e.g., '.txt,.pdf')
+  --include-hidden             Include hidden files/directories
+  --doc-chunk-size N           Document chunk size (default: 256)
+  --doc-chunk-overlap N        Document chunk overlap (default: 128)
+  --code-chunk-size N          Code chunk size (default: 512)
+  --code-chunk-overlap N       Code chunk overlap (default: 50)
+  --use-ast-chunking           Enable AST-aware chunking for code
+
+Examples:
+  leann update my-docs --docs ./new-documents
+  leann update my-code --docs ./new-src --file-types .py,.js
 ```
 
 **Search Command:**

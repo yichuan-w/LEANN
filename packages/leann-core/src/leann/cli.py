@@ -90,6 +90,7 @@ Examples:
   leann build my-files --docs ./file1.py ./file2.txt ./docs/             # Build index from files and directories
   leann build my-mixed --docs ./readme.md ./src/ ./config.json           # Build index from mixed files/dirs
   leann build my-ppts --docs ./ --file-types .pptx,.pdf                  # Index only PowerPoint and PDF files
+  leann update my-docs --docs ./new-documents                            # Add new documents to existing index
   leann search my-docs "query"                                           # Search in my-docs index
   leann ask my-docs "question"                                           # Ask my-docs index
   leann list                                                             # List all stored indexes
@@ -236,6 +237,77 @@ Examples:
             help="AST chunk overlap in CHARACTERS (default: 64). Added to chunk size, not included in it. ~1.2 tokens per character for code",
         )
         build_parser.add_argument(
+            "--ast-fallback-traditional",
+            action="store_true",
+            default=True,
+            help="Fall back to traditional chunking if AST chunking fails (default: True)",
+        )
+
+        # Update command
+        update_parser = subparsers.add_parser(
+            "update", help="Update existing index with new documents"
+        )
+        update_parser.add_argument("index_name", help="Index name to update")
+        update_parser.add_argument(
+            "--docs",
+            type=str,
+            nargs="+",
+            required=True,
+            help="New documents directories and/or files to add",
+        )
+        update_parser.add_argument(
+            "--file-types",
+            type=str,
+            help="Comma-separated list of file extensions to include (e.g., '.txt,.pdf,.pptx'). If not specified, uses default supported types.",
+        )
+        update_parser.add_argument(
+            "--include-hidden",
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help="Include hidden files and directories (paths starting with '.') during indexing (default: false)",
+        )
+        update_parser.add_argument(
+            "--doc-chunk-size",
+            type=int,
+            default=256,
+            help="Document chunk size in TOKENS (default: 256). Should match original build settings for consistency.",
+        )
+        update_parser.add_argument(
+            "--doc-chunk-overlap",
+            type=int,
+            default=128,
+            help="Document chunk overlap in TOKENS (default: 128). Should match original build settings for consistency.",
+        )
+        update_parser.add_argument(
+            "--code-chunk-size",
+            type=int,
+            default=512,
+            help="Code chunk size in TOKENS (default: 512). Should match original build settings for consistency.",
+        )
+        update_parser.add_argument(
+            "--code-chunk-overlap",
+            type=int,
+            default=50,
+            help="Code chunk overlap in TOKENS (default: 50). Should match original build settings for consistency.",
+        )
+        update_parser.add_argument(
+            "--use-ast-chunking",
+            action="store_true",
+            help="Enable AST-aware chunking for code files (requires astchunk)",
+        )
+        update_parser.add_argument(
+            "--ast-chunk-size",
+            type=int,
+            default=300,
+            help="AST chunk size in CHARACTERS (non-whitespace) (default: 300).",
+        )
+        update_parser.add_argument(
+            "--ast-chunk-overlap",
+            type=int,
+            default=64,
+            help="AST chunk overlap in CHARACTERS (default: 64).",
+        )
+        update_parser.add_argument(
             "--ast-fallback-traditional",
             action="store_true",
             default=True,
@@ -1460,6 +1532,147 @@ Examples:
         # Register this project directory in global registry
         self.register_project_dir()
 
+    async def update_index(self, args):
+        """Update an existing index with new documents."""
+        index_name = args.index_name
+        docs_paths = args.docs
+
+        # Check if index exists
+        if not self.index_exists(index_name):
+            print(f"❌ Index '{index_name}' not found.")
+            print(f"   Use 'leann build {index_name} --docs <dir>' to create it first.")
+            return
+
+        index_dir = self.indexes_dir / index_name
+        index_path = self.get_index_path(index_name)
+        meta_path = index_dir / "documents.leann.meta.json"
+
+        # Load and validate metadata
+        print(f"📋 Loading index metadata for '{index_name}'...")
+        try:
+            import json
+
+            with open(meta_path, encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception as e:
+            print(f"❌ Error reading index metadata: {e}")
+            return
+
+        # Validate backend is HNSW
+        backend_name = meta.get("backend_name")
+        if backend_name != "hnsw":
+            print(f"❌ Cannot update: Index uses '{backend_name}' backend.")
+            print("   Only HNSW indices support updates.")
+            return
+
+        # Validate index is not compact
+        meta_backend_kwargs = meta.get("backend_kwargs", {})
+        is_compact = meta.get("is_compact", meta_backend_kwargs.get("is_compact", True))
+        if is_compact:
+            print("❌ Cannot update: Index is compact.")
+            print("   Compact HNSW indices do not support in-place updates.")
+            print(f"   Rebuild with: leann build {index_name} --docs <dir> --no-compact --force")
+            return
+
+        # Extract embedding configuration from metadata
+        embedding_model = meta.get("embedding_model")
+        embedding_mode = meta.get("embedding_mode")
+        embedding_options = meta.get("embedding_options", {})
+        graph_degree = meta_backend_kwargs.get("graph_degree", 32)
+        complexity = meta_backend_kwargs.get("complexity", 64)
+        is_recompute = meta.get("is_pruned") or meta_backend_kwargs.get("is_recompute", True)
+        num_threads = meta_backend_kwargs.get("num_threads", 1)
+
+        print("✅ Index configuration:")
+        print(f"   Backend: {backend_name}")
+        print(f"   Embedding model: {embedding_model}")
+        print(f"   Embedding mode: {embedding_mode}")
+        print(f"   Is compact: {is_compact}")
+        print(f"   Is recompute: {is_recompute}")
+
+        # Display paths being added
+        files = [p for p in docs_paths if Path(p).is_file()]
+        directories = [p for p in docs_paths if Path(p).is_dir()]
+
+        print(f"\n📂 Adding {len(docs_paths)} path{'s' if len(docs_paths) > 1 else ''}:")
+        if files:
+            print(f"  📄 Files ({len(files)}):")
+            for i, file_path in enumerate(files, 1):
+                print(f"    {i}. {Path(file_path).resolve()}")
+        if directories:
+            print(f"  📁 Directories ({len(directories)}):")
+            for i, dir_path in enumerate(directories, 1):
+                print(f"    {i}. {Path(dir_path).resolve()}")
+
+        # Configure chunking based on CLI args
+        doc_chunk_size = max(1, int(args.doc_chunk_size))
+        doc_chunk_overlap = max(0, int(args.doc_chunk_overlap))
+        if doc_chunk_overlap >= doc_chunk_size:
+            print(
+                f"⚠️  Adjusting doc chunk overlap from {doc_chunk_overlap} to {doc_chunk_size - 1} (must be < chunk size)"
+            )
+            doc_chunk_overlap = doc_chunk_size - 1
+
+        code_chunk_size = max(1, int(args.code_chunk_size))
+        code_chunk_overlap = max(0, int(args.code_chunk_overlap))
+        if code_chunk_overlap >= code_chunk_size:
+            print(
+                f"⚠️  Adjusting code chunk overlap from {code_chunk_overlap} to {code_chunk_size - 1} (must be < chunk size)"
+            )
+            code_chunk_overlap = code_chunk_size - 1
+
+        self.node_parser = SentenceSplitter(
+            chunk_size=doc_chunk_size,
+            chunk_overlap=doc_chunk_overlap,
+            separator=" ",
+            paragraph_separator="\n\n",
+        )
+        self.code_parser = SentenceSplitter(
+            chunk_size=code_chunk_size,
+            chunk_overlap=code_chunk_overlap,
+            separator="\n",
+            paragraph_separator="\n\n",
+        )
+
+        # Load new documents
+        print("\n🔄 Loading new documents...")
+        all_texts = self.load_documents(
+            docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+        )
+        if not all_texts:
+            print("❌ No new documents found to add")
+            return
+
+        print(f"✅ Loaded {len(all_texts)} new chunks")
+
+        # Initialize builder with settings from existing index
+        print(f"\n🔨 Updating index '{index_name}'...")
+        builder = LeannBuilder(
+            backend_name=backend_name,
+            embedding_model=embedding_model,
+            embedding_mode=embedding_mode,
+            embedding_options=embedding_options or None,
+            graph_degree=graph_degree,
+            complexity=complexity,
+            is_compact=is_compact,
+            is_recompute=is_recompute,
+            num_threads=num_threads,
+        )
+
+        # Add new texts to builder
+        for chunk in all_texts:
+            builder.add_text(chunk["text"], metadata=chunk["metadata"])
+
+        # Call update_index instead of build_index
+        try:
+            builder.update_index(index_path)
+            print(f"✅ Index updated successfully at {index_path}")
+            print(f"   Added {len(all_texts)} new chunks to '{index_name}'")
+        except ValueError as e:
+            print(f"❌ Update failed: {e}")
+        except Exception as e:
+            print(f"❌ Unexpected error during update: {e}")
+
     async def search_documents(self, args):
         index_name = args.index_name
         query = args.query
@@ -1684,6 +1897,8 @@ Examples:
             self.remove_index(args.index_name, args.force)
         elif args.command == "build":
             await self.build_index(args)
+        elif args.command == "update":
+            await self.update_index(args)
         elif args.command == "search":
             await self.search_documents(args)
         elif args.command == "ask":

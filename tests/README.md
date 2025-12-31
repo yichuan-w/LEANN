@@ -19,6 +19,16 @@ Basic functionality tests that verify:
 - Basic index building and searching works for both HNSW and DiskANN backends
 - Uses parametrized tests to test both backends
 
+### `test_cli_update.py`
+Tests CLI update command parsing and validation:
+- Verifies update command accepts required arguments (index name, --docs)
+- Tests multiple document paths support
+- Tests chunking options (doc-chunk-size, code-chunk-size, overlaps)
+- Tests file type filters (--file-types)
+- Tests AST chunking options (--use-ast-chunking, --ast-chunk-size)
+- Tests include-hidden flag
+- Validates default parameter values
+
 ### `test_document_rag.py`
 Tests the document RAG example functionality:
 - Tests with facebook/contriever embeddings
