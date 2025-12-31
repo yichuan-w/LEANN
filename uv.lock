@@ -2013,6 +2013,7 @@ dependencies = [
     { name = "seaborn" },
     { name = "sentence-transformers" },
     { name = "sglang" },
+    { name = "sse-starlette" },
     { name = "torch" },
     { name = "torchvision" },
     { name = "tqdm" },
@@ -2100,6 +2101,7 @@ requires-dist = [
     { name = "seaborn" },
     { name = "sentence-transformers", specifier = ">=3.0.0" },
     { name = "sglang" },
+    { name = "sse-starlette", specifier = ">=2.0.0" },
     { name = "torch" },
     { name = "torchvision", specifier = ">=0.23.0" },
     { name = "tqdm" },
@@ -4905,6 +4907,19 @@ wheels = [
 [package.optional-dependencies]
 asyncio = [
     { name = "greenlet" },
+]
+
+[[package]]
+name = "sse-starlette"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "starlette" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/da/34/f5df66cb383efdbf4f2db23cabb27f51b1dcb737efaf8a558f6f1d195134/sse_starlette-3.1.2.tar.gz", hash = "sha256:55eff034207a83a0eb86de9a68099bd0157838f0b8b999a1b742005c71e33618", size = 26303, upload-time = "2025-12-31T08:02:20.023Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/95/8c4b76eec9ae574474e5d2997557cebf764bcd3586458956c30631ae08f4/sse_starlette-3.1.2-py3-none-any.whl", hash = "sha256:cd800dd349f4521b317b9391d3796fa97b71748a4da9b9e00aafab32dda375c8", size = 12484, upload-time = "2025-12-31T08:02:18.894Z" },
 ]
 
 [[package]]

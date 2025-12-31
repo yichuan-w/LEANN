@@ -14,9 +14,10 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sse_starlette.sse import EventSourceResponse
 import uvicorn
 
 from .api import LeannSearcher
@@ -70,6 +71,207 @@ class ServerState:
 
 
 state = ServerState()
+
+# MCP session management
+mcp_sessions = {}  # sessionId -> asyncio.Queue for messages
+
+
+def handle_mcp_request(request):
+    """Handle MCP JSON-RPC 2.0 requests."""
+    if request.get("method") == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "capabilities": {"tools": {}},
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {"name": "leann-http", "version": "1.0.0"},
+            },
+        }
+
+    elif request.get("method") == "tools/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "tools": [
+                    {
+                        "name": "leann_search",
+                        "description": """🔍 Search code using natural language - like having a coding assistant who knows your entire codebase!
+
+🎯 **Perfect for**:
+- "How does authentication work?" → finds auth-related code
+- "Error handling patterns" → locates try-catch blocks and error logic
+- "Database connection setup" → finds DB initialization code
+- "API endpoint definitions" → locates route handlers
+- "Configuration management" → finds config files and usage
+
+💡 **Pro tip**: Use this before making any changes to understand existing patterns and conventions.""",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "index_name": {
+                                    "type": "string",
+                                    "description": "Name of the LEANN index to search. Use 'leann_list' first to see available indexes.",
+                                },
+                                "query": {
+                                    "type": "string",
+                                    "description": "Search query - can be natural language (e.g., 'how to handle errors') or technical terms (e.g., 'async function definition')",
+                                },
+                                "top_k": {
+                                    "type": "integer",
+                                    "default": 5,
+                                    "minimum": 1,
+                                    "maximum": 20,
+                                    "description": "Number of search results to return. Use 5-10 for focused results, 15-20 for comprehensive exploration.",
+                                },
+                                "complexity": {
+                                    "type": "integer",
+                                    "default": 32,
+                                    "minimum": 16,
+                                    "maximum": 128,
+                                    "description": "Search complexity level. Use 16-32 for fast searches (recommended), 64+ for higher precision when needed.",
+                                },
+                                "show_metadata": {
+                                    "type": "boolean",
+                                    "default": False,
+                                    "description": "Include file paths and metadata in search results. Useful for understanding which files contain the results.",
+                                },
+                            },
+                            "required": ["index_name", "query"],
+                        },
+                    },
+                    {
+                        "name": "leann_list",
+                        "description": "📋 Show all your indexed codebases - your personal code library! Use this to see what's available for search.",
+                        "inputSchema": {"type": "object", "properties": {}},
+                    },
+                ]
+            },
+        }
+
+    elif request.get("method") == "tools/call":
+        tool_name = request["params"]["name"]
+        args = request["params"].get("arguments", {})
+
+        try:
+            if tool_name == "leann_search":
+                # Validate required parameters
+                if not args.get("index_name") or not args.get("query"):
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Error: Both index_name and query are required",
+                                }
+                            ]
+                        },
+                    }
+
+                # Resolve index name to path (reuse existing logic)
+                index_name = args["index_name"]
+                index_path = Path(state.index_path).parent.parent.parent / "indexes" / index_name / "documents.leann"
+
+                if not index_path.exists():
+                    # Try home directory
+                    index_path = Path.home() / ".leann" / "indexes" / index_name / "documents.leann"
+
+                if not index_path.exists():
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"Error: Index '{index_name}' not found",
+                                }
+                            ]
+                        },
+                    }
+
+                # Perform search using LeannSearcher
+                searcher = LeannSearcher(str(index_path), enable_warmup=False)
+                results = searcher.search(
+                    query=args["query"],
+                    top_k=args.get("top_k", 5),
+                    complexity=args.get("complexity", 32),
+                )
+
+                # Format results
+                output = []
+                for i, r in enumerate(results, 1):
+                    metadata_str = ""
+                    if args.get("show_metadata", False) and hasattr(r, "metadata"):
+                        metadata_str = f"\nMetadata: {r.metadata}"
+
+                    output.append(f"Result {i} (score: {float(r.score):.4f}):\n{r.text}{metadata_str}\n")
+
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request.get("id"),
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "\n".join(output) if output else "No results found",
+                            }
+                        ]
+                    },
+                }
+
+            elif tool_name == "leann_list":
+                # List available indexes
+                indexes = []
+                leann_dir = Path.home() / ".leann" / "indexes"
+
+                if leann_dir.exists():
+                    for index_dir in leann_dir.iterdir():
+                        if index_dir.is_dir():
+                            meta_file = index_dir / "documents.leann.meta.json"
+                            if meta_file.exists():
+                                try:
+                                    with open(meta_file, "r") as f:
+                                        meta = json.load(f)
+                                    indexes.append(
+                                        f"- {index_dir.name}: {meta.get('backend_name', 'unknown')} backend, "
+                                        f"{meta.get('embedding_model', 'unknown')} embeddings"
+                                    )
+                                except Exception as e:
+                                    indexes.append(f"- {index_dir.name}: (error reading metadata)")
+
+                output = "Available LEANN indexes:\n" + "\n".join(indexes) if indexes else "No indexes found"
+
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request.get("id"),
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": output,
+                            }
+                        ]
+                    },
+                }
+
+        except Exception as e:
+            logger.error(f"MCP tool call error: {e}")
+            return {
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "error": {"code": -1, "message": str(e)},
+            }
+
+    return {
+        "jsonrpc": "2.0",
+        "id": request.get("id"),
+        "error": {"code": -32601, "message": "Method not found"},
+    }
+
 
 # FastAPI app initialization
 app = FastAPI(
@@ -132,6 +334,70 @@ async def shutdown_event():
 
 
 # API Endpoints
+
+# MCP SSE Endpoints
+@app.get("/sse")
+async def mcp_sse(request: Request):
+    """SSE endpoint for MCP protocol."""
+    import uuid
+
+    session_id = str(uuid.uuid4())
+    mcp_sessions[session_id] = asyncio.Queue()
+
+    logger.info(f"MCP SSE session created: {session_id}")
+
+    async def event_generator():
+        queue = mcp_sessions[session_id]
+        try:
+            # Send initial endpoint message
+            yield {
+                "event": "endpoint",
+                "data": json.dumps({"endpoint": f"/message?sessionId={session_id}"}),
+            }
+
+            # Process messages from queue
+            while True:
+                message = await queue.get()
+                if message is None:  # Shutdown signal
+                    break
+                yield {"event": "message", "data": json.dumps(message)}
+
+        except asyncio.CancelledError:
+            logger.info(f"MCP SSE session closed: {session_id}")
+        finally:
+            # Cleanup
+            if session_id in mcp_sessions:
+                del mcp_sessions[session_id]
+
+    return EventSourceResponse(event_generator())
+
+
+@app.post("/message")
+async def mcp_message(request: Request):
+    """Receive MCP messages from clients."""
+    session_id = request.query_params.get("sessionId")
+
+    if not session_id or session_id not in mcp_sessions:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+
+    try:
+        body = await request.json()
+        logger.info(f"MCP message received: {body.get('method', 'unknown')}")
+
+        # Handle MCP request
+        response = handle_mcp_request(body)
+
+        # Send response back through SSE
+        queue = mcp_sessions[session_id]
+        await queue.put(response)
+
+        return JSONResponse(content={"status": "ok"})
+
+    except Exception as e:
+        logger.error(f"MCP message error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""

@@ -33,6 +33,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "websockets>=12.0",
     "httpx>=0.24.0",
+    "sse-starlette>=2.0.0",
     # PDF parsing dependencies - essential for document processing
     "PyPDF2>=3.0.0",
     "pdfplumber>=0.11.0",
