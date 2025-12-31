@@ -206,7 +206,7 @@ async def search(request: SearchRequest):
         for r in results:
             result_dict = {
                 "id": getattr(r, "id", None),
-                "score": getattr(r, "score", 0.0),
+                "score": float(getattr(r, "score", 0.0)),  # Convert numpy.float32 to Python float
                 "text": getattr(r, "text", ""),
             }
 
@@ -263,7 +263,7 @@ async def websocket_ask(websocket: WebSocket):
                     result_dicts.append(
                         {
                             "id": getattr(r, "id", None),
-                            "score": getattr(r, "score", 0.0),
+                            "score": float(getattr(r, "score", 0.0)),  # Convert numpy.float32 to Python float
                             "text": getattr(r, "text", ""),
                             "metadata": getattr(r, "metadata", {}),
                         }
@@ -284,6 +284,10 @@ async def websocket_ask(websocket: WebSocket):
 
             # Stream LLM response
             try:
+                # Set default max_tokens if not provided
+                if "max_tokens" not in llm_params:
+                    llm_params["max_tokens"] = 10000
+
                 # Check if streaming is supported
                 if hasattr(state.llm, "ask_stream"):
                     for token in state.llm.ask_stream(prompt, **llm_params):
@@ -353,8 +357,7 @@ def main():
 
     args = parser.parse_args()
 
-    # Configure state
-    state.index_path = args.index_path
+    # Configure state (index_path will be set after resolution)
     state.embedding_model = args.embedding_model
 
     # Configure LLM
@@ -373,10 +376,37 @@ def main():
     elif args.llm_type == "anthropic":
         state.llm_config["api_key"] = resolve_anthropic_api_key()
 
-    # Validate index path
-    if not Path(args.index_path).exists():
-        logger.error(f"Index path does not exist: {args.index_path}")
-        raise FileNotFoundError(f"Index path not found: {args.index_path}")
+    # Resolve index name to path if needed
+    index_path = Path(args.index_path)
+
+    # If the path doesn't exist as-is, try to resolve it as an index name
+    if not index_path.exists():
+        # Try CLI format: .leann/indexes/<index_name>/documents.index
+        # First try current directory, then home directory
+        current_dir = Path.cwd()
+        search_dirs = [current_dir, Path.home()]
+
+        found = False
+        for search_dir in search_dirs:
+            cli_index_dir = search_dir / ".leann" / "indexes" / args.index_path
+            if cli_index_dir.exists():
+                # Look for documents.leann in the directory (CLI format)
+                potential_index = cli_index_dir / "documents.leann"
+                if potential_index.exists() or (cli_index_dir / "documents.leann.meta.json").exists():
+                    # Use documents.leann path (meta file will be documents.leann.meta.json)
+                    index_path = potential_index
+                    logger.info(f"Resolved index name '{args.index_path}' to {index_path}")
+                    found = True
+                    break
+
+        if not found:
+            logger.error(f"Index not found: {args.index_path}")
+            logger.error(f"Tried as path: {args.index_path}")
+            logger.error(f"Tried in: {[str(d / '.leann' / 'indexes' / args.index_path) for d in search_dirs]}")
+            raise FileNotFoundError(f"Index not found: {args.index_path}")
+
+    # Update state with resolved path
+    state.index_path = str(index_path)
 
     # Run with optional server-side HTTPS
     uvicorn_config = {"host": args.host, "port": args.port}
