@@ -421,7 +421,7 @@ def main():
     logger.info(f"Index: {args.index_path}")
     logger.info(f"LLM: {args.llm_type} / {args.model}")
 
-    uvicorn.run(app, **uvicorn_config)
+    uvicorn.run(app, **uvicorn_config, ws_ping_interval=600, ws_ping_timeout=600)
 
 
 if __name__ == "__main__":
