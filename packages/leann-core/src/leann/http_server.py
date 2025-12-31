@@ -115,25 +115,6 @@ def handle_mcp_request(request):
                                     "type": "string",
                                     "description": "Search query in natural language (e.g., 'contract termination notice period', 'patient confidentiality requirements', 'public tender value limits')",
                                 },
-                                "top_k": {
-                                    "type": "integer",
-                                    "default": 5,
-                                    "minimum": 1,
-                                    "maximum": 20,
-                                    "description": "Number of document passages to return. Use 5-10 for focused results, 15-20 for comprehensive research.",
-                                },
-                                "complexity": {
-                                    "type": "integer",
-                                    "default": 32,
-                                    "minimum": 16,
-                                    "maximum": 128,
-                                    "description": "Search complexity level. Use 16-32 for fast searches (recommended), 64+ for higher precision when needed.",
-                                },
-                                "show_metadata": {
-                                    "type": "boolean",
-                                    "default": False,
-                                    "description": "Include document metadata (source file, page number, section) in search results. Useful for citations and references.",
-                                },
                             },
                             "required": ["query"],
                         },
@@ -160,27 +141,6 @@ def handle_mcp_request(request):
                                 "question": {
                                     "type": "string",
                                     "description": "Your question about the documents (e.g., 'What are the termination notice requirements?', 'What is the general value limit for direct awards?')",
-                                },
-                                "top_k": {
-                                    "type": "integer",
-                                    "default": 5,
-                                    "minimum": 1,
-                                    "maximum": 20,
-                                    "description": "Number of document passages to use as context. More context = more comprehensive answers but slower response.",
-                                },
-                                "complexity": {
-                                    "type": "integer",
-                                    "default": 32,
-                                    "minimum": 16,
-                                    "maximum": 128,
-                                    "description": "Search complexity level. Use 16-32 for fast searches, 64+ for higher precision.",
-                                },
-                                "temperature": {
-                                    "type": "number",
-                                    "default": 0.7,
-                                    "minimum": 0.0,
-                                    "maximum": 2.0,
-                                    "description": "LLM creativity level. Lower (0.3) for factual answers, higher (1.0+) for creative explanations.",
                                 },
                             },
                             "required": ["question"],
@@ -226,21 +186,17 @@ def handle_mcp_request(request):
                         },
                     }
 
-                # Perform search using the loaded searcher
+                # Perform search using the loaded searcher (fixed top_k=10, complexity=32)
                 results = state.searcher.search(
                     query=args["query"],
-                    top_k=args.get("top_k", 5),
-                    complexity=args.get("complexity", 32),
+                    top_k=10,
+                    complexity=32,
                 )
 
-                # Format results
+                # Format results (no metadata)
                 output = []
                 for i, r in enumerate(results, 1):
-                    metadata_str = ""
-                    if args.get("show_metadata", False) and hasattr(r, "metadata"):
-                        metadata_str = f"\nMetadata: {r.metadata}"
-
-                    output.append(f"Result {i} (score: {float(r.score):.4f}):\n{r.text}{metadata_str}\n")
+                    output.append(f"Result {i} (score: {float(r.score):.4f}):\n{r.text}\n")
 
                 return {
                     "jsonrpc": "2.0",
@@ -339,20 +295,20 @@ Path: {state.index_path}"""
                         },
                     }
 
-                # Perform search using the loaded searcher
+                # Perform search using the loaded searcher (fixed top_k=10, complexity=32)
                 results = state.searcher.search(
                     query=args["question"],
-                    top_k=args.get("top_k", 5),
-                    complexity=args.get("complexity", 32),
+                    top_k=10,
+                    complexity=32,
                 )
 
                 # Build prompt with context
                 context = "\n\n".join([r.text for r in results])
                 prompt = f"Context:\n{context}\n\nQuestion: {args['question']}\n\nAnswer:"
 
-                # Get LLM response (non-streaming for MCP)
+                # Get LLM response (non-streaming for MCP, fixed temperature=0.7)
                 llm_params = {
-                    "temperature": args.get("temperature", 0.7),
+                    "temperature": 0.7,
                     "max_tokens": 10000,
                 }
 
