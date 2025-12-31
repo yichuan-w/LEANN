@@ -2,8 +2,9 @@
 """
 FastAPI-based HTTP server for LEANN with WebSocket streaming support.
 
-This server provides REST API endpoints for semantic search and WebSocket
-endpoints for streaming Q&A with LLM integration.
+This server provides REST API endpoints for semantic document search and WebSocket
+endpoints for streaming Q&A with LLM integration. Supports searching across laws,
+contracts, medical reports, and other document collections.
 """
 
 import argparse
@@ -97,29 +98,29 @@ def handle_mcp_request(request):
                 "tools": [
                     {
                         "name": "leann_search",
-                        "description": """🔍 Search code using natural language - like having a coding assistant who knows your entire codebase!
+                        "description": """🔍 Search documents using natural language - semantic search across laws, contracts, medical reports, and more!
 
 🎯 **Perfect for**:
-- "How does authentication work?" → finds auth-related code
-- "Error handling patterns" → locates try-catch blocks and error logic
-- "Database connection setup" → finds DB initialization code
-- "API endpoint definitions" → locates route handlers
-- "Configuration management" → finds config files and usage
+- "Contract termination clauses" → finds relevant contract sections
+- "Patient consent requirements" → locates medical regulation passages
+- "Tax exemption rules" → finds applicable tax law articles
+- "Public procurement thresholds" → locates tender limit regulations
+- "Data protection obligations" → finds GDPR and privacy law sections
 
-💡 **Pro tip**: Use this before making any changes to understand existing patterns and conventions.""",
+💡 **Pro tip**: Ask in natural language - the system understands context and finds semantically related passages.""",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "query": {
                                     "type": "string",
-                                    "description": "Search query - can be natural language (e.g., 'how to handle errors') or technical terms (e.g., 'async function definition')",
+                                    "description": "Search query in natural language (e.g., 'contract termination notice period', 'patient confidentiality requirements', 'public tender value limits')",
                                 },
                                 "top_k": {
                                     "type": "integer",
                                     "default": 5,
                                     "minimum": 1,
                                     "maximum": 20,
-                                    "description": "Number of search results to return. Use 5-10 for focused results, 15-20 for comprehensive exploration.",
+                                    "description": "Number of document passages to return. Use 5-10 for focused results, 15-20 for comprehensive research.",
                                 },
                                 "complexity": {
                                     "type": "integer",
@@ -131,7 +132,7 @@ def handle_mcp_request(request):
                                 "show_metadata": {
                                     "type": "boolean",
                                     "default": False,
-                                    "description": "Include file paths and metadata in search results. Useful for understanding which files contain the results.",
+                                    "description": "Include document metadata (source file, page number, section) in search results. Useful for citations and references.",
                                 },
                             },
                             "required": ["query"],
@@ -139,33 +140,33 @@ def handle_mcp_request(request):
                     },
                     {
                         "name": "leann_list",
-                        "description": "📋 Show information about the currently loaded index - what codebase this server can search.",
+                        "description": "📋 Show information about the currently loaded document collection - what documents this server can search (e.g., legal corpus, medical records, contract repository).",
                         "inputSchema": {"type": "object", "properties": {}},
                     },
                     {
                         "name": "leann_ask",
-                        "description": """💬 Ask questions about your code and get AI-powered answers based on semantic search!
+                        "description": """💬 Ask questions about your documents and get AI-powered answers based on semantic search!
 
 🎯 **Perfect for**:
-- "How does authentication work in this codebase?" → AI explains based on actual code
-- "What are the main API endpoints?" → AI summarizes from route definitions
-- "Explain the database schema" → AI describes based on models and migrations
-- "How do I add a new feature?" → AI guides based on existing patterns
+- "What are the penalties for late payment?" → AI explains based on contract clauses
+- "What is the statute of limitations for this type of case?" → AI summarizes from legal texts
+- "What are patient consent requirements for clinical trials?" → AI describes based on regulations
+- "What are the procurement thresholds for direct awards?" → AI answers from public procurement laws
 
-💡 **How it works**: Searches your codebase for relevant code, then uses an LLM to generate a comprehensive answer based on the context.""",
+💡 **How it works**: Searches your document collection for relevant passages, then uses an LLM to generate a comprehensive answer based on the retrieved context.""",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "question": {
                                     "type": "string",
-                                    "description": "Your question about the codebase (e.g., 'How does user authentication work?')",
+                                    "description": "Your question about the documents (e.g., 'What are the termination notice requirements?', 'What is the general value limit for direct awards?')",
                                 },
                                 "top_k": {
                                     "type": "integer",
                                     "default": 5,
                                     "minimum": 1,
                                     "maximum": 20,
-                                    "description": "Number of code snippets to use as context. More context = more comprehensive answers.",
+                                    "description": "Number of document passages to use as context. More context = more comprehensive answers but slower response.",
                                 },
                                 "complexity": {
                                     "type": "integer",
@@ -404,7 +405,7 @@ Path: {state.index_path}"""
 app = FastAPI(
     title="LEANN HTTP Server",
     version="1.0.0",
-    description="HTTP API for LEANN semantic code search and Q&A with LLM streaming",
+    description="HTTP API for LEANN semantic document search and Q&A with LLM streaming. Search laws, contracts, medical reports, and more.",
 )
 
 
