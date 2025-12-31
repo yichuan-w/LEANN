@@ -110,10 +110,6 @@ def handle_mcp_request(request):
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "index_name": {
-                                    "type": "string",
-                                    "description": "Name of the LEANN index to search. Use 'leann_list' first to see available indexes.",
-                                },
                                 "query": {
                                     "type": "string",
                                     "description": "Search query - can be natural language (e.g., 'how to handle errors') or technical terms (e.g., 'async function definition')",
@@ -138,13 +134,56 @@ def handle_mcp_request(request):
                                     "description": "Include file paths and metadata in search results. Useful for understanding which files contain the results.",
                                 },
                             },
-                            "required": ["index_name", "query"],
+                            "required": ["query"],
                         },
                     },
                     {
                         "name": "leann_list",
-                        "description": "📋 Show all your indexed codebases - your personal code library! Use this to see what's available for search.",
+                        "description": "📋 Show information about the currently loaded index - what codebase this server can search.",
                         "inputSchema": {"type": "object", "properties": {}},
+                    },
+                    {
+                        "name": "leann_ask",
+                        "description": """💬 Ask questions about your code and get AI-powered answers based on semantic search!
+
+🎯 **Perfect for**:
+- "How does authentication work in this codebase?" → AI explains based on actual code
+- "What are the main API endpoints?" → AI summarizes from route definitions
+- "Explain the database schema" → AI describes based on models and migrations
+- "How do I add a new feature?" → AI guides based on existing patterns
+
+💡 **How it works**: Searches your codebase for relevant code, then uses an LLM to generate a comprehensive answer based on the context.""",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "question": {
+                                    "type": "string",
+                                    "description": "Your question about the codebase (e.g., 'How does user authentication work?')",
+                                },
+                                "top_k": {
+                                    "type": "integer",
+                                    "default": 5,
+                                    "minimum": 1,
+                                    "maximum": 20,
+                                    "description": "Number of code snippets to use as context. More context = more comprehensive answers.",
+                                },
+                                "complexity": {
+                                    "type": "integer",
+                                    "default": 32,
+                                    "minimum": 16,
+                                    "maximum": 128,
+                                    "description": "Search complexity level. Use 16-32 for fast searches, 64+ for higher precision.",
+                                },
+                                "temperature": {
+                                    "type": "number",
+                                    "default": 0.7,
+                                    "minimum": 0.0,
+                                    "maximum": 2.0,
+                                    "description": "LLM creativity level. Lower (0.3) for factual answers, higher (1.0+) for creative explanations.",
+                                },
+                            },
+                            "required": ["question"],
+                        },
                     },
                 ]
             },
@@ -157,7 +196,7 @@ def handle_mcp_request(request):
         try:
             if tool_name == "leann_search":
                 # Validate required parameters
-                if not args.get("index_name") or not args.get("query"):
+                if not args.get("query"):
                     return {
                         "jsonrpc": "2.0",
                         "id": request.get("id"),
@@ -165,21 +204,14 @@ def handle_mcp_request(request):
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": "Error: Both index_name and query are required",
+                                    "text": "Error: query parameter is required",
                                 }
                             ]
                         },
                     }
 
-                # Resolve index name to path (reuse existing logic)
-                index_name = args["index_name"]
-                index_path = Path(state.index_path).parent.parent.parent / "indexes" / index_name / "documents.leann"
-
-                if not index_path.exists():
-                    # Try home directory
-                    index_path = Path.home() / ".leann" / "indexes" / index_name / "documents.leann"
-
-                if not index_path.exists():
+                # Check if searcher is initialized
+                if not state.searcher:
                     return {
                         "jsonrpc": "2.0",
                         "id": request.get("id"),
@@ -187,15 +219,14 @@ def handle_mcp_request(request):
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": f"Error: Index '{index_name}' not found",
+                                    "text": "Error: Searcher not initialized",
                                 }
                             ]
                         },
                     }
 
-                # Perform search using LeannSearcher
-                searcher = LeannSearcher(str(index_path), enable_warmup=False)
-                results = searcher.search(
+                # Perform search using the loaded searcher
+                results = state.searcher.search(
                     query=args["query"],
                     top_k=args.get("top_k", 5),
                     complexity=args.get("complexity", 32),
@@ -224,26 +255,29 @@ def handle_mcp_request(request):
                 }
 
             elif tool_name == "leann_list":
-                # List available indexes
-                indexes = []
-                leann_dir = Path.home() / ".leann" / "indexes"
+                # Show info about currently loaded index
+                if not state.index_path:
+                    output = "No index loaded"
+                else:
+                    # Read metadata for current index
+                    index_path = Path(state.index_path)
+                    index_name = index_path.parent.name
+                    meta_file = index_path.parent / "documents.leann.meta.json"
 
-                if leann_dir.exists():
-                    for index_dir in leann_dir.iterdir():
-                        if index_dir.is_dir():
-                            meta_file = index_dir / "documents.leann.meta.json"
-                            if meta_file.exists():
-                                try:
-                                    with open(meta_file, "r") as f:
-                                        meta = json.load(f)
-                                    indexes.append(
-                                        f"- {index_dir.name}: {meta.get('backend_name', 'unknown')} backend, "
-                                        f"{meta.get('embedding_model', 'unknown')} embeddings"
-                                    )
-                                except Exception as e:
-                                    indexes.append(f"- {index_dir.name}: (error reading metadata)")
+                    if meta_file.exists():
+                        try:
+                            with open(meta_file, "r") as f:
+                                meta = json.load(f)
+                            output = f"""Currently loaded index: {index_name}
 
-                output = "Available LEANN indexes:\n" + "\n".join(indexes) if indexes else "No indexes found"
+Backend: {meta.get('backend_name', 'unknown')}
+Embedding model: {meta.get('embedding_model', 'unknown')}
+Dimensions: {meta.get('dimensions', 'unknown')}
+Path: {state.index_path}"""
+                        except Exception as e:
+                            output = f"Currently loaded index: {index_name}\nPath: {state.index_path}\n(Error reading metadata: {e})"
+                    else:
+                        output = f"Currently loaded index: {index_name}\nPath: {state.index_path}\n(No metadata file found)"
 
                 return {
                     "jsonrpc": "2.0",
@@ -257,6 +291,99 @@ def handle_mcp_request(request):
                         ]
                     },
                 }
+
+            elif tool_name == "leann_ask":
+                # Validate required parameters
+                if not args.get("question"):
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Error: question parameter is required",
+                                }
+                            ]
+                        },
+                    }
+
+                # Check if searcher is initialized
+                if not state.searcher:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Error: Searcher not initialized",
+                                }
+                            ]
+                        },
+                    }
+
+                # Check if LLM is initialized
+                if not state.llm:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Error: LLM not initialized. Please restart the server with LLM configuration.",
+                                }
+                            ]
+                        },
+                    }
+
+                # Perform search using the loaded searcher
+                results = state.searcher.search(
+                    query=args["question"],
+                    top_k=args.get("top_k", 5),
+                    complexity=args.get("complexity", 32),
+                )
+
+                # Build prompt with context
+                context = "\n\n".join([r.text for r in results])
+                prompt = f"Context:\n{context}\n\nQuestion: {args['question']}\n\nAnswer:"
+
+                # Get LLM response (non-streaming for MCP)
+                llm_params = {
+                    "temperature": args.get("temperature", 0.7),
+                    "max_tokens": 10000,
+                }
+
+                try:
+                    answer = state.llm.ask(prompt, **llm_params)
+
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": answer,
+                                }
+                            ]
+                        },
+                    }
+                except Exception as llm_error:
+                    logger.error(f"LLM error: {llm_error}")
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"Error generating answer: {llm_error}",
+                                }
+                            ]
+                        },
+                    }
 
         except Exception as e:
             logger.error(f"MCP tool call error: {e}")
@@ -334,6 +461,31 @@ async def shutdown_event():
 
 
 # API Endpoints
+
+# MCP HTTP POST Endpoint (for streamable-http transport)
+@app.post("/")
+async def mcp_root(request: Request):
+    """MCP endpoint for direct HTTP POST requests."""
+    try:
+        body = await request.json()
+        logger.info(f"MCP POST request: {body.get('method', 'unknown')}")
+
+        # Handle MCP request
+        response = handle_mcp_request(body)
+
+        return JSONResponse(content=response)
+
+    except Exception as e:
+        logger.error(f"MCP POST error: {e}")
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -1, "message": str(e)},
+            },
+            status_code=500,
+        )
+
 
 # MCP SSE Endpoints
 @app.get("/sse")
