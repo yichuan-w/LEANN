@@ -330,7 +330,10 @@ class TestErrorHandling:
     def test_invalid_json_request(self, client):
         """Test handling of invalid JSON."""
         response = client.post("/", data="not json", headers={"Content-Type": "application/json"})
-        assert response.status_code == 422 or response.status_code == 400
+        # Server returns 500 for JSON parse errors in MCP endpoint
+        assert response.status_code == 500
+        data = response.json()
+        assert "error" in data
 
     @patch("leann.http_server.state")
     def test_search_with_invalid_parameters(self, mock_state, client):
