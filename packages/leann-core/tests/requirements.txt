@@ -1,0 +1,5 @@
+# Test requirements for LEANN HTTP server tests
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0  # For async HTTP testing
+pytest-mock>=3.10.0  # For enhanced mocking

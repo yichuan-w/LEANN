@@ -839,7 +839,6 @@ class OpenAIChat(LLMInterface):
         }
 
         # Handle max_tokens vs max_completion_tokens based on model
-        logger.info("!!TESTE!!")
         max_tokens = kwargs.get("max_tokens", 10000)
         if "o3" in self.model or "o4" in self.model or "o1" in self.model:
             # o-series models use max_completion_tokens

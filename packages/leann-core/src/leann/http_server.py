@@ -77,28 +77,29 @@ state = ServerState()
 mcp_sessions = {}  # sessionId -> asyncio.Queue for messages
 
 
-def handle_mcp_request(request):
-    """Handle MCP JSON-RPC 2.0 requests."""
-    if request.get("method") == "initialize":
-        return {
-            "jsonrpc": "2.0",
-            "id": request.get("id"),
-            "result": {
-                "capabilities": {"tools": {}},
-                "protocolVersion": "2024-11-05",
-                "serverInfo": {"name": "leann-http", "version": "1.0.0"},
-            },
-        }
+def _mcp_initialize(request: dict) -> dict:
+    """Handle MCP initialize request."""
+    return {
+        "jsonrpc": "2.0",
+        "id": request.get("id"),
+        "result": {
+            "capabilities": {"tools": {}},
+            "protocolVersion": "2024-11-05",
+            "serverInfo": {"name": "leann-http", "version": "1.0.0"},
+        },
+    }
 
-    elif request.get("method") == "tools/list":
-        return {
-            "jsonrpc": "2.0",
-            "id": request.get("id"),
-            "result": {
-                "tools": [
-                    {
-                        "name": "leann_search",
-                        "description": """🔍 Search documents using natural language - semantic search across laws, contracts, medical reports, and more!
+
+def _mcp_tools_list(request: dict) -> dict:
+    """Handle MCP tools/list request."""
+    return {
+        "jsonrpc": "2.0",
+        "id": request.get("id"),
+        "result": {
+            "tools": [
+                {
+                    "name": "leann_search",
+                    "description": """🔍 Search documents using natural language - semantic search across laws, contracts, medical reports, and more!
 
 🎯 **Perfect for**:
 - "Contract termination clauses" → finds relevant contract sections
@@ -108,25 +109,25 @@ def handle_mcp_request(request):
 - "Data protection obligations" → finds GDPR and privacy law sections
 
 💡 **Pro tip**: Ask in natural language - the system understands context and finds semantically related passages.""",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "query": {
-                                    "type": "string",
-                                    "description": "Search query in natural language (e.g., 'contract termination notice period', 'patient confidentiality requirements', 'public tender value limits')",
-                                },
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search query in natural language (e.g., 'contract termination notice period', 'patient confidentiality requirements', 'public tender value limits')",
                             },
-                            "required": ["query"],
                         },
+                        "required": ["query"],
                     },
-                    {
-                        "name": "leann_list",
-                        "description": "📋 Show information about the currently loaded document collection - what documents this server can search (e.g., legal corpus, medical records, contract repository).",
-                        "inputSchema": {"type": "object", "properties": {}},
-                    },
-                    {
-                        "name": "leann_ask",
-                        "description": """💬 Ask questions about your documents and get AI-powered answers based on semantic search!
+                },
+                {
+                    "name": "leann_list",
+                    "description": "📋 Show information about the currently loaded document collection - what documents this server can search (e.g., legal corpus, medical records, contract repository).",
+                    "inputSchema": {"type": "object", "properties": {}},
+                },
+                {
+                    "name": "leann_ask",
+                    "description": """💬 Ask questions about your documents and get AI-powered answers based on semantic search!
 
 🎯 **Perfect for**:
 - "What are the penalties for late payment?" → AI explains based on contract clauses
@@ -135,213 +136,249 @@ def handle_mcp_request(request):
 - "What are the procurement thresholds for direct awards?" → AI answers from public procurement laws
 
 💡 **How it works**: Searches your document collection for relevant passages, then uses an LLM to generate a comprehensive answer based on the retrieved context.""",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "question": {
-                                    "type": "string",
-                                    "description": "Your question about the documents (e.g., 'What are the termination notice requirements?', 'What is the general value limit for direct awards?')",
-                                },
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "question": {
+                                "type": "string",
+                                "description": "Your question about the documents (e.g., 'What are the termination notice requirements?', 'What is the general value limit for direct awards?')",
                             },
-                            "required": ["question"],
                         },
+                        "required": ["question"],
                     },
+                },
+            ]
+        },
+    }
+
+
+def _mcp_tool_search(request: dict, args: dict) -> dict:
+    """Handle MCP leann_search tool call."""
+    # Validate required parameters
+    if not args.get("query"):
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Error: query parameter is required",
+                    }
                 ]
             },
         }
 
-    elif request.get("method") == "tools/call":
-        tool_name = request["params"]["name"]
-        args = request["params"].get("arguments", {})
-
-        try:
-            if tool_name == "leann_search":
-                # Validate required parameters
-                if not args.get("query"):
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Error: query parameter is required",
-                                }
-                            ]
-                        },
+    # Check if searcher is initialized
+    if not state.searcher:
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Error: Searcher not initialized",
                     }
+                ]
+            },
+        }
 
-                # Check if searcher is initialized
-                if not state.searcher:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Error: Searcher not initialized",
-                                }
-                            ]
-                        },
-                    }
+    # Perform search using the loaded searcher (fixed top_k=10, complexity=32)
+    results = state.searcher.search(
+        query=args["query"],
+        top_k=10,
+        complexity=32,
+    )
 
-                # Perform search using the loaded searcher (fixed top_k=10, complexity=32)
-                results = state.searcher.search(
-                    query=args["query"],
-                    top_k=10,
-                    complexity=32,
-                )
+    # Format results (no metadata)
+    output = []
+    for i, r in enumerate(results, 1):
+        output.append(f"Result {i} (score: {float(r.score):.4f}):\n{r.text}\n")
 
-                # Format results (no metadata)
-                output = []
-                for i, r in enumerate(results, 1):
-                    output.append(f"Result {i} (score: {float(r.score):.4f}):\n{r.text}\n")
-
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "\n".join(output) if output else "No results found",
-                            }
-                        ]
-                    },
+    return {
+        "jsonrpc": "2.0",
+        "id": request.get("id"),
+        "result": {
+            "content": [
+                {
+                    "type": "text",
+                    "text": "\n".join(output) if output else "No results found",
                 }
+            ]
+        },
+    }
 
-            elif tool_name == "leann_list":
-                # Show info about currently loaded index
-                if not state.index_path:
-                    output = "No index loaded"
-                else:
-                    # Read metadata for current index
-                    index_path = Path(state.index_path)
-                    index_name = index_path.parent.name
-                    meta_file = index_path.parent / "documents.leann.meta.json"
 
-                    if meta_file.exists():
-                        try:
-                            with open(meta_file, "r") as f:
-                                meta = json.load(f)
-                            output = f"""Currently loaded index: {index_name}
+def _mcp_tool_list(request: dict) -> dict:
+    """Handle MCP leann_list tool call."""
+    # Show info about currently loaded index
+    if not state.index_path:
+        output = "No index loaded"
+    else:
+        # Read metadata for current index
+        index_path = Path(state.index_path)
+        index_name = index_path.parent.name
+        meta_file = index_path.parent / "documents.leann.meta.json"
+
+        if meta_file.exists():
+            try:
+                with open(meta_file, "r") as f:
+                    meta = json.load(f)
+                output = f"""Currently loaded index: {index_name}
 
 Backend: {meta.get('backend_name', 'unknown')}
 Embedding model: {meta.get('embedding_model', 'unknown')}
 Dimensions: {meta.get('dimensions', 'unknown')}
 Path: {state.index_path}"""
-                        except Exception as e:
-                            output = f"Currently loaded index: {index_name}\nPath: {state.index_path}\n(Error reading metadata: {e})"
-                    else:
-                        output = f"Currently loaded index: {index_name}\nPath: {state.index_path}\n(No metadata file found)"
+            except Exception as e:
+                output = f"Currently loaded index: {index_name}\nPath: {state.index_path}\n(Error reading metadata: {e})"
+        else:
+            output = f"Currently loaded index: {index_name}\nPath: {state.index_path}\n(No metadata file found)"
 
+    return {
+        "jsonrpc": "2.0",
+        "id": request.get("id"),
+        "result": {
+            "content": [
+                {
+                    "type": "text",
+                    "text": output,
+                }
+            ]
+        },
+    }
+
+
+def _mcp_tool_ask(request: dict, args: dict) -> dict:
+    """Handle MCP leann_ask tool call."""
+    # Validate required parameters
+    if not args.get("question"):
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Error: question parameter is required",
+                    }
+                ]
+            },
+        }
+
+    # Check if searcher is initialized
+    if not state.searcher:
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Error: Searcher not initialized",
+                    }
+                ]
+            },
+        }
+
+    # Check if LLM is initialized
+    if not state.llm:
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Error: LLM not initialized. Please restart the server with LLM configuration.",
+                    }
+                ]
+            },
+        }
+
+    # Perform search using the loaded searcher (fixed top_k=10, complexity=32)
+    results = state.searcher.search(
+        query=args["question"],
+        top_k=10,
+        complexity=32,
+    )
+
+    # Build prompt with context
+    context = "\n\n".join([r.text for r in results])
+    prompt = f"Context:\n{context}\n\nQuestion: {args['question']}\n\nAnswer:"
+
+    # Get LLM response (non-streaming for MCP, fixed temperature=0.7)
+    llm_params = {
+        "temperature": 0.7,
+        "max_tokens": 10000,
+    }
+
+    try:
+        answer = state.llm.ask(prompt, **llm_params)
+
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": answer,
+                    }
+                ]
+            },
+        }
+    except Exception as llm_error:
+        logger.error(f"LLM error: {llm_error}")
+        return {
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Error generating answer: {llm_error}",
+                    }
+                ]
+            },
+        }
+
+
+def handle_mcp_request(request: dict) -> dict:
+    """Handle MCP JSON-RPC 2.0 requests.
+
+    Args:
+        request: MCP JSON-RPC request dictionary
+
+    Returns:
+        MCP JSON-RPC response dictionary
+    """
+    method = request.get("method")
+
+    if method == "initialize":
+        return _mcp_initialize(request)
+
+    elif method == "tools/list":
+        return _mcp_tools_list(request)
+
+    elif method == "tools/call":
+        tool_name = request["params"]["name"]
+        args = request["params"].get("arguments", {})
+
+        try:
+            if tool_name == "leann_search":
+                return _mcp_tool_search(request, args)
+            elif tool_name == "leann_list":
+                return _mcp_tool_list(request)
+            elif tool_name == "leann_ask":
+                return _mcp_tool_ask(request, args)
+            else:
                 return {
                     "jsonrpc": "2.0",
                     "id": request.get("id"),
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": output,
-                            }
-                        ]
-                    },
+                    "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"},
                 }
-
-            elif tool_name == "leann_ask":
-                # Validate required parameters
-                if not args.get("question"):
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Error: question parameter is required",
-                                }
-                            ]
-                        },
-                    }
-
-                # Check if searcher is initialized
-                if not state.searcher:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Error: Searcher not initialized",
-                                }
-                            ]
-                        },
-                    }
-
-                # Check if LLM is initialized
-                if not state.llm:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Error: LLM not initialized. Please restart the server with LLM configuration.",
-                                }
-                            ]
-                        },
-                    }
-
-                # Perform search using the loaded searcher (fixed top_k=10, complexity=32)
-                results = state.searcher.search(
-                    query=args["question"],
-                    top_k=10,
-                    complexity=32,
-                )
-
-                # Build prompt with context
-                context = "\n\n".join([r.text for r in results])
-                prompt = f"Context:\n{context}\n\nQuestion: {args['question']}\n\nAnswer:"
-
-                # Get LLM response (non-streaming for MCP, fixed temperature=0.7)
-                llm_params = {
-                    "temperature": 0.7,
-                    "max_tokens": 10000,
-                }
-
-                try:
-                    answer = state.llm.ask(prompt, **llm_params)
-
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": answer,
-                                }
-                            ]
-                        },
-                    }
-                except Exception as llm_error:
-                    logger.error(f"LLM error: {llm_error}")
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": f"Error generating answer: {llm_error}",
-                                }
-                            ]
-                        },
-                    }
-
         except Exception as e:
             logger.error(f"MCP tool call error: {e}")
             return {
@@ -414,7 +451,16 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup resources on server shutdown."""
     logger.info("Shutting down LEANN HTTP server")
-    # Cleanup resources if needed
+
+    # Close all MCP SSE sessions
+    for session_id, queue in list(mcp_sessions.items()):
+        try:
+            await queue.put(None)  # Send shutdown signal
+        except Exception as e:
+            logger.warning(f"Error closing MCP session {session_id}: {e}")
+
+    mcp_sessions.clear()
+    logger.info("Cleanup complete")
 
 
 # API Endpoints
@@ -685,8 +731,9 @@ async def websocket_ask(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
-        except:
-            pass
+        except Exception:
+            # WebSocket already closed, can't send error message
+            logger.debug("Could not send error message - WebSocket already closed")
 
 
 # Main entry point
