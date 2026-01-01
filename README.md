@@ -191,6 +191,35 @@ chat = LeannChat(INDEX_PATH, llm_config={"type": "hf", "model": "Qwen/Qwen3-0.6B
 response = chat.ask("How much storage does LEANN save?", top_k=1)
 ```
 
+## Performance Optimization: Task-Specific Prompt Templates
+
+LEANN now supports prompt templates for task-specific embedding models like Google's EmbeddingGemma. This feature enables **significant performance gains** by using smaller, faster models without sacrificing search quality.
+
+### Real-World Performance
+
+**Benchmark (MacBook M1 Pro, LM Studio):**
+- **EmbeddingGemma 300M (QAT)** with templates: **4-5x faster** than Qwen 600M
+- **Search quality:** Identical ranking to larger models
+- **Use case:** Ideal for real-time workflows (e.g., pre-commit hooks in Claude Code; ~7min for whole LEANN's code + doc files on MacBook M1 Pro)
+
+### Quick Example
+
+```bash
+# Build index with task-specific templates
+leann build my-index ./docs \
+  --embedding-mode ollama \
+  --embedding-model embeddinggemma \
+  --embedding-prompt-template "title: none | text: " \
+  --query-prompt-template "task: search result | query: "
+
+# Search automatically applies query template
+leann search my-index "How does LEANN optimize vector search?"
+```
+
+Templates are automatically persisted and applied during searches (CLI, MCP, API). No manual configuration needed after indexing.
+
+See [Configuration Guide](docs/configuration-guide.md#task-specific-prompt-templates) for detailed usage and model recommendations.
+
 ## RAG on Everything!
 
 LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, `.md`), Apple Mail, Google Search History, WeChat, ChatGPT conversations, Claude conversations, iMessage conversations, and **live data from any platform through MCP (Model Context Protocol) servers** - including Slack, Twitter, and more.

@@ -1,5 +1,7 @@
 import argparse
 import asyncio
+import contextlib
+import os
 import time
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -17,6 +19,36 @@ from .settings import (
     resolve_openai_api_key,
     resolve_openai_base_url,
 )
+
+
+@contextlib.contextmanager
+def suppress_cpp_output(suppress: bool = True):
+    """Context manager to suppress C++ stdout/stderr output from FAISS/HNSW.
+
+    This redirects file descriptors at the OS level to suppress native C++ output
+    that cannot be controlled via Python's logging framework.
+    """
+    if not suppress:
+        yield
+        return
+
+    # Save original file descriptors
+    old_stdout_fd = os.dup(1)
+    old_stderr_fd = os.dup(2)
+
+    try:
+        # Open /dev/null for writing
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, 1)  # Redirect stdout
+        os.dup2(devnull, 2)  # Redirect stderr
+        os.close(devnull)
+        yield
+    finally:
+        # Restore original file descriptors
+        os.dup2(old_stdout_fd, 1)
+        os.dup2(old_stderr_fd, 2)
+        os.close(old_stdout_fd)
+        os.close(old_stderr_fd)
 
 
 def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
@@ -95,6 +127,21 @@ Examples:
   leann list                                                             # List all stored indexes
   leann remove my-docs                                                   # Remove an index (local first, then global)
             """,
+        )
+
+        # Global verbosity options
+        verbosity_group = parser.add_mutually_exclusive_group()
+        verbosity_group.add_argument(
+            "-v",
+            "--verbose",
+            action="store_true",
+            help="Show detailed output including C++ backend logs from FAISS/HNSW",
+        )
+        verbosity_group.add_argument(
+            "-q",
+            "--quiet",
+            action="store_true",
+            help="Suppress all non-essential output (default behavior)",
         )
 
         subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -1678,16 +1725,23 @@ Examples:
             parser.print_help()
             return
 
+        # Determine whether to suppress C++ output
+        # Default is to suppress (quiet mode), unless --verbose is specified
+        suppress = not getattr(args, "verbose", False)
+
         if args.command == "list":
             self.list_indexes()
         elif args.command == "remove":
             self.remove_index(args.index_name, args.force)
         elif args.command == "build":
-            await self.build_index(args)
+            with suppress_cpp_output(suppress):
+                await self.build_index(args)
         elif args.command == "search":
-            await self.search_documents(args)
+            with suppress_cpp_output(suppress):
+                await self.search_documents(args)
         elif args.command == "ask":
-            await self.ask_questions(args)
+            with suppress_cpp_output(suppress):
+                await self.ask_questions(args)
         else:
             parser.print_help()
 

@@ -21,8 +21,8 @@ We welcome contributions! Leann is built by the community, for the community.
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/LEANN-RAG/LEANN-RAG.git
-   cd LEANN-RAG
+   git clone https://github.com/yichuan-w/LEANN.git leann
+   cd leann
    ```
 
 3. **Install system dependencies**:
