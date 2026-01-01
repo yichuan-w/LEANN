@@ -1,14 +1,12 @@
 """Tests for LEANN HTTP server."""
 
-import json
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
 
 # Import the app and related functions
 from leann.http_server import (
-    ServerState,
     _mcp_initialize,
     _mcp_tool_ask,
     _mcp_tool_list,
@@ -334,7 +332,9 @@ class TestSSE:
         """Create FastAPI test client."""
         return TestClient(app)
 
-    @pytest.mark.skip(reason="SSE endpoint streams indefinitely, requires async client for proper testing")
+    @pytest.mark.skip(
+        reason="SSE endpoint streams indefinitely, requires async client for proper testing"
+    )
     def test_mcp_sse_endpoint(self, client):
         """Test MCP SSE endpoint creates session."""
         # Note: Testing SSE with TestClient is limited

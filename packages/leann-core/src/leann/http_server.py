@@ -15,19 +15,19 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
-import uvicorn
 
 from .api import LeannSearcher
-from .chat import LLMInterface, OpenAIChat, OllamaChat, AnthropicChat
+from .chat import AnthropicChat, LLMInterface, OllamaChat, OpenAIChat
 from .settings import (
+    resolve_anthropic_api_key,
+    resolve_ollama_host,
     resolve_openai_api_key,
     resolve_openai_base_url,
-    resolve_ollama_host,
-    resolve_anthropic_api_key,
 )
 
 # Configure logging
@@ -55,7 +55,8 @@ class AskRequest(BaseModel):
         64, ge=16, le=512, description="Search complexity level for context retrieval"
     )
     llm_params: dict[str, Any] = Field(
-        default_factory=dict, description="Additional parameters for LLM (temperature, max_tokens, etc.)"
+        default_factory=dict,
+        description="Additional parameters for LLM (temperature, max_tokens, etc.)",
     )
 
 
@@ -223,13 +224,13 @@ def _mcp_tool_list(request: dict) -> dict:
 
         if meta_file.exists():
             try:
-                with open(meta_file, "r") as f:
+                with open(meta_file) as f:
                     meta = json.load(f)
                 output = f"""Currently loaded index: {index_name}
 
-Backend: {meta.get('backend_name', 'unknown')}
-Embedding model: {meta.get('embedding_model', 'unknown')}
-Dimensions: {meta.get('dimensions', 'unknown')}
+Backend: {meta.get("backend_name", "unknown")}
+Embedding model: {meta.get("embedding_model", "unknown")}
+Dimensions: {meta.get("dimensions", "unknown")}
 Path: {state.index_path}"""
             except Exception as e:
                 output = f"Currently loaded index: {index_name}\nPath: {state.index_path}\n(Error reading metadata: {e})"
@@ -465,6 +466,7 @@ async def shutdown_event():
 
 # API Endpoints
 
+
 # MCP HTTP POST Endpoint (for streamable-http transport)
 @app.post("/")
 async def mcp_root(request: Request):
@@ -521,8 +523,7 @@ async def mcp_sse(request: Request):
             logger.info(f"MCP SSE session closed: {session_id}")
         finally:
             # Cleanup
-            if session_id in mcp_sessions:
-                del mcp_sessions[session_id]
+            mcp_sessions.pop(session_id, None)
 
     return EventSourceResponse(event_generator())
 
@@ -582,7 +583,7 @@ async def list_indexes():
                 meta_file = index_dir / "documents.leann.meta.json"
                 if meta_file.exists():
                     try:
-                        with open(meta_file, "r") as f:
+                        with open(meta_file) as f:
                             meta = json.load(f)
                         indexes.append(
                             {
@@ -649,9 +650,7 @@ async def websocket_ask(websocket: WebSocket):
     await websocket.accept()
 
     if not state.searcher or not state.llm:
-        await websocket.send_json(
-            {"type": "error", "message": "Searcher or LLM not initialized"}
-        )
+        await websocket.send_json({"type": "error", "message": "Searcher or LLM not initialized"})
         await websocket.close()
         return
 
@@ -673,9 +672,7 @@ async def websocket_ask(websocket: WebSocket):
             # Perform search
             search_start = time.time()
             try:
-                results = state.searcher.search(
-                    query=question, top_k=top_k, complexity=complexity
-                )
+                results = state.searcher.search(query=question, top_k=top_k, complexity=complexity)
                 search_time_ms = (time.time() - search_start) * 1000
 
                 # Send search results
@@ -684,14 +681,20 @@ async def websocket_ask(websocket: WebSocket):
                     result_dicts.append(
                         {
                             "id": getattr(r, "id", None),
-                            "score": float(getattr(r, "score", 0.0)),  # Convert numpy.float32 to Python float
+                            "score": float(
+                                getattr(r, "score", 0.0)
+                            ),  # Convert numpy.float32 to Python float
                             "text": getattr(r, "text", ""),
                             "metadata": getattr(r, "metadata", {}),
                         }
                     )
 
                 await websocket.send_json(
-                    {"type": "search_results", "results": result_dicts, "search_time_ms": search_time_ms}
+                    {
+                        "type": "search_results",
+                        "results": result_dicts,
+                        "search_time_ms": search_time_ms,
+                    }
                 )
 
             except Exception as e:
@@ -814,7 +817,10 @@ def main():
             if cli_index_dir.exists():
                 # Look for documents.leann in the directory (CLI format)
                 potential_index = cli_index_dir / "documents.leann"
-                if potential_index.exists() or (cli_index_dir / "documents.leann.meta.json").exists():
+                if (
+                    potential_index.exists()
+                    or (cli_index_dir / "documents.leann.meta.json").exists()
+                ):
                     # Use documents.leann path (meta file will be documents.leann.meta.json)
                     index_path = potential_index
                     logger.info(f"Resolved index name '{args.index_path}' to {index_path}")
@@ -824,7 +830,9 @@ def main():
         if not found:
             logger.error(f"Index not found: {args.index_path}")
             logger.error(f"Tried as path: {args.index_path}")
-            logger.error(f"Tried in: {[str(d / '.leann' / 'indexes' / args.index_path) for d in search_dirs]}")
+            logger.error(
+                f"Tried in: {[str(d / '.leann' / 'indexes' / args.index_path) for d in search_dirs]}"
+            )
             raise FileNotFoundError(f"Index not found: {args.index_path}")
 
     # Update state with resolved path

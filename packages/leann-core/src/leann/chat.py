@@ -8,7 +8,8 @@ import difflib
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Iterator, Optional
+from collections.abc import Iterator
+from typing import Any, Optional
 
 import torch
 

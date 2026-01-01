@@ -9,14 +9,12 @@ These tests verify end-to-end functionality including:
 
 import asyncio
 import json
-import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
-from leann.http_server import app, state
+from leann.http_server import app
 
 
 @pytest.fixture
