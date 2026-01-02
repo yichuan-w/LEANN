@@ -336,6 +336,11 @@ def compute_embeddings(
     """
     provider_options = provider_options or {}
 
+    # Allow batch_size override from provider_options (disables adaptive_optimization)
+    if "batch_size" in provider_options:
+        batch_size = provider_options["batch_size"]
+        adaptive_optimization = False  # User-specified batch_size takes precedence
+
     if mode == "sentence-transformers":
         return compute_embeddings_sentence_transformers(
             texts,
