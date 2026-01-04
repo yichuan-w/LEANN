@@ -605,8 +605,12 @@ class HFChat(LLMInterface):
                 "The 'transformers' and 'torch' libraries are required for Hugging Face models. Please install them with 'pip install transformers torch'."
             )
 
-        # Auto-detect device
-        if torch.cuda.is_available():
+        # Auto-detect device (check environment variable first)
+        env_device = os.getenv("LEANN_LLM_DEVICE")
+        if env_device:
+            self.device = env_device
+            logger.info(f"Using device from LEANN_LLM_DEVICE: {self.device}")
+        elif torch.cuda.is_available():
             self.device = "cuda"
             logger.info("CUDA is available. Using GPU.")
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -634,10 +638,20 @@ class HFChat(LLMInterface):
                 )
 
                 logger.info(f"Loading model {model_name}...")
+                # Determine device_map based on device setting
+                if self.device == "cpu":
+                    device_map = None
+                elif self.device.startswith("cuda:"):
+                    # Specific GPU requested, use it exclusively
+                    device_map = {"": self.device}
+                else:
+                    # Auto mode: let HuggingFace distribute across available GPUs
+                    device_map = "auto"
+
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_name,
                     torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
-                    device_map="auto" if self.device != "cpu" else None,
+                    device_map=device_map,
                     trust_remote_code=self.trust_remote_code,
                 )
                 logger.info(f"Successfully loaded {model_name}")

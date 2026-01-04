@@ -298,10 +298,19 @@ Below is a list of base URLs for common providers to get you started.
 | **SiliconFlow** | `https://api.siliconflow.cn/v1`                            |
 | **Zhipu (BigModel)** | `https://open.bigmodel.cn/api/paas/v4/`                |
 | **Mistral AI** | `https://api.mistral.ai/v1`                                |
-| **Anthropic** | `https://api.anthropic.com/v1`                                |
+| **Anthropic** | `https://api.anthropic.com/v1`                             |
+| **Jina AI** (Embeddings) | `https://api.jina.ai/v1`                         |
 
-
-
+> **💡 Tip: Separate Embedding Provider**
+>
+> To use a different provider for embeddings (e.g., Jina AI) while using another for LLM, use `--embedding-api-base` and `--embedding-api-key`:
+> ```bash
+> leann build my-index --docs ./docs \
+>   --embedding-mode openai \
+>   --embedding-model jina-embeddings-v3 \
+>   --embedding-api-base https://api.jina.ai/v1 \
+>   --embedding-api-key $JINA_API_KEY
+> ```
 
 If your provider isn't on this list, don't worry! Check their documentation for an OpenAI-compatible endpoint—chances are, it's OpenAI Compatible too!
 
@@ -347,6 +356,10 @@ LEANN provides flexible parameters for embedding models, search strategies, and 
 All RAG examples share these common parameters. **Interactive mode** is available in all examples - simply run without `--query` to start a continuous Q&A session where you can ask multiple questions. Type 'quit' to exit.
 
 ```bash
+# Environment Variables (GPU Device Selection)
+LEANN_EMBEDDING_DEVICE       # GPU for embedding model (e.g., cuda:0, cuda:1, cpu)
+LEANN_LLM_DEVICE             # GPU for HFChat LLM (e.g., cuda:1, or "cuda" for multi-GPU auto)
+
 # Core Parameters (General preprocessing for all examples)
 --index-dir DIR              # Directory to store the index (default: current directory)
 --query "YOUR QUESTION"      # Single query mode. Omit for interactive chat (type 'quit' to exit), and now you can play with your index interactively

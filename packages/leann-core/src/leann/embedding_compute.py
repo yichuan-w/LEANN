@@ -336,6 +336,11 @@ def compute_embeddings(
     """
     provider_options = provider_options or {}
 
+    # Allow batch_size override from provider_options (disables adaptive_optimization)
+    if "batch_size" in provider_options:
+        batch_size = provider_options["batch_size"]
+        adaptive_optimization = False  # User-specified batch_size takes precedence
+
     if mode == "sentence-transformers":
         return compute_embeddings_sentence_transformers(
             texts,
@@ -402,7 +407,12 @@ def compute_embeddings_sentence_transformers(
 
     # Auto-detect device
     if device == "auto":
-        if torch.cuda.is_available():
+        # Check environment variable first
+        env_device = os.getenv("LEANN_EMBEDDING_DEVICE")
+        if env_device:
+            device = env_device
+            logger.info(f"Using device from LEANN_EMBEDDING_DEVICE: {device}")
+        elif torch.cuda.is_available():
             device = "cuda"
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             device = "mps"
