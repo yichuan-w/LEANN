@@ -118,18 +118,26 @@ class MetadataFilterEngine:
             logger.debug(f"Field '{field_name}' not found in result or metadata")
             return False
 
+        # Fast path for common equality check to avoid dispatch overhead
+        if "==" in filter_spec and len(filter_spec) == 1:
+            return field_value == filter_spec["=="]
+
         # Evaluate each operator in the filter spec
         for operator, expected_value in filter_spec.items():
-            if operator not in self.operators:
+            op_func = self.operators.get(operator)
+            if op_func is None:
                 logger.warning(f"Unsupported operator: {operator}")
                 return False
 
             try:
-                if not self.operators[operator](field_value, expected_value):
-                    logger.debug(
-                        f"Filter failed: {field_name} {operator} {expected_value} "
-                        f"(actual: {field_value})"
-                    )
+                # Direct call without try/except overhead for common success case
+                if not op_func(field_value, expected_value):
+                    # Only log failure in debug mode to avoid string formatting cost
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            f"Filter failed: {field_name} {operator} {expected_value} "
+                            f"(actual: {field_value})"
+                        )
                     return False
             except Exception as e:
                 logger.warning(

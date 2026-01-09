@@ -661,7 +661,6 @@ class HFChat(LLMInterface):
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def ask(self, prompt: str, **kwargs) -> str:
-        print("kwargs in HF: ", kwargs)
         # Check if this is a Qwen model and add /no_think by default
         is_qwen_model = "qwen" in self.model.config._name_or_path.lower()
 
@@ -854,11 +853,11 @@ class OpenAIChat(LLMInterface):
 
         try:
             response = self.client.chat.completions.create(**params)
-            print(
+            logger.debug(
                 f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}"
             )
             if response.choices[0].finish_reason == "length":
-                print("The query is exceeding the maximum allowed number of tokens")
+                logger.warning("The query is exceeding the maximum allowed number of tokens")
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error(f"Error communicating with OpenAI: {e}")
@@ -925,14 +924,14 @@ class AnthropicChat(LLMInterface):
             response_text = response.content[0].text
 
             # Log token usage
-            print(
+            logger.debug(
                 f"Total tokens = {response.usage.input_tokens + response.usage.output_tokens}, "
                 f"input tokens = {response.usage.input_tokens}, "
                 f"output tokens = {response.usage.output_tokens}"
             )
 
             if response.stop_reason == "max_tokens":
-                print("The query is exceeding the maximum allowed number of tokens")
+                logger.warning("The query is exceeding the maximum allowed number of tokens")
 
             return response_text.strip()
         except Exception as e:
@@ -945,7 +944,7 @@ class SimulatedChat(LLMInterface):
 
     def ask(self, prompt: str, **kwargs) -> str:
         logger.info("Simulating LLM call...")
-        print("Prompt sent to LLM (simulation):", prompt[:500] + "...")
+        logger.debug(f"Prompt sent to LLM (simulation): {prompt[:500]}...")
         return "This is a simulated answer from the LLM based on the retrieved context."
 
 

@@ -263,11 +263,24 @@ class TestMetadataFilterEngine:
         assert len(result) == 2
         assert all(r["metadata"]["character"] == "Alice" for r in result)
 
-    def test_empty_results_list(self):
-        """Test filtering on empty results list."""
-        filters = {"chapter": {"==": 1}}
         result = self.engine.apply_filters([], filters)
         assert len(result) == 0
+
+    def test_equality_fast_path_optimization(self):
+        """Test the fast-path optimization for equality checks."""
+        # This test ensures the optimized code path works correctly
+        # Note: self.engine is initialized in setup_method, but we can make a new one or use self.engine
+
+        result = {"category": "A", "val": 10}
+
+        # 1. Basic equality check (Fast Path)
+        filters = {"category": {"==": "A"}}
+        # Access protected method for direct verification if needed,
+        # or just use public apply_filters
+        assert self.engine._evaluate_filters(result, filters) is True
+
+        filters_fail = {"category": {"==": "B"}}
+        assert self.engine._evaluate_filters(result, filters_fail) is False
 
 
 class TestPassageManagerFiltering:

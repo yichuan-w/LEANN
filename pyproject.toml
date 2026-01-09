@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "leann-workspace"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 dependencies = [
     "leann-core",
     "leann-backend-hnsw",
     "typer>=0.12.3",
-    "numpy>=1.26.0",
+    "numpy>=1.26.0,<2.0.0",
     "torch",
     "tqdm",
     "datasets>=2.15.0",
@@ -88,6 +88,7 @@ wechat-exporter = "wechat_exporter.main:main"
 leann-core = { path = "packages/leann-core", editable = true }
 leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = true }
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
+leann-backend-faiss = { path = "packages/leann-backend-faiss", editable = true }
 astchunk = { path = "packages/astchunk-leann", editable = true }
 
 [dependency-groups]

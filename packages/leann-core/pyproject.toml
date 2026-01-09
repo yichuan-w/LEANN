@@ -34,7 +34,8 @@ dependencies = [
     "pymupdf>=1.23.0",
     "pdfplumber>=0.10.0",
     "nbconvert>=7.0.0",  # For .ipynb file support
-    "gitignore-parser>=0.1.12",  # For proper .gitignore handling
+    "gitignore-parser>=0.1.12",
+    "einops>=0.7.0",
     "mlx>=0.26.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-lm>=0.26.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]

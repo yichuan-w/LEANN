@@ -1,12 +1,14 @@
-"""
-Unified embedding computation module
-Consolidates all embedding computation logic using SentenceTransformer
-Preserves all optimization parameters to ensure performance
-"""
+import os
+
+# [Safety] Unset deprecated variable to silence warnings BEFORE any heavy imports
+# Ensure this happens globally as soon as the module is loaded
+if "PYTORCH_CUDA_ALLOC_CONF" in os.environ:
+    _old_val = os.environ.pop("PYTORCH_CUDA_ALLOC_CONF")
+    if "PYTORCH_ALLOC_CONF" not in os.environ:
+        os.environ["PYTORCH_ALLOC_CONF"] = _old_val
 
 import json
 import logging
-import os
 import subprocess
 import time
 from typing import Any, Optional
@@ -140,34 +142,49 @@ def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
     # Use tiktoken with cl100k_base encoding
     enc = tiktoken.get_encoding("cl100k_base")
 
-    truncated_texts = []
+    truncated_texts = [None] * len(texts)
     truncation_count = 0
     total_tokens_removed = 0
     max_original_length = 0
 
-    for i, text in enumerate(texts):
+    # Parallel processing helper
+    def process_text(idx_text):
+        idx, text = idx_text
+        # Re-get encoder inside thread if needed, but cl100k_base is cached by tiktoken
         tokens = enc.encode(text)
         original_length = len(tokens)
 
         if original_length <= token_limit:
-            # Text is within limit, keep as is
-            truncated_texts.append(text)
+            return idx, text, 0, 0
         else:
-            # Truncate to token_limit
             truncated_tokens = tokens[:token_limit]
             truncated_text = enc.decode(truncated_tokens)
-            truncated_texts.append(truncated_text)
-
-            # Track truncation statistics
-            truncation_count += 1
             tokens_removed = original_length - token_limit
+            return idx, truncated_text, tokens_removed, original_length
+
+    # Use ThreadPoolExecutor for parallel tokenization for large batches
+    # tiktoken releases GIL, so threads work well
+    if len(texts) > 50:
+        import concurrent.futures
+
+        # Limit workers to avoid overhead on small/medium batches
+        max_workers = min(32, os.cpu_count() or 4)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(process_text, enumerate(texts)))
+    else:
+        results = map(process_text, enumerate(texts))
+
+    for idx, truncated_text, tokens_removed, original_len in results:
+        truncated_texts[idx] = truncated_text
+        if tokens_removed > 0:
+            truncation_count += 1
             total_tokens_removed += tokens_removed
-            max_original_length = max(max_original_length, original_length)
+            max_original_length = max(max_original_length, original_len)
 
             # Log individual truncation at WARNING level (first few only)
             if truncation_count <= 3:
                 logger.warning(
-                    f"Text {i + 1} truncated: {original_length} → {token_limit} tokens "
+                    f"Text {idx + 1} truncated: {original_len} → {token_limit} tokens "
                     f"({tokens_removed} tokens removed)"
                 )
             elif truncation_count == 4:
@@ -420,6 +437,15 @@ def compute_embeddings_sentence_transformers(
             device = "cpu"
 
     # Apply optimizations based on benchmark results
+    env_batch_size = os.getenv("LEANN_EMBEDDING_BATCH_SIZE")
+    if env_batch_size:
+        try:
+            batch_size = int(env_batch_size)
+            adaptive_optimization = False
+            logger.info(f"Using manual batch size from LEANN_EMBEDDING_BATCH_SIZE: {batch_size}")
+        except ValueError:
+            logger.warning(f"Invalid LEANN_EMBEDDING_BATCH_SIZE: {env_batch_size}, using defaults")
+
     if adaptive_optimization:
         # Use optimal batch_size constants for different devices based on benchmark results
         if device == "mps":
@@ -427,7 +453,7 @@ def compute_embeddings_sentence_transformers(
             if model_name == "Qwen/Qwen3-Embedding-0.6B":
                 batch_size = 32
         elif device == "cuda":
-            batch_size = 256  # CUDA optimal batch size
+            batch_size = 256  # Back to full speed, now safe due to metadata thinning
         # Keep original batch_size for CPU
 
     # Create cache key
@@ -445,16 +471,32 @@ def compute_embeddings_sentence_transformers(
 
         # Apply hardware optimizations
         if device == "cuda":
-            # TODO: Haven't tested this yet
+            # Set allocator config to avoid fragmentation if not already set
+            if "PYTORCH_ALLOC_CONF" not in os.environ:
+                os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+                logger.info("Set PYTORCH_ALLOC_CONF=expandable_segments:True to reduce fragmentation")
+
+            # TF32 allows for faster processing on Ampere+ GPUs
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.deterministic = False
-            torch.cuda.set_per_process_memory_fraction(0.9)
+            
+            # Reduce memory fraction to leave room for other processes (e.g., search server)
+            # 0.7 is a safer default than 0.9 in multi-service environments
+            mem_fraction = float(os.getenv("LEANN_GPU_MEM_FRACTION", "0.7"))
+            torch.cuda.set_per_process_memory_fraction(mem_fraction)
+            torch.cuda.empty_cache()
+            
+            # Log current utilization
+            allocated = torch.cuda.memory_allocated(0) / 1024**3
+            reserved = torch.cuda.memory_reserved(0) / 1024**3
+            logger.info(f"GPU Memory (vram): Allocated: {allocated:.2f}GB | Reserved: {reserved:.2f}GB | Quota: {mem_fraction*100:.0f}%")
         elif device == "mps":
             try:
                 if hasattr(torch.mps, "set_per_process_memory_fraction"):
-                    torch.mps.set_per_process_memory_fraction(0.9)
+                    torch.mps.set_per_process_memory_fraction(0.7)
+                torch.mps.empty_cache()
             except AttributeError:
                 logger.warning("Some MPS optimizations not available in this PyTorch version")
         elif device == "cpu":
@@ -472,6 +514,7 @@ def compute_embeddings_sentence_transformers(
             "low_cpu_mem_usage": True,
             "_fast_init": True,
             "attn_implementation": "eager",  # Use eager attention for speed
+            "trust_remote_code": True,  # Required for nomic-embed-text and similar models
         }
 
         tokenizer_kwargs = {
@@ -493,6 +536,7 @@ def compute_embeddings_sentence_transformers(
                 model_kwargs=local_model_kwargs,
                 tokenizer_kwargs=local_tokenizer_kwargs,
                 local_files_only=True,
+                trust_remote_code=True,
             )
             logger.info("Model loaded successfully! (local + optimized)")
         except TypeError as e:
@@ -506,6 +550,7 @@ def compute_embeddings_sentence_transformers(
                         model_name,
                         device=device,
                         local_files_only=True,
+                        trust_remote_code=True,
                     )
                     logger.info("Model loaded successfully! (local + basic)")
                 except Exception as e2:
@@ -514,6 +559,7 @@ def compute_embeddings_sentence_transformers(
                         model_name,
                         device=device,
                         local_files_only=False,
+                        trust_remote_code=True,
                     )
                     logger.info("Model loaded successfully! (network + basic)")
             else:
@@ -533,6 +579,7 @@ def compute_embeddings_sentence_transformers(
                     model_kwargs=network_model_kwargs,
                     tokenizer_kwargs=network_tokenizer_kwargs,
                     local_files_only=False,
+                    trust_remote_code=True,
                 )
                 logger.info("Model loaded successfully! (network + optimized)")
             except TypeError as e2:
@@ -544,6 +591,7 @@ def compute_embeddings_sentence_transformers(
                         model_name,
                         device=device,
                         local_files_only=False,
+                        trust_remote_code=True,
                     )
                     logger.info("Model loaded successfully! (network + basic)")
                 else:
@@ -558,15 +606,24 @@ def compute_embeddings_sentence_transformers(
                 logger.warning(f"FP16 optimization failed: {e}")
 
         # Apply torch.compile optimization
-        if device in ["cuda", "mps"]:
+        # Skip compilation for rebuilds/indexing as it consumes significant VRAM
+        if device in ["cuda", "mps"] and not is_build:
             try:
                 model = torch.compile(model, mode="reduce-overhead", dynamic=True)
                 logger.info(f"Applied torch.compile optimization: {model_name}")
             except Exception as e:
                 logger.warning(f"torch.compile optimization failed: {e}")
+        elif is_build:
+            logger.debug("Skipping torch.compile for build operation to save VRAM")
 
         # Set model to eval mode and disable gradients for inference
         model.eval()
+        # [Safety] Enforce sequence length limit for heavy models to cap VRAM usage
+        # Nomic-BERT supports 2048, but SentenceTransformers might default to 8192
+        if "nomic" in model_name.lower():
+            model.max_seq_length = 2048
+            logger.info(f"Enforced max_seq_length=2048 for '{model_name}'")
+
         for param in model.parameters():
             param.requires_grad_(False)
 

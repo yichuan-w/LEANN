@@ -8,7 +8,7 @@ install: uv tool install leann-core --with leann
 
 # MCP Server Entry Point
 mcp.server: leann_mcp
-mcp.protocol_version: 2024-11-05
+mcp.protocol_version: 2025-11-25
 
 # Tools
 mcp.tools: leann_list, leann_search

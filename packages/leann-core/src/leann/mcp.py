@@ -12,7 +12,7 @@ def handle_request(request):
             "id": request.get("id"),
             "result": {
                 "capabilities": {"tools": {}},
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": "2025-11-25",
                 "serverInfo": {"name": "leann-mcp", "version": "1.0.0"},
             },
         }

@@ -1,13 +1,16 @@
 import atexit
 import json
+import hashlib
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
 import time
+import requests
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from .settings import encode_provider_options
 
@@ -144,7 +147,8 @@ class EmbeddingServerManager:
         self.backend_module_name = backend_module_name
         self.server_process: Optional[subprocess.Popen] = None
         self.server_port: Optional[int] = None
-        # Track last-started config for in-process reuse only
+        self._server_host: str = "localhost"
+        # Track last-started config for reuse
         self._server_config: Optional[dict] = None
         self._atexit_registered = False
         # Also register a weakref finalizer to ensure cleanup when manager is GC'ed
@@ -161,7 +165,7 @@ class EmbeddingServerManager:
         model_name: str,
         embedding_mode: str = "sentence-transformers",
         **kwargs,
-    ) -> tuple[bool, int]:
+    ) -> tuple[bool, str, int]:
         """Start the embedding server."""
         # passages_file may be present in kwargs for server CLI, but we don't need it here
         provider_options = kwargs.pop("provider_options", None)
@@ -174,15 +178,33 @@ class EmbeddingServerManager:
             passages_file=passages_file,
         )
 
-        # If this manager already has a live server, just reuse it
+        # Check for reuse (In-process OR Remote)
+        service_manager_url = os.getenv("LEANN_SERVICE_MANAGER_URL")
+        is_remote = bool(service_manager_url)
+
+        # 1. Reuse Remote Service (if configured and previous details cached)
         if (
-            self.server_process
+            is_remote
+            and self.server_port
+            and self._server_host
+            and self._server_config == config_signature
+        ):
+            # Optimistically assume remote service is still running
+            # If it failed, subsequent ZMQ connection will fail, triggering a retry?
+            # Ideally verify health? But that adds RTT.
+            # Start/Warmup path is frequent, so we optimize for speed.
+            return True, self._server_host, self.server_port
+
+        # 2. Reuse In-Process Server
+        if (
+            not is_remote
+            and self.server_process
             and self.server_process.poll() is None
             and self.server_port
             and self._server_config == config_signature
         ):
             logger.info("Reusing in-process server")
-            return True, self.server_port
+            return True, "localhost", self.server_port
 
         # Configuration changed, stop existing server before starting a new one
         if self.server_process and self.server_process.poll() is None:
@@ -201,15 +223,56 @@ class EmbeddingServerManager:
                 **kwargs,
             )
 
+        if _is_colab_environment():
+            # ... (omitted colab code for brevity, but we assume it's local)
+            # Colab support for remote manager not planned here yet.
+            pass
+
+        # Check for remote service manager
+        service_manager_url = os.getenv("LEANN_SERVICE_MANAGER_URL")
+        if service_manager_url:
+            try:
+                passages_file = kwargs.get("passages_file", "")
+                if passages_file:
+                    passages_file = str(Path(passages_file).absolute())
+
+                payload = {
+                    "model_name": model_name,
+                    "passages_file": passages_file,
+                    "embedding_mode": embedding_mode,
+                    "distance_metric": kwargs.get("distance_metric", "mips"),
+                    "provider_options": provider_options,
+                    "backend_module": self.backend_module_name,  # Send backend to spawn
+                    "signature": hashlib.md5(
+                        json.dumps(config_signature, sort_keys=True, default=str).encode()
+                    ).hexdigest(),
+                }
+                
+                resp = requests.post(f"{service_manager_url}/start", json=payload, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                self.server_port = data["port"]
+                self._server_host = data.get("host", "localhost")
+                self._server_config = config_signature
+                return True, self._server_host, self.server_port
+
+            except Exception as e:
+                logger.error(f"Failed to start remote service: {e}")
+                # Fallback to local? Or raise?
+                # If configured to use remote, we should probably fail or warn.
+                # Let's try local fallback if it fails?
+                logger.warning("Falling back to local process spawn.")
+
         # Always pick a fresh available port
         try:
             actual_port = _get_available_port(port)
         except RuntimeError:
             logger.error("No available ports found")
-            return False, port
+            return False, "localhost", port
 
         # Start a new server
-        return self._start_new_server(
+        started, ready_port = self._start_new_server(
             actual_port,
             model_name,
             embedding_mode,
@@ -217,6 +280,7 @@ class EmbeddingServerManager:
             config_signature=config_signature,
             **kwargs,
         )
+        return started, "localhost", ready_port
 
     def _build_config_signature(
         self,
@@ -440,7 +504,20 @@ class EmbeddingServerManager:
 
     def stop_server(self):
         """Stops the embedding server process if it's running."""
-        if not self.server_process:
+        if not self.server_process and not self.server_port:
+            return
+
+        service_manager_url = os.getenv("LEANN_SERVICE_MANAGER_URL")
+        # If remote service manager is configured, DO NOT call /stop.
+        # The service manager handles lifecycle with idle timeouts.
+        # We only clear local state - the server stays running for reuse.
+        if self.server_port and not self.server_process and service_manager_url:
+            logger.debug(
+                f"Remote service manager handles lifecycle - clearing local state only"
+            )
+            self.server_port = None
+            self._server_host = "localhost"
+            self._server_config = None
             return
 
         if self.server_process and self.server_process.poll() is not None:

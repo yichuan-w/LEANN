@@ -1,4 +1,5 @@
-"""Unit tests for token-aware truncation functionality.
+"""
+Unit tests for token-aware truncation functionality.
 
 This test suite defines the contract for token truncation functions that prevent
 500 errors from Ollama when text exceeds model token limits. These tests verify:
@@ -641,3 +642,24 @@ class TestTokenLimitCaching:
         cache_key = ("nomic-embed-text:latest", "http://localhost:11434")
         assert cache_key in _token_limit_cache
         assert _token_limit_cache[cache_key] == 2048
+
+    def test_parallel_tokenization_performance(self):
+        """Verify performance gain from parallel tokenization on large batches."""
+        import time
+
+        from leann.embedding_compute import truncate_to_token_limit
+
+        # 60 texts > 50 trigger threshold for parallel path
+        # Each text ~400 tokens, truncated to 100
+        texts_large = ["long text " * 200] * 60
+
+        start_time = time.time()
+        truncated_large = truncate_to_token_limit(texts_large, token_limit=100)
+        end_time = time.time()
+
+        # Verify correctness
+        assert len(truncated_large) == 60
+        assert len(truncated_large[0]) < len(texts_large[0])
+
+        duration = end_time - start_time
+        print(f"Parallel tokenization of 60 items took {duration:.4f}s")

@@ -4,6 +4,9 @@ Packaged within leann-core so installed wheels can import it reliably.
 """
 
 import logging
+import os
+import concurrent.futures
+from multiprocessing import get_context, cpu_count
 from pathlib import Path
 from typing import Any, Optional
 
@@ -178,21 +181,29 @@ def create_ast_chunks(
     chunk_overlap: int = 64,
     metadata_template: str = "default",
 ) -> list[dict[str, Any]]:
-    """Create AST-aware chunks from code documents using astchunk.
+    """Create AST-aware chunks from code documents using CodeAnalyzer.
 
-    Falls back to traditional chunking if astchunk is unavailable.
+    Delegates to leann.analysis.CodeAnalyzer which uses astchunk under the hood.
+    Falls back to traditional chunking if AST analysis fails or is unavailable.
 
     Returns:
         List of dicts with {"text": str, "metadata": dict}
     """
     try:
-        from astchunk import ASTChunkBuilder  # optional dependency
+        from leann.analysis import ASTCHUNK_AVAILABLE, CodeAnalyzer
+
+        if not ASTCHUNK_AVAILABLE:
+            raise ImportError("astchunk not available via CodeAnalyzer")
     except ImportError as e:
-        logger.error(f"astchunk not available: {e}")
+        logger.error(f"AST chunking unavailable: {e}")
         logger.info("Falling back to traditional chunking for code files")
         return _traditional_chunks_as_dicts(documents, max_chunk_size, chunk_overlap)
 
     all_chunks = []
+
+    # Cache analyzers by language to avoid repeated re-initialization overhead
+    analyzers = {}
+
     for doc in documents:
         language = doc.metadata.get("language")
         if not language:
@@ -201,84 +212,52 @@ def create_ast_chunks(
             continue
 
         try:
-            # Warn once if AST chunk size + overlap might exceed common token limits
-            # Note: Actual truncation happens at embedding time with dynamic model limits
-            global _ast_token_warning_shown
-            estimated_max_tokens = int(
-                (max_chunk_size + chunk_overlap) * 1.2
-            )  # Conservative estimate
-            if estimated_max_tokens > 512 and not _ast_token_warning_shown:
-                logger.warning(
-                    f"AST chunk size ({max_chunk_size}) + overlap ({chunk_overlap}) = {max_chunk_size + chunk_overlap} chars "
-                    f"may exceed 512 token limit (~{estimated_max_tokens} tokens estimated). "
-                    f"Consider reducing --ast-chunk-size to {int(400 / 1.2)} or --ast-chunk-overlap to {int(50 / 1.2)}. "
-                    f"Note: Chunks will be auto-truncated at embedding time based on your model's actual token limit."
-                )
-                _ast_token_warning_shown = True
+            # 1. Get or create analyzer for this language
+            if language not in analyzers:
+                analyzers[language] = CodeAnalyzer(language)
 
-            configs = {
-                "max_chunk_size": max_chunk_size,
-                "language": language,
-                "metadata_template": metadata_template,
-                "chunk_overlap": chunk_overlap if chunk_overlap > 0 else 0,
-            }
+            analyzer = analyzers[language]
 
-            repo_metadata = {
-                "file_path": doc.metadata.get("file_path", ""),
-                "file_name": doc.metadata.get("file_name", ""),
-                "creation_date": doc.metadata.get("creation_date", ""),
-                "last_modified_date": doc.metadata.get("last_modified_date", ""),
-            }
-            configs["repo_level_metadata"] = repo_metadata
-
-            chunk_builder = ASTChunkBuilder(**configs)
+            # 2. Get content and basic metadata
             code_content = doc.get_content()
             if not code_content or not code_content.strip():
-                logger.warning("Empty code content, skipping")
                 continue
 
-            chunks = chunk_builder.chunkify(code_content)
-            for chunk in chunks:
-                chunk_text: str | None = None
-                astchunk_metadata: dict[str, Any] = {}
+            file_path = doc.metadata.get("file_path", "") or doc.metadata.get("file_name", "")
 
-                if hasattr(chunk, "text"):
-                    chunk_text = str(chunk.text) if chunk.text else None
-                elif isinstance(chunk, str):
-                    chunk_text = chunk
-                elif isinstance(chunk, dict):
-                    # Handle astchunk format: {"content": "...", "metadata": {...}}
-                    if "content" in chunk:
-                        chunk_text = chunk["content"]
-                        astchunk_metadata = chunk.get("metadata", {})
-                    elif "text" in chunk:
-                        chunk_text = chunk["text"]
-                    else:
-                        chunk_text = str(chunk)  # Last resort
-                else:
-                    chunk_text = str(chunk)
+            # 3. Base metadata from document
+            doc_metadata = {
+                "file_path": file_path,
+                "file_name": doc.metadata.get("file_name", ""),
+                "language": language,
+            }
+            if "creation_date" in doc.metadata:
+                doc_metadata["creation_date"] = doc.metadata["creation_date"]
+            if "last_modified_date" in doc.metadata:
+                doc_metadata["last_modified_date"] = doc.metadata["last_modified_date"]
 
-                if chunk_text and chunk_text.strip():
-                    # Extract document-level metadata
-                    doc_metadata = {
-                        "file_path": doc.metadata.get("file_path", ""),
-                        "file_name": doc.metadata.get("file_name", ""),
-                    }
-                    if "creation_date" in doc.metadata:
-                        doc_metadata["creation_date"] = doc.metadata["creation_date"]
-                    if "last_modified_date" in doc.metadata:
-                        doc_metadata["last_modified_date"] = doc.metadata["last_modified_date"]
-
-                    # Merge document metadata + astchunk metadata
-                    combined_metadata = {**doc_metadata, **astchunk_metadata}
-
-                    all_chunks.append({"text": chunk_text.strip(), "metadata": combined_metadata})
-
-            logger.info(
-                f"Created {len(chunks)} AST chunks from {language} file: {doc.metadata.get('file_name', 'unknown')}"
+            # 4. Generate Semantic Chunks
+            # CodeAnalyzer handles the astchunk call + rich context injection (global imports)
+            chunks = analyzer.get_semantic_chunks(
+                code=code_content,
+                file_path=file_path,
+                metadata=doc_metadata,  # Passed as repo-level metadata
             )
+
+            if chunks:
+                all_chunks.extend(chunks)
+                logger.debug(f"Created {len(chunks)} AST chunks for {file_path}")
+            else:
+                # Fallback if analyzer returns empty (e.g. parse error) but content exists
+                logger.warning(f"AST analysis yielded no chunks for {file_path}, falling back.")
+                all_chunks.extend(
+                    _traditional_chunks_as_dicts([doc], max_chunk_size, chunk_overlap)
+                )
+
         except Exception as e:
-            logger.warning(f"AST chunking failed for {language} file: {e}")
+            logger.warning(
+                f"AST chunking failed for {language} file {doc.metadata.get('file_path')}: {e}"
+            )
             logger.info("Falling back to traditional chunking")
             all_chunks.extend(_traditional_chunks_as_dicts([doc], max_chunk_size, chunk_overlap))
 
@@ -330,7 +309,6 @@ def create_traditional_chunks(
             content = doc.get_content()
             if content and content.strip():
                 result.append({"text": content.strip(), "metadata": doc_metadata})
-
     return result
 
 
@@ -380,30 +358,98 @@ def create_text_chunks(
                     logger.warning(f"Unsupported extension {ext}, will use traditional chunking")
 
     all_chunks = []
+
+    # helper for parallel processing
+    def process_docs_parallel(docs, chunk_func, **kwargs):
+        """Internal helper to process documents in parallel batches."""
+        if len(docs) <= 5: # Small sets are faster serial
+            return chunk_func(docs, **kwargs)
+
+        # 1. Determine worker count
+        cpu_total = cpu_count() or 4
+        num_workers = int(os.getenv("LEANN_INDEXING_WORKERS", min(cpu_total, 8)))
+        
+        # 2. Calculate batch size (target ~4 batches per worker for load balancing)
+        target_batches = num_workers * 4
+        batch_size = max(5, len(docs) // target_batches)
+        batches = [docs[i : i + batch_size] for i in range(0, len(docs), batch_size)]
+        
+        logger.info(f"Parallelizing {len(docs)} docs across {num_workers} workers (batch_size={batch_size})")
+
+        # 3. Use 'spawn' for safety with C-extensions (tree-sitter/faiss)
+        ctx = get_context("spawn")
+        all_chunks = []
+        
+        try:
+            from tqdm import tqdm
+            pbar = tqdm(total=len(batches), desc="Processing AST chunks (parallel)", unit="batch", leave=False)
+        except ImportError:
+            pbar = None
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers, mp_context=ctx) as executor:
+            # Note: chunk_func must be top-level and picklable
+            future_to_batch = {executor.submit(chunk_func, batch, **kwargs): batch for batch in batches}
+            
+            for future in concurrent.futures.as_completed(future_to_batch):
+                if pbar:
+                    pbar.update(1)
+                try:
+                    results = future.result()
+                    if results:
+                        all_chunks.extend(results)
+                except Exception as e:
+                    batch_sample = future_to_batch[future][0].metadata.get("file_path", "unknown")
+                    logger.error(f"Parallel worker failed on batch starting with {batch_sample}: {e}")
+        
+        if pbar:
+            pbar.close()
+        
+        return all_chunks
+
     if use_ast_chunking:
         code_docs, text_docs = detect_code_files(documents, local_code_extensions)
         if code_docs:
             try:
+                # AST chunking is CPU heavy, but running serial to be safe
                 all_chunks.extend(
-                    create_ast_chunks(
-                        code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
+                    process_docs_parallel(
+                        code_docs,
+                        create_ast_chunks,
+                        max_chunk_size=ast_chunk_size,
+                        chunk_overlap=ast_chunk_overlap,
                     )
                 )
             except Exception as e:
                 logger.error(f"AST chunking failed: {e}")
                 if ast_fallback_traditional:
                     all_chunks.extend(
-                        _traditional_chunks_as_dicts(code_docs, chunk_size, chunk_overlap)
+                        process_docs_parallel(
+                            code_docs,
+                            _traditional_chunks_as_dicts,
+                            chunk_size=chunk_size,
+                            chunk_overlap=chunk_overlap,
+                        )
                     )
                 else:
                     raise
         if text_docs:
-            all_chunks.extend(_traditional_chunks_as_dicts(text_docs, chunk_size, chunk_overlap))
+            all_chunks.extend(
+                process_docs_parallel(
+                    text_docs,
+                    _traditional_chunks_as_dicts,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                )
+            )
     else:
-        all_chunks = _traditional_chunks_as_dicts(documents, chunk_size, chunk_overlap)
+        all_chunks.extend(
+            process_docs_parallel(
+                documents,
+                _traditional_chunks_as_dicts,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+            )
+        )
 
     logger.info(f"Total chunks created: {len(all_chunks)}")
-
-    # Note: Token truncation is now handled at embedding time with dynamic model limits
-    # See get_model_token_limit() and truncate_to_token_limit() in embedding_compute.py
     return all_chunks

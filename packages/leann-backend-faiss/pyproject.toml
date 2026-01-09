@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leann-backend-faiss"
+version = "0.1.0"
+requires-python = ">=3.10"
+description = "FAISS backend for LEANN with GPU acceleration"
+dependencies = [
+    "leann-core",
+    "numpy",
+    "faiss-gpu-cu12",  # Modern CUDA 12 support
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

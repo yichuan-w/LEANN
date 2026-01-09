@@ -1,6 +1,7 @@
 """
 This file contains the core API for the LEANN project, now definitively updated
 with the correct, original embedding logic from the user's reference code.
+
 """
 
 import json
@@ -280,7 +281,7 @@ class LeannBuilder:
     def __init__(
         self,
         backend_name: str,
-        embedding_model: str = "facebook/contriever",
+        embedding_model: str = "nomic-ai/nomic-embed-text-v1.5",
         dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
         embedding_options: Optional[dict[str, Any]] = None,
@@ -448,14 +449,37 @@ class LeannBuilder:
         with open(offset_file, "wb") as f:
             pickle.dump(offset_map, f)
         texts_to_embed = [c["text"] for c in self.chunks]
-        embeddings = compute_embeddings(
-            texts_to_embed,
-            self.embedding_model,
-            self.embedding_mode,
-            use_server=False,
-            is_build=True,
-            provider_options=self.embedding_options,
-        )
+
+        # Use environment variable for batch_size if set, otherwise default to 256 for stability
+        batch_size = int(os.getenv("LEANN_EMBEDDING_BATCH_SIZE", "256"))
+        embeddings_list = []
+
+        # Use tqdm if available
+        try:
+            from tqdm import tqdm
+
+            iterator = tqdm(
+                range(0, len(texts_to_embed), batch_size), desc="Computing embeddings", unit="batch"
+            )
+        except ImportError:
+            iterator = range(0, len(texts_to_embed), batch_size)
+
+        for i in iterator:
+            batch = texts_to_embed[i : i + batch_size]
+            batch_embeddings = compute_embeddings(
+                batch,
+                self.embedding_model,
+                self.embedding_mode,
+                use_server=False,
+                is_build=False,  # Set to False to avoid nested tqdm progress bars
+                provider_options=self.embedding_options,
+            )
+            embeddings_list.append(batch_embeddings)
+
+        if embeddings_list:
+            embeddings = np.vstack(embeddings_list)
+        else:
+            embeddings = np.array([])
         string_ids = [chunk["id"] for chunk in self.chunks]
         # Persist ID map alongside index so backends that return integer labels can remap to passage IDs
         try:
@@ -704,14 +728,36 @@ class LeannBuilder:
             raise ValueError("No valid chunks to append.")
 
         texts_to_embed = [chunk["text"] for chunk in valid_chunks]
-        embeddings = compute_embeddings(
-            texts_to_embed,
-            self.embedding_model,
-            self.embedding_mode,
-            use_server=False,
-            is_build=True,
-            provider_options=self.embedding_options,
-        )
+
+        # Batch embedding computation
+        batch_size = 256
+        embeddings_list = []
+
+        try:
+            from tqdm import tqdm
+
+            iterator = tqdm(
+                range(0, len(texts_to_embed), batch_size), desc="Computing embeddings", unit="batch"
+            )
+        except ImportError:
+            iterator = range(0, len(texts_to_embed), batch_size)
+
+        for i in iterator:
+            batch = texts_to_embed[i : i + batch_size]
+            batch_embeddings = compute_embeddings(
+                batch,
+                self.embedding_model,
+                self.embedding_mode,
+                use_server=False,
+                is_build=True,
+                provider_options=self.embedding_options,
+            )
+            embeddings_list.append(batch_embeddings)
+
+        if embeddings_list:
+            embeddings = np.vstack(embeddings_list)
+        else:
+            embeddings = np.array([])
 
         embedding_dim = embeddings.shape[1]
         expected_dim = meta.get("dimensions")
@@ -966,10 +1012,11 @@ class LeannSearcher:
             logger.warning(f"  ✅ Auto-adjusted top_k to {top_k} to match available documents")
 
         zmq_port = None
+        zmq_host = "localhost"
 
         start_time = time.time()
         if recompute_embeddings:
-            zmq_port = self.backend_impl._ensure_server_running(
+            zmq_host, zmq_port = self.backend_impl._ensure_server_running(
                 self.meta_path_str,
                 port=expected_zmq_port,
                 **kwargs,
@@ -997,6 +1044,7 @@ class LeannSearcher:
             query,
             use_server_if_available=recompute_embeddings,
             zmq_port=zmq_port,
+            zmq_host=zmq_host,
             query_template=query_template,
         )
         logger.info(f"  Generated embedding shape: {query_embedding.shape}")
@@ -1011,6 +1059,7 @@ class LeannSearcher:
             "recompute_embeddings": recompute_embeddings,
             "pruning_strategy": pruning_strategy,
             "zmq_port": zmq_port,
+            "zmq_host": zmq_host,
         }
         # Only HNSW supports batching; forward conditionally
         if self.backend_name == "hnsw":
@@ -1208,6 +1257,7 @@ class LeannChat:
             self.searcher = searcher
             self._owns_searcher = False
         self.llm = get_llm(llm_config)
+        self._active_results = []
 
     def ask(
         self,
@@ -1243,12 +1293,23 @@ class LeannChat:
         )
         search_time = time.time() - search_time
         logger.info(f"  Search time: {search_time} seconds")
-        context = "\n\n".join([r.text for r in results])
+        context_parts = []
+        for r in results:
+            source = r.metadata.get("file_path") or r.metadata.get("source") or "Unknown source"
+            # Add line number range if available (from AST chunking or similar)
+            if "start_line" in r.metadata and "end_line" in r.metadata:
+                source += f" (lines {r.metadata['start_line']}-{r.metadata['end_line']})"
+
+            context_parts.append(f"Source: {source}\nContent:\n{r.text}")
+
+        context = "\n\n---\n\n".join(context_parts)
         prompt = (
-            "Here is some retrieved context that might help answer your question:\n\n"
+            "Here is some retrieved context that might help answer your question.\n"
+            "Each matching chunk starts with its source location.\n\n"
             f"{context}\n\n"
             f"Question: {question}\n\n"
-            "Please provide the best answer you can based on this context and your knowledge."
+            "Please provide the best answer you can based on this context and your knowledge. "
+            "When referencing specific code or facts, please cite the source file and line numbers if available."
         )
 
         logger.info("The context provided to the LLM is:")
@@ -1264,6 +1325,7 @@ class LeannChat:
             )
         ask_time = time.time()
         ans = self.llm.ask(prompt, **llm_kwargs)
+        self._active_results = results
         ask_time = time.time() - ask_time
         logger.info(f"  Ask time: {ask_time} seconds")
         return ans
