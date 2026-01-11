@@ -32,6 +32,12 @@ logger = logging.getLogger(__name__)
 
 def get_registered_backends() -> list[str]:
     """Get list of registered backend names."""
+    """
+    Retrieves the installed and registered search backends.
+    
+    Returns:
+        list[str]: Names of the available backends (e.g., 'hnsw').
+    """
     return list(BACKEND_REGISTRY.keys())
 
 
@@ -45,7 +51,8 @@ def compute_embeddings(
     provider_options: Optional[dict[str, Any]] = None,
 ) -> np.ndarray:
     """
-    Computes embeddings using different backends.
+    Universal entry point for vector generation (embeddings).
+    Depending on the workflow (Building vs. Searching), it decides whether to load the model locally or make an RPC request through a ZMQ server.
 
     Args:
         chunks: List of text chunks to embed
@@ -81,11 +88,17 @@ def compute_embeddings(
 
 
 def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int) -> np.ndarray:
-    """Computes embeddings using sentence-transformers.
+    """
+    Computes embeddings using sentence-transformers.
+    It performs embedding computation by delegating the load to a ZMQ server.
+    This method is critical for the Lean architecture, allowing the client to retrieve embeddings in real time without loading the heavy model into their own process.
 
     Args:
-        chunks: List of text chunks to embed
-        model_name: Name of the sentence transformer model
+        chunks (list[str]): Texts to process.
+        model_name (str): Name of the sentence transformer model that the server should use.
+        port (int): TCP port where the embeddings server listens.
+    Returns:
+        np.ndarray: Resulting vectors in float32 format.
     """
     logger.info(
         f"Computing embeddings for {len(chunks)} chunks using SentenceTransformer model '{model_name}' (via embedding server)..."
@@ -118,6 +131,15 @@ def compute_embeddings_via_server(chunks: list[str], model_name: str, port: int)
 
 @dataclass
 class SearchResult:
+    """
+    Represents a single result retrieved from the index.
+    
+    Attributes:
+        id (str): Unique identifier of the passage.
+        score (float): Similarity score (distance) relative to the query.
+        text (str): Textual content of the passage.
+        metadata (dict): Additional associated information (source, date, etc.).
+    """
     id: str
     score: float
     text: str
@@ -125,9 +147,21 @@ class SearchResult:
 
 
 class PassageManager:
+    """
+    Manages efficient access to texts stored on disk (JSONL format).
+    
+    Avoids the materialization of large corpora in RAM by using fragment offset maps, enabling O(1) searches on large files.
+    """
     def __init__(
         self, passage_sources: list[dict[str, Any]], metadata_file_path: Optional[str] = None
     ):
+        """
+        Initializes the manager by loading the displacement indices (.idx).
+        
+        Args:
+            passage_sources: List of dictionaries with paths to .jsonl and .idx files.
+            metadata_file_path: Path to the .meta.json file for relative path resolution.
+        """
         self.offset_maps: dict[str, dict[str, int]] = {}
         self.passage_files: dict[str, str] = {}
         # Avoid materializing a single gigantic global map to reduce memory
@@ -156,10 +190,16 @@ class PassageManager:
                 source_dict: dict[str, Any],
             ) -> list[Path]:
                 """
-                Build an ordered list of candidate paths. For relative paths specified in
-                metadata, prefer resolution relative to the metadata file directory first,
-                then fall back to CWD-based resolution, and finally to conventional
-                sibling defaults (e.g., <index_base>.passages.idx / .jsonl).
+                Build a hierarchy of candidate paths to locate files. For relative paths 
+                specified in metadata, prefer resolution relative to the metadata file 
+                directory first, then fall back to CWD-based resolution, and finally to 
+                conventional sibling defaults (e.g., <index_base>.passages.idx / .jsonl).
+
+                Priority: 
+                1. Absolute path, 
+                2. Relative to metadata, 
+                3. Relative to CWD, 
+                4. Standard convention.
                 """
                 candidates: list[Path] = []
                 # 1) Primary path
@@ -182,6 +222,7 @@ class PassageManager:
                 return candidates
 
             # Build candidate lists and pick first existing; otherwise keep last candidate for error message
+            # Resolution of index files (.idx) and passages (.jsonl)
             idx_default = f"{index_name_base}.passages.idx" if index_name_base else None
             idx_candidates = _resolve_candidates(
                 index_file, "index_path_relative", idx_default, source
@@ -198,10 +239,11 @@ class PassageManager:
 
             index_file = _pick_existing(idx_candidates)
             passage_file = _pick_existing(pas_candidates)
-
+            
             if not Path(index_file).exists():
                 raise FileNotFoundError(f"Passage index file not found: {index_file}")
 
+            # Loading the offset map using pickle for quick random access
             with open(index_file, "rb") as f:
                 offset_map: dict[str, int] = pickle.load(f)
                 self.offset_maps[passage_file] = offset_map
@@ -209,6 +251,23 @@ class PassageManager:
                 self._total_count += len(offset_map)
 
     def get_passage(self, passage_id: str) -> dict[str, Any]:
+        """
+        Retrieves the complete content of a passage from disk and performs a lightweight 
+        search across fragment maps to find the offset and extracts only the necessary 
+        line using random access.
+        
+        Args:
+        
+            passage_id (str): ID of the passage to search for.
+        
+        Returns:
+        
+            dict: JSON object containing the text and metadata of the passage.
+        
+        Raises:
+        
+            KeyError: If the ID does not exist in any loaded fragment.
+        """
         # Fast path: check each shard map (there are typically few shards).
         # This avoids building a massive combined dict while keeping lookups
         # bounded by the number of shards.
@@ -243,6 +302,7 @@ class PassageManager:
         logger.debug(f"Applying metadata filters to {len(search_results)} results")
 
         # Convert SearchResult objects to dictionaries for the filter engine
+        # Preparación de datos para el motor de filtrado
         result_dicts = []
         for result in search_results:
             result_dicts.append(
@@ -255,6 +315,7 @@ class PassageManager:
             )
 
         # Apply filters using the filter engine
+        # Re-encapsulamiento en objetos SearchResult
         filtered_dicts = self.filter_engine.apply_filters(result_dicts, metadata_filters)
 
         # Convert back to SearchResult objects
@@ -277,6 +338,11 @@ class PassageManager:
 
 
 class LeannBuilder:
+    """
+    Class responsible for building, updating, and managing LEANN vector indices.
+    Handles integration with different backends (such as HNSW), embedding generation,
+    and persistence of metadata and text passages.
+    """
     def __init__(
         self,
         backend_name: str,
@@ -286,6 +352,17 @@ class LeannBuilder:
         embedding_options: Optional[dict[str, Any]] = None,
         **backend_kwargs,
     ):
+        """
+        Initializes the index builder.
+
+        Args:
+            backend_name: Name of the search engine backend (e.g. 'hnsw').
+            embedding_model: Identifier of the embedding model to use.
+            dimensions: Vector dimensionality. If None, it is inferred from the model.
+            embedding_mode: Embedding execution mode (e.g. 'openai', 'voyage').
+            embedding_options: Additional configuration for the embedding provider.
+            **backend_kwargs: Backend-specific arguments.
+        """
         self.backend_name = backend_name
         # Normalize incompatible combinations early (for consistent metadata)
         if backend_name == "hnsw":
@@ -340,7 +417,7 @@ class LeannBuilder:
                 is_normalized = True
                 break
 
-        # Check patterns
+        # Pattern-based check if no exact match was found
         if not is_normalized:
             # OpenAI patterns
             if "openai" in current_mode_lower or "openai" in current_model_lower:
@@ -358,6 +435,7 @@ class LeannBuilder:
                     is_normalized = True
 
         # Handle distance metric
+        # Automatic adjustment to 'cosine' if the model generates normalized vectors
         if is_normalized and "distance_metric" not in backend_kwargs:
             backend_kwargs["distance_metric"] = "cosine"
             warnings.warn(
@@ -381,6 +459,13 @@ class LeannBuilder:
         self.chunks: list[dict[str, Any]] = []
 
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
+        """
+        Adds a text passage to the index processing queue.
+
+        Args:
+            text: Text content to be indexed.
+            metadata: Optional dictionary with additional information (e.g. external IDs).
+        """
         if metadata is None:
             metadata = {}
         passage_id = metadata.get("id", str(len(self.chunks)))
@@ -388,9 +473,24 @@ class LeannBuilder:
         self.chunks.append(chunk_data)
 
     def build_index(self, index_path: str):
+        """
+        Processes added texts, generates embeddings, and creates index files on disk.
+
+        Args:
+            index_path: Base path where index files will be stored.
+
+        Executes the complete indexing pipeline:
+        
+        1. Fragment cleanup.
+        2. JSONL persistence and offset map creation (.idx).
+        3. Embedding calculation.
+        4. Vector graph construction using the backend factory.
+        5. Index metadata creation.
+        """
         if not self.chunks:
             raise ValueError("No chunks added.")
 
+        # ... [Lógica de validación y limpieza]
         # Filter out invalid/empty text chunks early to keep passage and embedding counts aligned
         valid_chunks: list[dict[str, Any]] = []
         skipped = 0
@@ -407,6 +507,7 @@ class LeannBuilder:
             self.chunks = valid_chunks
             if not self.chunks:
                 raise ValueError("All provided chunks are empty or invalid. Nothing to index.")
+        # Infer dimensions if not specified
         if self.dimensions is None:
             self.dimensions = len(
                 compute_embeddings(
@@ -421,6 +522,8 @@ class LeannBuilder:
         index_dir = path.parent
         index_name = path.name
         index_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare support files (.jsonl and .idx)
         passages_file = index_dir / f"{index_name}.passages.jsonl"
         offset_file = index_dir / f"{index_name}.passages.idx"
         offset_map = {}
@@ -447,6 +550,8 @@ class LeannBuilder:
                 offset_map[chunk["id"]] = offset
         with open(offset_file, "wb") as f:
             pickle.dump(offset_map, f)
+
+        # Vector generation
         texts_to_embed = [c["text"] for c in self.chunks]
         embeddings = compute_embeddings(
             texts_to_embed,
@@ -457,7 +562,8 @@ class LeannBuilder:
             provider_options=self.embedding_options,
         )
         string_ids = [chunk["id"] for chunk in self.chunks]
-        # Persist ID map alongside index so backends that return integer labels can remap to passage IDs
+
+        # Persist ID map for backends that use integer labels
         try:
             idmap_file = (
                 index_dir
@@ -468,9 +574,13 @@ class LeannBuilder:
                     f.write(str(sid) + "\n")
         except Exception:
             pass
+
+        # Index construction via backend
         current_backend_kwargs = {**self.backend_kwargs, "dimensions": self.dimensions}
         builder_instance = self.backend_factory.builder(**current_backend_kwargs)
         builder_instance.build(embeddings, string_ids, index_path, **current_backend_kwargs)
+
+        # Create central metadata file (.meta.json)
         leann_meta_path = index_dir / f"{index_name}.meta.json"
         meta_data = {
             "version": "1.0",
@@ -495,7 +605,7 @@ class LeannBuilder:
         if self.embedding_options:
             meta_data["embedding_options"] = self.embedding_options
 
-        # Add storage status flags for HNSW backend
+        # HNSW-specific storage flags
         if self.backend_name == "hnsw":
             is_compact = self.backend_kwargs.get("is_compact", True)
             is_recompute = self.backend_kwargs.get("is_recompute", True)
@@ -642,7 +752,15 @@ class LeannBuilder:
         logger.info(f"Index built successfully from precomputed embeddings: {index_path}")
 
     def update_index(self, index_path: str):
-        """Append new passages and vectors to an existing HNSW index."""
+        """
+        Incrementally adds new passages and vectors to an existing HNSW index.
+        Adds new data to an existing index without rebuilding it from scratch.
+        Implements a temporary recompute server if the index is compact
+        and handles transactions with rollback capability in case of failures.
+    
+        Args:
+            index_path: Path to the existing index to update.
+        """
         if not self.chunks:
             raise ValueError("No new chunks provided for update.")
 
@@ -655,7 +773,8 @@ class LeannBuilder:
         passages_file = index_dir / f"{index_name}.passages.jsonl"
         offset_file = index_dir / f"{index_name}.passages.idx"
         index_file = index_dir / f"{index_prefix}.index"
-
+        
+        # Validate existing index files
         if not meta_path.exists() or not passages_file.exists() or not offset_file.exists():
             raise FileNotFoundError("Index metadata or passage files are missing; cannot update.")
         if not index_file.exists():
@@ -689,6 +808,7 @@ class LeannBuilder:
             offset_map: dict[str, int] = pickle.load(f)
         existing_ids = set(offset_map.keys())
 
+        # Validate new chunks to avoid duplicate passage IDs
         valid_chunks: list[dict[str, Any]] = []
         for chunk in self.chunks:
             text = chunk.get("text", "")
@@ -703,6 +823,7 @@ class LeannBuilder:
         if not valid_chunks:
             raise ValueError("No valid chunks to append.")
 
+        # Generate new embeddings
         texts_to_embed = [chunk["text"] for chunk in valid_chunks]
         embeddings = compute_embeddings(
             texts_to_embed,
@@ -728,10 +849,12 @@ class LeannBuilder:
             norms[norms == 0] = 1
             embeddings = embeddings / norms
 
+        # Load existing Faiss index
         index = faiss.read_index(str(index_file))
         if hasattr(index, "is_recompute"):
             index.is_recompute = needs_recompute
             print(f"index.is_recompute: {index.is_recompute}")
+        # Manage temporary Faiss storage if required
         if getattr(index, "storage", None) is None:
             if index.metric_type == faiss.METRIC_INNER_PRODUCT:
                 storage_index = faiss.IndexFlatIP(index.d)
@@ -761,19 +884,22 @@ class LeannBuilder:
         passage_meta_mode = meta.get("embedding_mode", self.embedding_mode)
         passage_provider_options = meta.get("embedding_options", self.embedding_options)
 
+        # Assign new incremental IDs
         base_id = index.ntotal
         for offset, chunk in enumerate(valid_chunks):
             new_id = str(base_id + offset)
             chunk.setdefault("metadata", {})["id"] = new_id
             chunk["id"] = new_id
 
+        # Save rollback checkpoints in case of failure
         # Append passages/offsets before we attempt index.add so the ZMQ server
         # can resolve newly assigned IDs during recompute. Keep rollback hooks
         # so we can restore files if the update fails mid-way.
         rollback_passages_size = passages_file.stat().st_size if passages_file.exists() else 0
         offset_map_backup = offset_map.copy()
-
+        
         try:
+            # Append passages and offsets
             with open(passages_file, "a", encoding="utf-8") as f:
                 for chunk in valid_chunks:
                     offset = f.tell()
@@ -797,6 +923,7 @@ class LeannBuilder:
             requested_zmq_port = int(os.getenv("LEANN_UPDATE_ZMQ_PORT", "5557"))
 
             try:
+                # Start ZMQ server if recompute is required
                 if needs_recompute:
                     server_manager = EmbeddingServerManager(
                         backend_module_name="leann_backend_hnsw.hnsw_embedding_server"
@@ -825,6 +952,7 @@ class LeannBuilder:
                     elif hasattr(index, "set_zmq_port"):
                         index.set_zmq_port(actual_port)
 
+                # Add vectors to the Faiss index
                 if needs_recompute:
                     for i in range(embeddings.shape[0]):
                         print(f"add {i} embeddings")
@@ -837,7 +965,7 @@ class LeannBuilder:
                     server_manager.stop_server()
 
         except Exception:
-            # Roll back appended passages/offset map to keep files consistent.
+            # Roll back files in case of exception - appended passages/offset map to keep files consistent.
             if passages_file.exists():
                 with open(passages_file, "rb+") as f:
                     f.truncate(rollback_passages_size)
@@ -846,6 +974,7 @@ class LeannBuilder:
                 pickle.dump(offset_map, f)
             raise
 
+        # Update total metadata counters
         meta["total_passages"] = len(offset_map)
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
@@ -859,17 +988,29 @@ class LeannBuilder:
 
         self.chunks.clear()
 
+        # Final pruning if recompute mode is enabled
         if needs_recompute:
             prune_hnsw_embeddings_inplace(str(index_file))
 
 
 class LeannSearcher:
     def __init__(self, index_path: str, enable_warmup: bool = False, **backend_kwargs):
+        """
+        Initializes the LEANN searcher by loading metadata and configuring the backend.
+
+        Args:
+            index_path: Base path to the index and metadata file.
+            enable_warmup: If True, performs a backend warm-up to optimize the first search.
+            **backend_kwargs: Additional arguments to customize backend behavior.
+        """
         # Fix path resolution for Colab and other environments
         if not Path(index_path).is_absolute():
             index_path = str(Path(index_path).resolve())
 
+        # Build metadata file path (.json)
         self.meta_path_str = f"{index_path}.meta.json"
+        
+        # Validate metadata file existence before proceeding
         if not Path(self.meta_path_str).exists():
             parent_dir = Path(index_path).parent
             print(
@@ -879,26 +1020,44 @@ class LeannSearcher:
             raise FileNotFoundError(
                 f"Leann metadata file not found at {self.meta_path_str}, \033[91m you may need to rm -rf {parent_dir}\033[0m"
             )
+
+        # Load index configuration from JSON metadata file
         with open(self.meta_path_str, encoding="utf-8") as f:
             self.meta_data = json.load(f)
+
+        # Extract key configuration parameters
         backend_name = self.meta_data["backend_name"]
         self.embedding_model = self.meta_data["embedding_model"]
+        
+        # Backward compatibility handling for old and new metadata formats
         # Support both old and new format
         self.embedding_mode = self.meta_data.get("embedding_mode", "sentence-transformers")
         self.embedding_options = self.meta_data.get("embedding_options", {})
+
+        # Initialize passage manager for retrieving original text and metadata
         # Delegate portability handling to PassageManager
         self.passage_manager = PassageManager(
             self.meta_data.get("passage_sources", []), metadata_file_path=self.meta_path_str
         )
+
+        # Store backend name for conditional search logic
         # Preserve backend name for conditional parameter forwarding
         self.backend_name = backend_name
+
+        # Retrieve backend factory from global registry
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
+
+        # Merge backend arguments: persisted metadata + runtime overrides
         final_kwargs = {**self.meta_data.get("backend_kwargs", {}), **backend_kwargs}
         final_kwargs["enable_warmup"] = enable_warmup
+
+        # Inject embedding options if present
         if self.embedding_options:
             final_kwargs.setdefault("embedding_options", self.embedding_options)
+
+        # Instantiate the actual backend search implementation
         self.backend_impl: LeannBackendSearcherInterface = backend_factory.searcher(
             index_path, **final_kwargs
         )
@@ -943,21 +1102,26 @@ class LeannSearcher:
         Returns:
             List of SearchResult objects with text, metadata, and similarity scores
         """
+
+        # Fallback to lexical search if grep is explicitly requested
         # Handle grep search
         if use_grep:
             return self._grep_search(query, top_k)
 
+        # Detailed logging of the search request
         logger.info("🔍 LeannSearcher.search() called:")
         logger.info(f"  Query: '{query}'")
         logger.info(f"  Top_k: {top_k}")
         logger.info(f"  Metadata filters: {metadata_filters}")
         logger.info(f"  Additional kwargs: {kwargs}")
 
-        # Smart top_k detection and adjustment
+        # Smart top_k adjustment: cannot return more documents than exist
         # Use PassageManager length (sum of shard sizes) to avoid
         # depending on a massive combined map
         total_docs = len(self.passage_manager)
         original_top_k = top_k
+
+        # Manage inference (ZMQ) server if new embeddings must be computed
         if top_k > total_docs:
             top_k = total_docs
             logger.warning(
@@ -967,6 +1131,7 @@ class LeannSearcher:
 
         zmq_port = None
 
+        # Select query prompt template (priority: provider > new meta > old meta)
         start_time = time.time()
         if recompute_embeddings:
             zmq_port = self.backend_impl._ensure_server_running(
@@ -993,6 +1158,7 @@ class LeannSearcher:
         elif "prompt_template" in self.embedding_options:
             query_template = self.embedding_options["prompt_template"]
 
+        # Transform query text into a numeric embedding vector
         query_embedding = self.backend_impl.compute_query_embedding(
             query,
             use_server_if_available=recompute_embeddings,
@@ -1004,6 +1170,8 @@ class LeannSearcher:
         logger.info(f"  Embedding time: {embedding_time} seconds")
 
         start_time = time.time()
+
+        # Prepare parameters for vector backend execution
         backend_search_kwargs: dict[str, Any] = {
             "complexity": complexity,
             "beam_width": beam_width,
@@ -1012,13 +1180,17 @@ class LeannSearcher:
             "pruning_strategy": pruning_strategy,
             "zmq_port": zmq_port,
         }
+
+        # Enable batching only for HNSW backend
         # Only HNSW supports batching; forward conditionally
         if self.backend_name == "hnsw":
             backend_search_kwargs["batch_size"] = batch_size
 
+        # Include additional dynamic arguments
         # Merge any extra kwargs last
         backend_search_kwargs.update(kwargs)
 
+        # Execute vector search in the backend (e.g. HNSW or FAISS)
         results = self.backend_impl.search(
             query_embedding,
             top_k,
@@ -1028,6 +1200,7 @@ class LeannSearcher:
         logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
+        # Enrichment step: convert raw IDs into full SearchResult objects
         enriched_results = []
         if "labels" in results and "distances" in results:
             logger.info(f"  Processing {len(results['labels'][0])} passage IDs:")
@@ -1036,6 +1209,7 @@ class LeannSearcher:
                 zip(results["labels"][0], results["distances"][0])
             ):
                 try:
+                    # Retrieve associated text and metadata for the passage ID
                     passage_data = self.passage_manager.get_passage(string_id)
                     enriched_results.append(
                         SearchResult(
@@ -1046,7 +1220,7 @@ class LeannSearcher:
                         )
                     )
 
-                    # Color codes for better logging
+                    # Styled logging for visual debugging of results
                     GREEN = "\033[92m"
                     BLUE = "\033[94m"
                     YELLOW = "\033[93m"
@@ -1058,13 +1232,14 @@ class LeannSearcher:
                         f"   {GREEN}✓{RESET} {BLUE}[{i + 1:2d}]{RESET} {YELLOW}ID:{RESET} '{string_id}' {YELLOW}Score:{RESET} {dist:.4f} {YELLOW}Text:{RESET} {display_text}"
                     )
                 except KeyError:
+                    # Error handling if a returned ID is missing from passage manager
                     RED = "\033[91m"
                     RESET = "\033[0m"
                     logger.error(
                         f"   {RED}✗{RESET} [{i + 1:2d}] ID: '{string_id}' -> {RED}ERROR: Passage not found!{RESET}"
                     )
 
-        # Apply metadata filters if specified
+        # Apply boolean metadata filters on the retrieved results
         if metadata_filters:
             logger.info(f"  🔍 Applying metadata filters: {metadata_filters}")
             enriched_results = self.passage_manager.filter_search_results(
@@ -1097,12 +1272,13 @@ class LeannSearcher:
             raise FileNotFoundError("No .jsonl passages file found for grep search")
 
         try:
+             # Execute grep command (case-insensitive)
             cmd = ["grep", "-i", "-n", query, jsonl_file]
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
-            if result.returncode == 1:
+            if result.returncode == 1: # No matches
                 return []
-            elif result.returncode != 0:
+            elif result.returncode != 0: # Execution error
                 raise RuntimeError(f"Grep failed: {result.stderr}")
 
             matches = []
@@ -1114,8 +1290,10 @@ class LeannSearcher:
                     continue
 
                 try:
+                    # Parse JSON line returned by grep
                     data = json.loads(parts[1])
                     text = data.get("text", "")
+                    # Simple score based on keyword frequency
                     score = text.lower().count(query.lower())
 
                     matches.append(
@@ -1129,6 +1307,7 @@ class LeannSearcher:
                 except json.JSONDecodeError:
                     continue
 
+            # Sort by frequency score (descending)
             matches.sort(key=lambda x: x.score, reverse=True)
             return matches[:top_k]
 
@@ -1138,7 +1317,10 @@ class LeannSearcher:
             )
 
     def _python_regex_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """Fallback regex search"""
+        """
+        Fallback regex search
+        using Python regular expressions (slower than grep).
+        """
         jsonl_file = self._find_jsonl_file()
         if not jsonl_file:
             raise FileNotFoundError("No .jsonl file found")
@@ -1166,7 +1348,8 @@ class LeannSearcher:
         return matches[:top_k]
 
     def cleanup(self):
-        """Explicitly cleanup embedding server resources.
+        """
+        Explicitly cleanup embedding server resources.
         This method should be called after you're done using the searcher,
         especially in test environments or batch processing scenarios.
         """
@@ -1175,20 +1358,23 @@ class LeannSearcher:
             backend.stop_server()
 
     # Enable automatic cleanup patterns
+    # Context manager support ('with' statement)
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        """Ensure cleanup when exiting a 'with' block."""
         try:
             self.cleanup()
         except Exception:
             pass
 
     def __del__(self):
+        """Automatic cleanup when the object is garbage-collected."""
         try:
             self.cleanup()
         except Exception:
-            # Avoid noisy errors during interpreter shutdown
+            # Silence errors during interpreter shutdown to avoid unnecessary noise
             pass
 
 
@@ -1200,13 +1386,27 @@ class LeannChat:
         enable_warmup: bool = False,
         searcher: Optional[LeannSearcher] = None,
         **kwargs,
-    ):
+    ):        
+        """
+        Initializes the RAG (Retrieval-Augmented Generation) chat interface.
+    
+        Args:
+            index_path: Path to the LEANN index.
+            llm_config: Configuration specific to the language model.
+            enable_warmup: If True, prepares the searcher for a faster initial response.
+            searcher: Existing LeannSearcher instance (optional).
+            **kwargs: Additional arguments passed to the searcher.
+        """
+        # Ownership logic: if no searcher is provided, create one and mark it as owned
         if searcher is None:
             self.searcher = LeannSearcher(index_path, enable_warmup=enable_warmup, **kwargs)
-            self._owns_searcher = True
+            self._owns_searcher = True # Indicates this class must shut down the server on cleanup
         else:
+            # If provided externally, use it but do not mark it for automatic cleanup
             self.searcher = searcher
             self._owns_searcher = False
+
+        # Initialize the language model via the global factory
         self.llm = get_llm(llm_config)
 
     def ask(
@@ -1225,8 +1425,14 @@ class LeannChat:
         use_grep: bool = False,
         **search_kwargs,
     ):
+        """
+        Performs a complete query: retrieves relevant context and generates an answer using the LLM.
+        """
+        # Ensure LLM arguments are a valid dictionary
         if llm_kwargs is None:
             llm_kwargs = {}
+
+        # --- PHASE 1: Retrieval ---
         search_time = time.time()
         results = self.searcher.search(
             question,
@@ -1243,6 +1449,9 @@ class LeannChat:
         )
         search_time = time.time() - search_time
         logger.info(f"  Search time: {search_time} seconds")
+        
+        # --- PHASE 2: Context and Prompt Preparation ---
+        # Concatenate retrieved chunks to inject them into the prompt
         context = "\n\n".join([r.text for r in results])
         prompt = (
             "Here is some retrieved context that might help answer your question:\n\n"
@@ -1251,6 +1460,7 @@ class LeannChat:
             "Please provide the best answer you can based on this context and your knowledge."
         )
 
+        # Detailed logging of the information passed to the LLM
         logger.info("The context provided to the LLM is:")
         logger.info(f"{'Relevance':<10} | {'Chunk id':<10} | {'Content':<60} | {'Source':<80}")
         logger.info("-" * 150)
@@ -1262,24 +1472,30 @@ class LeannChat:
             logger.info(
                 f"{chunk_relevance:<10} | {chunk_id:<10} | {chunk_content:<60} | {chunk_source:<80}"
             )
+
+        # --- PHASE 3: Generation ---
         ask_time = time.time()
+        # Send the enriched prompt to the language model
         ans = self.llm.ask(prompt, **llm_kwargs)
         ask_time = time.time() - ask_time
         logger.info(f"  Ask time: {ask_time} seconds")
         return ans
 
     def start_interactive(self):
-        """Start interactive chat session."""
+        """Starts an interactive chat session in the terminal."""
         session = create_api_session()
 
+        # Callback function that processes user input
         def handle_query(user_input: str):
             response = self.ask(user_input)
             print(f"Leann: {response}")
 
+        # Run the infinite interaction loop
         session.run_interactive_loop(handle_query)
 
     def cleanup(self):
-        """Explicitly cleanup embedding server resources.
+        """Explicitly cleanup embedding server resources. Only acts if this instance 
+        owns the searcher to avoid shutting down shared servers.
 
         This method should be called after you're done using the chat interface,
         especially in test environments or batch processing scenarios.
@@ -1289,18 +1505,24 @@ class LeannChat:
         if getattr(self, "_owns_searcher", False) and hasattr(self.searcher, "cleanup"):
             self.searcher.cleanup()
 
+    # --- LIFECYCLE PROTOCOL IMPLEMENTATIONS ---
     # Enable automatic cleanup patterns
+    
     def __enter__(self):
+        """Allows usage like: 'with LeannChat(...) as chat:'"""
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        """Ensures resource cleanup when exiting the context block."""
         try:
             self.cleanup()
         except Exception:
             pass
 
     def __del__(self):
+        """Final cleanup guarantee when the object is destroyed by Python."""
         try:
             self.cleanup()
         except Exception:
+            # Silenced to avoid noisy errors during interpreter shutdown
             pass
