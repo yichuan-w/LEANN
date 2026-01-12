@@ -748,7 +748,6 @@ def compute_embeddings_openai(
     logger.info(
         f"Computing embeddings for {len(texts)} texts using OpenAI API, model: '{model_name}'"
     )
-    print(f"len of texts: {len(texts)}")
 
     # Apply prompt template if provided
     # Priority: build_prompt_template (new format) > prompt_template (old format)
@@ -770,10 +769,16 @@ def compute_embeddings_openai(
     all_embeddings = []
     # get the avg len of texts
     avg_len = sum(len(text) for text in texts) / len(texts)
-    print(f"avg len of texts: {avg_len}")
     # if avg len is less than 1000, use the max batch size
     if avg_len > 300:
         max_batch_size = 500
+
+    # Gemini's OpenAI-compatible endpoint hard-limits embedding batches to 100 inputs per request.
+    # If we exceed this, the API returns:
+    #   "BatchEmbedContentsRequest.requests: at most 100 requests can be in one batch"
+    if "generativelanguage.googleapis.com" in (resolved_base_url or ""):
+        max_batch_size = min(max_batch_size, 100)
+        logger.info("Detected Gemini OpenAI-compatible base_url; capping embedding batch_size to %d.", max_batch_size)
 
     # if avg len is less than 1000, use the max batch size
 
@@ -810,7 +815,6 @@ def compute_embeddings_openai(
 
     embeddings = np.array(all_embeddings, dtype=np.float32)
     logger.info(f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}")
-    print(f"len of embeddings: {len(embeddings)}")
     return embeddings
 
 
