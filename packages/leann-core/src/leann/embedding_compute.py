@@ -778,7 +778,10 @@ def compute_embeddings_openai(
     #   "BatchEmbedContentsRequest.requests: at most 100 requests can be in one batch"
     if "generativelanguage.googleapis.com" in (resolved_base_url or ""):
         max_batch_size = min(max_batch_size, 100)
-        logger.info("Detected Gemini OpenAI-compatible base_url; capping embedding batch_size to %d.", max_batch_size)
+        logger.info(
+            "Detected Gemini OpenAI-compatible base_url; capping embedding batch_size to %d.",
+            max_batch_size,
+        )
 
     # if avg len is less than 1000, use the max batch size
 
