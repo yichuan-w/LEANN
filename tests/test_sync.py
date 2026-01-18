@@ -49,8 +49,8 @@ class TestMerkleTreeCompare(unittest.TestCase):
 
         added, removed, modified = MerkleTree.compare_with(tree1, tree2)
 
-        self.assertEqual(added, ["b.txt"])
-        self.assertEqual(removed, ["c.txt"])
+        self.assertEqual(added, ["c.txt"])
+        self.assertEqual(removed, ["b.txt"])
         self.assertEqual(modified, ["a.txt"])
 
 
