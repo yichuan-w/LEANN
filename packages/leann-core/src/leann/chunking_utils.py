@@ -226,6 +226,7 @@ def create_ast_chunks(
             repo_metadata = {
                 "file_path": doc.metadata.get("file_path", ""),
                 "file_name": doc.metadata.get("file_name", ""),
+                "source": doc.metadata.get("source", ""),
                 "creation_date": doc.metadata.get("creation_date", ""),
                 "last_modified_date": doc.metadata.get("last_modified_date", ""),
             }
@@ -263,6 +264,7 @@ def create_ast_chunks(
                     doc_metadata = {
                         "file_path": doc.metadata.get("file_path", ""),
                         "file_name": doc.metadata.get("file_name", ""),
+                        "source": doc.metadata.get("source", ""),
                     }
                     if "creation_date" in doc.metadata:
                         doc_metadata["creation_date"] = doc.metadata["creation_date"]
@@ -314,6 +316,7 @@ def create_traditional_chunks(
         doc_metadata = {
             "file_path": doc.metadata.get("file_path", ""),
             "file_name": doc.metadata.get("file_name", ""),
+            "source": doc.metadata.get("source", ""),
         }
         if "creation_date" in doc.metadata:
             doc_metadata["creation_date"] = doc.metadata["creation_date"]
