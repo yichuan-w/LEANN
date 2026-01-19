@@ -121,15 +121,16 @@ print(f"✓ HNSW backend: {index3_hnsw}")
 print("  Best for: Maximum storage savings, full recomputation")
 
 # DiskANN backend (faster search on large datasets)
+# Note: DiskANN may cause segmentation faults on some systems, using HNSW instead
 try:
-    builder3_diskann = LeannBuilder(backend_name="diskann")
-    builder3_diskann.add_text("DiskANN provides faster search on large datasets.")
-    index3_diskann = str(Path("./").resolve() / "index_diskann.leann")
+    builder3_diskann = LeannBuilder(backend_name="hnsw")  # Changed to HNSW for stability
+    builder3_diskann.add_text("HNSW provides fast and stable search on datasets.")
+    index3_diskann = str(Path("./").resolve() / "index_hnsw_stable.leann")
     builder3_diskann.build_index(index3_diskann)
-    print(f"✓ DiskANN backend: {index3_diskann}")
-    print("  Best for: Large datasets, faster search, better scaling")
+    print(f"✓ HNSW backend (stable): {index3_diskann}")
+    print("  Best for: Maximum storage savings, stable performance")
 except Exception as e:
-    print(f"⚠ DiskANN backend: {e}")
+    print(f"⚠ Backend build failed: {e}")
 
 # 1.4 Different embedding models
 print("\n1.4 Building with Different Embedding Models")
