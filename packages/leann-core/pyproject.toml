@@ -37,16 +37,6 @@ dependencies = [
     "gitignore-parser>=0.1.12",  # For proper .gitignore handling
     "mlx>=0.26.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-lm>=0.26.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    # Office document format support
-    "python-docx>=1.0.0",
-    "python-pptx>=0.6.0",
-    "openpyxl>=3.0.0",
-    "PyYAML>=6.0.0",
-    "lxml>=4.9.0",
-    "python-magic>=0.4.0",
-    "cryptography>=3.0.0",
-    "docx2txt>=0.8",
-    "docling>=2.0.0",
 ]
 
 [project.optional-dependencies]

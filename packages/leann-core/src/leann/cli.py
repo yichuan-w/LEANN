@@ -57,11 +57,6 @@ def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
-        # Check if document is encrypted and cannot be opened
-        if doc.is_encrypted:
-            print(f"⚠️  Skipping encrypted PDF: {file_path}")
-            doc.close()
-            return None
         text = ""
         for page in doc:
             text += page.get_text()
@@ -69,10 +64,6 @@ def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
         return text
     except ImportError:
         # Fallback to default reader
-        return None
-    except Exception as e:
-        # Catch all other errors (corrupt PDFs, encoding issues, etc.)
-        print(f"⚠️  Skipping problematic PDF ({type(e).__name__}): {file_path}")
         return None
 
 
@@ -87,195 +78,14 @@ def extract_pdf_text_with_pdfplumber(file_path: str) -> str | None:
                 text += page.extract_text() or ""
         return text
     except ImportError:
-        return None
-    except Exception as e:
-        print(f"⚠️  Skipping problematic PDF with pdfplumber ({type(e).__name__}): {file_path}")
-        return None
-
-
-def extract_pdf_text_with_pypdf(file_path: str) -> str | None:
-    """Extract text from PDF using pypdf as a fast fallback."""
-    try:
-        from pypdf import PdfReader
-
-        reader = PdfReader(file_path)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() or ""
-        return text
-    except ImportError:
-        return None
-    except Exception as e:
-        print(f"⚠️  Skipping problematic PDF with pypdf ({type(e).__name__}): {file_path}")
-        return None
-
-
-def extract_pdf_docling(file_path: str) -> str | None:
-    """Extract text/tables from PDF using Docling (supports OCR and complex layouts)."""
-    try:
-        from docling.document_converter import DocumentConverter
-
-        converter = DocumentConverter()
-        result = converter.convert(file_path)
-        # Exporting to markdown preserves structure better for RAG
-        return result.document.export_to_markdown()
-    except ImportError:
-        return None
-    except Exception as e:
-        print(f"⚠️  Skipping problematic PDF with Docling ({type(e).__name__}): {file_path}")
-        return None
-
-
-def extract_pdf_text(file_path: str) -> str | None:
-    """Central PDF extraction with fallback chain: PyMuPDF -> pypdf -> pdfplumber -> Docling."""
-    # Try PyMuPDF first (usually best layout preservation)
-    text = extract_pdf_text_with_pymupdf(file_path)
-    if text and text.strip():
-        return text
-
-    # Try pypdf (reliable and fast fallback)
-    text = extract_pdf_text_with_pypdf(file_path)
-    if text and text.strip():
-        return text
-
-    # Try pdfplumber (best for complex tables)
-    text = extract_pdf_text_with_pdfplumber(file_path)
-    if text and text.strip():
-        return text
-
-    # Try Docling as the ultimate fallback (OCR, complex layouts)
-    text = extract_pdf_docling(file_path)
-    if text and text.strip():
-        return text
-
-    return None
-
-
-def extract_docx_text(file_path: str) -> str | None:
-    try:
-        from docx import Document
-
-        doc = Document(file_path)
-        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-        for table in doc.tables:
-            for row in table.rows:
-                row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-                if row_text:
-                    paragraphs.append(" | ".join(row_text))
-        return "\n\n".join(paragraphs) if paragraphs else None
-    except ImportError:
-        return None
-    except Exception as e:
-        print(f"⚠️  Skipping problematic DOCX ({type(e).__name__}): {file_path}")
-        return None
-
-
-def extract_pptx_text(file_path: str) -> str | None:
-    try:
-        from pptx import Presentation
-
-        prs = Presentation(file_path)
-        slides_text = []
-        for slide_num, slide in enumerate(prs.slides, 1):
-            slide_content = []
-            for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text.strip():
-                    slide_content.append(shape.text.strip())
-                if hasattr(shape, "table"):
-                    for row in shape.table.rows:
-                        row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-                        if row_text:
-                            slide_content.append(" | ".join(row_text))
-            if slide_content:
-                slides_text.append(f"[Slide {slide_num}]\n" + "\n".join(slide_content))
-        return "\n\n".join(slides_text) if slides_text else None
-    except ImportError:
-        return None
-    except Exception as e:
-        print(f"⚠️  Skipping problematic PPTX ({type(e).__name__}): {file_path}")
-        return None
-
-
-def extract_xlsx_text(file_path: str) -> str | None:
-    try:
-        from openpyxl import load_workbook
-
-        wb = load_workbook(file_path, read_only=True, data_only=True)
-        sheets_text = []
-        for sheet_name in wb.sheetnames:
-            sheet = wb[sheet_name]
-            rows = []
-            for row in sheet.iter_rows(values_only=True):
-                row_values = [str(cell) if cell is not None else "" for cell in row]
-                if any(v.strip() for v in row_values):
-                    rows.append(" | ".join(row_values))
-            if rows:
-                sheets_text.append(f"[Sheet: {sheet_name}]\n" + "\n".join(rows))
-        wb.close()
-        return "\n\n".join(sheets_text) if sheets_text else None
-    except ImportError:
-        return None
-    except Exception as e:
-        print(f"⚠️  Skipping problematic XLSX ({type(e).__name__}): {file_path}")
-        return None
-
-
-def extract_mm_text(file_path: str) -> str | None:
-    """Extract text from FreeMind/Freeplane .mm files (XML-based mindmaps)."""
-    try:
-        import xml.etree.ElementTree as ET
-
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-        extracted_texts = []
-
-        def traverse_node(node_element, level=0):
-            indent = "  " * level
-            text_attr = node_element.get("TEXT")
-            if text_attr:
-                extracted_texts.append(f"{indent}- {text_attr}")
-
-            # Extract text from <note> child element (FreeMind notes)
-            note_element = node_element.find("note")
-            if note_element is not None and note_element.text:
-                note_text = note_element.text.strip()
-                if note_text:
-                    extracted_texts.append(f"{indent}  (Note: {note_text})")
-
-            # For Freeplane, notes can be in <richcontent TYPE="NOTE">
-            for rich in node_element.findall("richcontent"):
-                if rich.get("TYPE") == "NOTE":
-                    # Simple text extraction from rich content
-                    rich_text = "".join(rich.itertext()).strip()
-                    if rich_text:
-                        extracted_texts.append(f"{indent}  (Note: {rich_text})")
-
-            # Recursively traverse child nodes
-            for child_node in node_element.findall("node"):
-                traverse_node(child_node, level + 1)
-
-        # Start traversal from any top-level node elements
-        for node_child in root.findall("node"):
-            traverse_node(node_child, level=0)
-
-        return "\n".join(extracted_texts) if extracted_texts else None
-    except Exception as e:
-        print(f"⚠️  Skipping problematic MM ({type(e).__name__}): {file_path} - {e}")
+        # Fallback to default reader
         return None
 
 
 class LeannCLI:
     def __init__(self):
-        # Central storage logic
-        leann_home_env = os.environ.get("LEANN_HOME")
-        if leann_home_env:
-            # If LEANN_HOME is set, use it as the base (global/central storage)
-            self.leann_home = Path(leann_home_env).expanduser().resolve()
-        else:
-            # Otherwise, use project-local .leann directory (like .git)
-            self.leann_home = Path.cwd() / ".leann"
-
-        self.indexes_dir = self.leann_home / "indexes"
+        # Always use project-local .leann directory (like .git)
+        self.indexes_dir = Path.cwd() / ".leann" / "indexes"
         self.indexes_dir.mkdir(parents=True, exist_ok=True)
 
         # Default parser for documents
@@ -336,21 +146,6 @@ Examples:
         )
 
         subparsers = parser.add_subparsers(dest="command", help="Available commands")
-
-        def add_embedding_args(target_parser: argparse.ArgumentParser) -> None:
-            target_parser.add_argument(
-                "--embedding-model",
-                type=str,
-                default="facebook/contriever",
-                help="Embedding model (default: facebook/contriever)",
-            )
-            target_parser.add_argument(
-                "--embedding-mode",
-                type=str,
-                default="sentence-transformers",
-                choices=["sentence-transformers", "openai", "mlx", "ollama"],
-                help="Embedding backend mode (default: sentence-transformers)",
-            )
 
         # Build command
         build_parser = subparsers.add_parser("build", help="Build document index")
@@ -667,109 +462,6 @@ Examples:
             "--port", type=int, default=None, help="Port to bind to (default: 8000)"
         )
 
-        # Browser Index Command
-        browser_parser = subparsers.add_parser("index-browser", help="Index browser history")
-        browser_parser.add_argument(
-            "browser_type", choices=["chrome", "brave"], help="Type of browser"
-        )
-        browser_parser.add_argument(
-            "--profile", type=str, default="Default", help="Profile name (default: Default)"
-        )
-        browser_parser.add_argument(
-            "--index-name", type=str, default=None, help="Custom index name"
-        )
-        browser_parser.add_argument(
-            "--max-items", type=int, default=1000, help="Max history items to index"
-        )
-        add_embedding_args(browser_parser)
-
-        # Email indexing command
-        email_parser = subparsers.add_parser("index-email", help="Index Apple Mail emails")
-        email_parser.add_argument(
-            "index_name", nargs="?", default="apple-mail", help="Index name (default: apple-mail)"
-        )
-        email_parser.add_argument(
-            "--max-items", type=int, default=2000, help="Max emails to index (default: 2000)"
-        )
-        add_embedding_args(email_parser)
-
-        # Calendar indexing command
-        calendar_parser = subparsers.add_parser(
-            "index-calendar", help="Index Apple Calendar events"
-        )
-        calendar_parser.add_argument(
-            "index_name",
-            nargs="?",
-            default="apple-calendar",
-            help="Index name (default: apple-calendar)",
-        )
-        calendar_parser.add_argument(
-            "--max-items", type=int, default=1000, help="Max events to index (default: 1000)"
-        )
-        add_embedding_args(calendar_parser)
-
-        # WeChat indexing command
-        wechat_parser = subparsers.add_parser("index-wechat", help="Index WeChat chat history")
-        wechat_parser.add_argument(
-            "index_name", nargs="?", default="wechat", help="Index name (default: wechat)"
-        )
-        wechat_parser.add_argument(
-            "--export-dir",
-            type=str,
-            default="./wechat_export",
-            help="Directory for WeChat exports",
-        )
-        wechat_parser.add_argument(
-            "--max-items", type=int, default=1000, help="Max chat entries to index"
-        )
-        add_embedding_args(wechat_parser)
-
-        # iMessage indexing command
-        imessage_parser = subparsers.add_parser("index-imessage", help="Index iMessage history")
-        imessage_parser.add_argument(
-            "index_name", nargs="?", default="imessage", help="Index name (default: imessage)"
-        )
-        imessage_parser.add_argument("--db-path", type=str, help="Custom chat.db path")
-        imessage_parser.add_argument(
-            "--max-items", type=int, default=2000, help="Max messages to index"
-        )
-        add_embedding_args(imessage_parser)
-
-        # Slack indexing command
-        slack_parser = subparsers.add_parser("index-slack", help="Index Slack workspace via MCP")
-        slack_parser.add_argument(
-            "index_name", nargs="?", default="slack", help="Index name (default: slack)"
-        )
-        slack_parser.add_argument(
-            "--mcp-server",
-            type=str,
-            required=True,
-            help="MCP server command (e.g. 'slack-mcp-server')",
-        )
-        slack_parser.add_argument("--workspace", type=str, help="Slack workspace name")
-        slack_parser.add_argument("--channels", nargs="+", help="Specific channels to index")
-        add_embedding_args(slack_parser)
-
-        # ChatGPT indexing command
-        chatgpt_parser = subparsers.add_parser("index-chatgpt", help="Index ChatGPT export")
-        chatgpt_parser.add_argument(
-            "index_name", nargs="?", default="chatgpt", help="Index name (default: chatgpt)"
-        )
-        chatgpt_parser.add_argument(
-            "--export-path", type=str, required=True, help="Path to export file"
-        )
-        add_embedding_args(chatgpt_parser)
-
-        # Claude indexing command
-        claude_parser = subparsers.add_parser("index-claude", help="Index Claude export")
-        claude_parser.add_argument(
-            "index_name", nargs="?", default="claude", help="Index name (default: claude)"
-        )
-        claude_parser.add_argument(
-            "--export-path", type=str, required=True, help="Path to export file"
-        )
-        add_embedding_args(claude_parser)
-
         return parser
 
     def register_project_dir(self):
@@ -879,21 +571,14 @@ Examples:
 
         total_indexes = 0
         current_indexes_count = 0
-        size_cache = {}
 
-        # Show current storage header
-        leann_home_env = os.environ.get("LEANN_HOME")
-        if leann_home_env:
-            print("\n🏠 Central Index Storage (LEANN_HOME)")
-            print(f"   {self.leann_home}")
-        else:
-            print("\n🏠 Current Project (Local)")
-            print(f"   {current_path}")
+        # Show current project first (most important)
+        print("\n🏠 Current Project")
+        print(f"   {current_path}")
         print("   " + "─" * 45)
 
-        # Optimization: Only include central indexes in the current project listing
         current_indexes = self._discover_indexes_in_project(
-            current_path, exclude_dirs=other_projects, include_central=True, size_cache=size_cache
+            current_path, exclude_dirs=other_projects
         )
         if current_indexes:
             for idx in current_indexes:
@@ -912,11 +597,7 @@ Examples:
             print("   " + "─" * 45)
 
             for project_path in other_projects:
-                # Optimization: Do NOT include central indexes in other project listings
-                # This prevents massive redundancy and saves time
-                project_indexes = self._discover_indexes_in_project(
-                    project_path, include_central=False, size_cache=size_cache
-                )
+                project_indexes = self._discover_indexes_in_project(project_path)
                 if not project_indexes:
                     continue
 
@@ -936,192 +617,122 @@ Examples:
             print("💡 Get started:")
             print("   leann build my-docs --docs ./documents")
         else:
-            print(f"📊 Total: {total_indexes} indexes")
+            # Count only projects that have at least one discoverable index
+            projects_count = 0
+            for p in valid_projects:
+                if p == current_path:
+                    discovered = self._discover_indexes_in_project(p, exclude_dirs=other_projects)
+                else:
+                    discovered = self._discover_indexes_in_project(p)
+                if len(discovered) > 0:
+                    projects_count += 1
+            print(f"📊 Total: {total_indexes} indexes across {projects_count} projects")
 
             if current_indexes_count > 0:
-                print("\n💫 Quick start:")
+                print("\n💫 Quick start (current project):")
                 # Get first index from current project for example
-                example_idx = current_indexes[0]
-                example_name = example_idx["name"]
-                print(f'   leann search {example_name} "your query"')
-                print(f"   leann ask {example_name} --interactive")
+                current_indexes_dir = current_path / ".leann" / "indexes"
+                if current_indexes_dir.exists():
+                    current_index_dirs = [d for d in current_indexes_dir.iterdir() if d.is_dir()]
+                    if current_index_dirs:
+                        example_name = current_index_dirs[0].name
+                        print(f'   leann search {example_name} "your query"')
+                        print(f"   leann ask {example_name} --interactive")
             else:
                 print("\n💡 Create your first index:")
                 print("   leann build my-docs --docs ./documents")
 
     def _discover_indexes_in_project(
-        self,
-        project_path: Path,
-        exclude_dirs: Optional[list[Path]] = None,
-        include_central: bool = True,
-        size_cache: Optional[dict[str, float]] = None,
+        self, project_path: Path, exclude_dirs: Optional[list[Path]] = None
     ):
         """Discover all indexes in a project directory (both CLI and apps formats)
 
-        include_central: If True, includes the central indexes directory (~/.leann/indexes)
         exclude_dirs: when provided, skip any APP-format index files that are
         located under these directories. This prevents duplicates when the
         current project is a parent directory of other registered projects.
-        size_cache: Cache for index sizes to avoid redundant stat calls
         """
         indexes = []
         exclude_dirs = exclude_dirs or []
-        size_cache = size_cache if size_cache is not None else {}
-
         # normalize to resolved paths once for comparison
         try:
             exclude_dirs_resolved = [p.resolve() for p in exclude_dirs]
         except Exception:
             exclude_dirs_resolved = exclude_dirs
 
-        # 1. CLI format: .leann/indexes/index_name/ (Check both central and local)
-        dirs_to_check = []
-        if include_central:
-            dirs_to_check.append(self.indexes_dir)
-
-        # If project_path has a local .leann/indexes, also check it
-        try:
-            local_indexes_dir = project_path / ".leann" / "indexes"
-            if local_indexes_dir.exists():
-                # Avoid duplicate scan if local matches central or is inside it
-                local_resolved = local_indexes_dir.resolve()
-                central_resolved = self.indexes_dir.resolve()
-                try:
-                    if local_resolved != central_resolved and not local_resolved.is_relative_to(
-                        central_resolved
-                    ):
-                        dirs_to_check.append(local_indexes_dir)
-                except AttributeError:  # Python < 3.9 fallback
-                    if str(local_resolved) != str(central_resolved) and str(
-                        central_resolved
-                    ) not in str(local_resolved):
-                        dirs_to_check.append(local_indexes_dir)
-        except (OSError, PermissionError):
-            pass
-
-        for cli_indexes_dir in dirs_to_check:
-            try:
-                if cli_indexes_dir.exists():
-                    for index_dir in cli_indexes_dir.iterdir():
-                        if index_dir.is_dir():
-                            # Cache key for this index
-                            cache_key = str(index_dir.resolve())
-
-                            meta_file = index_dir / "documents.leann.meta.json"
-                            status = "✅" if meta_file.exists() else "❌"
-
-                            size_mb = 0
-                            if meta_file.exists():
-                                if cache_key in size_cache:
-                                    size_mb = size_cache[cache_key]
-                                else:
-                                    try:
-                                        # Fast size calculation (top-level files only)
-                                        size_mb = sum(
-                                            f.stat().st_size
-                                            for f in index_dir.iterdir()
-                                            if f.is_file()
-                                        ) / (1024 * 1024)
-                                        size_cache[cache_key] = size_mb
-                                    except (OSError, PermissionError):
-                                        pass
-
-                            # Avoid duplicates if checking multiple directories
-                            if any(idx["name"] == index_dir.name for idx in indexes):
-                                continue
-
-                            indexes.append(
-                                {
-                                    "name": index_dir.name,
-                                    "type": "cli",
-                                    "status": status,
-                                    "size_mb": size_mb,
-                                    "path": index_dir,
-                                }
-                            )
-            except (OSError, PermissionError, FileNotFoundError):
-                continue
-
-        # 2. Apps format: *.leann.meta.json files in the project root ONLY
-        # We avoid recursive scanning to ensure high performance
-        meta_files = []
-        try:
-            # Level 0 ONLY (Project Root)
-            meta_files.extend(project_path.glob("*.leann.meta.json"))
-        except (OSError, PermissionError):
-            pass
-
-        exclusion_indexes_dir = self.indexes_dir
-        for meta_file in meta_files:
-            try:
-                if meta_file.is_file():
-                    # Skip CLI-built indexes
-                    try:
-                        if (
-                            exclusion_indexes_dir.exists()
-                            and exclusion_indexes_dir in meta_file.parents
-                        ):
-                            continue
-                    except Exception:
-                        pass
-
-                    # Skip meta files that live under excluded directories
-                    try:
-                        meta_parent_resolved = meta_file.parent.resolve()
-                        if any(
-                            meta_parent_resolved.is_relative_to(ex_dir)
-                            for ex_dir in exclude_dirs_resolved
-                        ):
-                            continue
-                    except Exception:
-                        pass
-
-                    display_name = meta_file.parent.name
-                    file_base = meta_file.name.replace(".leann.meta.json", "")
-                    status = "✅"
-
-                    # Cache key for app index
-                    cache_key = f"app:{meta_file.resolve()}"
+        # 1. CLI format: .leann/indexes/index_name/
+        cli_indexes_dir = project_path / ".leann" / "indexes"
+        if cli_indexes_dir.exists():
+            for index_dir in cli_indexes_dir.iterdir():
+                if index_dir.is_dir():
+                    meta_file = index_dir / "documents.leann.meta.json"
+                    status = "✅" if meta_file.exists() else "❌"
 
                     size_mb = 0
-                    if cache_key in size_cache:
-                        size_mb = size_cache[cache_key]
-                    else:
+                    if meta_file.exists():
                         try:
-                            index_dir = meta_file.parent
-                            # Optimization: Avoid glob in large directories
-                            related_extensions = [
-                                "",
-                                ".passages.jsonl",
-                                ".passages.idx",
-                                ".mapping.json",
-                            ]
-                            for rel_ext in related_extensions:
-                                rel_path = index_dir / f"{file_base}.leann{rel_ext}"
-                                try:
-                                    if rel_path.is_file():
-                                        size_mb += rel_path.stat().st_size / (1024 * 1024)
-                                except (OSError, PermissionError):
-                                    continue
-                            size_cache[cache_key] = size_mb
+                            size_mb = sum(
+                                f.stat().st_size for f in index_dir.iterdir() if f.is_file()
+                            ) / (1024 * 1024)
                         except (OSError, PermissionError):
                             pass
 
-                    # Avoid duplicates
-                    if any(idx["name"] == display_name and idx["type"] == "app" for idx in indexes):
-                        continue
-
                     indexes.append(
                         {
-                            "name": display_name,
-                            "type": "app",
+                            "name": index_dir.name,
+                            "type": "cli",
                             "status": status,
                             "size_mb": size_mb,
-                            "path": meta_file,
+                            "path": index_dir,
                         }
                     )
-            except (OSError, PermissionError, FileNotFoundError):
-                continue
+
+        # 2. Apps format: *.leann.meta.json files anywhere in the project
+        cli_indexes_dir = project_path / ".leann" / "indexes"
+        for meta_file in project_path.rglob("*.leann.meta.json"):
+            if meta_file.is_file():
+                # Skip CLI-built indexes (which store meta under .leann/indexes/<name>/)
+                try:
+                    if cli_indexes_dir.exists() and cli_indexes_dir in meta_file.parents:
+                        continue
+                except Exception:
+                    pass
+                # Skip meta files that live under excluded directories
+                try:
+                    meta_parent_resolved = meta_file.parent.resolve()
+                    if any(
+                        meta_parent_resolved.is_relative_to(ex_dir)
+                        for ex_dir in exclude_dirs_resolved
+                    ):
+                        continue
+                except Exception:
+                    # best effort; if resolve or comparison fails, do not exclude
+                    pass
+                # Use the parent directory name as the app index display name
+                display_name = meta_file.parent.name
+                # Extract file base used to store files
+                file_base = meta_file.name.replace(".leann.meta.json", "")
+
+                # Apps indexes are considered complete if the .leann.meta.json file exists
+                status = "✅"
+
+                # Calculate total size of all related files (use file base)
+                size_mb = 0
+                try:
+                    index_dir = meta_file.parent
+                    for related_file in index_dir.glob(f"{file_base}.leann*"):
+                        size_mb += related_file.stat().st_size / (1024 * 1024)
+                except (OSError, PermissionError):
+                    pass
+
+                indexes.append(
+                    {
+                        "name": display_name,
+                        "type": "app",
+                        "status": status,
+                        "size_mb": size_mb,
+                        "path": meta_file,
+                    }
+                )
 
         return indexes
 
@@ -1145,10 +756,10 @@ Examples:
         """Find all indexes with the given name across all projects"""
         matches = []
 
-        # Optimization: use the same discovery logic as list_indexes but filter by name
-        # First, find all projects
+        # Get all registered projects
         global_registry = Path.home() / ".leann" / "projects.json"
         all_projects = []
+
         if global_registry.exists():
             try:
                 import json
@@ -1158,42 +769,87 @@ Examples:
             except Exception:
                 pass
 
+        # Always include current project
         current_path = Path.cwd()
-        project_paths = [Path(p) for p in all_projects if Path(p).exists()]
-        if current_path not in project_paths:
-            project_paths.append(current_path)
+        if str(current_path) not in all_projects:
+            all_projects.append(str(current_path))
 
-        # Track seen paths to avoid duplicates
-        seen_dirs = set()
+        # Search across all projects
+        for project_dir in all_projects:
+            project_path = Path(project_dir)
+            if not project_path.exists():
+                continue
 
-        for project_path in project_paths:
-            # Discover indexes in this project using the optimized method
-            # We exclude central from others to avoid massive redundancy
-            is_current = project_path == current_path
-            discovered = self._discover_indexes_in_project(project_path, include_central=is_current)
+            # 1) CLI-format index under .leann/indexes/<name>
+            index_dir = project_path / ".leann" / "indexes" / index_name
+            if index_dir.exists():
+                is_current = project_path == current_path
+                matches.append(
+                    {
+                        "project_path": project_path,
+                        "index_dir": index_dir,
+                        "is_current": is_current,
+                        "kind": "cli",
+                    }
+                )
 
-            for idx in discovered:
-                if idx["name"] == index_name:
-                    # Resolve path for deduplication
-                    path_resolved = idx["path"].resolve()
-                    if path_resolved in seen_dirs:
+            # 2) App-format indexes
+            # We support two ways of addressing apps:
+            #   a) by the file base (e.g., `pdf_documents`)
+            #   b) by the parent directory name (e.g., `new_txt`)
+            seen_app_meta = set()
+
+            # 2a) by file base
+            for meta_file in project_path.rglob(f"{index_name}.leann.meta.json"):
+                if meta_file.is_file():
+                    # Skip CLI-built indexes' meta under .leann/indexes
+                    try:
+                        cli_indexes_dir = project_path / ".leann" / "indexes"
+                        if cli_indexes_dir.exists() and cli_indexes_dir in meta_file.parents:
+                            continue
+                    except Exception:
+                        pass
+                    is_current = project_path == current_path
+                    key = (str(project_path), str(meta_file))
+                    if key in seen_app_meta:
                         continue
-                    seen_dirs.add(path_resolved)
-
+                    seen_app_meta.add(key)
                     matches.append(
                         {
                             "project_path": project_path,
-                            "index_dir": idx["path"]
-                            if idx["type"] == "cli"
-                            else idx["path"].parent,
-                            "meta_file": idx["path"]
-                            if idx["type"] == "app"
-                            else (idx["path"] / "documents.leann.meta.json"),
+                            "files_dir": meta_file.parent,
+                            "meta_file": meta_file,
                             "is_current": is_current,
-                            "kind": idx["type"],
-                            "display_name": idx["name"],
-                            "file_base": idx["path"].name if idx["type"] == "app" else "documents",
-                            "path": idx["path"],
+                            "kind": "app",
+                            "display_name": meta_file.parent.name,
+                            "file_base": meta_file.name.replace(".leann.meta.json", ""),
+                        }
+                    )
+
+            # 2b) by parent directory name
+            for meta_file in project_path.rglob("*.leann.meta.json"):
+                if meta_file.is_file() and meta_file.parent.name == index_name:
+                    # Skip CLI-built indexes' meta under .leann/indexes
+                    try:
+                        cli_indexes_dir = project_path / ".leann" / "indexes"
+                        if cli_indexes_dir.exists() and cli_indexes_dir in meta_file.parents:
+                            continue
+                    except Exception:
+                        pass
+                    is_current = project_path == current_path
+                    key = (str(project_path), str(meta_file))
+                    if key in seen_app_meta:
+                        continue
+                    seen_app_meta.add(key)
+                    matches.append(
+                        {
+                            "project_path": project_path,
+                            "files_dir": meta_file.parent,
+                            "meta_file": meta_file,
+                            "is_current": is_current,
+                            "kind": "app",
+                            "display_name": meta_file.parent.name,
+                            "file_base": meta_file.name.replace(".leann.meta.json", ""),
                         }
                     )
 
@@ -1217,7 +873,7 @@ Examples:
         print(f"✅ Found 1 index named '{index_name}':")
         print(f"   {emoji} Location: {location_info}")
         if kind == "cli":
-            print(f"   📍 Path: {match['path']}")
+            print(f"   📍 Path: {project_path / '.leann' / 'indexes' / index_name}")
         else:
             print(f"   📍 Meta: {match['meta_file']}")
 
@@ -1240,7 +896,7 @@ Examples:
             )
         else:
             return self._delete_index_directory(
-                match["index_dir"],
+                match["files_dir"],
                 match.get("display_name", index_name),
                 project_path if not is_current else None,
                 is_app=True,
@@ -1266,7 +922,7 @@ Examples:
 
             # Show path details
             if kind == "cli":
-                print(f"      📍 {match['path']}")
+                print(f"      📍 {project_path / '.leann' / 'indexes' / index_name}")
             else:
                 print(f"      📍 {match['meta_file']}")
 
@@ -1282,7 +938,7 @@ Examples:
                     if file_base:
                         size_mb = sum(
                             f.stat().st_size
-                            for f in match["index_dir"].glob(f"{file_base}.leann*")
+                            for f in match["files_dir"].glob(f"{file_base}.leann*")
                             if f.is_file()
                         ) / (1024 * 1024)
                 print(f"      📦 Size: {size_mb:.1f} MB")
@@ -1292,12 +948,8 @@ Examples:
         print("   " + "─" * 50)
 
         if force:
-            # If all matches point to the same physical location (should be handled by deduplication, but just in case)
-            # Or if the user really wants to force delete everything with this name.
-            # But for safety, we only allow force delete if there's no ambiguity.
-            # Since we added deduplication, multiple matches now means DIFFERENT physical locations.
-            print("   ❌ Multiple matches found at DIFFERENT locations, but --force specified.")
-            print("   Please run without --force to choose which one to remove safely.")
+            print("   ❌ Multiple matches found, but --force specified.")
+            print("   Please run without --force to choose which one to remove.")
             return False
 
         try:
@@ -1335,7 +987,7 @@ Examples:
                     )
                 else:
                     return self._delete_index_directory(
-                        selected_match["index_dir"],
+                        selected_match["files_dir"],
                         selected_match.get("display_name", index_name),
                         project_path if not is_current else None,
                         is_app=True,
@@ -1440,14 +1092,6 @@ Examples:
                 print(f"⚠️  Warning: Path '{path}' does not exist, skipping...")
                 continue
 
-        # Define custom extractors map
-        custom_extractors = {
-            ".docx": extract_docx_text,
-            ".pptx": extract_pptx_text,
-            ".xlsx": extract_xlsx_text,
-            ".mm": extract_mm_text,
-        }
-
         # Print summary of what we're processing
         total_items = len(files) + len(directories)
         items_desc = []
@@ -1477,49 +1121,42 @@ Examples:
         if files:
             print(f"\n🔄 Processing {len(files)} individual file{'s' if len(files) > 1 else ''}...")
 
-            for file_path in files:
-                file_path_obj = Path(file_path)
-                if not include_hidden and _path_has_hidden_segment(file_path_obj):
-                    print(f"  ⚠️  Skipping hidden file: {file_path}")
-                    continue
+            # Load individual files using SimpleDirectoryReader with input_files
+            # Note: We skip gitignore filtering for explicitly specified files
+            try:
+                # Group files by their parent directory for efficient loading
+                from collections import defaultdict
 
-                ext = file_path_obj.suffix.lower()
-                doc = None
+                files_by_dir = defaultdict(list)
+                for file_path in files:
+                    file_path_obj = Path(file_path)
+                    if not include_hidden and _path_has_hidden_segment(file_path_obj):
+                        print(f"  ⚠️  Skipping hidden file: {file_path}")
+                        continue
+                    parent_dir = str(file_path_obj.parent)
+                    files_by_dir[parent_dir].append(str(file_path_obj))
 
-                # Try PDF extraction first if it's a PDF
-                if ext == ".pdf":
-                    text = extract_pdf_text(file_path)
-                    if text:
-                        from llama_index.core import Document
-
-                        doc = Document(text=text, metadata={"source": file_path})
-
-                # Try custom extractors (DOCX, PPTX, XLSX, MM)
-                elif ext in custom_extractors:
-                    text = custom_extractors[ext](file_path)
-                    if text:
-                        from llama_index.core import Document
-
-                        doc = Document(text=text, metadata={"source": file_path})
-
-                # If handled by custom logic, add it
-                if doc:
-                    all_documents.append(doc)
-                    print(f"  ✅ Loaded custom format: {file_path_obj.name}")
-                else:
-                    # Fallback to SimpleDirectoryReader for other files
+                # Load files from each parent directory
+                for parent_dir, file_list in files_by_dir.items():
+                    print(
+                        f"  Loading {len(file_list)} file{'s' if len(file_list) > 1 else ''} from {parent_dir}"
+                    )
                     try:
                         file_docs = SimpleDirectoryReader(
-                            str(file_path_obj.parent),
-                            input_files=[file_path],
+                            parent_dir,
+                            input_files=file_list,
+                            # exclude_hidden only affects directory scans; input_files are explicit
                             filename_as_id=True,
                         ).load_data()
-                        for d in file_docs:
-                            d.metadata["source"] = file_path
                         all_documents.extend(file_docs)
-                        print(f"  ✅ Loaded: {file_path_obj.name}")
+                        print(
+                            f"    ✅ Loaded {len(file_docs)} document{'s' if len(file_docs) > 1 else ''}"
+                        )
                     except Exception as e:
-                        print(f"  ❌ Warning: Could not load file {file_path}: {e}")
+                        print(f"    ❌ Warning: Could not load files from {parent_dir}: {e}")
+
+            except Exception as e:
+                print(f"❌ Error processing individual files: {e}")
 
         # Define file extensions to process
         if custom_file_types:
@@ -1530,12 +1167,12 @@ Examples:
         else:
             # Use default supported file types
             code_extensions = [
+                # Original document types
                 ".txt",
                 ".md",
                 ".docx",
                 ".pptx",
-                ".xlsx",
-                ".mm",
+                # Code files for Claude Code integration
                 ".py",
                 ".js",
                 ".ts",
@@ -1624,7 +1261,11 @@ Examples:
 
                     print(f"Processing PDF: {file_path}")
 
-                    text = extract_pdf_text(str(file_path))
+                    # Try PyMuPDF first (best quality)
+                    text = extract_pdf_text_with_pymupdf(str(file_path))
+                    if text is None:
+                        # Try pdfplumber
+                        text = extract_pdf_text_with_pdfplumber(str(file_path))
 
                     if text:
                         # Create a simple document structure
@@ -1646,111 +1287,50 @@ Examples:
                         except Exception as e:
                             print(f"Warning: Could not process {file_path}: {e}")
 
-            for ext, extractor in custom_extractors.items():
-                should_process = custom_file_types is None or ext in custom_file_types
-                if not should_process:
-                    continue
-                for file_path in docs_path.rglob(f"*{ext}"):
-                    try:
-                        file_path_resolved = file_path.resolve()
-                        relative_path = file_path.relative_to(docs_path)
-                        if not include_hidden and _path_has_hidden_segment(relative_path):
-                            continue
-                        if self._should_exclude_file(file_path_resolved, gitignore_matches):
-                            continue
-                    except ValueError:
-                        print(f"⚠️  Skipping file outside directory scope: {file_path}")
-                        continue
-                    print(f"Processing {ext.upper()[1:]}: {file_path}")
-                    text = extractor(str(file_path))
-                    if text:
-                        from llama_index.core import Document
-
-                        doc = Document(text=text, metadata={"source": str(file_path)})
-                        documents.append(doc)
-                    else:
-                        print(f"⚠️  Could not extract text from: {file_path}")
-
+            # Load other file types with default reader
+            # Exclude PDFs from code_extensions if they were already processed separately
             other_file_extensions = code_extensions
-            processed_extensions = [".pdf", *custom_extractors.keys()]
-            other_file_extensions = [
-                ext for ext in code_extensions if ext not in processed_extensions
-            ]
+            if should_process_pdfs and ".pdf" in code_extensions:
+                other_file_extensions = [ext for ext in code_extensions if ext != ".pdf"]
 
             try:
-
-                def is_valid_file(file_path: Path) -> bool:
-                    try:
-                        if file_path.is_symlink():
-                            resolved = file_path.resolve()
-                            if not resolved.exists():
-                                return False
-                        elif not file_path.exists():
-                            return False
-                        return True
-                    except (OSError, PermissionError):
-                        return False
-
+                # Create a custom file filter function using our PathSpec
                 def file_filter(
                     file_path: str, docs_dir=docs_dir, gitignore_matches=gitignore_matches
                 ) -> bool:
+                    """Return True if file should be included (not excluded)"""
                     try:
-                        file_path_obj = Path(file_path)
-                        if not is_valid_file(file_path_obj):
-                            return False
                         docs_path_obj = Path(docs_dir).resolve()
-                        file_path_obj = file_path_obj.resolve()
-                        _ = file_path_obj.relative_to(docs_path_obj)
+                        file_path_obj = Path(file_path).resolve()
+                        # Use absolute path for gitignore matching
+                        _ = file_path_obj.relative_to(docs_path_obj)  # validate scope
                         return not self._should_exclude_file(file_path_obj, gitignore_matches)
                     except (ValueError, OSError):
-                        return False
+                        return True  # Include files that can't be processed
 
+                # Only load other file types if there are extensions to process
                 if other_file_extensions:
-                    try:
-                        docs_path = Path(docs_dir)
-                        valid_files = []
-                        ext_set = set(other_file_extensions)
-                        for file_path in docs_path.rglob("*"):
-                            if file_path.suffix.lower() not in ext_set:
-                                continue
-                            if not include_hidden and _path_has_hidden_segment(
-                                file_path.relative_to(docs_path)
-                            ):
-                                continue
-                            if not is_valid_file(file_path):
-                                print(f"⚠️  Skipping broken symlink: {file_path}")
-                                continue
-                            if self._should_exclude_file(file_path.resolve(), gitignore_matches):
-                                continue
-                            valid_files.append(str(file_path))
-
-                        if valid_files:
-                            other_docs = SimpleDirectoryReader(
-                                input_files=valid_files,
-                                encoding="utf-8",
-                                file_extractor={},
-                                filename_as_id=True,
-                            ).load_data(show_progress=True)
-                        else:
-                            other_docs = []
-                    except FileNotFoundError as fnf_err:
-                        print(f"⚠️  Skipping broken symlink or missing file: {fnf_err}")
-                        other_docs = []
-                    except Exception as load_err:
-                        print(f"⚠️  Error loading documents from {docs_dir}: {load_err}")
-                        other_docs = []
+                    other_docs = SimpleDirectoryReader(
+                        docs_dir,
+                        recursive=True,
+                        encoding="utf-8",
+                        required_exts=other_file_extensions,
+                        file_extractor={},  # Use default extractors
+                        exclude_hidden=not include_hidden,
+                        filename_as_id=True,
+                    ).load_data(show_progress=True)
                 else:
                     other_docs = []
 
+                # Filter documents after loading based on gitignore rules
+                filtered_docs = []
                 for doc in other_docs:
-                    try:
-                        file_path = doc.metadata.get("file_path", "")
+                    file_path = doc.metadata.get("file_path", "")
+                    if file_filter(file_path):
                         doc.metadata["source"] = file_path
-                        documents.append(doc)
-                    except Exception as doc_err:
-                        print(f"⚠️  Skipping document due to metadata error: {doc_err}")
-                        continue
+                        filtered_docs.append(doc)
 
+                documents.extend(filtered_docs)
             except ValueError as e:
                 if "No files found" in str(e):
                     print(f"No additional files found for other supported types in {docs_dir}.")
@@ -1983,317 +1563,6 @@ Examples:
 
         # Register this project directory in global registry
         self.register_project_dir()
-
-    async def index_browser(self, args):
-        """Build an index from browser history."""
-        from .readers import ChromeHistoryReader
-
-        browser_type = args.browser_type
-        profile = args.profile
-        index_name = args.index_name or f"{browser_type}-history"
-
-        index_dir = self.indexes_dir / index_name
-        index_path = str(index_dir / "documents.leann")
-
-        print(f"🌐 Indexing {browser_type.capitalize()} history (profile: {profile})...")
-
-        # Find browser path
-        paths = ChromeHistoryReader.find_browser_paths()
-        if browser_type not in paths:
-            print(f"❌ Could not find {browser_type} profile directory automatically.")
-            return
-
-        profile_path = paths[browser_type] / profile
-
-        reader = ChromeHistoryReader()
-        documents = reader.load_data(
-            chrome_profile_path=str(profile_path), max_count=args.max_items
-        )
-
-        if not documents:
-            print("❌ No history entries found to index.")
-            return
-
-        print(f"📚 Loaded {len(documents)} entries. Building index...")
-
-        index_dir.mkdir(parents=True, exist_ok=True)
-
-        embedding_options = {}
-        if args.embedding_mode == "ollama":
-            embedding_options["host"] = resolve_ollama_host(None)
-
-        builder = LeannBuilder(
-            backend_name="hnsw",  # Default to hnsw for browser history
-            embedding_model=args.embedding_model,
-            embedding_mode=args.embedding_mode,
-            embedding_options=embedding_options or None,
-            is_recompute=False,  # Store embeddings for fast browser history search
-            is_compact=False,  # Disable compact storage to keep full embeddings
-        )
-
-        for doc in documents:
-            builder.add_text(doc.text, metadata=doc.metadata)
-
-        builder.build_index(index_path)
-        print(f"✅ Browser history index built at: {index_path}")
-        print(f'   Usage: leann search {index_name} "query"')
-
-    async def index_email(self, args):
-        """Build an index from Apple Mail emails."""
-        from .readers import AppleMailReader
-
-        index_name = args.index_name
-        index_dir = self.indexes_dir / index_name
-        index_path = str(index_dir / "documents.leann")
-
-        print("📧 Indexing Apple Mail emails...")
-
-        reader = AppleMailReader()
-        documents = reader.load_data(max_count=args.max_items)
-
-        if not documents:
-            print("❌ No emails found to index. Make sure Full Disk Access is granted.")
-            return
-
-        print(f"📚 Loaded {len(documents)} emails. Building index...")
-        index_dir.mkdir(parents=True, exist_ok=True)
-
-        embedding_options = {}
-        if args.embedding_mode == "ollama":
-            embedding_options["host"] = resolve_ollama_host(None)
-
-        builder = LeannBuilder(
-            backend_name="hnsw",
-            embedding_model=args.embedding_model,
-            embedding_mode=args.embedding_mode,
-            embedding_options=embedding_options or None,
-            is_recompute=False,
-            is_compact=False,
-        )
-
-        for doc in documents:
-            builder.add_text(doc.text, metadata=doc.metadata)
-
-        builder.build_index(index_path)
-        print(f"✅ Email index built at: {index_path}")
-        print(f'   Usage: leann search {index_name} "query"')
-
-    async def index_calendar(self, args):
-        """Build an index from Apple Calendar events."""
-        from .readers import AppleCalendarReader
-
-        index_name = args.index_name
-        index_dir = self.indexes_dir / index_name
-        index_path = str(index_dir / "documents.leann")
-
-        print("📅 Indexing Apple Calendar events...")
-
-        reader = AppleCalendarReader()
-        documents = reader.load_data(max_count=args.max_items)
-
-        if not documents:
-            print("❌ No calendar events found to index. Make sure Full Disk Access is granted.")
-            return
-
-        print(f"📚 Loaded {len(documents)} events. Building index...")
-        index_dir.mkdir(parents=True, exist_ok=True)
-
-        embedding_options = {}
-        if args.embedding_mode == "ollama":
-            embedding_options["host"] = resolve_ollama_host(None)
-
-        builder = LeannBuilder(
-            backend_name="hnsw",
-            embedding_model=args.embedding_model,
-            embedding_mode=args.embedding_mode,
-            embedding_options=embedding_options or None,
-            is_recompute=False,
-            is_compact=False,
-        )
-
-        for doc in documents:
-            builder.add_text(doc.text, metadata=doc.metadata)
-
-        builder.build_index(index_path)
-        print(f"✅ Calendar index built at: {index_path}")
-        print(f'   Usage: leann search {index_name} "query"')
-
-    async def index_wechat(self, args):
-        """Build an index from WeChat chat history."""
-        from .readers import WeChatHistoryReader
-
-        index_name = args.index_name
-        index_dir = self.indexes_dir / index_name
-        index_path = str(index_dir / "documents.leann")
-
-        print(f"💬 Indexing WeChat history from {args.export_dir}...")
-
-        reader = WeChatHistoryReader()
-        documents = reader.load_data(wechat_export_dir=args.export_dir, max_count=args.max_items)
-
-        if not documents:
-            print("❌ No WeChat history found.")
-            return
-
-        print(f"📚 Loaded {len(documents)} chat threads. Building index...")
-        index_dir.mkdir(parents=True, exist_ok=True)
-
-        builder = LeannBuilder(
-            backend_name="hnsw",
-            embedding_model=args.embedding_model,
-            embedding_mode=args.embedding_mode,
-            is_recompute=False,
-            is_compact=False,
-        )
-
-        for doc in documents:
-            builder.add_text(doc.text, metadata=doc.metadata)
-
-        builder.build_index(index_path)
-        print(f"✅ WeChat index built at: {index_path}")
-
-    async def index_imessage(self, args):
-        """Build an index from iMessage history."""
-        from .readers import IMessageReader
-
-        index_name = args.index_name
-        index_dir = self.indexes_dir / index_name
-        index_path = str(index_dir / "documents.leann")
-
-        print("💬 Indexing iMessage history...")
-
-        reader = IMessageReader(concatenate_conversations=True)
-        documents = reader.load_data(input_dir=args.db_path)
-
-        if not documents:
-            print("❌ No iMessage history found.")
-            return
-
-        if args.max_items > 0:
-            documents = documents[: args.max_items]
-
-        print(f"📚 Loaded {len(documents)} conversations. Building index...")
-        index_dir.mkdir(parents=True, exist_ok=True)
-
-        builder = LeannBuilder(
-            backend_name="hnsw",
-            embedding_model=args.embedding_model,
-            embedding_mode=args.embedding_mode,
-            is_recompute=False,
-            is_compact=False,
-        )
-
-        for doc in documents:
-            builder.add_text(doc.text, metadata=doc.metadata)
-
-        builder.build_index(index_path)
-        print(f"✅ iMessage index built at: {index_path}")
-
-    async def index_slack(self, args):
-        """Build an index from Slack via MCP."""
-        from .readers import SlackMCPReader
-
-        index_name = args.index_name
-        index_dir = self.indexes_dir / index_name
-        index_path = str(index_dir / "documents.leann")
-
-        print(f"💬 Indexing Slack via {args.mcp_server}...")
-
-        reader = SlackMCPReader(
-            mcp_server_command=args.mcp_server,
-            workspace_name=args.workspace,
-            concatenate_conversations=True,
-        )
-        documents = await reader.load_data(channels=args.channels)
-
-        if not documents:
-            print("❌ No Slack messages found or MCP server failed.")
-            return
-
-        print(f"📚 Loaded {len(documents)} items. Building index...")
-        index_dir.mkdir(parents=True, exist_ok=True)
-
-        builder = LeannBuilder(
-            backend_name="hnsw",
-            embedding_model=args.embedding_model,
-            embedding_mode=args.embedding_mode,
-            is_recompute=False,
-            is_compact=False,
-        )
-
-        for doc in documents:
-            builder.add_text(doc.text, metadata=doc.metadata)
-
-        builder.build_index(index_path)
-        print(f"✅ Slack index built at: {index_path}")
-
-    async def index_chatgpt(self, args):
-        """Build an index from ChatGPT export."""
-        from .readers import ChatGPTReader
-
-        index_name = args.index_name
-        index_dir = self.indexes_dir / index_name
-        index_path = str(index_dir / "documents.leann")
-
-        print(f"🤖 Indexing ChatGPT export from {args.export_path}...")
-
-        reader = ChatGPTReader()
-        documents = reader.load_data(export_path=args.export_path)
-
-        if not documents:
-            print("❌ No ChatGPT data found.")
-            return
-
-        print(f"📚 Loaded {len(documents)} conversations. Building index...")
-        index_dir.mkdir(parents=True, exist_ok=True)
-
-        builder = LeannBuilder(
-            backend_name="hnsw",
-            embedding_model=args.embedding_model,
-            embedding_mode=args.embedding_mode,
-            is_recompute=False,
-            is_compact=False,
-        )
-
-        for doc in documents:
-            builder.add_text(doc.text, metadata=doc.metadata)
-
-        builder.build_index(index_path)
-        print(f"✅ ChatGPT index built at: {index_path}")
-
-    async def index_claude(self, args):
-        """Build an index from Claude export."""
-        from .readers import ClaudeReader
-
-        index_name = args.index_name
-        index_dir = self.indexes_dir / index_name
-        index_path = str(index_dir / "documents.leann")
-
-        print(f"🤖 Indexing Claude export from {args.export_path}...")
-
-        reader = ClaudeReader()
-        documents = reader.load_data(export_path=args.export_path)
-
-        if not documents:
-            print("❌ No Claude data found.")
-            return
-
-        print(f"📚 Loaded {len(documents)} conversations. Building index...")
-        index_dir.mkdir(parents=True, exist_ok=True)
-
-        builder = LeannBuilder(
-            backend_name="hnsw",
-            embedding_model=args.embedding_model,
-            embedding_mode=args.embedding_mode,
-            is_recompute=False,
-            is_compact=False,
-        )
-
-        for doc in documents:
-            builder.add_text(doc.text, metadata=doc.metadata)
-
-        builder.build_index(index_path)
-        print(f"✅ Claude index built at: {index_path}")
 
     async def search_documents(self, args):
         index_name = args.index_name
@@ -2633,30 +1902,6 @@ Examples:
         elif args.command == "react":
             with suppress_cpp_output(suppress):
                 await self.react_agent(args)
-        elif args.command == "index-browser":
-            with suppress_cpp_output(suppress):
-                await self.index_browser(args)
-        elif args.command == "index-email":
-            with suppress_cpp_output(suppress):
-                await self.index_email(args)
-        elif args.command == "index-calendar":
-            with suppress_cpp_output(suppress):
-                await self.index_calendar(args)
-        elif args.command == "index-wechat":
-            with suppress_cpp_output(suppress):
-                await self.index_wechat(args)
-        elif args.command == "index-imessage":
-            with suppress_cpp_output(suppress):
-                await self.index_imessage(args)
-        elif args.command == "index-slack":
-            with suppress_cpp_output(suppress):
-                await self.index_slack(args)
-        elif args.command == "index-chatgpt":
-            with suppress_cpp_output(suppress):
-                await self.index_chatgpt(args)
-        elif args.command == "index-claude":
-            with suppress_cpp_output(suppress):
-                await self.index_claude(args)
         elif args.command == "serve":
             await self.serve_api(args)
         else:

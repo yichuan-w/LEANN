@@ -6,9 +6,6 @@
 - [X] DiskANN backend with MIPS/L2/Cosine support
 - [X] Real-time embedding pipeline
 - [X] Memory-efficient graph pruning
-- [X] Comprehensive Personal Data Ingestion (Mail, Calendar, iMessage, Browser)
-- [X] Structural Office & Mindmap Document Support
-- [X] Docling OCR Integration for Advanced PDF Processing
 
 ## 🚀 Q3 2025
 

@@ -40,21 +40,15 @@ class ChromeHistoryReader(BaseReader):
             )
 
         history_db_path = os.path.join(chrome_profile_path, "History")
-        temp_db_path = "/tmp/leann_history_copy"
 
         if not os.path.exists(history_db_path):
             print(f"Chrome history database not found at: {history_db_path}")
             return docs
 
         try:
-            # Create a temporary copy of the database to avoid "database is locked" errors
-            import shutil
-
-            shutil.copy2(history_db_path, temp_db_path)
-
-            # Connect to the temporary copy
-            print(f"Connecting to database copy: {temp_db_path}")
-            conn = sqlite3.connect(temp_db_path)
+            # Connect to the Chrome history database
+            print(f"Connecting to database: {history_db_path}")
+            conn = sqlite3.connect(history_db_path)
             cursor = conn.cursor()
 
             # Query to get browsing history with metadata (removed created_time column)
@@ -99,9 +93,6 @@ class ChromeHistoryReader(BaseReader):
                 count += 1
 
             conn.close()
-            # Clean up temporary database copy
-            if os.path.exists(temp_db_path):
-                os.remove(temp_db_path)
             print(f"Loaded {len(docs)} Chrome history documents")
 
         except Exception as e:

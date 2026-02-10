@@ -262,22 +262,6 @@ leann build my-docs \
 
 **Note:** This is completely optional. LEANN works perfectly fine without the SDK using the built-in token limit registry.
 
-### Deep Directory Structures & Metadata Limits
-
-When indexing large personal vaults (e.g., Nextcloud, detailed project archives), you may encounter errors like `ValueError: Metadata length longer than chunk size`. This happens because LEANN preserves the full source file path in the metadata, and very long paths can exceed the default chunk size of 256 tokens.
-
-**Recommendation for Large Vaults:**
-Increase the `doc-chunk-size` to provide more room for metadata and better semantic context:
-
-```bash
-leann build my-vault --docs ~/Nextcloud \
-  --doc-chunk-size 1024 \
-  --doc-chunk-overlap 200
-```
-
-- **Chunk Size (1024)**: Ensures even deeply nested files fit within the limit.
-- **Overlap (200)**: Maintains context across larger chunks.
-
 ## Index Selection: Matching Your Scale
 
 ### HNSW (Hierarchical Navigable Small World)

@@ -55,33 +55,13 @@ class BrowserRAG(BaseRAGExample):
         )
 
     def _get_chrome_base_path(self) -> Path:
-        """Get the base Chrome/Brave profile path based on OS."""
+        """Get the base Chrome profile path based on OS."""
         if sys.platform == "darwin":
-            # Check for Chrome first, then Brave
-            chrome_path = Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
-            brave_path = (
-                Path.home() / "Library" / "Application Support" / "BraveSoftware" / "Brave-Browser"
-            )
-
-            if chrome_path.exists():
-                return chrome_path
-            return brave_path
+            return Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
         elif sys.platform.startswith("linux"):
-            chrome_path = Path.home() / ".config" / "google-chrome"
-            brave_path = Path.home() / ".config" / "BraveSoftware" / "Brave-Browser"
-
-            if chrome_path.exists():
-                return chrome_path
-            return brave_path
+            return Path.home() / ".config" / "google-chrome"
         elif sys.platform == "win32":
-            chrome_path = Path(os.environ["LOCALAPPDATA"]) / "Google" / "Chrome" / "User Data"
-            brave_path = (
-                Path(os.environ["LOCALAPPDATA"]) / "BraveSoftware" / "Brave-Browser" / "User Data"
-            )
-
-            if chrome_path.exists():
-                return chrome_path
-            return brave_path
+            return Path(os.environ["LOCALAPPDATA"]) / "Google" / "Chrome" / "User Data"
         else:
             raise ValueError(f"Unsupported platform: {sys.platform}")
 
@@ -109,12 +89,16 @@ class BrowserRAG(BaseRAGExample):
     async def load_data(self, args) -> list[dict[str, Any]]:
         """Load browser history and convert to text chunks."""
         # Determine Chrome profiles
-        if args.chrome_profile:
-            # If specific profile given, use only that one
+        if args.chrome_profile and not args.auto_find_profiles:
             profile_dirs = [Path(args.chrome_profile)]
         else:
             print("Auto-detecting Chrome profiles...")
             profile_dirs = self._find_chrome_profiles()
+
+            # If specific profile given, filter to just that one
+            if args.chrome_profile:
+                profile_path = Path(args.chrome_profile)
+                profile_dirs = [p for p in profile_dirs if p == profile_path]
 
         if not profile_dirs:
             print("No Chrome profiles found!")

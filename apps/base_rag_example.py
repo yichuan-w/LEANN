@@ -391,7 +391,7 @@ class BaseRAGExample(ABC):
 
         # Check if index exists
         index_path = str(Path(args.index_dir) / f"{self.default_index_name}.leann")
-        index_exists = Path(index_path).exists()
+        index_exists = Path(args.index_dir).exists()
 
         if not index_exists or args.force_rebuild:
             # Load data and build index
