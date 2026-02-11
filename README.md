@@ -100,6 +100,8 @@ and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immed
 uv venv
 source .venv/bin/activate
 uv pip install leann
+
+# CPU-only (Linux): use the `cpu` extra (e.g. `leann[cpu]`)
 ```
 
 <!--
