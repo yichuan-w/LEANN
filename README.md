@@ -1082,6 +1082,9 @@ leann ask my-docs --interactive
 # Ask a single question (non-interactive)
 leann ask my-docs "Where are prompts configured?"
 
+# Detect file changes since last build/watch checkpoint
+leann watch my-docs
+
 # List all your indexes
 leann list
 
@@ -1093,6 +1096,7 @@ leann remove my-docs
 - Auto-detects document formats (PDF, TXT, MD, DOCX, PPTX + code files)
 - **🧠 AST-aware chunking** for Python, Java, C#, TypeScript files
 - Smart text chunking with overlap for all other content
+- **📂 File change detection** via Merkle tree snapshots (`leann watch`)
 - Multiple LLM providers (Ollama, OpenAI, HuggingFace)
 - Organized index storage in `.leann/indexes/` (project-local)
 - Support for advanced search parameters
@@ -1100,7 +1104,7 @@ leann remove my-docs
 <details>
 <summary><strong>📋 Click to expand: Complete CLI Reference</strong></summary>
 
-You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
+You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann watch --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
 
 **Build Command:**
 ```bash
@@ -1125,6 +1129,24 @@ Options:
   --complexity N                Search complexity (default: 64)
   --recompute / --no-recompute  Enable/disable embedding recomputation (default: enabled). Should not do a `no-recompute` search in a `recompute` build.
   --pruning-strategy {global,local,proportional}
+```
+
+**Watch Command:**
+```bash
+leann watch INDEX_NAME
+
+# Compares the current file system state against the last checkpoint (Merkle tree snapshot)
+# and reports which files have been added, removed, or modified, along with their chunk IDs.
+#
+# - Automatically saves a new checkpoint after detecting changes
+# - Each subsequent run compares against the most recent checkpoint
+# - File change detection uses SHA-256 content hashing via a Merkle tree
+#
+# Example output:
+#   === Changes since last checkpoint ===
+#   modified (1):
+#     - /path/to/file.py
+#       chunks: 42, 43, 44
 ```
 
 **Ask Command:**

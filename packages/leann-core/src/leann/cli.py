@@ -1,7 +1,10 @@
 import argparse
 import asyncio
 import contextlib
+import io
+import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -19,36 +22,65 @@ from .settings import (
     resolve_openai_api_key,
     resolve_openai_base_url,
 )
+from .sync import FileSynchronizer
 
 
 @contextlib.contextmanager
 def suppress_cpp_output(suppress: bool = True):
-    """Context manager to suppress C++ stdout/stderr output from FAISS/HNSW.
+    """Context manager to suppress C++ stdout/stderr output from FAISS/HNSW
+    while preserving Python print() output.
 
-    This redirects file descriptors at the OS level to suppress native C++ output
-    that cannot be controlled via Python's logging framework.
+    C++ native code writes directly to OS file descriptors (fd 1 / fd 2).
+    Python print() goes through sys.stdout / sys.stderr, which are Python
+    file objects.  We redirect the OS fds to /dev/null (silencing C++) but
+    point sys.stdout / sys.stderr at copies of the *original* fds so that
+    Python output still reaches the terminal.
     """
     if not suppress:
         yield
         return
 
-    # Save original file descriptors
-    old_stdout_fd = os.dup(1)
-    old_stderr_fd = os.dup(2)
+    # 1. Duplicate the original OS file descriptors
+    saved_stdout_fd = os.dup(1)
+    saved_stderr_fd = os.dup(2)
+
+    # 2. Build Python file objects that write to the saved (real) fds.
+    #    closefd=False so closing these wrappers won't close the duped fds.
+    py_stdout = io.TextIOWrapper(
+        io.FileIO(saved_stdout_fd, mode="w", closefd=False), encoding=sys.stdout.encoding or "utf-8"
+    )
+    py_stderr = io.TextIOWrapper(
+        io.FileIO(saved_stderr_fd, mode="w", closefd=False), encoding=sys.stderr.encoding or "utf-8"
+    )
+
+    old_sys_stdout = sys.stdout
+    old_sys_stderr = sys.stderr
 
     try:
-        # Open /dev/null for writing
+        # 3. Redirect OS-level fds to /dev/null → silences C++ output
         devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, 1)  # Redirect stdout
-        os.dup2(devnull, 2)  # Redirect stderr
+        os.dup2(devnull, 1)
+        os.dup2(devnull, 2)
         os.close(devnull)
+
+        # 4. Point Python's sys.stdout/stderr at the real terminal
+        sys.stdout = py_stdout
+        sys.stderr = py_stderr
+
         yield
     finally:
-        # Restore original file descriptors
-        os.dup2(old_stdout_fd, 1)
-        os.dup2(old_stderr_fd, 2)
-        os.close(old_stdout_fd)
-        os.close(old_stderr_fd)
+        # 5. Restore everything
+        #    Flush wrappers first (they still need the saved fds to be open)
+        py_stdout.flush()
+        py_stderr.flush()
+
+        sys.stdout = old_sys_stdout
+        sys.stderr = old_sys_stderr
+
+        os.dup2(saved_stdout_fd, 1)
+        os.dup2(saved_stderr_fd, 2)
+        os.close(saved_stdout_fd)
+        os.close(saved_stderr_fd)
 
 
 def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
@@ -289,6 +321,13 @@ Examples:
             default=True,
             help="Fall back to traditional chunking if AST chunking fails (default: True)",
         )
+
+        # Watch command
+        watch_parser = subparsers.add_parser(
+            "watch",
+            help="Compare current files against last checkpoint and report changes",
+        )
+        watch_parser.add_argument("index_name", help="Index name")
 
         # Search command
         search_parser = subparsers.add_parser("search", help="Search documents")
@@ -1431,6 +1470,16 @@ Examples:
                 file_path = doc.metadata.get("file_path", "")
                 is_code_file = any(source_path.endswith(ext) for ext in code_file_exts)
 
+                # For code files, prepend line numbers so chunks carry them
+                if is_code_file:
+                    from llama_index.core.schema import MediaResource
+
+                    original_text = doc.get_content()
+                    lines = original_text.split("\n")
+                    width = len(str(len(lines)))
+                    numbered = "\n".join(f"{i + 1:>{width}}|{line}" for i, line in enumerate(lines))
+                    doc.text_resource = MediaResource(text=numbered)
+
                 # Extract metadata to preserve with chunks
                 chunk_metadata = {
                     "file_path": file_path or source_path,
@@ -1449,10 +1498,132 @@ Examples:
                 nodes = parser.get_nodes_from_documents([doc])
 
                 for node in nodes:
-                    all_texts.append({"text": node.get_content(), "metadata": chunk_metadata})
+                    text = node.get_content()
+                    # For code chunks, trim a partial first line left by overlap
+                    # (a valid line starts with digits followed by '|')
+                    if is_code_file and text and not text[0].isdigit():
+                        first_nl = text.find("\n")
+                        if first_nl != -1:
+                            text = text[first_nl + 1 :]
+                    all_texts.append({"text": text, "metadata": chunk_metadata})
 
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
+
+    def _parse_file_types(self, custom_file_types: Optional[str]) -> Optional[list[str]]:
+        if not custom_file_types:
+            return None
+        extensions = [ext.strip() for ext in custom_file_types.split(",") if ext.strip()]
+        return [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+
+    def _sync_ignore_patterns(self, include_hidden: bool) -> Optional[list[str]]:
+        if include_hidden:
+            return None
+        return ["**/.*"]
+
+    def _resolve_sync_roots(self, docs_paths: list[str]) -> list[str]:
+        roots: set[str] = set()
+        for path in docs_paths:
+            path_obj = Path(path).resolve()
+            if path_obj.is_dir():
+                roots.add(str(path_obj))
+            elif path_obj.is_file():
+                roots.add(str(path_obj.parent))
+        return sorted(roots)
+
+    def _initialize_file_synchronizers(
+        self,
+        roots: list[str],
+        include_extensions: Optional[list[str]],
+        ignore_patterns: Optional[list[str]],
+    ) -> None:
+        for root in roots:
+            try:
+                FileSynchronizer(
+                    root_dir=root,
+                    ignore_patterns=ignore_patterns,
+                    include_extensions=include_extensions,
+                    auto_load=True,
+                )
+            except Exception as exc:
+                print(f"⚠️  Failed to initialize file synchronizer for {root}: {exc}")
+
+    def _write_sync_config(
+        self,
+        index_dir: Path,
+        roots: list[str],
+        include_extensions: Optional[list[str]],
+        ignore_patterns: Optional[list[str]],
+    ) -> None:
+        sync_config_path = index_dir / "sync_roots.json"
+        config = {
+            "roots": roots,
+            "include_extensions": include_extensions,
+            "ignore_patterns": ignore_patterns,
+        }
+        with open(sync_config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+
+    def _resolve_index_for_watch(self, index_name: str) -> Optional[dict[str, Path]]:
+        if self.index_exists(index_name):
+            index_dir = self.indexes_dir / index_name
+            passages_file = index_dir / "documents.leann.passages.jsonl"
+            return {"index_dir": index_dir, "passages_file": passages_file}
+
+        all_matches = self._find_all_matching_indexes(index_name)
+        if not all_matches:
+            print(
+                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
+            )
+            return None
+
+        if len(all_matches) == 1:
+            match = all_matches[0]
+        else:
+            current_matches = [m for m in all_matches if m.get("is_current")]
+            match = current_matches[0] if current_matches else all_matches[0]
+            location_desc = (
+                "current project"
+                if match.get("is_current")
+                else f"project '{match['project_path'].name}'"
+            )
+            print(
+                f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
+            )
+
+        if match.get("kind") == "cli":
+            index_dir = match["index_dir"]
+            passages_file = index_dir / "documents.leann.passages.jsonl"
+        else:
+            index_dir = match["meta_file"].parent
+            file_base = match["file_base"]
+            passages_file = index_dir / f"{file_base}.passages.jsonl"
+
+        return {"index_dir": index_dir, "passages_file": passages_file}
+
+    def _load_chunk_ids_by_file(self, passages_file: Path) -> dict[str, list[str]]:
+        chunk_ids_by_file: dict[str, list[str]] = {}
+        with open(passages_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                metadata = data.get("metadata") or {}
+                file_path = metadata.get("file_path") or metadata.get("source")
+                if not file_path:
+                    continue
+                chunk_id = data.get("id")
+                if chunk_id is None:
+                    continue
+                normalized_path = str(Path(file_path).resolve())
+                chunk_ids_by_file.setdefault(normalized_path, []).append(str(chunk_id))
+                if file_path != normalized_path:
+                    chunk_ids_by_file.setdefault(file_path, []).append(str(chunk_id))
+        return chunk_ids_by_file
 
     async def build_index(self, args):
         docs_paths = args.docs
@@ -1561,8 +1732,87 @@ Examples:
         builder.build_index(index_path)
         print(f"Index built at {index_path}")
 
+        sync_roots = self._resolve_sync_roots(docs_paths)
+        if sync_roots:
+            include_extensions = self._parse_file_types(args.file_types)
+            ignore_patterns = self._sync_ignore_patterns(args.include_hidden)
+            self._initialize_file_synchronizers(sync_roots, include_extensions, ignore_patterns)
+            self._write_sync_config(index_dir, sync_roots, include_extensions, ignore_patterns)
+
         # Register this project directory in global registry
         self.register_project_dir()
+
+    async def watch_index(self, args):
+        index_name = args.index_name
+        resolved = self._resolve_index_for_watch(index_name)
+        if not resolved:
+            return
+
+        index_dir = resolved["index_dir"]
+        passages_file = resolved["passages_file"]
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            print(
+                f"Sync config not found for index '{index_name}'. Rebuild the index to enable watch."
+            )
+            return
+
+        with open(sync_config_path, encoding="utf-8") as f:
+            config = json.load(f)
+
+        roots = config.get("roots") or []
+        include_extensions = config.get("include_extensions")
+        ignore_patterns = config.get("ignore_patterns")
+        if not roots:
+            print(f"No sync roots found for index '{index_name}'.")
+            return
+        if not passages_file.exists():
+            print(f"Passages file not found: {passages_file}")
+            return
+
+        chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file)
+
+        added_paths: set[str] = set()
+        removed_paths: set[str] = set()
+        modified_paths: set[str] = set()
+
+        for root in roots:
+            try:
+                fs = FileSynchronizer(
+                    root_dir=root,
+                    ignore_patterns=ignore_patterns,
+                    include_extensions=include_extensions,
+                    auto_load=True,
+                )
+                added, removed, modified = fs.check_for_changes()
+            except Exception as exc:
+                print(f"⚠️  Failed to check {root}: {exc}")
+                continue
+
+            added_paths.update(added)
+            removed_paths.update(removed)
+            modified_paths.update(modified)
+
+        if not added_paths and not removed_paths and not modified_paths:
+            print("No changes detected.")
+        else:
+            print("\n=== Changes since last checkpoint ===")
+            for label, paths in (
+                ("added", sorted(added_paths)),
+                ("removed", sorted(removed_paths)),
+                ("modified", sorted(modified_paths)),
+            ):
+                if not paths:
+                    continue
+                print(f"\n{label} ({len(paths)}):")
+                for file_path in paths:
+                    normalized_path = str(Path(file_path).resolve())
+                    chunk_ids = chunk_ids_by_file.get(normalized_path) or []
+                    if not chunk_ids:
+                        chunk_ids = chunk_ids_by_file.get(file_path) or []
+                    chunk_display = ", ".join(chunk_ids) if chunk_ids else "(not in index)"
+                    print(f"  - {file_path}")
+                    print(f"    chunks: {chunk_display}")
 
     async def search_documents(self, args):
         index_name = args.index_name
@@ -1893,6 +2143,8 @@ Examples:
         elif args.command == "build":
             with suppress_cpp_output(suppress):
                 await self.build_index(args)
+        elif args.command == "watch":
+            await self.watch_index(args)
         elif args.command == "search":
             with suppress_cpp_output(suppress):
                 await self.search_documents(args)

@@ -18,6 +18,7 @@ def hash_data(data: str | bytes):
 
 @dataclass
 class MerkleTreeNode:
+    ## TODO: this merkle tree only has two layer, need to improve if we want to scale to large codebase
     hash: str
     data: str
     children: dict[str, "MerkleTreeNode"] = field(default_factory=dict)
@@ -93,11 +94,13 @@ class FileSynchronizer:
             recursive=True,
             exclude=self.ignore_patterns,
             required_exts=self.include_extensions,
-            exclude_empty=True,
+            exclude_empty=False,
         )
+        # print('reader.iter_data() length', len(list(reader.iter_data())))
 
         for file in reader.iter_data():
             if len(file) > 1:
+                # print('file length is greater than 1', file)
                 continue  # SimpleDirectoryReader can load more than 1 documents for weird file types e.g. PDFs
             file = file[0]
             try:
