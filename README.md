@@ -114,6 +114,8 @@ uv tool install leann \
   --with astchunk-leann
 ```
 
+CPU-only (Linux): install with the `cpu` extra (e.g. `leann[cpu]`). See the Getting Started guide for the CPU index flags.
+
 For source builds or low-resource setups, see the **[Getting Started Guide](docs/getting-started.md)**.
 
 
@@ -132,6 +134,8 @@ and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immed
 uv venv
 source .venv/bin/activate
 uv pip install leann
+
+# CPU-only (Linux): use the `cpu` extra (e.g. `leann[cpu]`)
 ```
 
 <!--

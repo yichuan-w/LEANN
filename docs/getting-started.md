@@ -23,6 +23,18 @@ uv tool install leann \
   --with astchunk-leann
 ```
 
+CPU-only install (Linux):
+
+```bash
+uv tool install "leann[cpu]" \
+  --default-index https://download.pytorch.org/whl/cpu \
+  --index https://pypi.org/simple \
+  --index-strategy first-index \
+  --with leann-backend-hnsw \
+  --with leann-backend-diskann \
+  --with astchunk-leann
+```
+
 Verify the installation:
 ```bash
 leann --help
