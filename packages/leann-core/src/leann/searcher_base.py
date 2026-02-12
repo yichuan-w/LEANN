@@ -1,4 +1,5 @@
 import json
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -61,6 +62,10 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         Ensures the embedding server is running if recompute is needed.
         This is a helper for subclasses.
         """
+        enable_warmup = kwargs.pop("enable_warmup", False)
+
+        t0 = time.time()
+
         if not self.embedding_model:
             raise ValueError("Cannot use recompute mode without 'embedding_model' in meta.json.")
 
@@ -72,7 +77,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         )
 
         # Filter out ALL prompt templates from provider_options during search
-        # Templates are applied in compute_query_embedding (line 109-110) BEFORE server call
+        # Templates are applied in compute_query_embedding BEFORE server call
         # The server should never apply templates during search to avoid double-templating
         search_provider_options = {
             k: v
@@ -86,11 +91,22 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             embedding_mode=self.embedding_mode,
             passages_file=passages_source_file,
             distance_metric=distance_metric,
-            enable_warmup=kwargs.get("enable_warmup", False),
             provider_options=search_provider_options,
         )
         if not server_started:
             raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
+
+        elapsed = time.time() - t0
+        print(f"[leann] _ensure_server_running completed in {elapsed:.2f}s (port={actual_port})")
+
+        # Warmup: send a dummy embedding request to force model loading
+        if enable_warmup:
+            t_warmup = time.time()
+            try:
+                self._compute_embedding_via_server(["warmup"], actual_port)
+                print(f"[leann] warmup completed in {time.time() - t_warmup:.2f}s")
+            except Exception:
+                pass  # Best effort
 
         return actual_port
 
@@ -106,81 +122,122 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         Args:
             query: The query string to embed
-            zmq_port: ZMQ port for embedding server
+            zmq_port: ZMQ port for embedding server (caller must ensure server is running)
             use_server_if_available: Whether to try using embedding server first
             query_template: Optional prompt template to prepend to query
 
         Returns:
             Query embedding as numpy array
         """
+        t0 = time.time()
+
         # Apply query template BEFORE any computation path
         # This ensures template is applied consistently for both server and fallback paths
         if query_template:
             query = f"{query_template}{query}"
 
-        # Try to use embedding server if available and requested
+        # Try to use embedding server if available and requested.
+        # The caller (api.py) is responsible for calling _ensure_server_running()
+        # and passing the actual port. We no longer call _ensure_server_running()
+        # here to avoid a redundant (and potentially slow) double-check.
         if use_server_if_available:
             try:
-                # TODO: Maybe we can directly use this port here?
-                # For this internal method, it's ok to assume that the server is running
-                # on that port?
-
-                # Ensure we have a server with passages_file for compatibility
-                passages_source_file = self.index_dir / f"{self.index_path.name}.meta.json"
-                # Convert to absolute path to ensure server can find it
-                zmq_port = self._ensure_server_running(
-                    str(passages_source_file.resolve()), zmq_port
-                )
-
-                return self._compute_embedding_via_server([query], zmq_port)[
+                result = self._compute_embedding_via_server([query], zmq_port)[
                     0:1
                 ]  # Return (1, D) shape
+                elapsed = time.time() - t0
+                print(f"[leann] compute_query_embedding (server) completed in {elapsed:.2f}s")
+                return result
             except Exception as e:
-                print(f"⚠️ Embedding server failed: {e}")
-                print("⏭️ Falling back to direct model loading...")
+                print(f"[leann] Embedding server failed after {time.time() - t0:.2f}s: {e}")
+                print("[leann] Falling back to direct model loading...")
 
         # Fallback to direct computation
         from .embedding_compute import compute_embeddings
 
         embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
-        return compute_embeddings(
+        result = compute_embeddings(
             [query],
             self.embedding_model,
             embedding_mode,
             provider_options=self.embedding_options,
         )
+        elapsed = time.time() - t0
+        print(f"[leann] compute_query_embedding (fallback) completed in {elapsed:.2f}s")
+        return result
 
-    def _compute_embedding_via_server(self, chunks: list, zmq_port: int) -> np.ndarray:
-        """Compute embeddings using the ZMQ embedding server."""
+    def _compute_embedding_via_server(
+        self, chunks: list, zmq_port: int, max_retries: int = 3
+    ) -> np.ndarray:
+        """Compute embeddings using the ZMQ embedding server with retry logic.
+
+        Args:
+            chunks: List of text chunks to embed
+            zmq_port: ZMQ port for embedding server
+            max_retries: Maximum number of attempts (default 3)
+
+        Returns:
+            Embeddings as numpy array
+        """
         import msgpack
         import zmq
 
-        try:
-            context = zmq.Context()
-            socket = context.socket(zmq.REQ)
-            socket.setsockopt(zmq.RCVTIMEO, 30000)  # 30 second timeout
-            socket.connect(f"tcp://localhost:{zmq_port}")
+        backoff_delays = [0.5, 1.0, 2.0]  # seconds between retries
+        last_error: Optional[Exception] = None
 
-            # Send embedding request
-            request = chunks
-            request_bytes = msgpack.packb(request)
-            socket.send(request_bytes)
+        for attempt in range(max_retries):
+            context = None
+            socket = None
+            try:
+                context = zmq.Context()
+                socket = context.socket(zmq.REQ)
+                socket.setsockopt(zmq.RCVTIMEO, 30000)  # 30 second receive timeout
+                socket.setsockopt(zmq.SNDTIMEO, 10000)  # 10 second send timeout
+                socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
+                socket.connect(f"tcp://localhost:{zmq_port}")
 
-            # Wait for response
-            response_bytes = socket.recv()
-            response = msgpack.unpackb(response_bytes)
+                # Send embedding request
+                request_bytes = msgpack.packb(chunks)
+                socket.send(request_bytes)
 
-            socket.close()
-            context.term()
+                # Wait for response
+                response_bytes = socket.recv()
+                response = msgpack.unpackb(response_bytes)
 
-            # Convert response to numpy array
-            if isinstance(response, list) and len(response) > 0:
-                return np.array(response, dtype=np.float32)
-            else:
-                raise RuntimeError("Invalid response from embedding server")
+                socket.close()
+                context.term()
 
-        except Exception as e:
-            raise RuntimeError(f"Failed to compute embeddings via server: {e}")
+                # Convert response to numpy array
+                if isinstance(response, list) and len(response) > 0:
+                    return np.array(response, dtype=np.float32)
+                else:
+                    raise RuntimeError("Invalid response from embedding server")
+
+            except Exception as e:
+                last_error = e
+                # Clean up socket/context before retry
+                if socket is not None:
+                    try:
+                        socket.close()
+                    except Exception:
+                        pass
+                if context is not None:
+                    try:
+                        context.term()
+                    except Exception:
+                        pass
+
+                if attempt < max_retries - 1:
+                    delay = backoff_delays[min(attempt, len(backoff_delays) - 1)]
+                    print(
+                        f"[leann] ZMQ attempt {attempt + 1}/{max_retries} failed: {e}. "
+                        f"Retrying in {delay}s..."
+                    )
+                    time.sleep(delay)
+
+        raise RuntimeError(
+            f"Failed to compute embeddings via server after {max_retries} attempts: {last_error}"
+        )
 
     @abstractmethod
     def search(

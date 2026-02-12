@@ -163,6 +163,7 @@ class EmbeddingServerManager:
         **kwargs,
     ) -> tuple[bool, int]:
         """Start the embedding server."""
+        t0 = time.time()
         # passages_file may be present in kwargs for server CLI, but we don't need it here
         provider_options = kwargs.pop("provider_options", None)
         passages_file = kwargs.get("passages_file", "")
@@ -181,7 +182,9 @@ class EmbeddingServerManager:
             and self.server_port
             and self._server_config == config_signature
         ):
-            logger.info("Reusing in-process server")
+            logger.info(
+                "Reusing in-process server (checked in %.2fs)", time.time() - t0
+            )
             return True, self.server_port
 
         # Configuration changed, stop existing server before starting a new one
@@ -192,7 +195,7 @@ class EmbeddingServerManager:
         # For Colab environment, use a different strategy
         if _is_colab_environment():
             logger.info("Detected Colab environment, using alternative startup strategy")
-            return self._start_server_colab(
+            result = self._start_server_colab(
                 port,
                 model_name,
                 embedding_mode,
@@ -200,16 +203,18 @@ class EmbeddingServerManager:
                 provider_options=provider_options,
                 **kwargs,
             )
+            logger.info("Colab server start_server completed in %.2fs", time.time() - t0)
+            return result
 
         # Always pick a fresh available port
         try:
             actual_port = _get_available_port(port)
         except RuntimeError:
-            logger.error("No available ports found")
+            logger.error("No available ports found (after %.2fs)", time.time() - t0)
             return False, port
 
         # Start a new server
-        return self._start_new_server(
+        result = self._start_new_server(
             actual_port,
             model_name,
             embedding_mode,
@@ -217,6 +222,8 @@ class EmbeddingServerManager:
             config_signature=config_signature,
             **kwargs,
         )
+        logger.info("start_server completed in %.2fs", time.time() - t0)
+        return result
 
     def _build_config_signature(
         self,
@@ -291,6 +298,7 @@ class EmbeddingServerManager:
         **kwargs,
     ) -> tuple[bool, int]:
         """Start a new embedding server on the given port."""
+        t0 = time.time()
         logger.info(f"Starting embedding server on port {port}...")
 
         command = self._build_server_command(port, model_name, embedding_mode, **kwargs)
@@ -302,6 +310,8 @@ class EmbeddingServerManager:
                 provider_options=provider_options,
                 config_signature=config_signature,
             )
+            t_launch = time.time()
+            logger.info("Server process launched in %.2fs, waiting for ready...", t_launch - t0)
             started, ready_port = self._wait_for_server_ready(port)
             if started:
                 self._server_config = config_signature or {
@@ -310,9 +320,19 @@ class EmbeddingServerManager:
                     "embedding_mode": embedding_mode,
                     "provider_options": provider_options or {},
                 }
+                logger.info(
+                    "Server ready on port %d (total %.2fs, wait %.2fs)",
+                    ready_port,
+                    time.time() - t0,
+                    time.time() - t_launch,
+                )
+            else:
+                logger.error(
+                    "Server failed to become ready (total %.2fs)", time.time() - t0
+                )
             return started, ready_port
         except Exception as e:
-            logger.error(f"Failed to start embedding server: {e}")
+            logger.error(f"Failed to start embedding server: {e} (after {time.time() - t0:.2f}s)")
             return False, port
 
     def _build_server_command(
