@@ -14,15 +14,45 @@ from .registry import register_project_directory
 from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
 
 
-def extract_pdf_text_with_pymupdf(file_path: str) -> str:
-    """Extract text from PDF using PyMuPDF for better quality."""
+def extract_pdf_text_with_pymupdf(file_path: str, use_ocr: bool = False) -> str:
+    """Extract text from PDF using PyMuPDF for better quality.
+
+    Args:
+        file_path: Path to the PDF file.
+        use_ocr: If True, attempt OCR on pages with little/no embedded text
+                 (< 50 chars). Tries pymupdf built-in OCR first, then falls
+                 back to pytesseract.
+    """
     try:
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
         text = ""
         for page in doc:
-            text += page.get_text()
+            page_text = page.get_text()
+            # If page has minimal text and OCR is requested, try OCR
+            if use_ocr and len(page_text.strip()) < 50:
+                try:
+                    tp = page.get_textpage_ocr()
+                    ocr_text = tp.extractText()
+                    if ocr_text.strip():
+                        page_text = ocr_text
+                except Exception:
+                    # pymupdf OCR not available, try pytesseract
+                    try:
+                        import io
+
+                        from PIL import Image
+                        import pytesseract
+
+                        pix = page.get_pixmap(dpi=300)
+                        img = Image.open(io.BytesIO(pix.tobytes("png")))
+                        ocr_text = pytesseract.image_to_string(img)
+                        if ocr_text.strip():
+                            page_text = ocr_text
+                    except ImportError:
+                        pass  # No OCR library available
+            text += page_text
         doc.close()
         return text
     except ImportError:
@@ -235,6 +265,12 @@ Examples:
             action="store_true",
             default=True,
             help="Fall back to traditional chunking if AST chunking fails (default: True)",
+        )
+        build_parser.add_argument(
+            "--enable-ocr",
+            action="store_true",
+            default=False,
+            help="Enable OCR for scanned/image-based PDFs (requires tesseract)",
         )
 
         # Search command
@@ -1154,7 +1190,8 @@ Examples:
                     print(f"Processing PDF: {file_path}")
 
                     # Try PyMuPDF first (best quality)
-                    text = extract_pdf_text_with_pymupdf(str(file_path))
+                    use_ocr = getattr(args, "enable_ocr", False) if args else False
+                    text = extract_pdf_text_with_pymupdf(str(file_path), use_ocr=use_ocr)
                     if text is None:
                         # Try pdfplumber
                         text = extract_pdf_text_with_pdfplumber(str(file_path))
