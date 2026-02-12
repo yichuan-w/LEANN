@@ -21,8 +21,10 @@ from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 from leann.interactive_utils import create_api_session
 from leann.interface import LeannBackendSearcherInterface
 
+from .bm25 import BM25Index, build_fts5_index
 from .chat import get_llm
 from .embedding_server_manager import EmbeddingServerManager
+from .hybrid import reciprocal_rank_fusion
 from .interface import LeannBackendFactoryInterface
 from .metadata_filter import MetadataFilterEngine
 from .registry import BACKEND_REGISTRY
@@ -447,6 +449,9 @@ class LeannBuilder:
                 offset_map[chunk["id"]] = offset
         with open(offset_file, "wb") as f:
             pickle.dump(offset_map, f)
+        # Build FTS5 BM25 index for hybrid search
+        fts5_path = str(index_dir / f"{index_name}.fts5.db")
+        build_fts5_index(fts5_path, self.chunks)
         texts_to_embed = [c["text"] for c in self.chunks]
         embeddings = compute_embeddings(
             texts_to_embed,
@@ -584,6 +589,11 @@ class LeannBuilder:
 
         with open(offset_file, "wb") as f:
             pickle.dump(offset_map, f)
+
+        # Build FTS5 BM25 index (skip for placeholder texts from pre-computed embeddings)
+        has_placeholders = any(c.get("metadata", {}).get("from_embeddings") for c in self.chunks)
+        fts5_path = str(index_dir / f"{index_name}.fts5.db")
+        build_fts5_index(fts5_path, self.chunks, skip_if_placeholder=has_placeholders)
 
         # Build the vector index using precomputed embeddings
         string_ids = [str(id_val) for id_val in ids]
@@ -902,6 +912,14 @@ class LeannSearcher:
         self.backend_impl: LeannBackendSearcherInterface = backend_factory.searcher(
             index_path, **final_kwargs
         )
+        # Load FTS5 BM25 index if available (graceful degradation if absent)
+        fts5_path = str(Path(index_path).parent / f"{Path(index_path).name}.fts5.db")
+        self._bm25_index: Optional[BM25Index] = None
+        if Path(fts5_path).exists():
+            try:
+                self._bm25_index = BM25Index(fts5_path)
+            except Exception:
+                logger.warning("Failed to load FTS5 index; hybrid search unavailable", exc_info=True)
 
     def search(
         self,
@@ -916,6 +934,7 @@ class LeannSearcher:
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
+        hybrid: bool = False,
         provider_options: Optional[dict[str, Any]] = None,
         **kwargs,
     ) -> list[SearchResult]:
@@ -1003,6 +1022,11 @@ class LeannSearcher:
         embedding_time = time.time() - start_time
         logger.info(f"  Embedding time: {embedding_time} seconds")
 
+        # When hybrid search is active, over-fetch from both dense and BM25
+        # so RRF has enough candidates to produce top_k quality results.
+        use_hybrid = hybrid and self._bm25_index is not None
+        overfetch_k = min(top_k * 3, total_docs) if use_hybrid else top_k
+
         start_time = time.time()
         backend_search_kwargs: dict[str, Any] = {
             "complexity": complexity,
@@ -1021,12 +1045,31 @@ class LeannSearcher:
 
         results = self.backend_impl.search(
             query_embedding,
-            top_k,
+            overfetch_k,
             **backend_search_kwargs,
         )
         search_time = time.time() - start_time
         logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
+
+        # --- Hybrid search: fuse dense results with BM25 via RRF ---
+        if use_hybrid:
+            bm25_start = time.time()
+            dense_ranked = list(
+                zip(results["labels"][0], [float(d) for d in results["distances"][0]])
+            )
+            bm25_ranked = self._bm25_index.search(query, overfetch_k)
+            fused = reciprocal_rank_fusion(
+                [dense_ranked, bm25_ranked], top_k=top_k
+            )
+            fused_ids = [fid for fid, _ in fused]
+            fused_scores = [fscore for _, fscore in fused]
+            results = {"labels": [fused_ids], "distances": [fused_scores]}
+            bm25_time = time.time() - bm25_start
+            logger.info(
+                f"  Hybrid search: dense={len(dense_ranked)} + bm25={len(bm25_ranked)} "
+                f"-> fused={len(fused)} results ({bm25_time:.3f}s)"
+            )
 
         enriched_results = []
         if "labels" in results and "distances" in results:
@@ -1173,6 +1216,9 @@ class LeannSearcher:
         backend = getattr(self.backend_impl, "embedding_server_manager", None)
         if backend is not None:
             backend.stop_server()
+        if self._bm25_index is not None:
+            self._bm25_index.close()
+            self._bm25_index = None
 
     # Enable automatic cleanup patterns
     def __enter__(self):
