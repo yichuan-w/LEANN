@@ -354,6 +354,15 @@ Examples:
             "--force", "-f", action="store_true", help="Force removal without confirmation"
         )
 
+        # Reindex command
+        reindex_parser = subparsers.add_parser(
+            "reindex", help="Rebuild an existing index using its stored configuration"
+        )
+        reindex_parser.add_argument("index_name", help="Name of the index to rebuild")
+        reindex_parser.add_argument(
+            "--docs", nargs="+", required=True, help="Source directories to re-scan"
+        )
+
         return parser
 
     def register_project_dir(self):
@@ -1446,6 +1455,47 @@ Examples:
         # Register this project directory in global registry
         self.register_project_dir()
 
+    async def reindex_index(self, args):
+        """Rebuild an existing index using its stored configuration.
+
+        Reads the meta.json from the named index, re-scans the given ``--docs``
+        directories, chunks them, and builds a fresh index using the same
+        backend / embedding settings as the original build.
+        """
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        meta_path = index_dir / "documents.leann.meta.json"
+
+        if not meta_path.exists():
+            print(
+                f"Index '{index_name}' not found. "
+                f"Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it first."
+            )
+            return
+
+        print(f"Rebuilding index '{index_name}' from stored configuration...")
+
+        # Create a builder from the existing metadata
+        builder = LeannBuilder.from_meta(str(meta_path))
+
+        # Load and chunk documents from the supplied --docs paths
+        all_texts = self.load_documents(args.docs)
+        if not all_texts:
+            print("No documents found in the specified directories.")
+            return
+
+        for chunk in all_texts:
+            builder.add_text(chunk["text"], metadata=chunk["metadata"])
+
+        index_path = self.get_index_path(index_name)
+        index_dir.mkdir(parents=True, exist_ok=True)
+        builder.build_index(index_path)
+
+        print(f"Index '{index_name}' rebuilt successfully at {index_path}")
+
+        # Re-register the project directory
+        self.register_project_dir()
+
     async def search_documents(self, args):
         index_name = args.index_name
         query = args.query
@@ -1664,6 +1714,8 @@ Examples:
             self.remove_index(args.index_name, args.force)
         elif args.command == "build":
             await self.build_index(args)
+        elif args.command == "reindex":
+            await self.reindex_index(args)
         elif args.command == "search":
             await self.search_documents(args)
         elif args.command == "ask":

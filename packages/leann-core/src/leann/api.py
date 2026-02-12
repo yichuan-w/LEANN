@@ -380,6 +380,30 @@ class LeannBuilder:
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
+    @classmethod
+    def from_meta(cls, meta_path: str) -> "LeannBuilder":
+        """Create a builder configured from an existing index's metadata.
+
+        This reads the meta.json saved alongside a previously built index and
+        returns a new ``LeannBuilder`` instance with the same configuration
+        (backend, embedding model, embedding mode, backend kwargs, etc.).
+
+        Args:
+            meta_path: Path to the ``*.meta.json`` file of the existing index.
+
+        Returns:
+            A new ``LeannBuilder`` pre-configured to match the original index.
+        """
+        with open(meta_path) as f:
+            meta = json.load(f)
+        return cls(
+            backend_name=meta["backend_name"],
+            embedding_model=meta["embedding_model"],
+            embedding_mode=meta.get("embedding_mode", "sentence-transformers"),
+            embedding_options=meta.get("embedding_options"),
+            **meta.get("backend_kwargs", {}),
+        )
+
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
