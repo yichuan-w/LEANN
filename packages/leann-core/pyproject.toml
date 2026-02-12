@@ -46,8 +46,7 @@ colab = [
     "accelerate>=0.20.0,<1.0.0",  # Limit accelerate version
 ]
 ocr = [
-    "pytesseract>=0.3.10",
-    "Pillow>=10.0.0",
+    "magic-pdf>=0.9.0",
 ]
 
 [project.scripts]

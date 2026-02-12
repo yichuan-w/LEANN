@@ -14,46 +14,62 @@ from .registry import register_project_directory
 from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
 
 
+def _ocr_with_mineru(file_path: str) -> str | None:
+    """Try to extract text from a PDF using MinerU (magic-pdf).
+
+    Returns the extracted markdown text, or None if MinerU is not installed.
+    """
+    try:
+        from magic_pdf.data.data_reader_writer import FileBasedDataReader, FileBasedDataWriter
+        from magic_pdf.pipe.UNIPipe import UNIPipe
+        import tempfile
+        import os
+
+        reader = FileBasedDataReader("")
+        pdf_bytes = reader.read(file_path)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            writer = FileBasedDataWriter(tmpdir)
+            pipe = UNIPipe(pdf_bytes, {"_pdf_type": "", "model_list": []}, writer)
+            pipe.pipe_classify()
+            pipe.pipe_analyze()
+            pipe.pipe_parse()
+            md_content = pipe.pipe_mk_markdown("images", drop_mode="none")
+            return md_content
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+
 def extract_pdf_text_with_pymupdf(file_path: str, use_ocr: bool = False) -> str:
     """Extract text from PDF using PyMuPDF for better quality.
 
     Args:
         file_path: Path to the PDF file.
         use_ocr: If True, attempt OCR on pages with little/no embedded text
-                 (< 50 chars). Tries pymupdf built-in OCR first, then falls
-                 back to pytesseract.
+                 (< 50 chars). Tries MinerU first, then pymupdf built-in OCR.
     """
     try:
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
         text = ""
+        needs_ocr = False
         for page in doc:
             page_text = page.get_text()
-            # If page has minimal text and OCR is requested, try OCR
             if use_ocr and len(page_text.strip()) < 50:
-                try:
-                    tp = page.get_textpage_ocr()
-                    ocr_text = tp.extractText()
-                    if ocr_text.strip():
-                        page_text = ocr_text
-                except Exception:
-                    # pymupdf OCR not available, try pytesseract
-                    try:
-                        import io
-
-                        from PIL import Image
-                        import pytesseract
-
-                        pix = page.get_pixmap(dpi=300)
-                        img = Image.open(io.BytesIO(pix.tobytes("png")))
-                        ocr_text = pytesseract.image_to_string(img)
-                        if ocr_text.strip():
-                            page_text = ocr_text
-                    except ImportError:
-                        pass  # No OCR library available
+                needs_ocr = True
             text += page_text
         doc.close()
+
+        # If OCR is needed and most pages have little text, try MinerU on the
+        # whole document (MinerU works at the document level, not per-page).
+        if needs_ocr:
+            mineru_text = _ocr_with_mineru(file_path)
+            if mineru_text and len(mineru_text.strip()) > len(text.strip()):
+                return mineru_text
+
         return text
     except ImportError:
         # Fallback to default reader
@@ -270,7 +286,7 @@ Examples:
             "--enable-ocr",
             action="store_true",
             default=False,
-            help="Enable OCR for scanned/image-based PDFs (requires tesseract)",
+            help="Enable OCR for scanned/image-based PDFs (uses MinerU if installed, else pymupdf OCR)",
         )
 
         # Search command
