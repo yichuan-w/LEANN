@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -8,6 +9,8 @@ import numpy as np
 
 from .embedding_server_manager import EmbeddingServerManager
 from .interface import LeannBackendSearcherInterface
+
+logger = logging.getLogger(__name__)
 
 
 class BaseSearcher(LeannBackendSearcherInterface, ABC):
@@ -97,14 +100,14 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
 
         elapsed = time.time() - t0
-        print(f"[leann] _ensure_server_running completed in {elapsed:.2f}s (port={actual_port})")
+        logger.info("_ensure_server_running completed in %.2fs (port=%d)", elapsed, actual_port)
 
         # Warmup: send a dummy embedding request to force model loading
         if enable_warmup:
             t_warmup = time.time()
             try:
                 self._compute_embedding_via_server(["warmup"], actual_port)
-                print(f"[leann] warmup completed in {time.time() - t_warmup:.2f}s")
+                logger.info("warmup completed in %.2fs", time.time() - t_warmup)
             except Exception:
                 pass  # Best effort
 
@@ -146,11 +149,11 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                     0:1
                 ]  # Return (1, D) shape
                 elapsed = time.time() - t0
-                print(f"[leann] compute_query_embedding (server) completed in {elapsed:.2f}s")
+                logger.info("compute_query_embedding (server) completed in %.2fs", elapsed)
                 return result
             except Exception as e:
-                print(f"[leann] Embedding server failed after {time.time() - t0:.2f}s: {e}")
-                print("[leann] Falling back to direct model loading...")
+                logger.warning("Embedding server failed after %.2fs: %s", time.time() - t0, e)
+                logger.info("Falling back to direct model loading...")
 
         # Fallback to direct computation
         from .embedding_compute import compute_embeddings
@@ -163,7 +166,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             provider_options=self.embedding_options,
         )
         elapsed = time.time() - t0
-        print(f"[leann] compute_query_embedding (fallback) completed in {elapsed:.2f}s")
+        logger.info("compute_query_embedding (fallback) completed in %.2fs", elapsed)
         return result
 
     def _compute_embedding_via_server(
@@ -229,9 +232,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
                 if attempt < max_retries - 1:
                     delay = backoff_delays[min(attempt, len(backoff_delays) - 1)]
-                    print(
-                        f"[leann] ZMQ attempt {attempt + 1}/{max_retries} failed: {e}. "
-                        f"Retrying in {delay}s..."
+                    logger.warning(
+                        "ZMQ attempt %d/%d failed: %s. Retrying in %.1fs...",
+                        attempt + 1, max_retries, e, delay,
                     )
                     time.sleep(delay)
 
