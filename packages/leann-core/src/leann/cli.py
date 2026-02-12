@@ -1,5 +1,7 @@
 import argparse
 import asyncio
+import hashlib
+import json
 import time
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -63,6 +65,67 @@ class LeannCLI:
             separator="\n",  # Split by lines for code
             paragraph_separator="\n\n",  # Preserve logical code blocks
         )
+
+    # ------------------------------------------------------------------
+    # Manifest helpers for incremental reindex
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _hash_file(path: Path) -> str:
+        """Return the sha256 hex digest of a file."""
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 16), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    def _compute_file_hashes(self, docs_paths: list[str]) -> dict[str, str]:
+        """Walk *docs_paths* and return ``{absolute_path: sha256}``."""
+        hashes: dict[str, str] = {}
+        for p in docs_paths:
+            path = Path(p)
+            if path.is_file():
+                hashes[str(path.resolve())] = self._hash_file(path)
+            elif path.is_dir():
+                for child in sorted(path.rglob("*")):
+                    if child.is_file():
+                        hashes[str(child.resolve())] = self._hash_file(child)
+        return hashes
+
+    def _manifest_path(self, index_name: str) -> Path:
+        return self.indexes_dir / index_name / "manifest.json"
+
+    def _save_manifest(self, index_name: str, hashes: dict[str, str]) -> None:
+        path = self._manifest_path(index_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(hashes, f, indent=2)
+
+    def _load_manifest(self, index_name: str) -> Optional[dict[str, str]]:
+        path = self._manifest_path(index_name)
+        if not path.exists():
+            return None
+        with open(path) as f:
+            return json.load(f)
+
+    def _report_delta(
+        self,
+        old_hashes: dict[str, str],
+        new_hashes: dict[str, str],
+    ) -> tuple[list[str], list[str], list[str], list[str]]:
+        """Compare two manifests and return (new, changed, deleted, unchanged) file lists."""
+        old_set = set(old_hashes)
+        new_set = set(new_hashes)
+
+        added = sorted(new_set - old_set)
+        deleted = sorted(old_set - new_set)
+        changed = sorted(
+            p for p in old_set & new_set if old_hashes[p] != new_hashes[p]
+        )
+        unchanged = sorted(
+            p for p in old_set & new_set if old_hashes[p] == new_hashes[p]
+        )
+        return added, changed, deleted, unchanged
 
     def get_index_path(self, index_name: str) -> str:
         index_dir = self.indexes_dir / index_name
@@ -356,11 +419,17 @@ Examples:
 
         # Reindex command
         reindex_parser = subparsers.add_parser(
-            "reindex", help="Rebuild an existing index using its stored configuration"
+            "reindex", help="Rebuild an existing index, detecting changed files"
         )
         reindex_parser.add_argument("index_name", help="Name of the index to rebuild")
         reindex_parser.add_argument(
             "--docs", nargs="+", required=True, help="Source directories to re-scan"
+        )
+        reindex_parser.add_argument(
+            "--sync",
+            action="store_true",
+            default=False,
+            help="Remove chunks from deleted files (default: keep them)",
         )
 
         return parser
@@ -1452,15 +1521,19 @@ Examples:
         builder.build_index(index_path)
         print(f"Index built at {index_path}")
 
+        # Save manifest for future incremental reindex
+        file_hashes = self._compute_file_hashes(docs_paths)
+        self._save_manifest(index_name, file_hashes)
+
         # Register this project directory in global registry
         self.register_project_dir()
 
     async def reindex_index(self, args):
-        """Rebuild an existing index using its stored configuration.
+        """Rebuild an existing index, detecting which files changed.
 
-        Reads the meta.json from the named index, re-scans the given ``--docs``
-        directories, chunks them, and builds a fresh index using the same
-        backend / embedding settings as the original build.
+        Compares file hashes against the stored manifest to report what is
+        new / changed / deleted / unchanged, then rebuilds the index using the
+        same backend and embedding settings as the original build.
         """
         index_name = args.index_name
         index_dir = self.indexes_dir / index_name
@@ -1473,12 +1546,45 @@ Examples:
             )
             return
 
-        print(f"Rebuilding index '{index_name}' from stored configuration...")
+        # --- delta detection ---
+        old_manifest = self._load_manifest(index_name)
+        new_hashes = self._compute_file_hashes(args.docs)
 
-        # Create a builder from the existing metadata
+        if old_manifest is not None:
+            added, changed, deleted, unchanged = self._report_delta(
+                old_manifest, new_hashes
+            )
+            print(f"Reindexing '{index_name}' — "
+                  f"{len(added)} new, {len(changed)} changed, "
+                  f"{len(deleted)} deleted, {len(unchanged)} unchanged")
+            if added:
+                for p in added[:5]:
+                    print(f"  + {p}")
+                if len(added) > 5:
+                    print(f"  ... and {len(added) - 5} more")
+            if changed:
+                for p in changed[:5]:
+                    print(f"  ~ {p}")
+                if len(changed) > 5:
+                    print(f"  ... and {len(changed) - 5} more")
+            if deleted:
+                if args.sync:
+                    for p in deleted[:5]:
+                        print(f"  - {p}")
+                    if len(deleted) > 5:
+                        print(f"  ... and {len(deleted) - 5} more")
+                else:
+                    print(f"  {len(deleted)} deleted files kept (use --sync to remove)")
+
+            if not added and not changed and (not deleted or not args.sync):
+                print("Nothing changed, skipping rebuild.")
+                return
+        else:
+            print(f"No manifest found for '{index_name}', doing full rebuild...")
+
+        # --- rebuild ---
         builder = LeannBuilder.from_meta(str(meta_path))
 
-        # Load and chunk documents from the supplied --docs paths
         all_texts = self.load_documents(args.docs)
         if not all_texts:
             print("No documents found in the specified directories.")
@@ -1491,9 +1597,10 @@ Examples:
         index_dir.mkdir(parents=True, exist_ok=True)
         builder.build_index(index_path)
 
-        print(f"Index '{index_name}' rebuilt successfully at {index_path}")
+        # save updated manifest
+        self._save_manifest(index_name, new_hashes)
 
-        # Re-register the project directory
+        print(f"Index '{index_name}' rebuilt successfully at {index_path}")
         self.register_project_dir()
 
     async def search_documents(self, args):
