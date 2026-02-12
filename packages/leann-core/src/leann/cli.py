@@ -354,6 +354,46 @@ Examples:
             "--force", "-f", action="store_true", help="Force removal without confirmation"
         )
 
+        # Serve command — persistent embedding daemon (#166)
+        serve_parser = subparsers.add_parser(
+            "serve",
+            help="Start a persistent embedding server to eliminate cold-start latency",
+        )
+        serve_parser.add_argument(
+            "--embedding-model",
+            type=str,
+            default="facebook/contriever",
+            help="Embedding model to keep warm (default: facebook/contriever)",
+        )
+        serve_parser.add_argument(
+            "--embedding-mode",
+            type=str,
+            default="sentence-transformers",
+            choices=["sentence-transformers", "openai", "mlx", "ollama"],
+            help="Embedding backend mode (default: sentence-transformers)",
+        )
+        serve_parser.add_argument(
+            "--port",
+            type=int,
+            default=5557,
+            help="ZMQ port for the embedding server (default: 5557)",
+        )
+        serve_parser.add_argument(
+            "--foreground",
+            action="store_true",
+            help="Run in the foreground instead of daemonizing",
+        )
+        serve_parser.add_argument(
+            "--stop",
+            action="store_true",
+            help="Stop a running embedding daemon",
+        )
+        serve_parser.add_argument(
+            "--status",
+            action="store_true",
+            help="Show the status of the embedding daemon",
+        )
+
         return parser
 
     def register_project_dir(self):
@@ -1668,8 +1708,74 @@ Examples:
             await self.search_documents(args)
         elif args.command == "ask":
             await self.ask_questions(args)
+        elif args.command == "serve":
+            self.handle_serve(args)
         else:
             parser.print_help()
+
+    def handle_serve(self, args):
+        """Handle the ``leann serve`` command."""
+        from .embedding_daemon import daemon_status, run_daemon, stop_daemon
+
+        if args.status:
+            state = daemon_status()
+            if state is None:
+                print("No embedding daemon is running.")
+            else:
+                import datetime
+
+                started = datetime.datetime.fromtimestamp(
+                    state.get("started_at", 0)
+                ).strftime("%Y-%m-%d %H:%M:%S")
+                print(f"Embedding daemon is running:")
+                print(f"  PID:    {state.get('pid')}")
+                print(f"  Port:   {state.get('port')}")
+                print(f"  Model:  {state.get('model_name')}")
+                print(f"  Mode:   {state.get('embedding_mode')}")
+                print(f"  Since:  {started}")
+            return
+
+        if args.stop:
+            if stop_daemon():
+                print("Embedding daemon stopped.")
+            else:
+                print("No embedding daemon is running.")
+            return
+
+        # Check for an already-running daemon
+        existing = daemon_status()
+        if existing is not None:
+            print(
+                f"An embedding daemon is already running on port {existing['port']} "
+                f"(PID {existing['pid']}, model: {existing['model_name']}). "
+                f"Use 'leann serve --stop' to stop it first."
+            )
+            return
+
+        print(f"Starting embedding daemon (model: {args.embedding_model})...")
+        if args.foreground:
+            print("Running in foreground. Press Ctrl+C to stop.")
+            run_daemon(
+                model_name=args.embedding_model,
+                embedding_mode=args.embedding_mode,
+                port=args.port,
+                foreground=True,
+            )
+        else:
+            run_daemon(
+                model_name=args.embedding_model,
+                embedding_mode=args.embedding_mode,
+                port=args.port,
+                foreground=False,
+            )
+            state = daemon_status()
+            if state:
+                print(
+                    f"Embedding daemon started (PID {state['pid']}, port {state['port']}). "
+                    f"Subsequent searches will skip model loading."
+                )
+            else:
+                print("Warning: daemon started but state could not be verified.")
 
 
 def main():

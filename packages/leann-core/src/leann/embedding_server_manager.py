@@ -189,6 +189,22 @@ class EmbeddingServerManager:
             logger.info("Existing server configuration differs; restarting embedding server")
             self.stop_server()
 
+        # Check for a running persistent daemon (``leann serve``) before
+        # spawning a new subprocess.  This avoids the cold-start penalty.
+        daemon_state = self._try_daemon(model_name, embedding_mode)
+        if daemon_state is not None:
+            daemon_port = daemon_state["port"]
+            logger.info(
+                "Using persistent embedding daemon on port %d (PID %d)",
+                daemon_port,
+                daemon_state.get("pid", -1),
+            )
+            self.server_port = daemon_port
+            self._server_config = config_signature
+            # We don't own this process — leave server_process as None so
+            # stop_server() won't kill the daemon.
+            return True, daemon_port
+
         # For Colab environment, use a different strategy
         if _is_colab_environment():
             logger.info("Detected Colab environment, using alternative startup strategy")
@@ -502,6 +518,38 @@ class EmbeddingServerManager:
             self.stop_server()
         except Exception:
             pass
+
+    @staticmethod
+    def _try_daemon(model_name: str, embedding_mode: str) -> "dict | None":
+        """Check for a running ``leann serve`` daemon with a compatible model.
+
+        Returns the daemon state dict if a matching daemon is healthy, else
+        ``None``.
+        """
+        try:
+            from .embedding_daemon import read_daemon_state
+        except ImportError:
+            return None
+
+        state = read_daemon_state()
+        if state is None:
+            return None
+
+        # Verify the daemon serves the same model + mode.
+        if (
+            state.get("model_name") == model_name
+            and state.get("embedding_mode", "sentence-transformers") == embedding_mode
+        ):
+            return state
+
+        logger.debug(
+            "Daemon model mismatch: daemon=%s/%s, requested=%s/%s",
+            state.get("model_name"),
+            state.get("embedding_mode"),
+            model_name,
+            embedding_mode,
+        )
+        return None
 
     def _adopt_existing_server(self, *args, **kwargs) -> None:
         # Removed: cross-process adoption no longer supported
