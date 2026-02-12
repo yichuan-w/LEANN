@@ -344,6 +344,48 @@ Examples:
             help="API key for OpenAI-compatible APIs (defaults to OPENAI_API_KEY)",
         )
 
+        # Cursor command — local Cursor proxy (#47)
+        cursor_parser = subparsers.add_parser(
+            "cursor",
+            help="Start a local Cursor-like proxy (local LLM + LEANN code retrieval)",
+        )
+        cursor_parser.add_argument(
+            "--index",
+            type=str,
+            default=None,
+            help="LEANN index name to use for code retrieval (omit to run without retrieval)",
+        )
+        cursor_parser.add_argument(
+            "--model",
+            type=str,
+            default="qwen3-coder",
+            help="Local LLM model name (default: qwen3-coder)",
+        )
+        cursor_parser.add_argument(
+            "--port",
+            type=int,
+            default=8765,
+            help="Port for the proxy server (default: 8765)",
+        )
+        cursor_parser.add_argument(
+            "--host",
+            type=str,
+            default=None,
+            help="Ollama host URL (auto-detected from LEANN_OLLAMA_HOST/OLLAMA_HOST)",
+        )
+        cursor_parser.add_argument(
+            "--top-k",
+            type=int,
+            default=10,
+            help="Number of code snippets to retrieve per query (default: 10)",
+        )
+        cursor_parser.add_argument(
+            "--max-context",
+            type=int,
+            default=8000,
+            help="Maximum chars of retrieved context to inject (default: 8000)",
+        )
+
         # List command
         subparsers.add_parser("list", help="List all indexes")
 
@@ -1668,8 +1710,43 @@ Examples:
             await self.search_documents(args)
         elif args.command == "ask":
             await self.ask_questions(args)
+        elif args.command == "cursor":
+            self.handle_cursor(args)
         else:
             parser.print_help()
+
+    def handle_cursor(self, args):
+        """Handle the ``leann cursor`` command."""
+        from .local_cursor import start_cursor_server
+
+        # Resolve index path if provided
+        index_path = None
+        if args.index:
+            candidate = self.get_index_path(args.index)
+            if self.index_exists(args.index):
+                index_path = candidate
+            else:
+                # Search globally
+                all_matches = self._find_all_matching_indexes(args.index)
+                if all_matches:
+                    match = all_matches[0]
+                    if match["kind"] == "cli":
+                        index_path = str(match["index_dir"] / "documents.leann")
+                    else:
+                        index_path = str(
+                            match["meta_file"].parent / f"{match['file_base']}.leann"
+                        )
+                else:
+                    print(f"Index '{args.index}' not found. Starting without retrieval.")
+
+        start_cursor_server(
+            index_path=index_path,
+            model=args.model,
+            port=args.port,
+            ollama_host=args.host,
+            top_k=args.top_k,
+            max_context_chars=args.max_context,
+        )
 
 
 def main():
