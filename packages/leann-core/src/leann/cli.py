@@ -14,7 +14,7 @@ from .registry import register_project_directory
 from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
 
 
-def _ocr_with_mineru(file_path: str) -> str | None:
+def _ocr_with_mineru(file_path: str) -> Optional[str]:
     """Try to extract text from a PDF using MinerU (magic-pdf).
 
     Returns the extracted markdown text, or None if MinerU is not installed.
@@ -23,7 +23,6 @@ def _ocr_with_mineru(file_path: str) -> str | None:
         from magic_pdf.data.data_reader_writer import FileBasedDataReader, FileBasedDataWriter
         from magic_pdf.pipe.UNIPipe import UNIPipe
         import tempfile
-        import os
 
         reader = FileBasedDataReader("")
         pdf_bytes = reader.read(file_path)
