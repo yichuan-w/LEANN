@@ -24,7 +24,7 @@ from leann.interface import LeannBackendSearcherInterface
 from .bm25 import BM25Index, build_fts5_index
 from .chat import get_llm
 from .embedding_server_manager import EmbeddingServerManager
-from .hybrid import reciprocal_rank_fusion
+from .hybrid import weighted_score_fusion
 from .interface import LeannBackendFactoryInterface
 from .metadata_filter import MetadataFilterEngine
 from .registry import BACKEND_REGISTRY
@@ -934,7 +934,7 @@ class LeannSearcher:
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
-        hybrid: bool = False,
+        sparse_score_ratio: float = 0.0,
         provider_options: Optional[dict[str, Any]] = None,
         **kwargs,
     ) -> list[SearchResult]:
@@ -1023,8 +1023,8 @@ class LeannSearcher:
         logger.info(f"  Embedding time: {embedding_time} seconds")
 
         # When hybrid search is active, over-fetch from both dense and BM25
-        # so RRF has enough candidates to produce top_k quality results.
-        use_hybrid = hybrid and self._bm25_index is not None
+        # so fusion has enough candidates to produce top_k quality results.
+        use_hybrid = sparse_score_ratio > 0 and self._bm25_index is not None
         overfetch_k = min(top_k * 3, total_docs) if use_hybrid else top_k
 
         start_time = time.time()
@@ -1052,23 +1052,28 @@ class LeannSearcher:
         logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
 
-        # --- Hybrid search: fuse dense results with BM25 via RRF ---
+        # --- Hybrid search: fuse dense + BM25 with weighted scores ---
         if use_hybrid:
             bm25_start = time.time()
             dense_ranked = list(
                 zip(results["labels"][0], [float(d) for d in results["distances"][0]])
             )
             bm25_ranked = self._bm25_index.search(query, overfetch_k)
-            fused = reciprocal_rank_fusion(
-                [dense_ranked, bm25_ranked], top_k=top_k
+            dense_weight = 1.0 - sparse_score_ratio
+            fused = weighted_score_fusion(
+                dense_ranked,
+                bm25_ranked,
+                dense_weight=dense_weight,
+                sparse_weight=sparse_score_ratio,
+                top_k=top_k,
             )
             fused_ids = [fid for fid, _ in fused]
             fused_scores = [fscore for _, fscore in fused]
             results = {"labels": [fused_ids], "distances": [fused_scores]}
             bm25_time = time.time() - bm25_start
             logger.info(
-                f"  Hybrid search: dense={len(dense_ranked)} + bm25={len(bm25_ranked)} "
-                f"-> fused={len(fused)} results ({bm25_time:.3f}s)"
+                f"  Hybrid search: dense={len(dense_ranked)} bm25={len(bm25_ranked)} "
+                f"-> fused={len(fused)} (dense_w={dense_weight:.2f} sparse_w={sparse_score_ratio:.2f} {bm25_time:.3f}s)"
             )
 
         enriched_results = []

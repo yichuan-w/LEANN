@@ -1,38 +1,58 @@
 """Score fusion utilities for hybrid (dense + BM25) search."""
 
 
-def reciprocal_rank_fusion(
-    ranked_lists: list[list[tuple[str, float]]],
-    k: int = 10,
+def _min_max_normalize(items: list[tuple[str, float]]) -> list[tuple[str, float]]:
+    """Normalize scores to [0, 1] via min-max scaling."""
+    if not items:
+        return []
+    scores = [s for _, s in items]
+    lo, hi = min(scores), max(scores)
+    span = hi - lo
+    if span == 0:
+        return [(doc_id, 1.0) for doc_id, _ in items]
+    return [(doc_id, (s - lo) / span) for doc_id, s in items]
+
+
+def weighted_score_fusion(
+    dense_results: list[tuple[str, float]],
+    sparse_results: list[tuple[str, float]],
+    dense_weight: float = 0.6,
+    sparse_weight: float = 0.4,
     top_k: int = 10,
 ) -> list[tuple[str, float]]:
-    """Fuse multiple ranked result lists using Reciprocal Rank Fusion.
+    """Fuse dense and sparse results using weighted score combination.
 
-    Each input list contains ``(document_id, score)`` tuples sorted
-    best-first.  The original scores are ignored — only *rank position*
-    matters.  This makes RRF robust to differing score distributions
-    (e.g. FAISS distances vs. BM25 scores).
+    Both result lists are min-max normalized to [0, 1] before combining so
+    that scores from different systems (e.g. FAISS distances vs BM25) are
+    comparable.
 
     Parameters
     ----------
-    ranked_lists:
-        One or more result lists, each a sequence of ``(id, score)`` pairs
-        in descending relevance order.
-    k:
-        RRF smoothing constant.  Standard value for web-scale fusion is 60,
-        but for small result sets (5–30 items) a lower value like 10 gives
-        better rank discrimination.
+    dense_results:
+        ``(id, score)`` pairs from the dense (vector) search, higher is better.
+    sparse_results:
+        ``(id, score)`` pairs from BM25/FTS5 search, higher is better.
+    dense_weight:
+        Weight for dense scores.
+    sparse_weight:
+        Weight for sparse/BM25 scores.
     top_k:
         Maximum number of fused results to return.
 
     Returns
     -------
     list[tuple[str, float]]
-        ``(id, rrf_score)`` pairs sorted by fused score, descending.
+        ``(id, fused_score)`` pairs sorted by combined score, descending.
     """
-    scores: dict[str, float] = {}
-    for ranked_list in ranked_lists:
-        for rank, (doc_id, _original_score) in enumerate(ranked_list):
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
-    fused = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    return fused[:top_k]
+    dense_norm = dict(_min_max_normalize(dense_results))
+    sparse_norm = dict(_min_max_normalize(sparse_results))
+
+    all_ids = set(dense_norm.keys()) | set(sparse_norm.keys())
+    fused: dict[str, float] = {}
+    for doc_id in all_ids:
+        d = dense_norm.get(doc_id, 0.0)
+        s = sparse_norm.get(doc_id, 0.0)
+        fused[doc_id] = dense_weight * d + sparse_weight * s
+
+    ranked = sorted(fused.items(), key=lambda x: x[1], reverse=True)
+    return ranked[:top_k]
