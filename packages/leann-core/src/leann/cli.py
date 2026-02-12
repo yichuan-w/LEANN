@@ -236,6 +236,12 @@ Examples:
             default=True,
             help="Fall back to traditional chunking if AST chunking fails (default: True)",
         )
+        build_parser.add_argument(
+            "--obsidian",
+            action="store_true",
+            default=False,
+            help="Treat --docs as an Obsidian vault: parse [[wikilinks]], backlinks, and frontmatter",
+        )
 
         # Search command
         search_parser = subparsers.add_parser("search", help="Search documents")
@@ -1336,6 +1342,29 @@ Examples:
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
 
+    def _load_obsidian_vault(self, docs_paths: list[str], args) -> list[dict]:
+        """Load documents from an Obsidian vault with wikilink/backlink metadata."""
+        from .obsidian import ObsidianVaultReader
+
+        all_chunks: list[dict] = []
+        for vault_path in docs_paths:
+            vault_path = str(Path(vault_path).resolve())
+            print(f"Loading Obsidian vault: {vault_path}")
+
+            reader = ObsidianVaultReader(
+                vault_path,
+                chunk_size=int(args.doc_chunk_size) * 4,  # char-based, ~4 chars/token
+                chunk_overlap=int(args.doc_chunk_overlap) * 4,
+                include_hidden=args.include_hidden,
+            )
+            print(f"  Found {reader.note_count} notes, {len(reader.backlink_map)} backlink targets")
+
+            for chunk in reader.iter_chunks():
+                all_chunks.append(chunk)
+
+        print(f"Total Obsidian chunks: {len(all_chunks)}")
+        return all_chunks
+
     async def build_index(self, args):
         docs_paths = args.docs
         # Use current directory name if index_name not provided
@@ -1397,9 +1426,13 @@ Examples:
             paragraph_separator="\n\n",
         )
 
-        all_texts = self.load_documents(
-            docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
-        )
+        # Obsidian vault mode: use the dedicated reader for wikilink/backlink support
+        if getattr(args, "obsidian", False):
+            all_texts = self._load_obsidian_vault(docs_paths, args)
+        else:
+            all_texts = self.load_documents(
+                docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+            )
         if not all_texts:
             print("No documents found")
             return
