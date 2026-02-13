@@ -64,9 +64,8 @@ class TestLeannRetriever:
 
     @patch("leann.integrations.llamaindex.LeannRetriever.__init__", return_value=None)
     def test_retrieve_delegates_to_searcher(self, mock_init):
-        from llama_index.core import QueryBundle
-
         from leann.integrations.llamaindex import LeannRetriever
+        from llama_index.core import QueryBundle
 
         retriever = LeannRetriever.__new__(LeannRetriever)
         retriever._top_k = 5
@@ -96,9 +95,8 @@ class TestLeannRetriever:
 
     @patch("leann.integrations.llamaindex.LeannRetriever.__init__", return_value=None)
     def test_retrieve_empty(self, mock_init):
-        from llama_index.core import QueryBundle
-
         from leann.integrations.llamaindex import LeannRetriever
+        from llama_index.core import QueryBundle
 
         retriever = LeannRetriever.__new__(LeannRetriever)
         retriever._top_k = 5
@@ -152,8 +150,6 @@ class TestLeannHybridRetriever:
         assert nodes[0].node.text == "text1"
 
     def test_fusion_combines_results(self):
-        from leann.integrations.llamaindex import LeannHybridRetriever
-
         retriever, mock_searcher = self._make_retriever()
 
         # Vector results
