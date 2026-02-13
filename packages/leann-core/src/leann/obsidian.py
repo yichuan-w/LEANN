@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,9 @@ logger = logging.getLogger(__name__)
 # Matches [[page]], [[page|alias]], [[page#heading]], [[page#heading|alias]]
 _WIKILINK_RE = re.compile(
     r"\[\["
-    r"(?P<target>[^\]|#]+)"        # target page name
+    r"(?P<target>[^\]|#]+)"  # target page name
     r"(?:#(?P<heading>[^\]|]+))?"  # optional #heading
-    r"(?:\|(?P<alias>[^\]]+))?"    # optional |alias
+    r"(?:\|(?P<alias>[^\]]+))?"  # optional |alias
     r"\]\]"
 )
 
@@ -72,7 +73,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     except Exception:
         fm = {}
 
-    body = text[match.end():]
+    body = text[match.end() :]
     return fm, body
 
 

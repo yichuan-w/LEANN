@@ -1434,8 +1434,11 @@ Examples:
         )
         if getattr(args, "obsidian", False):
             # Replace markdown chunks with obsidian-enriched versions
-            non_md = [c for c in all_texts
-                      if not c.get("metadata", {}).get("file_path", "").endswith(".md")]
+            non_md = [
+                c
+                for c in all_texts
+                if not c.get("metadata", {}).get("file_path", "").endswith(".md")
+            ]
             obsidian_chunks = self._load_obsidian_vault(docs_paths, args)
             all_texts = non_md + obsidian_chunks
         if not all_texts:
