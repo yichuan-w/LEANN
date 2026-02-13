@@ -207,9 +207,9 @@ This is Note C. No outgoing wikilinks.
     def test_backlink_map(self, vault):
         reader = ObsidianVaultReader(vault)
         backlinks = reader.backlink_map
-        # Note B is linked from Note A
+        # Note B is linked from Note A (source keys are now relative paths)
         assert "note b" in backlinks
-        assert "Note A" in backlinks["note b"]
+        assert any("Note A" in src for src in backlinks["note b"])
         # Note C is linked from both Note A and Note B
         assert "note c" in backlinks
         assert len(backlinks["note c"]) == 2

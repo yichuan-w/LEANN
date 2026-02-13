@@ -150,8 +150,8 @@ class ObsidianVaultReader:
         self.vault_path = Path(vault_path)
         if not self.vault_path.is_dir():
             raise ValueError(f"Vault path is not a directory: {self.vault_path}")
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
+        self.chunk_size = max(1, chunk_size)
+        self.chunk_overlap = max(0, min(chunk_overlap, self.chunk_size - 1))
         self.include_hidden = include_hidden
 
         # Pre-scan vault to build the backlink map
@@ -172,8 +172,26 @@ class ObsidianVaultReader:
 
     def _scan_vault(self) -> None:
         """Pre-scan the entire vault to build the backlink map."""
+        # Track stems we've already seen to warn about duplicates
+        seen_stems: dict[str, str] = {}  # stem -> first relative path
+
         for md_file in self._iter_md_files():
             note_name = md_file.stem
+            rel_path = str(md_file.relative_to(self.vault_path))
+
+            # Use relative path as the key to avoid collisions between
+            # e.g. notes/A.md and subfolder/A.md
+            note_key = rel_path
+
+            if note_name in seen_stems and seen_stems[note_name] != rel_path:
+                logger.warning(
+                    "Duplicate note name '%s': %s and %s — using full path as key",
+                    note_name,
+                    seen_stems[note_name],
+                    rel_path,
+                )
+            seen_stems.setdefault(note_name, rel_path)
+
             try:
                 text = md_file.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
@@ -192,12 +210,13 @@ class ObsidianVaultReader:
                 fm_tags = []
             all_tags = list(dict.fromkeys(tags + fm_tags))
 
-            self._note_wikilinks[note_name] = wikilinks
-            self._note_metadata[note_name] = {
+            self._note_wikilinks[note_key] = wikilinks
+            self._note_metadata[note_key] = {
                 "frontmatter": frontmatter,
                 "tags": all_tags,
                 "wikilinks": [link["target"] for link in wikilinks],
-                "file_path": str(md_file.relative_to(self.vault_path)),
+                "file_path": rel_path,
+                "note_name": note_name,
             }
 
         self._backlinks = build_backlink_map(self.vault_path, self._note_wikilinks)
@@ -256,7 +275,9 @@ class ObsidianVaultReader:
         """
         for md_file in self._iter_md_files():
             note_name = md_file.stem
-            note_meta = self._note_metadata.get(note_name, {})
+            rel_path = str(md_file.relative_to(self.vault_path))
+            note_key = rel_path
+            note_meta = self._note_metadata.get(note_key, {})
 
             try:
                 text = md_file.read_text(encoding="utf-8")
