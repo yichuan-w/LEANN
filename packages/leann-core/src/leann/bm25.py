@@ -9,8 +9,9 @@ import logging
 import re
 import sqlite3
 import threading
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +82,7 @@ class BM25Index:
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(
-            "CREATE VIRTUAL TABLE passages USING fts5("
-            "passage_id, content, tokenize='unicode61'"
-            ")"
+            "CREATE VIRTUAL TABLE passages USING fts5(passage_id, content, tokenize='unicode61')"
         )
 
         count = 0

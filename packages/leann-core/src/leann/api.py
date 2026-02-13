@@ -919,7 +919,9 @@ class LeannSearcher:
             try:
                 self._bm25_index = BM25Index(fts5_path)
             except Exception:
-                logger.warning("Failed to load FTS5 index; hybrid search unavailable", exc_info=True)
+                logger.warning(
+                    "Failed to load FTS5 index; hybrid search unavailable", exc_info=True
+                )
 
     def search(
         self,
