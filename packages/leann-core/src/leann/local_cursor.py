@@ -176,6 +176,9 @@ class _CursorHandler(BaseHTTPRequestHandler):
 
         # Read request body (with size limit to prevent OOM)
         content_length = int(self.headers.get("Content-Length", 0))
+        if content_length < 0:
+            self._send_json(400, {"error": "Invalid Content-Length"})
+            return
         if content_length > _MAX_REQUEST_BODY:
             self._send_json(413, {"error": "Request body too large"})
             return
@@ -239,9 +242,13 @@ class _CursorHandler(BaseHTTPRequestHandler):
             augmented_messages = list(messages)  # shallow copy
             # Prepend or merge into system message
             if augmented_messages and augmented_messages[0].get("role") == "system":
+                existing = augmented_messages[0].get("content", "")
+                # Content can be a string or a list (multimodal format) — coerce to str.
+                if not isinstance(existing, str):
+                    existing = str(existing)
                 augmented_messages[0] = {
                     **augmented_messages[0],
-                    "content": augmented_messages[0]["content"] + "\n\n" + context_block,
+                    "content": existing + "\n\n" + context_block,
                 }
             else:
                 augmented_messages.insert(0, {"role": "system", "content": context_block})
