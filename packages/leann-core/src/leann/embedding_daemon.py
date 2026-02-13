@@ -20,7 +20,7 @@ import socket
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -165,18 +165,24 @@ def run_daemon(
     embedding_mode: str = "sentence-transformers",
     port: int = 5557,
     provider_options: Optional[dict] = None,
+    passages_file: Optional[str] = None,
     foreground: bool = False,
 ) -> None:
     """Start the embedding daemon.
 
     In foreground mode, blocks until interrupted.  In background mode, forks a
     child process and returns immediately.
+
+    Args:
+        passages_file: Path to the index meta.json file. Required for
+            recompute mode — the HNSW embedding server uses it to resolve
+            passage IDs during graph construction.
     """
     if not foreground:
-        _start_background(model_name, embedding_mode, port, provider_options)
+        _start_background(model_name, embedding_mode, port, provider_options, passages_file)
         return
 
-    _run_foreground(model_name, embedding_mode, port, provider_options)
+    _run_foreground(model_name, embedding_mode, port, provider_options, passages_file)
 
 
 def _start_background(
@@ -184,6 +190,7 @@ def _start_background(
     embedding_mode: str,
     port: int,
     provider_options: Optional[dict],
+    passages_file: Optional[str] = None,
 ) -> None:
     """Fork a background daemon process."""
     import subprocess
@@ -201,6 +208,8 @@ def _start_background(
         "--port",
         str(port),
     ]
+    if passages_file:
+        cmd.extend(["--passages-file", str(Path(passages_file).resolve())])
 
     env = os.environ.copy()
     encoded = encode_provider_options(provider_options)
@@ -249,6 +258,7 @@ def _run_foreground(
     embedding_mode: str,
     port: int,
     provider_options: Optional[dict],
+    passages_file: Optional[str] = None,
 ) -> None:
     """Run the daemon in the foreground (blocking)."""
     from .embedding_server_manager import EmbeddingServerManager, _get_available_port
@@ -288,12 +298,16 @@ def _run_foreground(
     signal.signal(signal.SIGINT, _signal_handler)
 
     # Start the embedding server
-    started, ready_port = manager.start_server(
-        port=actual_port,
-        model_name=model_name,
-        embedding_mode=embedding_mode,
-        provider_options=provider_options,
-    )
+    server_kwargs: dict[str, Any] = {
+        "port": actual_port,
+        "model_name": model_name,
+        "embedding_mode": embedding_mode,
+        "provider_options": provider_options,
+    }
+    if passages_file:
+        server_kwargs["passages_file"] = str(Path(passages_file).resolve())
+
+    started, ready_port = manager.start_server(**server_kwargs)
 
     if not started:
         logger.error("Failed to start embedding server")
@@ -302,7 +316,7 @@ def _run_foreground(
     logger.info("Embedding daemon ready on port %d (model: %s)", ready_port, model_name)
 
     # Write state file
-    state = {
+    state: dict[str, Any] = {
         "pid": os.getpid(),
         "port": ready_port,
         "model_name": model_name,
@@ -310,6 +324,8 @@ def _run_foreground(
         "started_at": time.time(),
         "heartbeat": time.time(),
     }
+    if passages_file:
+        state["passages_file"] = str(Path(passages_file).resolve())
     _write_state(state)
 
     # Heartbeat loop — keep updating the state file so clients know we're alive
@@ -348,6 +364,11 @@ def _main():
         help="Embedding mode (default: sentence-transformers)",
     )
     parser.add_argument("--port", type=int, default=5557, help="ZMQ port (default: 5557)")
+    parser.add_argument(
+        "--passages-file",
+        default=None,
+        help="Path to index meta.json (required for recompute mode)",
+    )
     args = parser.parse_args()
 
     # Read provider options from environment
@@ -364,7 +385,9 @@ def _main():
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    _run_foreground(args.model_name, args.embedding_mode, args.port, provider_options)
+    _run_foreground(
+        args.model_name, args.embedding_mode, args.port, provider_options, args.passages_file
+    )
 
 
 if __name__ == "__main__":
