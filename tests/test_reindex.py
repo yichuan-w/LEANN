@@ -23,6 +23,21 @@ if "leann_backend_hnsw" not in sys.modules:
     stub.convert_to_csr.prune_hnsw_embeddings_inplace = lambda *a, **kw: True
 
 
+def _hnsw_backend_available() -> bool:
+    try:
+        from leann.registry import BACKEND_REGISTRY
+        return "hnsw" in BACKEND_REGISTRY
+    except Exception:
+        return False
+
+
+_skip_no_hnsw = pytest.mark.skipif(
+    not _hnsw_backend_available(),
+    reason="HNSW backend not compiled/registered in this environment",
+)
+
+
+@_skip_no_hnsw
 def test_from_meta_creates_builder():
     """Unit test: LeannBuilder.from_meta reads a meta.json and returns a
     correctly configured builder instance."""
@@ -68,6 +83,7 @@ def test_from_meta_creates_builder():
         os.unlink(meta_path)
 
 
+@_skip_no_hnsw
 def test_from_meta_defaults_embedding_mode():
     """from_meta should default embedding_mode to 'sentence-transformers'
     when the field is missing from the meta file."""
