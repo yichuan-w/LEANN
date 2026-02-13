@@ -22,6 +22,7 @@ def _extract_pdf_with_ocr(pdf_path: str) -> str:
     """Extract text from a PDF, using MinerU OCR when needed."""
     try:
         from leann.cli import extract_pdf_text_with_pymupdf
+
         text = extract_pdf_text_with_pymupdf(pdf_path, use_ocr=True)
         if text:
             return text
@@ -31,6 +32,7 @@ def _extract_pdf_with_ocr(pdf_path: str) -> str:
     # bare minimum fallback via pymupdf without OCR
     try:
         import fitz
+
         doc = fitz.open(pdf_path)
         text = "".join(page.get_text() for page in doc)
         doc.close()
@@ -90,12 +92,10 @@ class OcrRAG(BaseRAGExample):
             print(f"  Processing: {pdf.name}")
             text = _extract_pdf_with_ocr(str(pdf))
             if text.strip():
-                documents.append(
-                    Document(text=text, metadata={"source": str(pdf)})
-                )
+                documents.append(Document(text=text, metadata={"source": str(pdf)}))
                 print(f"    extracted {len(text)} chars")
             else:
-                print(f"    (no text extracted)")
+                print("    (no text extracted)")
 
         if not documents:
             return []

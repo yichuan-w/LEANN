@@ -23,9 +23,10 @@ def _ocr_with_mineru(file_path: str) -> Optional[str]:
     Returns the extracted markdown text, or None if MinerU is not installed.
     """
     try:
+        import tempfile
+
         from magic_pdf.data.data_reader_writer import FileBasedDataReader, FileBasedDataWriter
         from magic_pdf.pipe.UNIPipe import UNIPipe
-        import tempfile
 
         reader = FileBasedDataReader("")
         pdf_bytes = reader.read(file_path)
