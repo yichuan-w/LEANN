@@ -4,9 +4,23 @@ Tests for the `leann reindex` CLI command and ``LeannBuilder.from_meta``.
 
 import json
 import os
+import sys
 import tempfile
+from unittest.mock import MagicMock
 
 import pytest
+
+# ---------------------------------------------------------------------------
+# Stub C++ backend so imports don't fail in environments without it
+# ---------------------------------------------------------------------------
+_mod = sys.modules.get("leann_backend_hnsw.convert_to_csr")
+if _mod is not None and not hasattr(_mod, "prune_hnsw_embeddings_inplace"):
+    _mod.prune_hnsw_embeddings_inplace = lambda *a, **kw: True
+if "leann_backend_hnsw" not in sys.modules:
+    stub = MagicMock()
+    sys.modules["leann_backend_hnsw"] = stub
+    sys.modules["leann_backend_hnsw.convert_to_csr"] = stub.convert_to_csr
+    stub.convert_to_csr.prune_hnsw_embeddings_inplace = lambda *a, **kw: True
 
 
 def test_from_meta_creates_builder():
@@ -109,3 +123,29 @@ def test_reindex_cli_multiple_docs():
     assert args.command == "reindex"
     assert args.index_name == "my-index"
     assert args.docs == ["./src", "./tests", "./config"]
+
+
+def test_reindex_cli_file_types():
+    """The 'reindex' subcommand should pass through --file-types."""
+    from leann.cli import LeannCLI
+
+    cli = LeannCLI()
+    parser = cli.create_parser()
+
+    args = parser.parse_args(
+        ["reindex", "my-index", "--docs", "./src", "--file-types", ".py,.rs"]
+    )
+    assert args.file_types == ".py,.rs"
+
+
+def test_reindex_cli_include_hidden():
+    """The 'reindex' subcommand should support --include-hidden."""
+    from leann.cli import LeannCLI
+
+    cli = LeannCLI()
+    parser = cli.create_parser()
+
+    args = parser.parse_args(
+        ["reindex", "my-index", "--docs", "./src", "--include-hidden"]
+    )
+    assert args.include_hidden is True

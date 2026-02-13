@@ -431,6 +431,17 @@ Examples:
             default=False,
             help="Remove chunks from deleted files (default: keep them)",
         )
+        reindex_parser.add_argument(
+            "--file-types",
+            type=str,
+            help="Comma-separated list of file extensions to include (e.g., '.txt,.pdf,.pptx')",
+        )
+        reindex_parser.add_argument(
+            "--include-hidden",
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help="Include hidden files and directories (default: false)",
+        )
 
         return parser
 
@@ -1585,7 +1596,11 @@ Examples:
         # --- rebuild ---
         builder = LeannBuilder.from_meta(str(meta_path))
 
-        all_texts = self.load_documents(args.docs)
+        file_types = getattr(args, "file_types", None)
+        include_hidden = getattr(args, "include_hidden", False)
+        all_texts = self.load_documents(
+            args.docs, file_types, include_hidden=include_hidden, args=args,
+        )
         if not all_texts:
             print("No documents found in the specified directories.")
             return
