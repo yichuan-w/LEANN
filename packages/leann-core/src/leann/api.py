@@ -11,6 +11,7 @@ import re
 import subprocess
 import time
 import warnings
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
@@ -274,6 +275,82 @@ class PassageManager:
 
     def __len__(self) -> int:
         return self._total_count
+
+
+class BM25Scorer:
+    def __init__(self, k1: float = 1.2, b: float = 0.75):
+        self.k1 = k1
+        self.b = b
+        self.doc_freqs = None  # How many docs contain each term (DF)
+        self.doc_lengths = {}  # How long each doc is (in words)
+        self.word_counts = {}  # How many times each word appears in each doc (TF)
+        self.avg_doc_length = None
+        self.corpus_size = None
+        self.idlist = set()  # List of all document IDs for easier searching
+
+    def _tokenize(self, text: str) -> list[str]:
+        return re.sub(r"[^\w\s]", "", text).lower().split()
+
+    def fit(self, documents: list[dict[str, Any]]):
+        """
+        Build BM25 statistics from a document corpus.
+        Must be called before scoring.
+        """
+        self.corpus_size = len(documents)
+        self.doc_lengths = {}
+        self.word_counts = {}
+        self.idlist = set()
+        doc_freqs = defaultdict(int)
+
+        for doc_data in documents:
+            doc_id = doc_data["id"]
+            words = self._tokenize(doc_data["text"])
+            doc_length = len(words)
+            self.doc_lengths[doc_id] = doc_length
+
+            unique_words = set(words)
+            for word in unique_words:
+                doc_freqs[word] += 1
+            self.word_counts[doc_id] = dict(Counter(words))
+            self.idlist.add(doc_id)
+
+        self.doc_freqs = dict(doc_freqs)
+        self.avg_doc_length = sum(self.doc_lengths.values()) / len(self.doc_lengths)
+
+    def score(self, query_words: list[str], document_id: str) -> float:
+        if (
+            self.doc_freqs is None
+            or self.doc_lengths == {}
+            or self.word_counts == {}
+            or self.avg_doc_length is None
+            or self.corpus_size is None
+        ):
+            raise ValueError("BM25 model not fitted. Call fit() before scoring.")
+
+        passage_words = self.word_counts[document_id]
+        passage_length = sum(passage_words.values())
+        score = 0.0
+        for word in query_words:
+            if word not in self.doc_freqs:
+                continue
+            word_freq = passage_words[word] if word in passage_words else 0
+            idf = np.log(
+                (self.corpus_size - self.doc_freqs[word] + 0.5) / (self.doc_freqs[word] + 0.5) + 1
+            )
+            tf = (word_freq * (self.k1 + 1)) / (
+                word_freq + self.k1 * (1 - self.b + self.b * (passage_length / self.avg_doc_length))
+            )
+            score += idf * tf
+        return score
+
+    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        query_words = self._tokenize(query)
+        scores = {doc_id: self.score(query_words, doc_id) for doc_id in self.idlist}
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return [
+            SearchResult(id=doc_id, score=score, text="", metadata={})
+            for doc_id, score in sorted_scores[:top_k]
+        ]
 
 
 class LeannBuilder:
@@ -744,7 +821,7 @@ class LeannBuilder:
                 f"Dimension mismatch during update: existing index uses {expected_dim}, got {embedding_dim}."
             )
 
-        from leann_backend_hnsw import faiss  # type: ignore
+        from leann_backend_hnsw import faiss
 
         embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
         if distance_metric == "cosine":
@@ -888,7 +965,13 @@ class LeannBuilder:
 
 
 class LeannSearcher:
-    def __init__(self, index_path: str, enable_warmup: bool = False, **backend_kwargs):
+    def __init__(
+        self,
+        index_path: str,
+        enable_warmup: bool = True,
+        recompute_embeddings: bool = True,
+        **backend_kwargs,
+    ):
         # Fix path resolution for Colab and other environments
         if not Path(index_path).is_absolute():
             index_path = str(Path(index_path).resolve())
@@ -919,13 +1002,42 @@ class LeannSearcher:
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
+
+        # Global recompute flag for this searcher (explicit knob, default True)
+        self.recompute_embeddings: bool = bool(recompute_embeddings)
+
+        # Warmup flag: keep using the existing enable_warmup parameter,
+        # but default it to True so cold-start happens earlier.
+        self._warmup: bool = bool(enable_warmup)
+
         final_kwargs = {**self.meta_data.get("backend_kwargs", {}), **backend_kwargs}
-        final_kwargs["enable_warmup"] = enable_warmup
+        final_kwargs["enable_warmup"] = self._warmup
         if self.embedding_options:
             final_kwargs.setdefault("embedding_options", self.embedding_options)
         self.backend_impl: LeannBackendSearcherInterface = backend_factory.searcher(
             index_path, **final_kwargs
         )
+        self.bm25_scorer: Optional[BM25Scorer] = None
+
+        # Optional one-shot warmup at construction time to hide cold-start latency.
+        if self._warmup:
+            try:
+                _ = self.backend_impl.compute_query_embedding(
+                    "__LEANN_WARMUP__",
+                    use_server_if_available=self.recompute_embeddings,
+                )
+            except Exception as exc:
+                logger.warning(f"Warmup embedding failed (ignored): {exc}")
+
+        # Optional one-shot warmup at construction time to hide cold-start latency.
+        if self._warmup:
+            try:
+                _ = self.backend_impl.compute_query_embedding(
+                    "__LEANN_WARMUP__",
+                    use_server_if_available=self.recompute_embeddings,
+                )
+            except Exception as exc:
+                logger.warning(f"Warmup embedding failed (ignored): {exc}")
 
     def search(
         self,
@@ -934,12 +1046,13 @@ class LeannSearcher:
         complexity: int = 64,
         beam_width: int = 1,
         prune_ratio: float = 0.0,
-        recompute_embeddings: bool = True,
+        recompute_embeddings: Optional[bool] = None,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         expected_zmq_port: int = 5557,
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
+        gemma: float = 1.0,
         provider_options: Optional[dict[str, Any]] = None,
         **kwargs,
     ) -> list[SearchResult]:
@@ -952,7 +1065,8 @@ class LeannSearcher:
             complexity: Search complexity/candidate list size, higher = more accurate but slower
             beam_width: Number of parallel search paths/IO requests per iteration
             prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
-            recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored codes
+            recompute_embeddings: (Deprecated) Per-call override for recompute mode.
+                Configure this at LeannSearcher(..., recompute_embeddings=...) instead.
             pruning_strategy: Candidate selection strategy - "global" (default), "local", or "proportional"
             expected_zmq_port: ZMQ port for embedding server communication
             metadata_filters: Optional filters to apply to search results based on metadata.
@@ -962,6 +1076,7 @@ class LeannSearcher:
                 - Membership: "in", "not_in"
                 - String: "contains", "starts_with", "ends_with"
                 Example: {"chapter": {"<=": 5}, "tags": {"in": ["fiction", "drama"]}}
+            gemma: Weight of vector search results in hybrid search (0.0-1.0), 1 = pure vector search, 0 = pure keyword search
             **kwargs: Backend-specific parameters
 
         Returns:
@@ -989,65 +1104,114 @@ class LeannSearcher:
             )
             logger.warning(f"  ✅ Auto-adjusted top_k to {top_k} to match available documents")
 
-        zmq_port = None
+        # Handle pure keyword search
+        if gemma == 0.0:
+            start_time = time.time()
+            bm25_results = self._bm25_search(query, top_k)
+            # Convert BM25 results to the expected format
+            results = {
+                "labels": [[r.id for r in bm25_results]],
+                "distances": [[r.score for r in bm25_results]],
+            }
+        else:
+            # Perform vector search
+            zmq_port = None
 
-        start_time = time.time()
-        if recompute_embeddings:
-            zmq_port = self.backend_impl._ensure_server_running(
-                self.meta_path_str,
-                port=expected_zmq_port,
-                **kwargs,
+            # Resolve effective recompute flag for this search.
+            if recompute_embeddings is not None:
+                logger.warning(
+                    "LeannSearcher.search(..., recompute_embeddings=...) is deprecated and "
+                    "will be removed in a future version. Configure recompute at "
+                    "LeannSearcher(..., recompute_embeddings=...) instead."
+                )
+                effective_recompute = bool(recompute_embeddings)
+            else:
+                effective_recompute = self.recompute_embeddings
+
+            start_time = time.time()
+            if effective_recompute:
+                zmq_port = self.backend_impl._ensure_server_running(
+                    self.meta_path_str,
+                    port=expected_zmq_port,
+                    **kwargs,
+                )
+                del expected_zmq_port
+            zmq_time = time.time() - start_time
+            logger.info(f"  Launching server time: {zmq_time} seconds")
+
+            start_time = time.time()
+
+            # Extract query template from stored embedding_options with fallback chain:
+            # 1. Check provider_options override (highest priority)
+            # 2. Check query_prompt_template (new format)
+            # 3. Check prompt_template (old format for backward compat)
+            # 4. None (no template)
+            query_template = None
+            if provider_options and "prompt_template" in provider_options:
+                query_template = provider_options["prompt_template"]
+            elif "query_prompt_template" in self.embedding_options:
+                query_template = self.embedding_options["query_prompt_template"]
+            elif "prompt_template" in self.embedding_options:
+                query_template = self.embedding_options["prompt_template"]
+
+            query_embedding = self.backend_impl.compute_query_embedding(
+                query,
+                use_server_if_available=effective_recompute,
+                zmq_port=zmq_port,
+                query_template=query_template,
             )
-            del expected_zmq_port
-        zmq_time = time.time() - start_time
-        logger.info(f"  Launching server time: {zmq_time} seconds")
+            logger.info(f"  Generated embedding shape: {query_embedding.shape}")
+            embedding_time = time.time() - start_time
+            logger.info(f"  Embedding time: {embedding_time} seconds")
 
-        start_time = time.time()
+            start_time = time.time()
+            backend_search_kwargs: dict[str, Any] = {
+                "complexity": complexity,
+                "beam_width": beam_width,
+                "prune_ratio": prune_ratio,
+                "recompute_embeddings": effective_recompute,
+                "pruning_strategy": pruning_strategy,
+                "zmq_port": zmq_port,
+            }
+            # Only HNSW supports batching; forward conditionally
+            if self.backend_name == "hnsw":
+                backend_search_kwargs["batch_size"] = batch_size
 
-        # Extract query template from stored embedding_options with fallback chain:
-        # 1. Check provider_options override (highest priority)
-        # 2. Check query_prompt_template (new format)
-        # 3. Check prompt_template (old format for backward compat)
-        # 4. None (no template)
-        query_template = None
-        if provider_options and "prompt_template" in provider_options:
-            query_template = provider_options["prompt_template"]
-        elif "query_prompt_template" in self.embedding_options:
-            query_template = self.embedding_options["query_prompt_template"]
-        elif "prompt_template" in self.embedding_options:
-            query_template = self.embedding_options["prompt_template"]
+            # Merge any extra kwargs last
+            backend_search_kwargs.update(kwargs)
 
-        query_embedding = self.backend_impl.compute_query_embedding(
-            query,
-            use_server_if_available=recompute_embeddings,
-            zmq_port=zmq_port,
-            query_template=query_template,
-        )
-        logger.info(f"  Generated embedding shape: {query_embedding.shape}")
-        embedding_time = time.time() - start_time
-        logger.info(f"  Embedding time: {embedding_time} seconds")
+            results = self.backend_impl.search(
+                query_embedding,
+                top_k,
+                **backend_search_kwargs,
+            )
 
-        start_time = time.time()
-        backend_search_kwargs: dict[str, Any] = {
-            "complexity": complexity,
-            "beam_width": beam_width,
-            "prune_ratio": prune_ratio,
-            "recompute_embeddings": recompute_embeddings,
-            "pruning_strategy": pruning_strategy,
-            "zmq_port": zmq_port,
-        }
-        # Only HNSW supports batching; forward conditionally
-        if self.backend_name == "hnsw":
-            backend_search_kwargs["batch_size"] = batch_size
+        # Handle hybrid search
+        if 0.0 < gemma < 1.0:
+            logger.info(f"  🌟 Hybrid search enabled with gemma={gemma}")
+            BM25_WEIGHT = 1.0 - gemma
+            bm25_results = self._bm25_search(query, top_k)
+            hybrid_scores: dict[str, float] = {}
+            # Add vector search scores (weighted by gemma)
+            if "labels" in results and "distances" in results:
+                for doc_id, score in zip(results["labels"][0], results["distances"][0]):
+                    hybrid_scores[doc_id] = gemma * score
+            # Add BM25 scores (weighted by BM25_WEIGHT)
+            for bm25_result in bm25_results:
+                doc_id = bm25_result.id
+                if doc_id in hybrid_scores:
+                    hybrid_scores[doc_id] += BM25_WEIGHT * bm25_result.score
+                else:
+                    hybrid_scores[doc_id] = BM25_WEIGHT * bm25_result.score
 
-        # Merge any extra kwargs last
-        backend_search_kwargs.update(kwargs)
+            sorted_hybrid = sorted(hybrid_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
+            results["labels"] = [[doc_id for doc_id, _ in sorted_hybrid]]
+            results["distances"] = [[score for _, score in sorted_hybrid]]
 
-        results = self.backend_impl.search(
-            query_embedding,
-            top_k,
-            **backend_search_kwargs,
-        )
+            logger.info(
+                f"  Combined {len(hybrid_scores)} unique documents from vector and BM25 search"
+            )
+
         search_time = time.time() - start_time
         logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
@@ -1100,6 +1264,26 @@ class LeannSearcher:
         RESET = "\033[0m"
         logger.info(f"  {GREEN}✓ Final enriched results: {len(enriched_results)} passages{RESET}")
         return enriched_results
+
+    def _init_bm25(self) -> None:
+        """Initialize BM25 scorer"""
+        self.bm25_scorer = BM25Scorer()
+        # Load all the files directly
+        passages = []
+        for passage_file in self.passage_manager.passage_files.values():
+            with open(passage_file, encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        data = json.loads(line)
+                        passages.append(data)
+        self.bm25_scorer.fit(passages)
+
+    def _bm25_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        """Perform BM25 search on raw passages"""
+        if not self.bm25_scorer:
+            self._init_bm25()
+            logger.info("  BM25 scorer initialized")
+        return self.bm25_scorer.search(query, top_k)
 
     def _find_jsonl_file(self) -> Optional[str]:
         """Find the .jsonl file containing raw passages for grep search"""
@@ -1247,6 +1431,7 @@ class LeannChat:
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
+        gemma: float = 1.0,
         **search_kwargs,
     ):
         if llm_kwargs is None:
@@ -1262,6 +1447,8 @@ class LeannChat:
             pruning_strategy=pruning_strategy,
             expected_zmq_port=expected_zmq_port,
             metadata_filters=metadata_filters,
+            use_grep=use_grep,
+            gemma=gemma,
             batch_size=batch_size,
             **search_kwargs,
         )
@@ -1275,15 +1462,15 @@ class LeannChat:
             "Please provide the best answer you can based on this context and your knowledge."
         )
 
-        print("The context provided to the LLM is:")
-        print(f"{'Relevance':<10} | {'Chunk id':<10} | {'Content':<60} | {'Source':<80}")
-        print("-" * 150)
+        logger.info("The context provided to the LLM is:")
+        logger.info(f"{'Relevance':<10} | {'Chunk id':<10} | {'Content':<60} | {'Source':<80}")
+        logger.info("-" * 150)
         for r in results:
             chunk_relevance = f"{r.score:.3f}"
             chunk_id = r.id
             chunk_content = r.text[:60]
             chunk_source = r.metadata.get("source", "")[:80]
-            print(
+            logger.info(
                 f"{chunk_relevance:<10} | {chunk_id:<10} | {chunk_content:<60} | {chunk_source:<80}"
             )
         ask_time = time.time()

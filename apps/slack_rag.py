@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import asyncio
+from typing import Any
 
 from apps.base_rag_example import BaseRAGExample
 from apps.slack_data.slack_mcp_reader import SlackMCPReader
@@ -139,7 +140,7 @@ class SlackMCPRAG(BaseRAGExample):
             print("4. Try running the MCP server command directly to test it")
             return False
 
-    async def load_data(self, args) -> list[str]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load Slack messages via MCP server."""
         print(f"Connecting to Slack MCP server: {args.mcp_server}")
 
@@ -188,7 +189,8 @@ class SlackMCPRAG(BaseRAGExample):
                 print(sample_text)
                 print("-" * 40)
 
-            return texts
+            # Convert strings to dict format expected by base class
+            return [{"text": text, "metadata": {"source": "slack"}} for text in texts]
 
         except Exception as e:
             print(f"Error loading Slack data: {e}")

@@ -3,18 +3,42 @@
 </p>
 
 <p align="center">
+  <a href="https://trendshift.io/repositories/15049" target="_blank">
+    <img src="https://trendshift.io/api/badge/repositories/15049" alt="yichuan-w/LEANN | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
+  </a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg" alt="Python Versions">
   <img src="https://github.com/yichuan-w/LEANN/actions/workflows/build-and-publish.yml/badge.svg" alt="CI Status">
   <img src="https://img.shields.io/badge/Platform-Ubuntu%20%26%20Arch%20%26%20WSL%20%7C%20macOS%20(ARM64%2FIntel)-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/MCP-Native%20Integration-blue" alt="MCP Integration">
-  <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ckd2f6w1-OX08~NN4gkWhh10PRVBj1Q">
+  <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ol2ww9ic-Eg_kB8omwe6xmYVd0epr4Q">
     <img src="https://img.shields.io/badge/Slack-Join-4A154B?logo=slack&logoColor=white" alt="Join Slack">
   </a>
-  <a href="assets/wechat_user_group.JPG" title="Join WeChat group">
-    <img src="https://img.shields.io/badge/WeChat-Join-2DC100?logo=wechat&logoColor=white" alt="Join WeChat group">
-  </a>
+
 </p>
+
+<div align="center">
+  <a href="https://forms.gle/rDbZf864gMNxhpTq8">
+    <img src="https://img.shields.io/badge/📣_Community_Survey-Help_Shape_v0.4-007ec6?style=for-the-badge&logo=google-forms&logoColor=white" alt="Take Survey">
+  </a>
+  <p>
+    We track <b>zero telemetry</b>. This survey is the ONLY way to tell us if you want <br>
+    <b>GPU Acceleration</b> or <b>More Integrations</b> next.<br>
+    👉 <a href="https://forms.gle/rDbZf864gMNxhpTq8"><b>Click here to cast your vote (2 mins)</b></a>
+  </p>
+</div>
+
+<div align="center">
+  <h3>💬 Join our Slack community!</h3>
+  <p>
+    We'd love for you to be part of the LEANN community!<br>
+    👉 <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ol2ww9ic-Eg_kB8omwe6xmYVd0epr4Q"><b>Join LEANN Slack</b></a><br>
+    If the invite link has expired or you have trouble joining, please <a href="https://github.com/yichuan-w/LEANN/issues">open an issue</a> and we'll help you get in!
+  </p>
+</div>
 
 <h2 align="center" tabindex="-1" class="heading-element" dir="auto">
     The smallest vector index in the world. RAG Everything with LEANN!
@@ -22,9 +46,10 @@
 
 LEANN is an innovative vector database that democratizes personal AI. Transform your laptop into a powerful RAG system that can index and search through millions of documents while using **97% less storage** than traditional solutions **without accuracy loss**.
 
+
 LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration Fig →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
-**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can semantic search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)** ([WeChat](#-wechat-detective-unlock-your-golden-memories), [iMessage](#-imessage-history-your-personal-conversation-archive)), **[agent memory](#-chatgpt-chat-history-your-personal-ai-conversation-archive)** ([ChatGPT](#-chatgpt-chat-history-your-personal-ai-conversation-archive), [Claude](#-claude-chat-history-your-personal-ai-conversation-archive)), **[live data](#mcp-integration-rag-on-live-data-from-any-platform)** ([Slack](#mcp-integration-rag-on-live-data-from-any-platform), [Twitter](#mcp-integration-rag-on-live-data-from-any-platform)), **[codebase](#-claude-code-integration-transform-your-development-workflow)**\* , or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
+**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can semantic search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)** ([WeChat](#-wechat-detective-unlock-your-golden-memories), [iMessage](#-imessage-history-your-personal-conversation-archive)), **[agent memory](#-chatgpt-chat-history-your-personal-ai-conversation-archive)** ([ChatGPT](#-chatgpt-chat-history-your-personal-ai-conversation-archive), [Claude](#-claude-chat-history-your-personal-ai-conversation-archive)), **[live data](#mcp-integration-rag-on-live-data-from-any-platform)** ([Slack](#slack-messages-search-your-team-conversations), [Twitter](#-twitter-bookmarks-your-personal-tweet-library)), **[codebase](#-claude-code-integration-transform-your-development-workflow)**\* , or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
 
 \* Claude Code only supports basic `grep`-style keyword search. **LEANN** is a drop-in **semantic search MCP service fully compatible with Claude Code**, unlocking intelligent retrieval without changing your workflow. 🔥 Check out [the easy setup →](packages/leann-mcp/README.md)
@@ -189,7 +214,7 @@ LEANN supports RAG on various data sources including documents (`.pdf`, `.txt`, 
 
 #### LLM Backend
 
-LEANN supports many LLM providers for text generation (HuggingFace, Ollama, and Any OpenAI compatible API).
+LEANN supports many LLM providers for text generation (HuggingFace, Ollama, Anthropic, and Any OpenAI compatible API).
 
 
 <details>
@@ -257,9 +282,19 @@ Below is a list of base URLs for common providers to get you started.
 | **SiliconFlow** | `https://api.siliconflow.cn/v1`                            |
 | **Zhipu (BigModel)** | `https://open.bigmodel.cn/api/paas/v4/`                |
 | **Mistral AI** | `https://api.mistral.ai/v1`                                |
+| **Anthropic** | `https://api.anthropic.com/v1`                             |
+| **Jina AI** (Embeddings) | `https://api.jina.ai/v1`                         |
 
-
-
+> **💡 Tip: Separate Embedding Provider**
+>
+> To use a different provider for embeddings (e.g., Jina AI) while using another for LLM, use `--embedding-api-base` and `--embedding-api-key`:
+> ```bash
+> leann build my-index --docs ./docs \
+>   --embedding-mode openai \
+>   --embedding-model jina-embeddings-v3 \
+>   --embedding-api-base https://api.jina.ai/v1 \
+>   --embedding-api-key $JINA_API_KEY
+> ```
 
 If your provider isn't on this list, don't worry! Check their documentation for an OpenAI-compatible endpoint—chances are, it's OpenAI Compatible too!
 
@@ -305,6 +340,10 @@ LEANN provides flexible parameters for embedding models, search strategies, and 
 All RAG examples share these common parameters. **Interactive mode** is available in all examples - simply run without `--query` to start a continuous Q&A session where you can ask multiple questions. Type 'quit' to exit.
 
 ```bash
+# Environment Variables (GPU Device Selection)
+LEANN_EMBEDDING_DEVICE       # GPU for embedding model (e.g., cuda:0, cuda:1, cpu)
+LEANN_LLM_DEVICE             # GPU for HFChat LLM (e.g., cuda:1, or "cuda" for multi-GPU auto)
+
 # Core Parameters (General preprocessing for all examples)
 --index-dir DIR              # Directory to store the index (default: current directory)
 --query "YOUR QUESTION"      # Single query mode. Omit for interactive chat (type 'quit' to exit), and now you can play with your index interactively
@@ -316,7 +355,7 @@ All RAG examples share these common parameters. **Interactive mode** is availabl
 --embedding-mode MODE        # sentence-transformers, openai, mlx, or ollama
 
 # LLM Parameters (Text generation models)
---llm TYPE                   # LLM backend: openai, ollama, or hf (default: openai)
+--llm TYPE                   # LLM backend: openai, ollama, hf, or anthropic (default: openai)
 --llm-model MODEL            # Model name (default: gpt-4o) e.g., gpt-4o-mini, llama3.2:1b, Qwen/Qwen2.5-1.5B-Instruct
 --thinking-budget LEVEL      # Thinking budget for reasoning models: low/medium/high (supported by o3, o3-mini, GPT-Oss:20b, and other reasoning models)
 
@@ -376,6 +415,54 @@ python -m apps.document_rag --enable-code-chunking --data-dir "./my_project"
 # Or use the specialized code RAG for better code understanding
 python -m apps.code_rag --repo-dir "./my_codebase" --query "How does authentication work?"
 ```
+
+</details>
+
+### 🎨 ColQwen: Multimodal PDF Retrieval with Vision-Language Models
+
+Search through PDFs using both text and visual understanding with ColQwen2/ColPali models. Perfect for research papers, technical documents, and any PDFs with complex layouts, figures, or diagrams.
+
+> **🍎 Mac Users**: ColQwen is optimized for Apple Silicon with MPS acceleration for faster inference!
+
+```bash
+# Build index from PDFs
+python -m apps.colqwen_rag build --pdfs ./my_papers/ --index research_papers
+
+# Search with text queries
+python -m apps.colqwen_rag search research_papers "How does attention mechanism work?"
+
+# Interactive Q&A
+python -m apps.colqwen_rag ask research_papers --interactive
+```
+
+<details>
+<summary><strong>📋 Click to expand: ColQwen Setup & Usage</strong></summary>
+
+#### Prerequisites
+```bash
+# Install dependencies
+uv pip install colpali_engine pdf2image pillow matplotlib qwen_vl_utils einops seaborn
+brew install poppler  # macOS only, for PDF processing
+```
+
+#### Build Index
+```bash
+python -m apps.colqwen_rag build \
+  --pdfs ./pdf_directory/ \
+  --index my_index \
+  --model colqwen2  # or colpali
+```
+
+#### Search
+```bash
+python -m apps.colqwen_rag search my_index "your question here" --top-k 5
+```
+
+#### Models
+- **ColQwen2** (`colqwen2`): Latest vision-language model with improved performance
+- **ColPali** (`colpali`): Proven multimodal retriever
+
+For detailed usage, see the [ColQwen Guide](docs/COLQWEN_GUIDE.md).
 
 </details>
 
@@ -995,6 +1082,9 @@ leann ask my-docs --interactive
 # Ask a single question (non-interactive)
 leann ask my-docs "Where are prompts configured?"
 
+# Detect file changes since last build/watch checkpoint
+leann watch my-docs
+
 # List all your indexes
 leann list
 
@@ -1006,6 +1096,7 @@ leann remove my-docs
 - Auto-detects document formats (PDF, TXT, MD, DOCX, PPTX + code files)
 - **🧠 AST-aware chunking** for Python, Java, C#, TypeScript files
 - Smart text chunking with overlap for all other content
+- **📂 File change detection** via Merkle tree snapshots (`leann watch`)
 - Multiple LLM providers (Ollama, OpenAI, HuggingFace)
 - Organized index storage in `.leann/indexes/` (project-local)
 - Support for advanced search parameters
@@ -1013,7 +1104,7 @@ leann remove my-docs
 <details>
 <summary><strong>📋 Click to expand: Complete CLI Reference</strong></summary>
 
-You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
+You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann watch --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
 
 **Build Command:**
 ```bash
@@ -1040,15 +1131,33 @@ Options:
   --pruning-strategy {global,local,proportional}
 ```
 
+**Watch Command:**
+```bash
+leann watch INDEX_NAME
+
+# Compares the current file system state against the last checkpoint (Merkle tree snapshot)
+# and reports which files have been added, removed, or modified, along with their chunk IDs.
+#
+# - Automatically saves a new checkpoint after detecting changes
+# - Each subsequent run compares against the most recent checkpoint
+# - File change detection uses SHA-256 content hashing via a Merkle tree
+#
+# Example output:
+#   === Changes since last checkpoint ===
+#   modified (1):
+#     - /path/to/file.py
+#       chunks: 42, 43, 44
+```
+
 **Ask Command:**
 ```bash
 leann ask INDEX_NAME [OPTIONS]
 
 Options:
-  --llm {ollama,openai,hf}    LLM provider (default: ollama)
-  --model MODEL               Model name (default: qwen3:8b)
-  --interactive              Interactive chat mode
-  --top-k N                  Retrieval count (default: 20)
+  --llm {ollama,openai,hf,anthropic}    LLM provider (default: ollama)
+  --model MODEL                         Model name (default: qwen3:8b)
+  --interactive                         Interactive chat mode
+  --top-k N                             Retrieval count (default: 20)
 ```
 
 **List Command:**

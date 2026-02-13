@@ -91,7 +91,7 @@ def test_large_index():
         builder.build_index(index_path)
 
         searcher = LeannSearcher(index_path)
-        results = searcher.search(["word10 word20"], top_k=10)
-        assert len(results[0]) == 10
+        results = searcher.search("word10 word20", top_k=10)
+        assert len(results) == 10
         # Cleanup
         searcher.cleanup()

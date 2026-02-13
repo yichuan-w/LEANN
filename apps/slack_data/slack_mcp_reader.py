@@ -177,7 +177,9 @@ class SlackMCPReader:
                     break
 
         # If we get here, all retries failed or it's not a retryable error
-        raise last_exception
+        if last_exception is not None:
+            raise last_exception
+        raise RuntimeError("Unexpected error: no exception captured during retry loop")
 
     async def fetch_slack_messages(
         self, channel: Optional[str] = None, limit: int = 100
@@ -267,7 +269,10 @@ class SlackMCPReader:
                     messages = json.loads(content["text"])
                 except json.JSONDecodeError:
                     # If not JSON, try to parse as CSV format (Slack MCP server format)
-                    messages = self._parse_csv_messages(content["text"], channel)
+                    text_content = content.get("text", "")
+                    messages = self._parse_csv_messages(
+                        text_content if text_content else "", channel or "unknown"
+                    )
             else:
                 messages = result["content"]
         else:
