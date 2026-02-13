@@ -53,6 +53,11 @@ leann build my-project --docs $(git ls-files)
 # Start Claude Code
 claude
 ```
+**Performance tip**: For maximum speed when storage space is not a concern, add the `--no-recompute` flag to your build command. This materializes all tensors and stores them on disk, avoiding recomputation on subsequent builds:
+
+```bash
+leann build my-project --docs $(git ls-files) --no-recompute
+```
 
 ## 🚀 Advanced Usage Examples to build the index
 

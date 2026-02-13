@@ -197,6 +197,31 @@ class TestPromptTemplatePrepending:
         # Verify result shape
         assert result.shape[0] == 1000, "Should return embeddings for all texts"
 
+    def test_gemini_openai_compat_caps_batch_size_to_100(
+        self, mock_openai_module, mock_openai_client
+    ):
+        texts = [f"Doc {i}" for i in range(250)]
+        provider_options = {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai"}
+
+        mock_response = Mock()
+        mock_response.data = [Mock(embedding=[0.1, 0.2, 0.3]) for _ in range(250)]
+        mock_openai_client.embeddings.create.return_value = mock_response
+
+        result = compute_embeddings_openai(
+            texts=texts,
+            model_name="gemini-embedding-001",
+            provider_options=provider_options,
+        )
+
+        # Should chunk into <=100 inputs per request.
+        assert mock_openai_client.embeddings.create.call_count == 3
+        batch_sizes = [
+            len(call.kwargs["input"])
+            for call in mock_openai_client.embeddings.create.call_args_list
+        ]
+        assert batch_sizes == [100, 100, 50]
+        assert result.shape[0] == 250
+
     def test_prompt_template_with_special_characters(self, mock_openai_module, mock_openai_client):
         """Verify template with special characters is handled correctly.
 
