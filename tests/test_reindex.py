@@ -26,6 +26,7 @@ if "leann_backend_hnsw" not in sys.modules:
 def _hnsw_backend_available() -> bool:
     try:
         from leann.registry import BACKEND_REGISTRY
+
         return "hnsw" in BACKEND_REGISTRY
     except Exception:
         return False
@@ -59,9 +60,7 @@ def test_from_meta_creates_builder():
         "embedding_options": {"prompt_template": "query: "},
     }
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".meta.json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".meta.json", delete=False) as f:
         json.dump(meta, f)
         meta_path = f.name
 
@@ -97,9 +96,7 @@ def test_from_meta_defaults_embedding_mode():
         "backend_kwargs": {},
     }
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".meta.json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".meta.json", delete=False) as f:
         json.dump(meta, f)
         meta_path = f.name
 
@@ -133,9 +130,7 @@ def test_reindex_cli_multiple_docs():
     cli = LeannCLI()
     parser = cli.create_parser()
 
-    args = parser.parse_args(
-        ["reindex", "my-index", "--docs", "./src", "./tests", "./config"]
-    )
+    args = parser.parse_args(["reindex", "my-index", "--docs", "./src", "./tests", "./config"])
     assert args.command == "reindex"
     assert args.index_name == "my-index"
     assert args.docs == ["./src", "./tests", "./config"]
@@ -148,9 +143,7 @@ def test_reindex_cli_file_types():
     cli = LeannCLI()
     parser = cli.create_parser()
 
-    args = parser.parse_args(
-        ["reindex", "my-index", "--docs", "./src", "--file-types", ".py,.rs"]
-    )
+    args = parser.parse_args(["reindex", "my-index", "--docs", "./src", "--file-types", ".py,.rs"])
     assert args.file_types == ".py,.rs"
 
 
@@ -161,7 +154,5 @@ def test_reindex_cli_include_hidden():
     cli = LeannCLI()
     parser = cli.create_parser()
 
-    args = parser.parse_args(
-        ["reindex", "my-index", "--docs", "./src", "--include-hidden"]
-    )
+    args = parser.parse_args(["reindex", "my-index", "--docs", "./src", "--include-hidden"])
     assert args.include_hidden is True
