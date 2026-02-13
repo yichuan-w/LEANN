@@ -1,8 +1,11 @@
 import argparse
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Any, Optional, Union
+
+logger = logging.getLogger(__name__)
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
@@ -38,6 +41,7 @@ def _ocr_with_mineru(file_path: str) -> Optional[str]:
     except ImportError:
         return None
     except Exception:
+        logger.warning("MinerU OCR failed for %s", file_path, exc_info=True)
         return None
 
 
