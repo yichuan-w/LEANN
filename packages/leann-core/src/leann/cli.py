@@ -119,12 +119,8 @@ class LeannCLI:
 
         added = sorted(new_set - old_set)
         deleted = sorted(old_set - new_set)
-        changed = sorted(
-            p for p in old_set & new_set if old_hashes[p] != new_hashes[p]
-        )
-        unchanged = sorted(
-            p for p in old_set & new_set if old_hashes[p] == new_hashes[p]
-        )
+        changed = sorted(p for p in old_set & new_set if old_hashes[p] != new_hashes[p])
+        unchanged = sorted(p for p in old_set & new_set if old_hashes[p] == new_hashes[p])
         return added, changed, deleted, unchanged
 
     def get_index_path(self, index_name: str) -> str:
@@ -1562,12 +1558,12 @@ Examples:
         new_hashes = self._compute_file_hashes(args.docs)
 
         if old_manifest is not None:
-            added, changed, deleted, unchanged = self._report_delta(
-                old_manifest, new_hashes
+            added, changed, deleted, unchanged = self._report_delta(old_manifest, new_hashes)
+            print(
+                f"Reindexing '{index_name}' — "
+                f"{len(added)} new, {len(changed)} changed, "
+                f"{len(deleted)} deleted, {len(unchanged)} unchanged"
             )
-            print(f"Reindexing '{index_name}' — "
-                  f"{len(added)} new, {len(changed)} changed, "
-                  f"{len(deleted)} deleted, {len(unchanged)} unchanged")
             if added:
                 for p in added[:5]:
                     print(f"  + {p}")
@@ -1599,7 +1595,10 @@ Examples:
         file_types = getattr(args, "file_types", None)
         include_hidden = getattr(args, "include_hidden", False)
         all_texts = self.load_documents(
-            args.docs, file_types, include_hidden=include_hidden, args=args,
+            args.docs,
+            file_types,
+            include_hidden=include_hidden,
+            args=args,
         )
         if not all_texts:
             print("No documents found in the specified directories.")
