@@ -181,12 +181,14 @@ class LeannHybridRetriever(BaseRetriever):
             recompute_embeddings=self._recompute,
         )
 
-        # BM25 search
+        # BM25 search — BM25Index.search returns list[tuple[str, float]];
+        # normalize to list[dict] for the fusion step.
         bm25 = self._get_bm25()
-        bm25_results = []
+        bm25_results: list[dict] = []
         if bm25 is not None:
             try:
-                bm25_results = bm25.search(query_str, top_k=fetch_k)
+                raw = bm25.search(query_str, top_k=fetch_k)
+                bm25_results = [{"id": pid, "score": score} for pid, score in raw]
             except Exception as e:
                 logger.warning("BM25 search failed: %s", e)
 
