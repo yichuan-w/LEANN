@@ -6,6 +6,7 @@ Supports WeChat chat history export and search.
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -91,7 +92,7 @@ class WeChatRAG(BaseRAGExample):
             print(f"Export error: {e}")
             return False
 
-    async def load_data(self, args) -> list[str]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load WeChat history and convert to text chunks."""
         # Initialize WeChat reader with export capabilities
         reader = WeChatHistoryReader()

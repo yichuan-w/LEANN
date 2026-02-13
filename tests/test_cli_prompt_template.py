@@ -123,7 +123,7 @@ class TestPromptTemplateStoredInEmbeddingOptions:
         cli = LeannCLI()
 
         # Mock load_documents to return a document so builder is created
-        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])
+        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])  # type: ignore[assignment]
 
         parser = cli.create_parser()
 
@@ -175,7 +175,7 @@ class TestPromptTemplateStoredInEmbeddingOptions:
         cli = LeannCLI()
 
         # Mock load_documents to return a document so builder is created
-        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])
+        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])  # type: ignore[assignment]
 
         parser = cli.create_parser()
 
@@ -230,7 +230,7 @@ class TestPromptTemplateStoredInEmbeddingOptions:
         cli = LeannCLI()
 
         # Mock load_documents to return a document so builder is created
-        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])
+        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])  # type: ignore[assignment]
 
         parser = cli.create_parser()
 
@@ -307,7 +307,7 @@ class TestPromptTemplateStoredInEmbeddingOptions:
         cli = LeannCLI()
 
         # Mock load_documents to return a document so builder is created
-        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])
+        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])  # type: ignore[assignment]
 
         parser = cli.create_parser()
 
@@ -376,7 +376,7 @@ class TestPromptTemplateStoredInEmbeddingOptions:
         cli = LeannCLI()
 
         # Mock load_documents to return a document so builder is created
-        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])
+        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])  # type: ignore[assignment]
 
         parser = cli.create_parser()
 
@@ -432,7 +432,7 @@ class TestPromptTemplateFlowsToComputeEmbeddings:
         cli = LeannCLI()
 
         # Mock load_documents to return a simple document
-        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])
+        cli.load_documents = Mock(return_value=[{"text": "test content", "metadata": {}}])  # type: ignore[assignment]
 
         parser = cli.create_parser()
 

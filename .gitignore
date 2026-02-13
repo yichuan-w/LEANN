@@ -91,7 +91,8 @@ packages/leann-backend-diskann/third_party/DiskANN/_deps/
 
 *.meta.json
 *.passages.json
-
+*.npy
+*.db
 batchtest.py
 tests/__pytest_cache__/
 tests/__pycache__/
@@ -108,3 +109,6 @@ apps/multimodal/vision-based-pdf-multi-vector/multi-vector-colpali-native-weavia
 
 # AUR build directory (Arch Linux)
 paru-bin/
+merkle-tree-test/
+test-code/
+*.pickle
