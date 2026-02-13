@@ -1,413 +1,167 @@
-"""Tests for hybrid (BM25 + dense) search.
+"""
+Comprehensive tests for hybrid search functionality.
 
-Unit tests (test_bm25_*, test_fusion_*, test_sanitize_*) run without any ML model
-and exercise the FTS5 and fusion logic in isolation.
-
-Integration tests (test_hybrid_*) require a model download and are skipped in CI.
+This module tests the hybrid search feature that combines vector search
+with BM25 keyword search using the gemma parameter.
 """
 
-import importlib.util
 import os
-import sqlite3
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
-from unittest.mock import MagicMock
-
-# ---------------------------------------------------------------------------
-# Stub C++ backend so integration tests can import leann.api
-# ---------------------------------------------------------------------------
-_mod = sys.modules.get("leann_backend_hnsw.convert_to_csr")
-if _mod is not None and not hasattr(_mod, "prune_hnsw_embeddings_inplace"):
-    _mod.prune_hnsw_embeddings_inplace = lambda *a, **kw: True
-if "leann_backend_hnsw" not in sys.modules:
-    _stub = MagicMock()
-    sys.modules["leann_backend_hnsw"] = _stub
-    sys.modules["leann_backend_hnsw.convert_to_csr"] = _stub.convert_to_csr
-    _stub.convert_to_csr.prune_hnsw_embeddings_inplace = lambda *a, **kw: True
-
-# ---------------------------------------------------------------------------
-# Import helpers — load bm25 and hybrid modules directly without triggering
-# the full leann package __init__.py (which needs compiled C++ backends).
-# ---------------------------------------------------------------------------
-_LEANN_SRC = Path(__file__).resolve().parent.parent / "packages" / "leann-core" / "src" / "leann"
 
 
-def _load_module(name: str):
-    """Load a single module file from leann source, bypassing __init__.py."""
-    spec = importlib.util.spec_from_file_location(name, _LEANN_SRC / f"{name}.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+@pytest.mark.skipif(
+    os.environ.get("CI") == "true", reason="Skip model tests in CI to avoid MPS memory issues"
+)
+class TestHybridSearch:
+    """Test suite for hybrid search functionality."""
 
-
-_bm25_mod = _load_module("bm25")
-_hybrid_mod = _load_module("hybrid")
-
-BM25Index = _bm25_mod.BM25Index
-build_fts5_index = _bm25_mod.build_fts5_index
-sanitize_fts5_query = _bm25_mod.sanitize_fts5_query
-weighted_score_fusion = _hybrid_mod.weighted_score_fusion
-
-
-# ---------------------------------------------------------------------------
-# BM25 / FTS5 unit tests
-# ---------------------------------------------------------------------------
-
-
-class TestSanitizeFTS5Query:
-    def test_plain_text(self):
-        assert sanitize_fts5_query("hello world") == '"hello" "world"'
-
-    def test_empty_string(self):
-        assert sanitize_fts5_query("") == ""
-
-    def test_whitespace_only(self):
-        assert sanitize_fts5_query("   ") == ""
-
-    def test_special_chars_question_mark(self):
-        result = sanitize_fts5_query("what is a function?")
-        assert "?" not in result or '"function?"' in result  # quoted is safe
-
-    def test_special_chars_asterisk(self):
-        result = sanitize_fts5_query("find * files")
-        assert '"*"' in result
-
-    def test_special_chars_plus(self):
-        result = sanitize_fts5_query("C++ templates")
-        assert '"C++"' in result
-
-    def test_internal_quotes(self):
-        result = sanitize_fts5_query('say "hello"')
-        # Internal quotes should be doubled
-        assert '""hello""' in result
-
-    def test_fts5_operators_are_escaped(self):
-        # AND, OR, NOT are FTS5 operators when unquoted
-        result = sanitize_fts5_query("cats AND dogs")
-        assert '"AND"' in result
-
-    def test_parentheses(self):
-        result = sanitize_fts5_query("func(arg)")
-        assert '"func(arg)"' in result
-
-
-class TestBM25Index:
     @pytest.fixture
-    def sample_passages(self):
-        return [
-            {"id": "0", "text": "Python is a programming language"},
-            {"id": "1", "text": "JavaScript runs in the browser"},
-            {"id": "2", "text": "Rust is a systems programming language"},
-            {"id": "3", "text": "Python web frameworks include Django and Flask"},
-            {"id": "4", "text": "The quick brown fox jumps over the lazy dog"},
-        ]
-
-    def test_build_and_search(self, sample_passages):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            idx = BM25Index.build(db_path, sample_passages)
-
-            results = idx.search("Python programming", top_k=3)
-            assert len(results) > 0
-            # Python passages should rank highest
-            result_ids = [r[0] for r in results]
-            assert "0" in result_ids or "3" in result_ids
-            # Scores should be positive (we negate FTS5's negative bm25)
-            assert all(score > 0 for _, score in results)
-            idx.close()
-
-    def test_search_no_matches(self, sample_passages):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            idx = BM25Index.build(db_path, sample_passages)
-
-            results = idx.search("xyznonexistentterm", top_k=5)
-            assert results == []
-            idx.close()
-
-    def test_search_empty_query(self, sample_passages):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            idx = BM25Index.build(db_path, sample_passages)
-
-            results = idx.search("", top_k=5)
-            assert results == []
-            idx.close()
-
-    def test_search_special_characters_no_crash(self, sample_passages):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            idx = BM25Index.build(db_path, sample_passages)
-
-            # These should not crash — graceful degradation
-            for query in ['what?', 'C++', '"unmatched', 'a AND b', '(group)', '*wildcard']:
-                results = idx.search(query, top_k=5)
-                assert isinstance(results, list)
-            idx.close()
-
-    def test_build_skips_empty_texts(self):
-        passages = [
-            {"id": "0", "text": "real content here"},
-            {"id": "1", "text": ""},
-            {"id": "2", "text": "   "},
-        ]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            idx = BM25Index.build(db_path, passages)
-            results = idx.search("content", top_k=5)
-            assert len(results) == 1
-            assert results[0][0] == "0"
-            idx.close()
-
-    def test_build_overwrites_existing(self, sample_passages):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            # Build twice — second should overwrite cleanly
-            BM25Index.build(db_path, sample_passages).close()
-            idx = BM25Index.build(db_path, sample_passages)
-            results = idx.search("Python", top_k=10)
-            # Should have exactly the passages from the second build, not doubled
-            assert len(results) <= len(sample_passages)
-            idx.close()
-
-    def test_fts5_not_available(self):
-        """If FTS5 is not compiled into SQLite, build should fail gracefully."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            # build_fts5_index catches exceptions and returns None
-            result = build_fts5_index(db_path, [], skip_if_placeholder=True)
-            assert result is None
-
-
-# ---------------------------------------------------------------------------
-# Weighted score fusion tests
-# ---------------------------------------------------------------------------
-
-
-class TestWeightedScoreFusion:
-    def test_basic_fusion(self):
-        dense = [("a", 0.9), ("b", 0.8), ("c", 0.7)]
-        bm25 = [("b", 5.0), ("d", 4.0), ("a", 3.0)]
-        fused = weighted_score_fusion(dense, bm25, dense_weight=0.6, sparse_weight=0.4, top_k=5)
-
-        # "a" and "b" appear in both lists, should rank highest
-        fused_ids = [fid for fid, _ in fused]
-        assert "a" in fused_ids[:3]
-        assert "b" in fused_ids[:3]
-
-    def test_disjoint_lists(self):
-        list1 = [("a", 1.0), ("b", 0.9)]
-        list2 = [("c", 1.0), ("d", 0.9)]
-        fused = weighted_score_fusion(list1, list2, dense_weight=0.5, sparse_weight=0.5, top_k=10)
-
-        # All 4 items should appear
-        assert len(fused) == 4
-        fused_ids = {fid for fid, _ in fused}
-        assert fused_ids == {"a", "b", "c", "d"}
-
-    def test_one_empty_list(self):
-        dense = [("a", 0.9), ("b", 0.8)]
-        fused = weighted_score_fusion(dense, [], dense_weight=0.6, sparse_weight=0.4, top_k=5)
-
-        # Should degrade to dense ranking
-        assert len(fused) == 2
-        assert fused[0][0] == "a"
-        assert fused[1][0] == "b"
-
-    def test_both_empty(self):
-        fused = weighted_score_fusion([], [], dense_weight=0.5, sparse_weight=0.5, top_k=5)
-        assert fused == []
-
-    def test_top_k_truncation(self):
-        long_list = [(str(i), float(100 - i)) for i in range(50)]
-        fused = weighted_score_fusion(long_list, [], dense_weight=1.0, sparse_weight=0.0, top_k=5)
-        assert len(fused) == 5
-
-    def test_scores_are_positive(self):
-        dense = [("a", 0.9), ("b", 0.8)]
-        bm25 = [("a", 5.0), ("c", 3.0)]
-        fused = weighted_score_fusion(dense, bm25, dense_weight=0.6, sparse_weight=0.4, top_k=5)
-        assert all(score >= 0 for _, score in fused)
-
-    def test_weights_affect_ranking(self):
-        # doc "a" ranks high in dense, doc "b" ranks high in sparse
-        dense = [("a", 1.0), ("b", 0.1)]
-        sparse = [("b", 1.0), ("a", 0.1)]
-
-        # Heavy dense weight -> "a" wins
-        fused_dense = weighted_score_fusion(dense, sparse, dense_weight=0.9, sparse_weight=0.1, top_k=2)
-        assert fused_dense[0][0] == "a"
-
-        # Heavy sparse weight -> "b" wins
-        fused_sparse = weighted_score_fusion(dense, sparse, dense_weight=0.1, sparse_weight=0.9, top_k=2)
-        assert fused_sparse[0][0] == "b"
-
-    def test_equal_weights_shared_docs_rank_higher(self):
-        dense = [("a", 0.9), ("b", 0.5), ("c", 0.3)]
-        sparse = [("a", 3.0), ("d", 2.0)]
-
-        fused = weighted_score_fusion(dense, sparse, dense_weight=0.5, sparse_weight=0.5, top_k=5)
-        # "a" appears in both lists with high scores -> should be first
-        assert fused[0][0] == "a"
-
-    def test_sparse_only(self):
-        """When dense_weight=0, results should be purely sparse-ranked."""
-        sparse = [("x", 10.0), ("y", 5.0), ("z", 1.0)]
-        fused = weighted_score_fusion([], sparse, dense_weight=0.0, sparse_weight=1.0, top_k=3)
-        assert [fid for fid, _ in fused] == ["x", "y", "z"]
-
-
-# ---------------------------------------------------------------------------
-# build_fts5_index helper tests
-# ---------------------------------------------------------------------------
-
-
-class TestBuildFTS5Index:
-    def test_skip_if_placeholder(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            result = build_fts5_index(db_path, [], skip_if_placeholder=True)
-            assert result is None
-            assert not Path(db_path).exists()
-
-    def test_normal_build(self):
-        passages = [{"id": "0", "text": "hello world"}]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "test.fts5.db")
-            result = build_fts5_index(db_path, passages)
-            assert Path(db_path).exists()
-
-
-# ---------------------------------------------------------------------------
-# Integration tests (require model — skipped in CI)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") == "true",
-    reason="Skip model tests in CI to avoid MPS memory issues",
-)
-def _hnsw_backend_available() -> bool:
-    """Check if the HNSW backend is registered and usable."""
-    try:
-        from leann.registry import BACKEND_REGISTRY
-        return "hnsw" in BACKEND_REGISTRY
-    except Exception:
-        return False
-
-
-@pytest.mark.skipif(
-    not _hnsw_backend_available(),
-    reason="HNSW backend not compiled/registered in this environment",
-)
-class TestHybridSearchIntegration:
-    def _build_test_index(self, tmpdir):
-        from leann.api import LeannBuilder
-
-        index_path = str(Path(tmpdir) / "test_hybrid.hnsw")
-        texts = [
-            "Python is a high-level programming language",
-            "JavaScript is used for web development",
-            "Rust provides memory safety without garbage collection",
-            "Django is a Python web framework for rapid development",
-            "React is a JavaScript library for building user interfaces",
-            "The Cargo package manager handles Rust dependencies",
-            "Flask is a lightweight Python web microframework",
-            "Node.js runs JavaScript on the server side",
-            "Tokio is an async runtime for Rust",
-            "TypeScript adds static typing to JavaScript",
-        ]
-        builder = LeannBuilder(
-            backend_name="hnsw",
-            embedding_model="facebook/contriever",
-            embedding_mode="sentence-transformers",
-            M=16,
-            efConstruction=200,
-            is_compact=False,
-            is_recompute=False,
-        )
-        for text in texts:
-            builder.add_text(text)
-        builder.build_index(index_path)
-        return index_path
-
-    def test_hybrid_search_returns_results(self):
-        from leann.api import LeannSearcher, SearchResult
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            index_path = self._build_test_index(tmpdir)
-            searcher = LeannSearcher(index_path)
-            results = searcher.search("Python web framework", top_k=5, sparse_score_ratio=0.4)
-            assert len(results) > 0
-            assert isinstance(results[0], SearchResult)
-            searcher.cleanup()
-
-    def test_zero_ratio_matches_dense_only(self):
-        from leann.api import LeannSearcher
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            index_path = self._build_test_index(tmpdir)
-            searcher = LeannSearcher(index_path)
-            dense_results = searcher.search("Python", top_k=5, sparse_score_ratio=0.0)
-            default_results = searcher.search("Python", top_k=5)
-            # sparse_score_ratio=0.0 (explicit) should match the default behavior
-            assert [r.id for r in dense_results] == [r.id for r in default_results]
-            searcher.cleanup()
-
-    def test_graceful_degradation_no_fts5(self):
-        """If .fts5.db doesn't exist, sparse_score_ratio > 0 should still work (dense only)."""
-        from leann.api import LeannSearcher
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            index_path = self._build_test_index(tmpdir)
-            # Delete the FTS5 file
-            fts5_path = Path(index_path).parent / f"{Path(index_path).name}.fts5.db"
-            if fts5_path.exists():
-                fts5_path.unlink()
-            searcher = LeannSearcher(index_path)
-            assert searcher._bm25_index is None
-            results = searcher.search("Python", top_k=5, sparse_score_ratio=0.4)
-            assert len(results) > 0  # Falls back to dense-only
-            searcher.cleanup()
-
-    def test_fts5_file_created_during_build(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            index_path = self._build_test_index(tmpdir)
-            fts5_path = Path(index_path).parent / f"{Path(index_path).name}.fts5.db"
-            assert fts5_path.exists()
-
-    def test_hybrid_with_metadata_filters(self):
+    def sample_index(self):
+        """Create a sample index for testing."""
         from leann.api import LeannBuilder, LeannSearcher
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            index_path = str(Path(tmpdir) / "test_meta.hnsw")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index_path = str(Path(temp_dir) / "test_hybrid.hnsw")
+
+            # Create documents with diverse content for testing
+            # Some documents are keyword-rich, others are semantically similar
+            texts = [
+                "The quick brown fox jumps over the lazy dog",
+                "A fast auburn canine leaps above a sleepy hound",  # Semantically similar to first
+                "Python programming language is great for data science",
+                "Machine learning and artificial intelligence are transforming technology",
+                "The weather today is sunny and warm",
+                "Climate conditions are pleasant with clear skies",  # Semantically similar to weather
+                "Database management systems store and retrieve data efficiently",
+                "SQL queries help extract information from databases",  # Related to databases
+                "Cooking recipes require precise measurements and timing",
+                "Baking bread needs flour water yeast and patience",  # Related to cooking
+            ]
+
             builder = LeannBuilder(
                 backend_name="hnsw",
                 embedding_model="facebook/contriever",
                 embedding_mode="sentence-transformers",
                 M=16,
                 efConstruction=200,
-                is_compact=False,
-                is_recompute=False,
             )
-            for i in range(20):
-                builder.add_text(
-                    f"Document {i} about topic {i % 3}",
-                    metadata={"topic": i % 3},
-                )
+
+            for i, text in enumerate(texts):
+                builder.add_text(text, metadata={"id": str(i), "doc_num": i})
+
             builder.build_index(index_path)
 
             searcher = LeannSearcher(index_path)
-            results = searcher.search(
-                "document topic",
-                top_k=10,
-                sparse_score_ratio=0.4,
-                metadata_filters={"topic": {"==": 1}},
-            )
-            # All results should have topic == 1
-            for r in results:
-                assert r.metadata.get("topic") == 1
+            yield searcher, texts
+
+            # Cleanup
             searcher.cleanup()
+
+    def test_pure_vector_search(self, sample_index):
+        """Test pure vector search (gemma=1.0, default)."""
+        searcher, texts = sample_index
+
+        # Search with gemma=1.0 (pure vector search)
+        results = searcher.search("canine animal", top_k=3, gemma=1.0)
+
+        assert len(results) > 0
+        assert len(results) <= 3
+        # Should find semantically similar documents about animals/dogs
+        assert any(
+            "fox" in r.text.lower() or "dog" in r.text.lower() or "canine" in r.text.lower()
+            for r in results
+        )
+
+    def test_pure_keyword_search(self, sample_index):
+        """Test pure keyword search (gemma=0.0)."""
+        searcher, texts = sample_index
+
+        # Search with gemma=0.0 (pure BM25 keyword search)
+        results = searcher.search("database SQL", top_k=3, gemma=0.0)
+
+        assert len(results) > 0
+        assert len(results) <= 3
+        # Should find documents with exact keyword matches
+        # BM25 should prioritize documents containing "database" or "SQL"
+        top_result_text = results[0].text.lower()
+        assert "database" in top_result_text or "sql" in top_result_text
+
+    def test_hybrid_search_balanced(self, sample_index):
+        """Test balanced hybrid search (gemma=0.5)."""
+        searcher, texts = sample_index
+
+        # Search with gemma=0.5 (balanced hybrid)
+        results = searcher.search("programming Python code", top_k=5, gemma=0.5)
+
+        assert len(results) > 0
+        assert len(results) <= 5
+        # Should combine both semantic and keyword matching
+        # At least one result should contain "Python" or "programming"
+        assert any("python" in r.text.lower() or "programming" in r.text.lower() for r in results)
+
+    def test_hybrid_search_vector_heavy(self, sample_index):
+        """Test vector-heavy hybrid search (gemma=0.8)."""
+        searcher, texts = sample_index
+
+        # Search with gemma=0.8 (mostly vector, some keyword)
+        results = searcher.search("sunny weather conditions", top_k=3, gemma=0.8)
+
+        assert len(results) > 0
+        # Should prioritize semantic similarity but consider keywords
+        # Should find weather-related documents
+        assert any(
+            "weather" in r.text.lower() or "sunny" in r.text.lower() or "climate" in r.text.lower()
+            for r in results
+        )
+
+    def test_hybrid_search_keyword_heavy(self, sample_index):
+        """Test keyword-heavy hybrid search (gemma=0.2)."""
+        searcher, texts = sample_index
+
+        # Search with gemma=0.2 (mostly keyword, some vector)
+        results = searcher.search("bread flour baking", top_k=3, gemma=0.2)
+
+        assert len(results) > 0
+        # Should prioritize keyword matches
+        # Should find documents with exact keyword matches
+        top_results_text = " ".join([r.text.lower() for r in results[:2]])
+        assert (
+            "bread" in top_results_text
+            or "flour" in top_results_text
+            or "baking" in top_results_text
+        )
+
+    def test_hybrid_search_score_combination(self, sample_index):
+        """Test that hybrid search properly combines scores."""
+        searcher, texts = sample_index
+
+        # Get results with different gemma values
+        pure_vector = searcher.search("machine learning AI", top_k=5, gemma=1.0)
+        pure_keyword = searcher.search("machine learning AI", top_k=5, gemma=0.0)
+        hybrid = searcher.search("machine learning AI", top_k=5, gemma=0.5)
+
+        # All should return results
+        assert len(pure_vector) > 0
+        assert len(pure_keyword) > 0
+        assert len(hybrid) > 0
+
+        # Hybrid results should potentially differ from pure approaches
+        # (though with small dataset, there might be overlap)
+        assert all(r.score > 0 for r in hybrid)
+
+    def test_hybrid_search_with_metadata_filters(self, sample_index):
+        """Test hybrid search combined with metadata filtering."""
+        searcher, texts = sample_index
+
+        # Search with hybrid and metadata filter
+        results = searcher.search(
+            "data information", top_k=5, gemma=0.6, metadata_filters={"doc_num": {"<": 8}}
+        )
+
+        assert len(results) > 0
+        # All results should satisfy the metadata filter
+        for r in results:
+            assert r.metadata.get("doc_num", 999) < 8

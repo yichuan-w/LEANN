@@ -7,7 +7,7 @@ operators for different data types including numbers, strings, booleans, and lis
 """
 
 import logging
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class MetadataFilterEngine:
         }
 
     def apply_filters(
-        self, search_results: list[dict[str, Any]], metadata_filters: MetadataFilters
+        self, search_results: list[dict[str, Any]], metadata_filters: Optional[MetadataFilters]
     ) -> list[dict[str, Any]]:
         """
         Apply metadata filters to a list of search results.
