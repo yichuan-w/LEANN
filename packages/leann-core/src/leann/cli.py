@@ -1426,13 +1426,18 @@ Examples:
             paragraph_separator="\n\n",
         )
 
-        # Obsidian vault mode: use the dedicated reader for wikilink/backlink support
+        # Load documents — when --obsidian is set, also parse .md files for
+        # wikilinks/backlinks metadata while still loading other file types
+        # through the standard pipeline.
+        all_texts = self.load_documents(
+            docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+        )
         if getattr(args, "obsidian", False):
-            all_texts = self._load_obsidian_vault(docs_paths, args)
-        else:
-            all_texts = self.load_documents(
-                docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
-            )
+            # Replace markdown chunks with obsidian-enriched versions
+            non_md = [c for c in all_texts
+                      if not c.get("metadata", {}).get("file_path", "").endswith(".md")]
+            obsidian_chunks = self._load_obsidian_vault(docs_paths, args)
+            all_texts = non_md + obsidian_chunks
         if not all_texts:
             print("No documents found")
             return
