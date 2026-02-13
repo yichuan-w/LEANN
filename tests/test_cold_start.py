@@ -13,6 +13,7 @@ import tempfile
 import time
 from pathlib import Path
 from types import ModuleType
+from typing import Any, Literal, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -42,7 +43,18 @@ def _make_searcher():
     """Create a minimal concrete BaseSearcher for testing, bypassing __init__."""
 
     class _TestSearcher(BaseSearcher):
-        def search(self, query, top_k, complexity=64, beam_width=1, **kw):
+        def search(
+            self,
+            query: np.ndarray,
+            top_k: int,
+            complexity: int = 64,
+            beam_width: int = 1,
+            prune_ratio: float = 0.0,
+            recompute_embeddings: bool = False,
+            pruning_strategy: Literal["global", "local", "proportional"] = "global",
+            zmq_port: Optional[int] = None,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
             return {"labels": [], "distances": []}
 
     # Build a temp directory with a valid meta file so paths resolve

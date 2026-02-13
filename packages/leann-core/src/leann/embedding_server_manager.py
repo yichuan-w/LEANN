@@ -327,9 +327,7 @@ class EmbeddingServerManager:
                     time.time() - t_launch,
                 )
             else:
-                logger.error(
-                    "Server failed to become ready (total %.2fs)", time.time() - t0
-                )
+                logger.error("Server failed to become ready (total %.2fs)", time.time() - t0)
             return started, ready_port
         except Exception as e:
             logger.error(f"Failed to start embedding server: {e} (after {time.time() - t0:.2f}s)")

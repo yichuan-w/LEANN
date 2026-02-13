@@ -143,7 +143,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         # The caller (api.py) is responsible for calling _ensure_server_running()
         # and passing the actual port. We no longer call _ensure_server_running()
         # here to avoid a redundant (and potentially slow) double-check.
-        if use_server_if_available:
+        if use_server_if_available and zmq_port is not None:
             try:
                 result = self._compute_embedding_via_server([query], zmq_port)[
                     0:1
