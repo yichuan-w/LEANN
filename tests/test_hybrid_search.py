@@ -14,6 +14,19 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from unittest.mock import MagicMock
+
+# ---------------------------------------------------------------------------
+# Stub C++ backend so integration tests can import leann.api
+# ---------------------------------------------------------------------------
+_mod = sys.modules.get("leann_backend_hnsw.convert_to_csr")
+if _mod is not None and not hasattr(_mod, "prune_hnsw_embeddings_inplace"):
+    _mod.prune_hnsw_embeddings_inplace = lambda *a, **kw: True
+if "leann_backend_hnsw" not in sys.modules:
+    _stub = MagicMock()
+    sys.modules["leann_backend_hnsw"] = _stub
+    sys.modules["leann_backend_hnsw.convert_to_csr"] = _stub.convert_to_csr
+    _stub.convert_to_csr.prune_hnsw_embeddings_inplace = lambda *a, **kw: True
 
 # ---------------------------------------------------------------------------
 # Import helpers — load bm25 and hybrid modules directly without triggering
@@ -276,6 +289,19 @@ class TestBuildFTS5Index:
 @pytest.mark.skipif(
     os.environ.get("CI") == "true",
     reason="Skip model tests in CI to avoid MPS memory issues",
+)
+def _hnsw_backend_available() -> bool:
+    """Check if the HNSW backend is registered and usable."""
+    try:
+        from leann.registry import BACKEND_REGISTRY
+        return "hnsw" in BACKEND_REGISTRY
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(
+    not _hnsw_backend_available(),
+    reason="HNSW backend not compiled/registered in this environment",
 )
 class TestHybridSearchIntegration:
     def _build_test_index(self, tmpdir):
