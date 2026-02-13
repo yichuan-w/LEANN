@@ -28,12 +28,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import time
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Optional
-from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .settings import resolve_ollama_host
@@ -70,8 +68,7 @@ def _build_context_block(results: list, max_chars: int = _DEFAULT_MAX_CONTEXT_CH
 
     return (
         "The following code snippets are retrieved from the local codebase and may "
-        "be relevant to the user's question:\n\n"
-        + "\n".join(parts)
+        "be relevant to the user's question:\n\n" + "\n".join(parts)
     )
 
 
@@ -201,9 +198,7 @@ class _CursorHandler(BaseHTTPRequestHandler):
                 content = msg.get("content", "")
                 if isinstance(content, list):
                     # Handle structured content (e.g., [{"type": "text", "text": "..."}])
-                    text_parts = [
-                        p.get("text", "") for p in content if p.get("type") == "text"
-                    ]
+                    text_parts = [p.get("text", "") for p in content if p.get("type") == "text"]
                     user_msg = " ".join(text_parts)
                 else:
                     user_msg = str(content)
@@ -301,7 +296,7 @@ def start_cursor_server(
     server = ThreadingHTTPServer(("0.0.0.0", port), _CursorHandler)
     server.cursor_config = config  # type: ignore[attr-defined]
 
-    print(f"LEANN Local Cursor proxy started:")
+    print("LEANN Local Cursor proxy started:")
     print(f"  Endpoint:  http://localhost:{port}/v1/chat/completions")
     print(f"  Model:     {model}")
     print(f"  LLM host:  {resolved_host}")

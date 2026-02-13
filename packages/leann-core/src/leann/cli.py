@@ -1733,9 +1733,7 @@ Examples:
                     if match["kind"] == "cli":
                         index_path = str(match["index_dir"] / "documents.leann")
                     else:
-                        index_path = str(
-                            match["meta_file"].parent / f"{match['file_base']}.leann"
-                        )
+                        index_path = str(match["meta_file"].parent / f"{match['file_base']}.leann")
                 else:
                     print(f"Index '{args.index}' not found. Starting without retrieval.")
 
