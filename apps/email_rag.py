@@ -5,6 +5,7 @@ Supports Apple Mail on macOS.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -64,7 +65,7 @@ class EmailRAG(BaseRAGExample):
 
         return messages_dirs
 
-    async def load_data(self, args) -> list[str]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load emails and convert to text chunks."""
         # Determine mail directories
         if args.mail_path:

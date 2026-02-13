@@ -12,7 +12,13 @@ from typing import Any, Optional
 
 import torch
 
-from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
+from .settings import (
+    resolve_anthropic_api_key,
+    resolve_anthropic_base_url,
+    resolve_ollama_host,
+    resolve_openai_api_key,
+    resolve_openai_base_url,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -583,8 +589,12 @@ class HFChat(LLMInterface):
                 "The 'transformers' and 'torch' libraries are required for Hugging Face models. Please install them with 'pip install transformers torch'."
             )
 
-        # Auto-detect device
-        if torch.cuda.is_available():
+        # Auto-detect device (check environment variable first)
+        env_device = os.getenv("LEANN_LLM_DEVICE")
+        if env_device:
+            self.device = env_device
+            logger.info(f"Using device from LEANN_LLM_DEVICE: {self.device}")
+        elif torch.cuda.is_available():
             self.device = "cuda"
             logger.info("CUDA is available. Using GPU.")
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -612,10 +622,20 @@ class HFChat(LLMInterface):
                 )
 
                 logger.info(f"Loading model {model_name}...")
+                # Determine device_map based on device setting
+                if self.device == "cpu":
+                    device_map = None
+                elif self.device.startswith("cuda:"):
+                    # Specific GPU requested, use it exclusively
+                    device_map = {"": self.device}
+                else:
+                    # Auto mode: let HuggingFace distribute across available GPUs
+                    device_map = "auto"
+
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_name,
                     torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
-                    device_map="auto" if self.device != "cpu" else None,
+                    device_map=device_map,
                     trust_remote_code=self.trust_remote_code,
                 )
                 logger.info(f"Successfully loaded {model_name}")
@@ -845,6 +865,81 @@ class OpenAIChat(LLMInterface):
             return f"Error: Could not get a response from OpenAI. Details: {e}"
 
 
+class AnthropicChat(LLMInterface):
+    """LLM interface for Anthropic Claude models."""
+
+    def __init__(
+        self,
+        model: str = "claude-haiku-4-5",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.model = model
+        self.base_url = resolve_anthropic_base_url(base_url)
+        self.api_key = resolve_anthropic_api_key(api_key)
+
+        if not self.api_key:
+            raise ValueError(
+                "Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable or pass api_key parameter."
+            )
+
+        logger.info(
+            "Initializing Anthropic Chat with model='%s' and base_url='%s'",
+            model,
+            self.base_url,
+        )
+
+        try:
+            import anthropic
+
+            # Allow custom Anthropic-compatible endpoints via base_url
+            self.client = anthropic.Anthropic(
+                api_key=self.api_key,
+                base_url=self.base_url,
+            )
+        except ImportError:
+            raise ImportError(
+                "The 'anthropic' library is required for Anthropic models. Please install it with 'pip install anthropic'."
+            )
+
+    def ask(self, prompt: str, **kwargs) -> str:
+        logger.info(f"Sending request to Anthropic with model {self.model}")
+
+        try:
+            # Anthropic API parameters
+            params = {
+                "model": self.model,
+                "max_tokens": kwargs.get("max_tokens", 1000),
+                "messages": [{"role": "user", "content": prompt}],
+            }
+
+            # Add optional parameters
+            if "temperature" in kwargs:
+                params["temperature"] = kwargs["temperature"]
+            if "top_p" in kwargs:
+                params["top_p"] = kwargs["top_p"]
+
+            response = self.client.messages.create(**params)
+
+            # Extract text from response
+            response_text = response.content[0].text
+
+            # Log token usage
+            print(
+                f"Total tokens = {response.usage.input_tokens + response.usage.output_tokens}, "
+                f"input tokens = {response.usage.input_tokens}, "
+                f"output tokens = {response.usage.output_tokens}"
+            )
+
+            if response.stop_reason == "max_tokens":
+                print("The query is exceeding the maximum allowed number of tokens")
+
+            return response_text.strip()
+        except Exception as e:
+            logger.error(f"Error communicating with Anthropic: {e}")
+            return f"Error: Could not get a response from Anthropic. Details: {e}"
+
+
 class SimulatedChat(LLMInterface):
     """A simple simulated chat for testing and development."""
 
@@ -897,6 +992,12 @@ def get_llm(llm_config: Optional[dict[str, Any]] = None) -> LLMInterface:
         )
     elif llm_type == "gemini":
         return GeminiChat(model=model or "gemini-2.5-flash", api_key=llm_config.get("api_key"))
+    elif llm_type == "anthropic":
+        return AnthropicChat(
+            model=model or "claude-3-5-sonnet-20241022",
+            api_key=llm_config.get("api_key"),
+            base_url=llm_config.get("base_url"),
+        )
     elif llm_type == "simulated":
         return SimulatedChat()
     else:

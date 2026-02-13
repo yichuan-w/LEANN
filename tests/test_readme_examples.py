@@ -97,17 +97,17 @@ def test_backend_options():
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Use smaller model in CI to avoid memory issues
-        if os.environ.get("CI") == "true":
-            model_args = {
-                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-                "dimensions": 384,
-            }
-        else:
-            model_args = {}
+        is_ci = os.environ.get("CI") == "true"
+        embedding_model = (
+            "sentence-transformers/all-MiniLM-L6-v2" if is_ci else "facebook/contriever"
+        )
+        dimensions = 384 if is_ci else None
 
         # Test HNSW backend (as shown in README)
         hnsw_path = str(Path(temp_dir) / "test_hnsw.leann")
-        builder_hnsw = LeannBuilder(backend_name="hnsw", **model_args)
+        builder_hnsw = LeannBuilder(
+            backend_name="hnsw", embedding_model=embedding_model, dimensions=dimensions
+        )
         builder_hnsw.add_text("Test document for HNSW backend")
         builder_hnsw.build_index(hnsw_path)
         assert Path(hnsw_path).parent.exists()
@@ -115,7 +115,9 @@ def test_backend_options():
 
         # Test DiskANN backend (mentioned as available option)
         diskann_path = str(Path(temp_dir) / "test_diskann.leann")
-        builder_diskann = LeannBuilder(backend_name="diskann", **model_args)
+        builder_diskann = LeannBuilder(
+            backend_name="diskann", embedding_model=embedding_model, dimensions=dimensions
+        )
         builder_diskann.add_text("Test document for DiskANN backend")
         builder_diskann.build_index(diskann_path)
         assert Path(diskann_path).parent.exists()

@@ -6,6 +6,7 @@ optimized chunking parameters.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -77,7 +78,7 @@ class CodeRAG(BaseRAGExample):
             help="Try to preserve import statements in chunks (default: True)",
         )
 
-    async def load_data(self, args) -> list[str]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load code files and convert to AST-aware chunks."""
         print(f"🔍 Scanning code repository: {args.repo_dir}")
         print(f"📁 Including extensions: {args.include_extensions}")
@@ -87,14 +88,6 @@ class CodeRAG(BaseRAGExample):
         repo_path = Path(args.repo_dir)
         if not repo_path.exists():
             raise ValueError(f"Repository directory not found: {args.repo_dir}")
-
-        # Load code files with filtering
-        reader_kwargs = {
-            "recursive": True,
-            "encoding": "utf-8",
-            "required_exts": args.include_extensions,
-            "exclude_hidden": True,
-        }
 
         # Create exclusion filter
         def file_filter(file_path: str) -> bool:
@@ -120,8 +113,11 @@ class CodeRAG(BaseRAGExample):
             # Load documents with file filtering
             documents = SimpleDirectoryReader(
                 args.repo_dir,
-                file_extractor=None,  # Use default extractors
-                **reader_kwargs,
+                file_extractor=None,
+                recursive=True,
+                encoding="utf-8",
+                required_exts=args.include_extensions,
+                exclude_hidden=True,
             ).load_data(show_progress=True)
 
             # Apply custom filtering

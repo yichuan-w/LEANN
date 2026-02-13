@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leann-core"
-version = "0.3.5"
+version = "0.3.7"
 description = "Core API and plugin system for LEANN"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 
 # All required dependencies included
@@ -25,9 +25,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "openai>=1.0.0",
     "huggingface-hub>=0.20.0",
-    # Keep transformers below 4.46: 4.46.0 adds Python 3.10-only return type syntax and
-    # breaks Python 3.9 environments.
-    "transformers>=4.30.0,<4.46",
+    # Keep Py3.9 compatible below 4.46; allow newer for Py>=3.10 (e.g., ColQwen/ColPali).
+    "transformers>=4.30.0,<4.46; python_version < '3.10'",
+    "transformers>=4.53.1,<4.58; python_version >= '3.10'",
     "requests>=2.25.0",
     "accelerate>=0.20.0",
     "PyPDF2>=3.0.0",
@@ -42,11 +42,14 @@ dependencies = [
 [project.optional-dependencies]
 colab = [
     "torch>=2.0.0,<3.0.0",  # Limit torch version to avoid conflicts
-    "transformers>=4.30.0,<4.46",  # 4.46.0 switches to PEP 604 typing (int | None), breaks Py3.9
+    "transformers>=4.30.0,<4.46; python_version < '3.10'",  # Py3.9 compatibility
+    "transformers>=4.53.1,<4.58; python_version >= '3.10'",
     "accelerate>=0.20.0,<1.0.0",  # Limit accelerate version
 ]
-ocr = [
-    "magic-pdf>=0.9.0",
+server = [
+    "fastapi>=0.115.0",
+    "pydantic>=2.0.0",
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [project.scripts]

@@ -56,7 +56,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         with open(meta_path, encoding="utf-8") as f:
             return json.load(f)
 
-    def _ensure_server_running(self, passages_source_file: str, port: int, **kwargs) -> int:
+    def _ensure_server_running(
+        self, passages_source_file: str, port: Optional[int], **kwargs
+    ) -> int:
         """
         Ensures the embedding server is running if recompute is needed.
         This is a helper for subclasses.
@@ -81,7 +83,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         }
 
         server_started, actual_port = self.embedding_server_manager.start_server(
-            port=port,
+            port=port if port is not None else 5557,
             model_name=self.embedding_model,
             embedding_mode=self.embedding_mode,
             passages_file=passages_source_file,
@@ -98,7 +100,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         self,
         query: str,
         use_server_if_available: bool = True,
-        zmq_port: int = 5557,
+        zmq_port: Optional[int] = None,
         query_template: Optional[str] = None,
     ) -> np.ndarray:
         """

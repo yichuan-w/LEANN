@@ -257,8 +257,8 @@ class BaseRAGExample(ABC):
         pass
 
     @abstractmethod
-    async def load_data(self, args) -> list[str]:
-        """Load data from the source. Returns list of text chunks."""
+    async def load_data(self, args) -> list[dict[str, Any]]:
+        """Load data from the source. Returns list of text chunks as dicts with 'text' and 'metadata' keys."""
         pass
 
     def get_llm_config(self, args) -> dict[str, Any]:
@@ -282,8 +282,8 @@ class BaseRAGExample(ABC):
 
         return config
 
-    async def build_index(self, args, texts: list[str]) -> str:
-        """Build LEANN index from texts."""
+    async def build_index(self, args, texts: list[dict[str, Any]]) -> str:
+        """Build LEANN index from text chunks (dicts with 'text' and 'metadata' keys)."""
         index_path = str(Path(args.index_dir) / f"{self.default_index_name}.leann")
 
         print(f"\n[Building Index] Creating {self.name} index...")
@@ -314,8 +314,14 @@ class BaseRAGExample(ABC):
         batch_size = 1000
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
-            for text in batch:
-                builder.add_text(text)
+            for item in batch:
+                # Handle both dict format (from create_text_chunks) and plain strings
+                if isinstance(item, dict):
+                    text = item.get("text", "")
+                    metadata = item.get("metadata")
+                    builder.add_text(text, metadata)
+                else:
+                    builder.add_text(item)
             print(f"Added {min(i + batch_size, len(texts))}/{len(texts)} texts...")
 
         print("Building index structure...")
@@ -385,7 +391,7 @@ class BaseRAGExample(ABC):
 
         # Check if index exists
         index_path = str(Path(args.index_dir) / f"{self.default_index_name}.leann")
-        index_exists = Path(args.index_dir).exists()
+        index_exists = Path(f"{index_path}.meta.json").exists()
 
         if not index_exists or args.force_rebuild:
             # Load data and build index
