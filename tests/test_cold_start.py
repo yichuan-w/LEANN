@@ -10,7 +10,6 @@ Covers:
 import json
 import sys
 import tempfile
-import time
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Literal, Optional
@@ -32,7 +31,6 @@ if "leann" not in sys.modules:
     sys.modules["leann"] = _fake_leann
 
 from leann.searcher_base import BaseSearcher  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers to construct a minimal BaseSearcher instance without hitting disk
@@ -108,9 +106,7 @@ class TestWarmupSendsDummyRequest:
         searcher._compute_embedding_via_server = mock_compute
 
         # Call _ensure_server_running with enable_warmup=True
-        port = searcher._ensure_server_running(
-            "/tmp/fake.meta.json", 5557, enable_warmup=True
-        )
+        port = searcher._ensure_server_running("/tmp/fake.meta.json", 5557, enable_warmup=True)
 
         assert port == 5560
         # Verify warmup request was sent
@@ -147,9 +143,7 @@ class TestWarmupSendsDummyRequest:
         searcher._compute_embedding_via_server = mock_compute_failing
 
         # Should NOT raise even though warmup fails
-        port = searcher._ensure_server_running(
-            "/tmp/fake.meta.json", 5557, enable_warmup=True
-        )
+        port = searcher._ensure_server_running("/tmp/fake.meta.json", 5557, enable_warmup=True)
         assert port == 5560
 
     def test_enable_warmup_not_forwarded_to_start_server(self):
@@ -160,9 +154,7 @@ class TestWarmupSendsDummyRequest:
             return_value=np.zeros((1, 384), dtype=np.float32)
         )
 
-        searcher._ensure_server_running(
-            "/tmp/fake.meta.json", 5557, enable_warmup=True
-        )
+        searcher._ensure_server_running("/tmp/fake.meta.json", 5557, enable_warmup=True)
 
         # Verify that start_server was called WITHOUT enable_warmup
         call_kwargs = searcher.embedding_server_manager.start_server.call_args
@@ -198,14 +190,14 @@ class TestRetryOnZmqFailure:
 
         mock_socket.recv.side_effect = recv_side_effect
 
-        with patch("zmq.Context", return_value=mock_context), \
-             patch("time.sleep"):  # Don't actually sleep in tests
+        with (
+            patch("zmq.Context", return_value=mock_context),
+            patch("time.sleep"),
+        ):  # Don't actually sleep in tests
             result = searcher._compute_embedding_via_server(["test query"], 5557)
 
         assert call_count == 2
-        np.testing.assert_array_almost_equal(
-            result, np.array(embedding_data, dtype=np.float32)
-        )
+        np.testing.assert_array_almost_equal(result, np.array(embedding_data, dtype=np.float32))
 
     def test_retry_exhaustion_raises(self):
         searcher = _make_searcher()
@@ -216,8 +208,7 @@ class TestRetryOnZmqFailure:
 
         mock_socket.recv.side_effect = Exception("Connection refused")
 
-        with patch("zmq.Context", return_value=mock_context), \
-             patch("time.sleep"):
+        with patch("zmq.Context", return_value=mock_context), patch("time.sleep"):
             with pytest.raises(RuntimeError, match="after 3 attempts"):
                 searcher._compute_embedding_via_server(["test query"], 5557)
 
@@ -238,8 +229,10 @@ class TestRetryOnZmqFailure:
         def track_sleep(seconds):
             sleep_calls.append(seconds)
 
-        with patch("zmq.Context", return_value=mock_context), \
-             patch("time.sleep", side_effect=track_sleep):
+        with (
+            patch("zmq.Context", return_value=mock_context),
+            patch("time.sleep", side_effect=track_sleep),
+        ):
             with pytest.raises(RuntimeError):
                 searcher._compute_embedding_via_server(["test"], 5557)
 

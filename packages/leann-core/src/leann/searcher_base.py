@@ -234,7 +234,10 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                     delay = backoff_delays[min(attempt, len(backoff_delays) - 1)]
                     logger.warning(
                         "ZMQ attempt %d/%d failed: %s. Retrying in %.1fs...",
-                        attempt + 1, max_retries, e, delay,
+                        attempt + 1,
+                        max_retries,
+                        e,
+                        delay,
                     )
                     time.sleep(delay)
 

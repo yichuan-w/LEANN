@@ -182,9 +182,7 @@ class EmbeddingServerManager:
             and self.server_port
             and self._server_config == config_signature
         ):
-            logger.info(
-                "Reusing in-process server (checked in %.2fs)", time.time() - t0
-            )
+            logger.info("Reusing in-process server (checked in %.2fs)", time.time() - t0)
             return True, self.server_port
 
         # Configuration changed, stop existing server before starting a new one
