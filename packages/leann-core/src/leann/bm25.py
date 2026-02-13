@@ -162,8 +162,10 @@ def build_fts5_index(
         return None
     try:
         idx = BM25Index.build(db_path, passages)
+        # Close the build connection — callers that need search should open
+        # a fresh BM25Index(db_path) so the connection is ready.
         idx.close()
-        return idx
+        return BM25Index(db_path)
     except Exception:
         logger.warning("FTS5 index build failed; hybrid search will be unavailable", exc_info=True)
         return None

@@ -9,7 +9,9 @@ def _min_max_normalize(items: list[tuple[str, float]]) -> list[tuple[str, float]
     lo, hi = min(scores), max(scores)
     span = hi - lo
     if span == 0:
-        return [(doc_id, 1.0) for doc_id, _ in items]
+        # All scores equal — assign 0.5 instead of 1.0 to avoid inflating
+        # a single-result source during weighted fusion.
+        return [(doc_id, 0.5) for doc_id, _ in items]
     return [(doc_id, (s - lo) / span) for doc_id, s in items]
 
 
