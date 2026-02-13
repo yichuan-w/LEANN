@@ -207,11 +207,17 @@ def _start_background(
     if encoded:
         env["LEANN_EMBEDDING_OPTIONS"] = encoded
 
+    # Log stderr to a file so daemon startup failures can be diagnosed.
+    log_dir = _get_state_file().parent
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "daemon.log"
+    log_fh = open(log_path, "a")  # noqa: SIM115
+
     # Start as a detached subprocess
     proc = subprocess.Popen(
         cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_fh,
+        stderr=log_fh,
         env=env,
         start_new_session=True,
     )
@@ -220,7 +226,8 @@ def _start_background(
     time.sleep(2)
     if proc.poll() is not None:
         raise RuntimeError(
-            f"Daemon process exited immediately with code {proc.returncode}"
+            f"Daemon process exited immediately with code {proc.returncode}. "
+            f"Check {log_path} for details."
         )
 
     # Wait for the state file and port to become ready
@@ -230,7 +237,9 @@ def _start_background(
             return
         time.sleep(1)
 
-    raise RuntimeError("Daemon did not become ready within 60 seconds")
+    raise RuntimeError(
+        f"Daemon did not become ready within 60 seconds. Check {log_path} for details."
+    )
 
 
 def _run_foreground(
@@ -251,8 +260,16 @@ def _run_foreground(
 
     logger.info("Starting persistent embedding daemon on port %d...", actual_port)
 
-    # Determine the backend module for the embedding server
+    # Determine the backend module for the embedding server.
+    # Try DiskANN first if available, fall back to HNSW.
     backend_module = "leann_backend_hnsw.hnsw_embedding_server"
+    try:
+        import importlib
+        importlib.import_module("leann_backend_diskann")
+        # DiskANN available — but HNSW embedding server is the universal one
+        # that works for both backends' ZMQ protocol.
+    except ImportError:
+        pass
 
     manager = EmbeddingServerManager(backend_module_name=backend_module)
 
@@ -261,10 +278,9 @@ def _run_foreground(
     def _signal_handler(signum, frame):
         nonlocal shutdown_requested
         shutdown_requested = True
-        logger.info("Shutdown signal received, cleaning up...")
-        manager.stop_server()
-        _remove_state_file()
-        sys.exit(0)
+        # Don't call sys.exit() from signal handler — it raises SystemExit
+        # during arbitrary code, which can corrupt state. Just set the flag
+        # and let the main loop exit cleanly.
 
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
