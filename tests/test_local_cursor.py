@@ -184,6 +184,26 @@ class TestCursorHandler:
         assert system_msg["role"] == "system"
         assert "main.py" in system_msg["content"]
 
+    def test_oversized_body_rejected(self, server):
+        _, port = server
+        from leann.local_cursor import _MAX_REQUEST_BODY
+
+        # Craft a request with Content-Length exceeding the limit
+        payload = json.dumps({"messages": [{"role": "user", "content": "x"}]}).encode()
+        req = Request(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(_MAX_REQUEST_BODY + 1),
+            },
+            method="POST",
+        )
+        from urllib.error import HTTPError
+        with pytest.raises(HTTPError) as exc_info:
+            urlopen(req, timeout=5)
+        assert exc_info.value.code == 413
+
     def test_cors_preflight(self, server):
         _, port = server
         req = Request(

@@ -30,9 +30,10 @@ import json
 import logging
 import os
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from typing import Any, Optional
 from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .settings import resolve_ollama_host
@@ -44,6 +45,7 @@ _DEFAULT_PORT = 8765
 _DEFAULT_MODEL = "qwen3-coder"
 _DEFAULT_TOP_K = 10
 _DEFAULT_MAX_CONTEXT_CHARS = 8000  # Stay within typical 8K context window budget
+_MAX_REQUEST_BODY = 10 * 1024 * 1024  # 10 MB — reject oversized requests
 
 
 def _build_context_block(results: list, max_chars: int = _DEFAULT_MAX_CONTEXT_CHARS) -> str:
@@ -76,12 +78,10 @@ def _build_context_block(results: list, max_chars: int = _DEFAULT_MAX_CONTEXT_CH
 def _forward_to_llm(
     ollama_host: str,
     payload: dict,
-    stream: bool = False,
-) -> tuple[int, dict | bytes]:
+) -> tuple[int, dict]:
     """Forward the augmented request to the local LLM.
 
-    Returns ``(status_code, response_body)`` where response_body is a dict
-    for non-streaming or raw bytes for streaming.
+    Returns ``(status_code, response_body_dict)``.
     """
     url = f"{ollama_host}/v1/chat/completions"
     data = json.dumps(payload).encode("utf-8")
@@ -97,8 +97,16 @@ def _forward_to_llm(
         with urlopen(req, timeout=120) as resp:
             body = resp.read()
             return resp.status, json.loads(body)
-    except Exception as e:
-        logger.error("LLM forwarding failed: %s", e)
+    except HTTPError as e:
+        # Preserve the upstream error body so callers get useful diagnostics.
+        try:
+            err_body = json.loads(e.read())
+        except Exception:
+            err_body = {"error": {"message": str(e), "type": "upstream_error"}}
+        logger.error("LLM returned HTTP %d: %s", e.code, err_body)
+        return e.code, err_body
+    except (URLError, OSError) as e:
+        logger.error("LLM forwarding failed (network): %s", e)
         return 502, {"error": {"message": str(e), "type": "proxy_error"}}
 
 
@@ -166,8 +174,11 @@ class _CursorHandler(BaseHTTPRequestHandler):
         """Handle a chat completion request with LEANN retrieval augmentation."""
         cfg = self.server.cursor_config
 
-        # Read request body
+        # Read request body (with size limit to prevent OOM)
         content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > _MAX_REQUEST_BODY:
+            self._send_json(413, {"error": "Request body too large"})
+            return
         body = self.rfile.read(content_length)
         try:
             payload = json.loads(body)
@@ -280,7 +291,7 @@ def start_cursor_server(
         "max_context_chars": max_context_chars,
     }
 
-    server = HTTPServer(("0.0.0.0", port), _CursorHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), _CursorHandler)
     server.cursor_config = config  # type: ignore[attr-defined]
 
     print(f"LEANN Local Cursor proxy started:")
