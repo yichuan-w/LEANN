@@ -206,20 +206,22 @@ class LeannHybridRetriever(BaseRetriever):
         # Normalize vector scores to [0, 1]
         v_scores = {}
         if vector_results:
-            max_v = max(r.score for r in vector_results) or 1.0
+            max_v = max(r.score for r in vector_results)
             min_v = min(r.score for r in vector_results)
-            span_v = max_v - min_v if max_v != min_v else 1.0
+            span_v = max_v - min_v
             for r in vector_results:
-                v_scores[r.id] = (r.score - min_v) / span_v
+                # When all scores are equal, use 0.5 ("equal relevance")
+                # rather than 0.0 ("irrelevant").
+                v_scores[r.id] = (r.score - min_v) / span_v if span_v else 0.5
 
         # Normalize BM25 scores to [0, 1]
         b_scores = {}
         if bm25_results:
-            max_b = max(r["score"] for r in bm25_results) or 1.0
+            max_b = max(r["score"] for r in bm25_results)
             min_b = min(r["score"] for r in bm25_results)
-            span_b = max_b - min_b if max_b != min_b else 1.0
+            span_b = max_b - min_b
             for r in bm25_results:
-                b_scores[r["id"]] = (r["score"] - min_b) / span_b
+                b_scores[r["id"]] = (r["score"] - min_b) / span_b if span_b else 0.5
 
         # Combine all IDs
         all_ids = set(v_scores.keys()) | set(b_scores.keys())
