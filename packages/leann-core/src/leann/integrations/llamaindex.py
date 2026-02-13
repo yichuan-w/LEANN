@@ -26,8 +26,7 @@ Hybrid search (BM25 + vector) is also supported::
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from llama_index.core import QueryBundle
 from llama_index.core.retrievers import BaseRetriever
@@ -96,8 +95,8 @@ class LeannRetriever(BaseRetriever):
 class LeannHybridRetriever(BaseRetriever):
     """LlamaIndex retriever that fuses LEANN vector search with BM25.
 
-    Performs both dense (vector) and sparse (BM25) retrieval, then merges
-    results using weighted score fusion.
+    Delegates to ``LeannSearcher.search(sparse_score_ratio=...)`` which
+    already implements weighted score fusion via ``leann.hybrid``.
 
     Parameters
     ----------
@@ -108,9 +107,6 @@ class LeannHybridRetriever(BaseRetriever):
     bm25_weight:
         Weight for BM25 scores in [0, 1]. Vector weight is ``1 - bm25_weight``.
         Default 0.3 (70% vector, 30% BM25).
-    bm25_db_path:
-        Path to the BM25 SQLite FTS5 database. If ``None`` (default),
-        derived from ``index_path`` as ``<index>.fts5.db``.
     complexity:
         Search complexity for the vector backend (default 64).
     recompute_embeddings:
@@ -124,7 +120,6 @@ class LeannHybridRetriever(BaseRetriever):
         index_path: str,
         top_k: int = 10,
         bm25_weight: float = 0.3,
-        bm25_db_path: Optional[str] = None,
         complexity: int = 64,
         recompute_embeddings: bool = True,
         **searcher_kwargs: Any,
@@ -135,126 +130,20 @@ class LeannHybridRetriever(BaseRetriever):
         self._index_path = index_path
         self._top_k = top_k
         self._bm25_weight = max(0.0, min(1.0, bm25_weight))
-        self._vector_weight = 1.0 - self._bm25_weight
         self._complexity = complexity
         self._recompute = recompute_embeddings
         self._searcher = LeannSearcher(index_path, **searcher_kwargs)
 
-        # Resolve BM25 database path
-        if bm25_db_path is None:
-            idx = Path(index_path)
-            bm25_db_path = str(idx.parent / f"{idx.name}.fts5.db")
-        self._bm25_db_path = bm25_db_path
-        self._bm25 = None
-
-    def _get_bm25(self):
-        """Lazily load the BM25 index."""
-        if self._bm25 is not None:
-            return self._bm25
-
-        if not Path(self._bm25_db_path).exists():
-            logger.warning(
-                "BM25 index not found at %s. Falling back to vector-only search. "
-                "Build with hybrid search enabled to create the BM25 index.",
-                self._bm25_db_path,
-            )
-            return None
-
-        try:
-            from leann.bm25 import BM25Index
-            self._bm25 = BM25Index(self._bm25_db_path)
-            return self._bm25
-        except ImportError:
-            logger.warning("BM25 module not available. Using vector-only search.")
-            return None
-
     def _retrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
         """Retrieve nodes using hybrid search (vector + BM25)."""
-        query_str = query_bundle.query_str
-
-        # Vector search — fetch more than top_k to allow fusion to pick best
-        fetch_k = min(self._top_k * 3, self._top_k + 50)
-        vector_results = self._searcher.search(
-            query_str,
-            top_k=fetch_k,
+        results = self._searcher.search(
+            query_bundle.query_str,
+            top_k=self._top_k,
             complexity=self._complexity,
             recompute_embeddings=self._recompute,
+            sparse_score_ratio=self._bm25_weight,
         )
-
-        # BM25 search — BM25Index.search returns list[tuple[str, float]];
-        # normalize to list[dict] for the fusion step.
-        bm25 = self._get_bm25()
-        bm25_results: list[dict] = []
-        if bm25 is not None:
-            try:
-                raw = bm25.search(query_str, top_k=fetch_k)
-                bm25_results = [{"id": pid, "score": score} for pid, score in raw]
-            except Exception as e:
-                logger.warning("BM25 search failed: %s", e)
-
-        # Fuse results
-        if not bm25_results:
-            # Fall back to vector-only
-            return _results_to_nodes(vector_results[:self._top_k])
-
-        return self._fuse(vector_results, bm25_results)
-
-    def _fuse(
-        self, vector_results: list, bm25_results: list
-    ) -> list[NodeWithScore]:
-        """Weighted score fusion of vector and BM25 results."""
-        # Normalize vector scores to [0, 1]
-        v_scores = {}
-        if vector_results:
-            max_v = max(r.score for r in vector_results)
-            min_v = min(r.score for r in vector_results)
-            span_v = max_v - min_v
-            for r in vector_results:
-                # When all scores are equal, use 0.5 ("equal relevance")
-                # rather than 0.0 ("irrelevant").
-                v_scores[r.id] = (r.score - min_v) / span_v if span_v else 0.5
-
-        # Normalize BM25 scores to [0, 1]
-        b_scores = {}
-        if bm25_results:
-            max_b = max(r["score"] for r in bm25_results)
-            min_b = min(r["score"] for r in bm25_results)
-            span_b = max_b - min_b
-            for r in bm25_results:
-                b_scores[r["id"]] = (r["score"] - min_b) / span_b if span_b else 0.5
-
-        # Combine all IDs
-        all_ids = set(v_scores.keys()) | set(b_scores.keys())
-
-        # Build combined scores and text lookup
-        text_lookup = {}
-        meta_lookup = {}
-        for r in vector_results:
-            text_lookup[r.id] = r.text
-            meta_lookup[r.id] = r.metadata
-        for r in bm25_results:
-            if r["id"] not in text_lookup:
-                text_lookup[r["id"]] = r.get("text", "")
-                meta_lookup[r["id"]] = r.get("metadata", {})
-
-        scored = []
-        for doc_id in all_ids:
-            vs = v_scores.get(doc_id, 0.0)
-            bs = b_scores.get(doc_id, 0.0)
-            combined = self._vector_weight * vs + self._bm25_weight * bs
-            scored.append((doc_id, combined))
-
-        # Sort by combined score descending
-        scored.sort(key=lambda x: x[1], reverse=True)
-
-        nodes = []
-        for doc_id, score in scored[:self._top_k]:
-            text = text_lookup.get(doc_id, "")
-            metadata = meta_lookup.get(doc_id, {})
-            node = TextNode(text=text, id_=doc_id, metadata=metadata)
-            nodes.append(NodeWithScore(node=node, score=score))
-
-        return nodes
+        return _results_to_nodes(results)
 
     async def _aretrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
         return self._retrieve(query_bundle)
