@@ -220,7 +220,7 @@ def _start_background(
     log_dir = _get_state_file().parent
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "daemon.log"
-    log_fh = open(log_path, "a")  # noqa: SIM115
+    log_fh = open(log_path, "a")
 
     # Start as a detached subprocess
     proc = subprocess.Popen(
@@ -277,6 +277,7 @@ def _run_foreground(
     backend_module = "leann_backend_hnsw.hnsw_embedding_server"
     try:
         import importlib
+
         importlib.import_module("leann_backend_diskann")
         # DiskANN available — but HNSW embedding server is the universal one
         # that works for both backends' ZMQ protocol.
@@ -351,6 +352,7 @@ def _run_foreground(
 # ---------------------------------------------------------------------------
 # CLI entry point (python -m leann.embedding_daemon)
 # ---------------------------------------------------------------------------
+
 
 def _main():
     """Entry point when run as ``python -m leann.embedding_daemon``."""

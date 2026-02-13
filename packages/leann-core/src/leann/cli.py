@@ -1724,10 +1724,10 @@ Examples:
             else:
                 import datetime
 
-                started = datetime.datetime.fromtimestamp(
-                    state.get("started_at", 0)
-                ).strftime("%Y-%m-%d %H:%M:%S")
-                print(f"Embedding daemon is running:")
+                started = datetime.datetime.fromtimestamp(state.get("started_at", 0)).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                print("Embedding daemon is running:")
                 print(f"  PID:    {state.get('pid')}")
                 print(f"  Port:   {state.get('port')}")
                 print(f"  Model:  {state.get('model_name')}")
