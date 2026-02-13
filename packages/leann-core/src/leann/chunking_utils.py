@@ -226,6 +226,7 @@ def create_ast_chunks(
             repo_metadata = {
                 "file_path": doc.metadata.get("file_path", ""),
                 "file_name": doc.metadata.get("file_name", ""),
+                "source": doc.metadata.get("source", ""),
                 "creation_date": doc.metadata.get("creation_date", ""),
                 "last_modified_date": doc.metadata.get("last_modified_date", ""),
             }
@@ -239,11 +240,11 @@ def create_ast_chunks(
 
             chunks = chunk_builder.chunkify(code_content)
             for chunk in chunks:
-                chunk_text = None
-                astchunk_metadata = {}
+                chunk_text: str | None = None
+                astchunk_metadata: dict[str, Any] = {}
 
                 if hasattr(chunk, "text"):
-                    chunk_text = chunk.text
+                    chunk_text = str(chunk.text) if chunk.text else None
                 elif isinstance(chunk, str):
                     chunk_text = chunk
                 elif isinstance(chunk, dict):
@@ -263,6 +264,7 @@ def create_ast_chunks(
                     doc_metadata = {
                         "file_path": doc.metadata.get("file_path", ""),
                         "file_name": doc.metadata.get("file_name", ""),
+                        "source": doc.metadata.get("source", ""),
                     }
                     if "creation_date" in doc.metadata:
                         doc_metadata["creation_date"] = doc.metadata["creation_date"]
@@ -314,6 +316,7 @@ def create_traditional_chunks(
         doc_metadata = {
             "file_path": doc.metadata.get("file_path", ""),
             "file_name": doc.metadata.get("file_name", ""),
+            "source": doc.metadata.get("source", ""),
         }
         if "creation_date" in doc.metadata:
             doc_metadata["creation_date"] = doc.metadata["creation_date"]
@@ -384,11 +387,20 @@ def create_text_chunks(
         code_docs, text_docs = detect_code_files(documents, local_code_extensions)
         if code_docs:
             try:
-                all_chunks.extend(
-                    create_ast_chunks(
-                        code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
-                    )
+                ast_chunks = create_ast_chunks(
+                    code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
                 )
+                # Prepend line numbers to code chunks for navigation
+                for chunk in ast_chunks:
+                    start_line = chunk.get("metadata", {}).get("start_line_no")
+                    if start_line is not None:
+                        lines = chunk["text"].split("\n")
+                        end_line = start_line + len(lines) - 1
+                        w = len(str(end_line))
+                        chunk["text"] = "\n".join(
+                            f"{start_line + i:>{w}}|{line}" for i, line in enumerate(lines)
+                        )
+                all_chunks.extend(ast_chunks)
             except Exception as e:
                 logger.error(f"AST chunking failed: {e}")
                 if ast_fallback_traditional:
