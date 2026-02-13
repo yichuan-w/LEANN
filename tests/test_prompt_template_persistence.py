@@ -581,7 +581,18 @@ class TestQueryTemplateApplicationInComputeEmbedding:
 
         # Create a concrete implementation for testing
         class TestSearcher(BaseSearcher):
-            def search(self, query_vectors, top_k, complexity, beam_width=1, **kwargs):
+            def search(
+                self,
+                query,
+                top_k,
+                complexity=64,
+                beam_width=1,
+                prune_ratio=0.0,
+                recompute_embeddings=False,
+                pruning_strategy="global",
+                zmq_port=None,
+                **kwargs,
+            ):
                 return {"labels": [], "distances": []}
 
         searcher = object.__new__(TestSearcher)
@@ -625,7 +636,18 @@ class TestQueryTemplateApplicationInComputeEmbedding:
 
         # Create a concrete implementation for testing
         class TestSearcher(BaseSearcher):
-            def search(self, query_vectors, top_k, complexity, beam_width=1, **kwargs):
+            def search(
+                self,
+                query,
+                top_k,
+                complexity=64,
+                beam_width=1,
+                prune_ratio=0.0,
+                recompute_embeddings=False,
+                pruning_strategy="global",
+                zmq_port=None,
+                **kwargs,
+            ):
                 return {"labels": [], "distances": []}
 
         searcher = object.__new__(TestSearcher)
@@ -671,7 +693,18 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         from leann.searcher_base import BaseSearcher
 
         class TestSearcher(BaseSearcher):
-            def search(self, query_vectors, top_k, complexity, beam_width=1, **kwargs):
+            def search(
+                self,
+                query,
+                top_k,
+                complexity=64,
+                beam_width=1,
+                prune_ratio=0.0,
+                recompute_embeddings=False,
+                pruning_strategy="global",
+                zmq_port=None,
+                **kwargs,
+            ):
                 return {"labels": [], "distances": []}
 
         searcher = object.__new__(TestSearcher)
@@ -710,7 +743,18 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         from leann.searcher_base import BaseSearcher
 
         class TestSearcher(BaseSearcher):
-            def search(self, query_vectors, top_k, complexity, beam_width=1, **kwargs):
+            def search(
+                self,
+                query,
+                top_k,
+                complexity=64,
+                beam_width=1,
+                prune_ratio=0.0,
+                recompute_embeddings=False,
+                pruning_strategy="global",
+                zmq_port=None,
+                **kwargs,
+            ):
                 return {"labels": [], "distances": []}
 
         searcher = object.__new__(TestSearcher)
@@ -774,7 +818,18 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         from leann.searcher_base import BaseSearcher
 
         class TestSearcher(BaseSearcher):
-            def search(self, query_vectors, top_k, complexity, beam_width=1, **kwargs):
+            def search(
+                self,
+                query,
+                top_k,
+                complexity=64,
+                beam_width=1,
+                prune_ratio=0.0,
+                recompute_embeddings=False,
+                pruning_strategy="global",
+                zmq_port=None,
+                **kwargs,
+            ):
                 return {"labels": [], "distances": []}
 
         searcher = object.__new__(TestSearcher)

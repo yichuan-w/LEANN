@@ -21,8 +21,9 @@ We welcome contributions! Leann is built by the community, for the community.
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/LEANN-RAG/LEANN-RAG.git
-   cd LEANN-RAG
+   git clone https://github.com/yichuan-w/LEANN.git leann
+   git submodule update --init --recursive
+   cd leann
    ```
 
 3. **Install system dependencies**:
@@ -55,7 +56,7 @@ We use pre-commit hooks to ensure code quality and consistency. This runs automa
 
 1. **Install pre-commit tools**:
    ```bash
-   uv sync lint
+   uv sync --group lint
    ```
 
 2. **Install the git hooks**:

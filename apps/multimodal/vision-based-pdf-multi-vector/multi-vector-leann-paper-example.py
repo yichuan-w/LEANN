@@ -18,10 +18,11 @@ _repo_root = Path(__file__).resolve().parents[3]
 _leann_core_src = _repo_root / "packages" / "leann-core" / "src"
 _leann_hnsw_pkg = _repo_root / "packages" / "leann-backend-hnsw"
 if str(_leann_core_src) not in sys.path:
-    sys.path.append(str(_leann_core_src))
+    sys.path.insert(0, str(_leann_core_src))
 if str(_leann_hnsw_pkg) not in sys.path:
-    sys.path.append(str(_leann_hnsw_pkg))
+    sys.path.insert(0, str(_leann_hnsw_pkg))
 
+from leann_multi_vector import LeannMultiVector
 
 import torch
 from colpali_engine.models import ColPali
@@ -93,9 +94,9 @@ for batch_doc in tqdm(dataloader):
 print(ds[0].shape)
 
 # %%
-# Build HNSW index via LeannRetriever primitives and run search
+# Build HNSW index via LeannMultiVector primitives and run search
 index_path = "./indexes/colpali.leann"
-retriever = LeannRetriever(index_path=index_path, dim=int(ds[0].shape[-1]))
+retriever = LeannMultiVector(index_path=index_path, dim=int(ds[0].shape[-1]))
 retriever.create_collection()
 filepaths = [os.path.join("./pages", name) for name in page_filenames]
 for i in range(len(filepaths)):
