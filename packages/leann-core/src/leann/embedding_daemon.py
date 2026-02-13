@@ -221,6 +221,8 @@ def _start_background(
         env=env,
         start_new_session=True,
     )
+    # The child inherited the fd — close the parent's copy to avoid a leak.
+    log_fh.close()
 
     # Wait briefly and verify it started
     time.sleep(2)
