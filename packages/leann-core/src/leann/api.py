@@ -1337,6 +1337,8 @@ class LeannSearcher:
         if not self.bm25_scorer:
             self._init_bm25()
             logger.info("  BM25 scorer initialized")
+        if self.bm25_scorer is None:
+            return []
         return self.bm25_scorer.search(query, top_k)
 
     def _find_jsonl_file(self) -> Optional[str]:
