@@ -274,13 +274,7 @@ def create_ast_chunks(
                     # Merge document metadata + astchunk metadata
                     combined_metadata = {**doc_metadata, **astchunk_metadata}
 
-                    # Trim partial first line left by overlap
-                    stripped = chunk_text.strip()
-                    if stripped and not stripped[0].isdigit():
-                        first_nl = stripped.find("\n")
-                        if first_nl != -1:
-                            stripped = stripped[first_nl + 1 :]
-                    all_chunks.append({"text": stripped, "metadata": combined_metadata})
+                    all_chunks.append({"text": chunk_text.strip(), "metadata": combined_metadata})
 
             logger.info(
                 f"Created {len(chunks)} AST chunks from {language} file: {doc.metadata.get('file_name', 'unknown')}"
@@ -391,24 +385,22 @@ def create_text_chunks(
     all_chunks = []
     if use_ast_chunking:
         code_docs, text_docs = detect_code_files(documents, local_code_extensions)
-        # Prepend line numbers to code documents for navigation
-        if code_docs:
-            from llama_index.core.schema import MediaResource
-
-            for doc in code_docs:
-                original = doc.get_content()
-                lines = original.split("\n")
-                w = len(str(len(lines)))
-                doc.text_resource = MediaResource(
-                    text="\n".join(f"{i + 1:>{w}}|{line}" for i, line in enumerate(lines))
-                )
         if code_docs:
             try:
-                all_chunks.extend(
-                    create_ast_chunks(
-                        code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
-                    )
+                ast_chunks = create_ast_chunks(
+                    code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
                 )
+                # Prepend line numbers to code chunks for navigation
+                for chunk in ast_chunks:
+                    start_line = chunk.get("metadata", {}).get("start_line_no")
+                    if start_line is not None:
+                        lines = chunk["text"].split("\n")
+                        end_line = start_line + len(lines) - 1
+                        w = len(str(end_line))
+                        chunk["text"] = "\n".join(
+                            f"{start_line + i:>{w}}|{line}" for i, line in enumerate(lines)
+                        )
+                all_chunks.extend(ast_chunks)
             except Exception as e:
                 logger.error(f"AST chunking failed: {e}")
                 if ast_fallback_traditional:
