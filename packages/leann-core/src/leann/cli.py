@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -24,6 +25,37 @@ from .settings import (
     resolve_openai_base_url,
 )
 from .sync import FileSynchronizer
+
+# Manifest file for incremental build: maps source file path -> mtime
+SOURCES_MANIFEST_FILENAME = "documents.leann.sources.json"
+
+
+def _normalize_path(path: str) -> str:
+    """Return absolute path string for consistent manifest keys."""
+    if not path:
+        return path
+    return str(Path(path).resolve())
+
+
+def load_sources_manifest(index_dir: Path, index_name: str) -> dict[str, float]:
+    """Load sources manifest (path -> mtime). Returns {} if file missing or invalid."""
+    manifest_path = index_dir / SOURCES_MANIFEST_FILENAME
+    if not manifest_path.exists():
+        return {}
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("sources", {})
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_sources_manifest(index_dir: Path, index_name: str, sources: dict[str, float]) -> None:
+    """Write sources manifest (path -> mtime)."""
+    manifest_path = index_dir / SOURCES_MANIFEST_FILENAME
+    index_dir.mkdir(parents=True, exist_ok=True)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump({"sources": sources}, f, indent=2)
 
 
 @contextlib.contextmanager
@@ -196,7 +228,7 @@ Examples:
             "--backend-name",
             type=str,
             default="hnsw",
-            choices=["hnsw", "diskann"],
+            choices=["hnsw", "diskann", "ivf"],
             help="Backend to use (default: hnsw)",
         )
         build_parser.add_argument(
@@ -243,7 +275,10 @@ Examples:
             help="Prompt template for queries (different from build template for task-specific models)",
         )
         build_parser.add_argument(
-            "--force", "-f", action="store_true", help="Force rebuild existing index"
+            "--force",
+            "-f",
+            action="store_true",
+            help="Force full rebuild of existing index (without this, build does incremental update: add new files only)",
         )
         build_parser.add_argument(
             "--graph-degree", type=int, default=32, help="Graph degree (default: 32)"
@@ -1727,10 +1762,6 @@ Examples:
             for i, dir_path in enumerate(directories, 1):
                 print(f"    {i}. {Path(dir_path).resolve()}")
 
-        if index_dir.exists() and not args.force:
-            print(f"Index '{index_name}' already exists. Use --force to rebuild.")
-            return
-
         # Configure chunking based on CLI args before loading documents
         # Guard against invalid configurations
         doc_chunk_size = max(1, int(args.doc_chunk_size))
@@ -1767,6 +1798,108 @@ Examples:
         )
         if not all_texts:
             print("No documents found")
+            return
+
+        # Incremental build: index exists and no --force -> add only new files
+        if index_dir.exists() and not args.force:
+            manifest = load_sources_manifest(index_dir, "documents.leann")
+            if not manifest:
+                print("Index was built before incremental support. Use --force to rebuild.")
+                return
+            current_sources = {}
+            for c in all_texts:
+                path = c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source")
+                if path and os.path.isfile(path):
+                    current_sources[_normalize_path(path)] = os.path.getmtime(path)
+            new_paths = {p for p in current_sources if p not in manifest}
+            if not new_paths:
+                print("Index up to date. Use --force to rebuild from scratch.")
+                return
+            new_chunks = [
+                c
+                for c in all_texts
+                if _normalize_path(
+                    c.get("metadata", {}).get("file_path")
+                    or c.get("metadata", {}).get("source")
+                    or ""
+                )
+                in new_paths
+            ]
+            meta_path = index_dir / "documents.leann.meta.json"
+            if not meta_path.exists():
+                print("Index metadata missing. Use --force to rebuild.")
+                return
+            with open(meta_path, encoding="utf-8") as f:
+                meta = json.load(f)
+            if meta.get("backend_name") != "hnsw":
+                print(
+                    f"Incremental update only supported for HNSW backend (index uses '{meta.get('backend_name')}'). Use --force to rebuild."
+                )
+                return
+            if meta.get("is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)):
+                print(
+                    "Incremental update requires a non-compact index. Use --force and rebuild with --no-compact."
+                )
+                return
+            if (
+                meta.get("embedding_model") != args.embedding_model
+                or meta.get("embedding_mode") != args.embedding_mode
+            ):
+                print(
+                    "Use the same --embedding-model and --embedding-mode as the existing index for incremental update."
+                )
+                return
+            from collections import defaultdict
+
+            by_path = defaultdict(list)
+            for c in new_chunks:
+                path = (
+                    c.get("metadata", {}).get("file_path")
+                    or c.get("metadata", {}).get("source")
+                    or ""
+                )
+                by_path[_normalize_path(path)].append(c)
+            for path_key, path_chunks in by_path.items():
+                for idx, c in enumerate(path_chunks):
+                    sid = hashlib.sha256(f"{path_key}:{idx}".encode()).hexdigest()[:16]
+                    c.setdefault("metadata", {})["id"] = sid
+                    c["id"] = sid
+            embedding_options_inc: dict[str, Any] = {}
+            if args.embedding_mode == "ollama":
+                embedding_options_inc["host"] = resolve_ollama_host(args.embedding_host)
+            elif args.embedding_mode == "openai":
+                embedding_options_inc["base_url"] = resolve_openai_base_url(args.embedding_api_base)
+                resolved_embedding_key = resolve_openai_api_key(args.embedding_api_key)
+                if resolved_embedding_key:
+                    embedding_options_inc["api_key"] = resolved_embedding_key
+            if args.query_prompt_template:
+                if args.embedding_prompt_template:
+                    embedding_options_inc["build_prompt_template"] = args.embedding_prompt_template
+                embedding_options_inc["query_prompt_template"] = args.query_prompt_template
+            elif args.embedding_prompt_template:
+                embedding_options_inc["prompt_template"] = args.embedding_prompt_template
+            builder_inc = LeannBuilder(
+                backend_name=args.backend_name,
+                embedding_model=args.embedding_model,
+                embedding_mode=args.embedding_mode,
+                embedding_options=embedding_options_inc or None,
+                graph_degree=args.graph_degree,
+                complexity=args.complexity,
+                is_compact=args.compact,
+                is_recompute=args.recompute,
+                num_threads=args.num_threads,
+            )
+            for chunk in new_chunks:
+                builder_inc.add_text(chunk["text"], metadata=chunk["metadata"])
+            print(
+                f"Updating index '{index_name}' with {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
+            )
+            builder_inc.update_index(index_path)
+            for p in new_paths:
+                manifest[p] = current_sources[p]
+            save_sources_manifest(index_dir, "documents.leann", manifest)
+            print(f"Index updated at {index_path}")
+            self.register_project_dir()
             return
 
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -1806,6 +1939,14 @@ Examples:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
 
         builder.build_index(index_path)
+        # Write sources manifest for future incremental builds
+        full_sources = {}
+        for c in all_texts:
+            path = c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source")
+            if path and os.path.isfile(path):
+                full_sources[_normalize_path(path)] = os.path.getmtime(path)
+        if full_sources:
+            save_sources_manifest(index_dir, "documents.leann", full_sources)
         print(f"Index built at {index_path}")
 
         sync_roots = self._resolve_sync_roots(docs_paths)
