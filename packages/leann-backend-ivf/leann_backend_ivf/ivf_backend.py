@@ -132,7 +132,7 @@ class IVFBuilder(LeannBackendBuilderInterface):
         index_file = index_dir / f"{index_prefix}.index"
         faiss.write_index(index, str(index_file))
 
-        id_to_passage = {i: pid for i, pid in enumerate(ids)}
+        id_to_passage = dict(enumerate(ids))
         _save_id_map(index_dir, index_prefix, id_to_passage, next_id=n)
 
 
@@ -173,13 +173,13 @@ class IVFSearcher(BaseSearcher):
             query = _normalize_l2(query)
         nprobe = nprobe or min(complexity, self._index.nlist)
         self._index.nprobe = nprobe
-        D, I = self._index.search(query, top_k)
+        distances, label_rows = self._index.search(query, top_k)
 
         def map_label(x: int) -> str:
             return self._id_to_passage.get(int(x), str(x))
 
-        string_labels = [[map_label(int(lab)) for lab in row] for row in I]
-        return {"labels": string_labels, "distances": D}
+        string_labels = [[map_label(int(lab)) for lab in row] for row in label_rows]
+        return {"labels": string_labels, "distances": distances}
 
     def compute_query_embedding(
         self,

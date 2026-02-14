@@ -24,10 +24,10 @@ Optional backend kwargs (e.g. via API): `nlist` (default 100), `distance_metric`
 
 Follows the same idea as HNSW’s update path; use these for incremental workflows (e.g. after Merkle tree / file-change API):
 
-- **`add_vectors(index_path, embeddings, passage_ids)`**  
+- **`add_vectors(index_path, embeddings, passage_ids)`**
   Appends vectors to an existing IVF index. `embeddings`: `(N, D)` float32; `passage_ids`: list of N passage id strings (must not already exist).
 
-- **`remove_ids(index_path, passage_ids)`**  
+- **`remove_ids(index_path, passage_ids)`**
   Removes vectors by passage id. Returns the number of vectors removed. Use after detecting changed chunk ids: delete old, then re-insert new.
 
 Example:
