@@ -9,7 +9,7 @@ import logging
 import os
 import subprocess
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Protocol, cast
 
 import numpy as np
 import tiktoken
@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
 log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
 logger.setLevel(log_level)
+
+
+class _SentenceTransformerLike(Protocol):
+    def eval(self) -> Any: ...
+    def parameters(self) -> Any: ...
+    def encode(self, *args: Any, **kwargs: Any) -> Any: ...
+    def half(self) -> Any: ...
+
 
 # Token limit registry for embedding models
 # Used as fallback when dynamic discovery fails (e.g., LM Studio, OpenAI)
@@ -457,7 +465,7 @@ def compute_embeddings_sentence_transformers(
     start_time = time.time()
     if cache_key in _model_cache:
         logger.info(f"Using cached optimized model: {model_name}")
-        model = _model_cache[cache_key]
+        model = cast(_SentenceTransformerLike, _model_cache[cache_key])
     else:
         logger.info(f"Loading and caching optimized SentenceTransformer model: {model_name}")
         from sentence_transformers import SentenceTransformer
@@ -482,7 +490,6 @@ def compute_embeddings_sentence_transformers(
             # TODO: Haven't tested this yet
             torch.set_num_threads(min(8, os.cpu_count() or 4))
             try:
-                # PyTorch's ContextProp type is complex; cast for type checker
                 torch.backends.mkldnn.enabled = True
             except AttributeError:
                 pass
@@ -585,6 +592,8 @@ def compute_embeddings_sentence_transformers(
                 logger.info(f"Applied torch.compile optimization: {model_name}")
             except Exception as e:
                 logger.warning(f"torch.compile optimization failed: {e}")
+
+        model = cast(_SentenceTransformerLike, model)
 
         # Set model to eval mode and disable gradients for inference
         model.eval()
