@@ -193,8 +193,9 @@ else:
     if not REBUILD_INDEX:
         retriever = _load_retriever_if_index_exists(INDEX_PATH)
         if retriever is not None:
+            retriever_any = cast(Any, retriever)
             print(f"✓ Index loaded from {INDEX_PATH}")
-            print(f"✓ Images available at: {retriever._images_dir_path()}")
+            print(f"✓ Images available at: {retriever_any._images_dir_path()}")
             need_to_build_index = False
         else:
             print(f"Index not found, will build new index")
@@ -223,7 +224,7 @@ if need_to_build_index:
         # Use filenames as identifiers instead of full paths for cleaner metadata
         filepaths = [os.path.basename(fp) for fp in filepaths]
     elif USE_HF_DATASET:
-        from datasets import Dataset, DatasetDict, concatenate_datasets, load_dataset
+        from datasets import Dataset, concatenate_datasets, load_dataset
 
         # Determine which datasets to load
         if DATASET_NAMES is not None:
@@ -271,6 +272,11 @@ if need_to_build_index:
                         ) from e
                 raise
 
+            if not isinstance(dataset_dict, dict):
+                dataset = cast(Dataset, dataset_dict)
+                all_datasets_to_concat.append(dataset)
+                continue
+
             # Determine which splits to load
             if DATASET_SPLITS is None:
                 # Auto-detect: try to load all available splits
@@ -284,7 +290,9 @@ if need_to_build_index:
             datasets_to_concat: list[Dataset] = []
             for split in splits_to_load:
                 if split not in dataset_dict:
-                    print(f"  Warning: Split '{split}' not found in dataset. Available splits: {list(dataset_dict.keys())}")
+                    print(
+                        f"  Warning: Split '{split}' not found in dataset. Available splits: {list(dataset_dict.keys())}"
+                    )
                     continue
                 split_dataset = cast(Dataset, dataset_dict[split])
                 print(f"  Loaded split '{split}': {len(split_dataset)} pages")
@@ -579,16 +587,20 @@ else:
     # Original LEANN search
     query_np = q_vec.float().numpy()
 
+    if retriever is None:
+        raise RuntimeError("Retriever not initialized")
+    retriever_any = cast(Any, retriever)
+
     if SEARCH_METHOD == "ann":
-        results = retriever.search(query_np, topk=TOPK, first_stage_k=FIRST_STAGE_K)
+        results = retriever_any.search(query_np, topk=TOPK, first_stage_k=FIRST_STAGE_K)
         search_secs = time.perf_counter() - _t0
         print(f"[Timing] Search (ANN): {search_secs:.3f}s (first_stage_k={FIRST_STAGE_K})")
     elif SEARCH_METHOD == "exact":
-        results = retriever.search_exact(query_np, topk=TOPK, first_stage_k=FIRST_STAGE_K)
+        results = retriever_any.search_exact(query_np, topk=TOPK, first_stage_k=FIRST_STAGE_K)
         search_secs = time.perf_counter() - _t0
         print(f"[Timing] Search (Exact rerank): {search_secs:.3f}s (first_stage_k={FIRST_STAGE_K})")
     elif SEARCH_METHOD == "exact-all":
-        results = retriever.search_exact_all(query_np, topk=TOPK)
+        results = retriever_any.search_exact_all(query_np, topk=TOPK)
         search_secs = time.perf_counter() - _t0
         print(f"[Timing] Search (Exact all): {search_secs:.3f}s")
     else:
@@ -615,12 +627,15 @@ else:
             top_images.append(image)
         else:
             # Original LEANN: retrieve from retriever
-            image = retriever.get_image(doc_id)
+            if retriever is None:
+                raise RuntimeError("Retriever not initialized")
+            retriever_any = cast(Any, retriever)
+            image = retriever_any.get_image(doc_id)
             if image is None:
                 print(f"Warning: Could not retrieve image for doc_id {doc_id}")
                 continue
 
-            metadata = retriever.get_metadata(doc_id)
+            metadata = retriever_any.get_metadata(doc_id)
             path = metadata.get("filepath", "unknown") if metadata else "unknown"
             top_images.append(image)
 

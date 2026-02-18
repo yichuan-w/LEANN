@@ -8,7 +8,7 @@ import difflib
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import torch
 
@@ -853,7 +853,7 @@ class OpenAIChat(LLMInterface):
         logger.info(f"Sending request to OpenAI with model {self.model}")
 
         try:
-            response = self.client.chat.completions.create(**params)
+            response = cast(Any, self.client.chat.completions).create(**params)
             print(
                 f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}"
             )

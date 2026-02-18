@@ -1256,10 +1256,13 @@ class LeannSearcher:
 
     def _bm25_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Perform BM25 search on raw passages"""
-        if not self.bm25_scorer:
+        if self.bm25_scorer is None:
             self._init_bm25()
             logger.info("  BM25 scorer initialized")
-        return self.bm25_scorer.search(query, top_k)
+        scorer = self.bm25_scorer
+        if scorer is None:
+            raise RuntimeError("BM25 scorer failed to initialize")
+        return scorer.search(query, top_k)
 
     def _find_jsonl_file(self) -> Optional[str]:
         """Find the .jsonl file containing raw passages for grep search"""
