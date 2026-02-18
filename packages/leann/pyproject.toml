@@ -32,7 +32,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# All backends now included by default
+cpu = [
+    "leann-core[cpu]>=0.1.0",
+]
 
 [project.urls]
 Repository = "https://github.com/yichuan-w/LEANN"

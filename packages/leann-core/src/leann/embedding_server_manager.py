@@ -412,7 +412,8 @@ class EmbeddingServerManager:
             atexit.register(self._finalize_process)
             self._atexit_registered = True
         # Touch finalizer so it knows there is a live process
-        if getattr(self, "_finalizer", None) is not None and not self._finalizer.alive:
+        finalizer = getattr(self, "_finalizer", None)
+        if finalizer is not None and getattr(finalizer, "alive", False) is False:
             try:
                 import weakref
 

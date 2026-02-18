@@ -43,7 +43,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install ty
-        run: uv tool install ty
+        run: uv tool install ty==0.0.17
 
       - name: Run ty type checker
         run: |

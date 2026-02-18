@@ -8,11 +8,12 @@ CLI, API, and RAG example interactive modes.
 import atexit
 import os
 from pathlib import Path
+from types import ModuleType
 from typing import Callable, Optional
 
 # Try to import readline with fallback for Windows
 HAS_READLINE = False
-readline = None
+readline: ModuleType | None = None
 try:
     import readline
 
@@ -58,6 +59,10 @@ class InteractiveSession:
             # Readline not available (likely Windows), skip setup
             self._setup_complete = True
             return
+        rl = readline
+        if rl is None:
+            self._setup_complete = True
+            return
 
         # History file setup
         history_dir = Path.home() / ".leann" / "history"
@@ -66,13 +71,13 @@ class InteractiveSession:
 
         # Load history if exists
         try:
-            readline.read_history_file(str(history_file))
-            readline.set_history_length(1000)
+            rl.read_history_file(str(history_file))
+            rl.set_history_length(1000)
         except FileNotFoundError:
             pass
 
         # Save history on exit
-        atexit.register(readline.write_history_file, str(history_file))
+        atexit.register(rl.write_history_file, str(history_file))
 
         # Optional: Enable vi editing mode (commented out by default)
         # readline.parse_and_bind("set editing-mode vi")
@@ -92,14 +97,18 @@ class InteractiveSession:
         if not HAS_READLINE:
             print("  History not available (readline not supported on this system)")
             return
+        rl = readline
+        if rl is None:
+            print("  History not available (readline not supported on this system)")
+            return
 
-        history_length = readline.get_current_history_length()
+        history_length = rl.get_current_history_length()
         if history_length == 0:
             print("  No history available")
             return
 
         for i in range(history_length):
-            item = readline.get_history_item(i + 1)
+            item = rl.get_history_item(i + 1)
             if item:
                 print(f"  {i + 1}: {item}")
 

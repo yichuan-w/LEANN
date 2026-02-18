@@ -7,6 +7,13 @@ LEANN is a revolutionary vector database that democratizes personal AI. Transfor
 ```bash
 # Default installation (includes both HNSW and DiskANN backends)
 uv pip install leann
+
+# CPU-only install (Linux)
+uv pip install \
+  --default-index https://download.pytorch.org/whl/cpu \
+  --index https://pypi.org/simple \
+  --index-strategy first-index \
+  "leann[cpu]"
 ```
 
 ## Quick Start
