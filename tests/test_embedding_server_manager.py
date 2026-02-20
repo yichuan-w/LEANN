@@ -7,8 +7,8 @@ from leann.embedding_server_manager import EmbeddingServerManager
 
 
 class DummyProcess:
-    def __init__(self):
-        self.pid = 12345
+    def __init__(self, pid=12345):
+        self.pid = pid
         self._terminated = False
 
     def poll(self):
@@ -213,3 +213,134 @@ def test_stop_daemons_filters_by_backend_and_passages(tmp_path, monkeypatch):
     assert stopped == 1
     assert killed == [(12345, 15)]
     assert not record.exists()
+
+
+def test_daemon_registry_reuse_across_manager_instances(tmp_path, monkeypatch):
+    """Second manager should adopt the daemon started by first manager."""
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+    monkeypatch.setattr(
+        "leann.embedding_server_manager._get_available_port",
+        lambda start_port: start_port,
+    )
+    monkeypatch.setattr("leann.embedding_server_manager._check_port", lambda port: True)
+    monkeypatch.setattr("leann.embedding_server_manager._pid_is_alive", lambda pid: pid == 22222)
+
+    starts = []
+
+    def fake_start_new_server(self, port, model_name, embedding_mode, **kwargs):
+        starts.append((port, model_name, embedding_mode))
+        self.server_process = DummyProcess(pid=22222)
+        self.server_port = port
+        self._server_config = kwargs.get("config_signature")
+        return True, port
+
+    monkeypatch.setattr(EmbeddingServerManager, "_start_new_server", fake_start_new_server)
+
+    manager1 = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    ok1, port1 = manager1.start_server(
+        port=6011,
+        model_name="test-model",
+        use_daemon=True,
+        daemon_ttl_seconds=120,
+    )
+    assert ok1 and port1 == 6011
+    assert len(starts) == 1
+
+    manager2 = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    ok2, port2 = manager2.start_server(
+        port=6011,
+        model_name="test-model",
+        use_daemon=True,
+        daemon_ttl_seconds=120,
+    )
+    assert ok2 and port2 == 6011
+    # No second process spawn: adopted from registry.
+    assert len(starts) == 1
+    assert manager2.server_process is None
+
+
+def test_stale_registry_falls_back_to_fresh_start(tmp_path, monkeypatch):
+    """If registry points to dead daemon, manager should start a new process."""
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+    monkeypatch.setattr(
+        "leann.embedding_server_manager._get_available_port",
+        lambda start_port: start_port,
+    )
+
+    starts = []
+
+    def fake_start_new_server(self, port, model_name, embedding_mode, **kwargs):
+        starts.append(port)
+        self.server_process = DummyProcess(pid=33333)
+        self.server_port = port
+        self._server_config = kwargs.get("config_signature")
+        return True, port
+
+    monkeypatch.setattr(EmbeddingServerManager, "_start_new_server", fake_start_new_server)
+
+    manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    signature = manager._build_config_signature(
+        model_name="test-model",
+        embedding_mode="sentence-transformers",
+        provider_options=None,
+        passages_file=None,
+        distance_metric=None,
+    )
+    stale_file = registry_dir / f"{manager._registry_key(signature)}.json"
+    stale_file.write_text(
+        json.dumps(
+            {
+                "pid": 999999,
+                "port": 6012,
+                "backend_module_name": "leann_backend_hnsw.hnsw_embedding_server",
+                "config_signature": signature,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("leann.embedding_server_manager._pid_is_alive", lambda pid: False)
+    monkeypatch.setattr("leann.embedding_server_manager._check_port", lambda port: False)
+
+    ok, port = manager.start_server(
+        port=6012,
+        model_name="test-model",
+        use_daemon=True,
+    )
+    assert ok and port == 6012
+    assert starts == [6012]
+    assert stale_file.exists()
+    refreshed = json.loads(stale_file.read_text(encoding="utf-8"))
+    assert refreshed["pid"] == 33333
+
+
+def test_build_server_command_includes_daemon_and_warmup_flags():
+    manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    command = manager._build_server_command(
+        port=6020,
+        model_name="m",
+        embedding_mode="sentence-transformers",
+        distance_metric="mips",
+        enable_warmup=True,
+        use_daemon=True,
+        daemon_ttl_seconds=321,
+    )
+    assert "--enable-warmup" in command
+    assert "--daemon-mode" in command
+    assert "--daemon-ttl" in command
+    ttl_idx = command.index("--daemon-ttl")
+    assert command[ttl_idx + 1] == "321"
+
+    command_no_daemon = manager._build_server_command(
+        port=6020,
+        model_name="m",
+        embedding_mode="sentence-transformers",
+        enable_warmup=False,
+        use_daemon=False,
+    )
+    assert "--daemon-mode" not in command_no_daemon
+    assert "--enable-warmup" not in command_no_daemon
