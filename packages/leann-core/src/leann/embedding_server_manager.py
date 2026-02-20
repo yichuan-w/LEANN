@@ -22,6 +22,7 @@ logging.basicConfig(
     format="%(levelname)s - %(name)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+_LOCK_STALE_SECONDS = 600
 
 
 def _is_colab_environment() -> bool:
@@ -660,10 +661,14 @@ class EmbeddingServerManager:
     def _registry_lock(self, config_signature: dict[str, Any]):
         """Best-effort cross-process lock around a daemon registry key."""
         lock_file = None
+        lock_info_path: Optional[Path] = None
         try:
             lock_path = self._registry_dir()
             lock_path.mkdir(parents=True, exist_ok=True)
-            lock_file = (lock_path / f"{self._registry_key(config_signature)}.lock").open("a+")
+            lock_key = self._registry_key(config_signature)
+            lock_file = (lock_path / f"{lock_key}.lock").open("a+")
+            lock_info_path = lock_path / f"{lock_key}.lockinfo.json"
+            self._recover_stale_lock_info(lock_info_path)
             try:
                 import fcntl
 
@@ -671,8 +676,11 @@ class EmbeddingServerManager:
             except Exception:
                 # Non-POSIX or unavailable locking: proceed without hard lock.
                 pass
+            self._write_lock_info(lock_info_path)
             yield
         finally:
+            if lock_info_path is not None:
+                lock_info_path.unlink(missing_ok=True)
             if lock_file is not None:
                 try:
                     import fcntl
@@ -681,6 +689,27 @@ class EmbeddingServerManager:
                 except Exception:
                     pass
                 lock_file.close()
+
+    def _recover_stale_lock_info(self, lock_info_path: Path) -> None:
+        if not lock_info_path.exists():
+            return
+        try:
+            info = json.loads(lock_info_path.read_text(encoding="utf-8"))
+            pid = int(info.get("pid") or 0)
+            ts = float(info.get("ts") or 0)
+        except Exception:
+            lock_info_path.unlink(missing_ok=True)
+            return
+
+        age = (time.time() - ts) if ts else (_LOCK_STALE_SECONDS + 1)
+        if age > _LOCK_STALE_SECONDS or (pid > 0 and not _pid_is_alive(pid)):
+            lock_info_path.unlink(missing_ok=True)
+
+    def _write_lock_info(self, lock_info_path: Path) -> None:
+        payload = {"pid": os.getpid(), "ts": time.time()}
+        tmp_path = lock_info_path.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(tmp_path, lock_info_path)
 
     def _registry_key(self, config_signature: dict[str, Any]) -> str:
         payload = {
@@ -708,7 +737,9 @@ class EmbeddingServerManager:
             "created_at": time.time(),
             "config_signature": config_signature,
         }
-        registry_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        tmp_path = registry_path.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        os.replace(tmp_path, registry_path)
         return registry_path
 
     def _adopt_registered_server(self, config_signature: dict[str, Any]) -> Optional[int]:

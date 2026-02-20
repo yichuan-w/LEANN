@@ -455,3 +455,57 @@ def test_concurrent_daemon_start_only_spawns_once(tmp_path, monkeypatch):
     assert all(ok and port == 6040 for ok, port in results)
     # Exactly one actual process start, one adopts registry record.
     assert len(starts) == 1
+
+
+def test_registry_record_write_is_atomic(tmp_path, monkeypatch):
+    """Registry writes should go through temp file + os.replace."""
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+
+    manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    manager.server_process = DummyProcess(pid=88888)
+
+    calls = []
+    real_replace = os.replace
+
+    def tracked_replace(src, dst):
+        calls.append((str(src), str(dst)))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", tracked_replace)
+
+    path = manager._write_registry_record(
+        port=6060,
+        config_signature={"model_name": "m"},
+        daemon_ttl_seconds=123,
+    )
+    assert path.exists()
+    assert calls, "os.replace should be used for atomic write"
+    src, dst = calls[0]
+    assert src.endswith(".json.tmp")
+    assert dst.endswith(".json")
+
+
+def test_stale_lock_info_removed_when_pid_dead(tmp_path, monkeypatch):
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+    monkeypatch.setattr("leann.embedding_server_manager._pid_is_alive", lambda pid: False)
+
+    manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    signature = manager._build_config_signature(
+        model_name="x",
+        embedding_mode="sentence-transformers",
+        provider_options=None,
+        passages_file=None,
+        distance_metric=None,
+    )
+    key = manager._registry_key(signature)
+    lock_info = registry_dir / f"{key}.lockinfo.json"
+    lock_info.write_text(json.dumps({"pid": 999999, "ts": time.time()}), encoding="utf-8")
+
+    with manager._registry_lock(signature):
+        pass
+
+    assert not lock_info.exists()
