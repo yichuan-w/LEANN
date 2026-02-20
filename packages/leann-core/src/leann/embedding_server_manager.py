@@ -1,4 +1,5 @@
 import atexit
+import contextlib
 import hashlib
 import json
 import logging
@@ -209,13 +210,14 @@ class EmbeddingServerManager:
 
         # Reuse an already-running daemon from registry if possible.
         if use_daemon and not _is_colab_environment():
-            adopted = self._adopt_registered_server(config_signature)
-            if adopted is not None:
-                self.server_process = None
-                self.server_port = adopted
-                self._server_config = config_signature
-                self._daemon_mode = True
-                return True, adopted
+            with self._registry_lock(config_signature):
+                adopted = self._adopt_registered_server(config_signature)
+                if adopted is not None:
+                    self.server_process = None
+                    self.server_port = adopted
+                    self._server_config = config_signature
+                    self._daemon_mode = True
+                    return True, adopted
 
         # For Colab environment, use a different strategy
         if _is_colab_environment():
@@ -236,7 +238,33 @@ class EmbeddingServerManager:
             logger.error("No available ports found")
             return False, port
 
-        # Start a new server
+        # Start a new server (guarded by lock in daemon mode to avoid race).
+        if use_daemon and not _is_colab_environment():
+            with self._registry_lock(config_signature):
+                adopted = self._adopt_registered_server(config_signature)
+                if adopted is not None:
+                    self.server_process = None
+                    self.server_port = adopted
+                    self._server_config = config_signature
+                    self._daemon_mode = True
+                    return True, adopted
+                started, actual_port = self._start_new_server(
+                    actual_port,
+                    model_name,
+                    embedding_mode,
+                    provider_options=provider_options,
+                    config_signature=config_signature,
+                    **kwargs,
+                )
+                if started:
+                    self._daemon_mode = True
+                    self._registry_path = self._write_registry_record(
+                        port=actual_port,
+                        config_signature=config_signature,
+                        daemon_ttl_seconds=daemon_ttl_seconds,
+                    )
+                return started, actual_port
+
         started, actual_port = self._start_new_server(
             actual_port,
             model_name,
@@ -246,13 +274,7 @@ class EmbeddingServerManager:
             **kwargs,
         )
         if started:
-            self._daemon_mode = use_daemon
-            if use_daemon:
-                self._registry_path = self._write_registry_record(
-                    port=actual_port,
-                    config_signature=config_signature,
-                    daemon_ttl_seconds=daemon_ttl_seconds,
-                )
+            self._daemon_mode = False
         return started, actual_port
 
     def _build_config_signature(
@@ -633,6 +655,32 @@ class EmbeddingServerManager:
     @staticmethod
     def _registry_dir() -> Path:
         return Path.home() / ".leann" / "servers"
+
+    @contextlib.contextmanager
+    def _registry_lock(self, config_signature: dict[str, Any]):
+        """Best-effort cross-process lock around a daemon registry key."""
+        lock_file = None
+        try:
+            lock_path = self._registry_dir()
+            lock_path.mkdir(parents=True, exist_ok=True)
+            lock_file = (lock_path / f"{self._registry_key(config_signature)}.lock").open("a+")
+            try:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            except Exception:
+                # Non-POSIX or unavailable locking: proceed without hard lock.
+                pass
+            yield
+        finally:
+            if lock_file is not None:
+                try:
+                    import fcntl
+
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    pass
+                lock_file.close()
 
     def _registry_key(self, config_signature: dict[str, Any]) -> str:
         payload = {

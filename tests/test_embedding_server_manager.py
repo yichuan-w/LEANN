@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import time
 
 import pytest
@@ -410,3 +411,47 @@ def test_stop_server_detaches_when_daemon_mode(monkeypatch):
     assert manager.server_process is None
     assert manager.server_port is None
     assert manager._server_config is None
+
+
+def test_concurrent_daemon_start_only_spawns_once(tmp_path, monkeypatch):
+    """Concurrent calls should be serialized by registry lock for same signature."""
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+    monkeypatch.setattr(
+        "leann.embedding_server_manager._get_available_port",
+        lambda start_port: start_port,
+    )
+    monkeypatch.setattr("leann.embedding_server_manager._check_port", lambda port: True)
+    monkeypatch.setattr("leann.embedding_server_manager._pid_is_alive", lambda pid: pid in (77777,))
+
+    starts = []
+    def fake_start_new_server(self, port, model_name, embedding_mode, **kwargs):
+        # Force overlap window between two starters.
+        time.sleep(0.05)
+        starts.append((self, port))
+        self.server_process = DummyProcess(pid=77777)
+        self.server_port = port
+        self._server_config = kwargs.get("config_signature")
+        return True, port
+
+    monkeypatch.setattr(EmbeddingServerManager, "_start_new_server", fake_start_new_server)
+
+    results = []
+
+    def runner():
+        manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+        ok, port = manager.start_server(port=6040, model_name="test-model", use_daemon=True)
+        results.append((ok, port))
+
+    t1 = threading.Thread(target=runner)
+    t2 = threading.Thread(target=runner)
+    t1.start()
+    t2.start()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert len(results) == 2
+    assert all(ok and port == 6040 for ok, port in results)
+    # Exactly one actual process start, one adopts registry record.
+    assert len(starts) == 1
