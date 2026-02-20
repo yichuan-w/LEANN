@@ -344,3 +344,69 @@ def test_build_server_command_includes_daemon_and_warmup_flags():
     )
     assert "--daemon-mode" not in command_no_daemon
     assert "--enable-warmup" not in command_no_daemon
+
+
+def test_corrupted_registry_file_is_recovered_on_start(tmp_path, monkeypatch):
+    """Invalid registry json should not block startup; file is replaced."""
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+    monkeypatch.setattr(
+        "leann.embedding_server_manager._get_available_port",
+        lambda start_port: start_port,
+    )
+
+    starts = []
+
+    def fake_start_new_server(self, port, model_name, embedding_mode, **kwargs):
+        starts.append(port)
+        self.server_process = DummyProcess(pid=44444)
+        self.server_port = port
+        self._server_config = kwargs.get("config_signature")
+        return True, port
+
+    monkeypatch.setattr(EmbeddingServerManager, "_start_new_server", fake_start_new_server)
+
+    manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    signature = manager._build_config_signature(
+        model_name="test-model",
+        embedding_mode="sentence-transformers",
+        provider_options=None,
+        passages_file=None,
+        distance_metric=None,
+    )
+    record_path = registry_dir / f"{manager._registry_key(signature)}.json"
+    record_path.write_text("{invalid-json", encoding="utf-8")
+
+    monkeypatch.setattr("leann.embedding_server_manager._pid_is_alive", lambda pid: False)
+    monkeypatch.setattr("leann.embedding_server_manager._check_port", lambda port: False)
+
+    ok, port = manager.start_server(port=6030, model_name="test-model", use_daemon=True)
+    assert ok and port == 6030
+    assert starts == [6030]
+    data = json.loads(record_path.read_text(encoding="utf-8"))
+    assert data["pid"] == 44444
+
+
+def test_stop_server_detaches_when_daemon_mode(monkeypatch):
+    """Daemon mode should detach manager without terminating shared process."""
+    manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    manager.server_process = DummyProcess(pid=55555)
+    manager.server_port = 6031
+    manager._server_config = {"model_name": "m"}
+    manager._daemon_mode = True
+
+    # If terminate is called this test should fail.
+    called = {"terminate": 0}
+
+    def fail_terminate():
+        called["terminate"] += 1
+        raise AssertionError("terminate should not be called in daemon detach path")
+
+    manager.server_process.terminate = fail_terminate  # type: ignore[method-assign]
+
+    manager.stop_server()
+    assert called["terminate"] == 0
+    assert manager.server_process is None
+    assert manager.server_port is None
+    assert manager._server_config is None

@@ -165,3 +165,45 @@ def test_daemon_start_calls_searcher_warmup(monkeypatch):
     assert state["warmup_called"] == 1
     assert state["init_kwargs"]["use_daemon"] is True
     assert state["init_kwargs"]["daemon_ttl_seconds"] == 88
+
+
+def test_daemon_status_all_lists_records(monkeypatch, capsys):
+    cli = LeannCLI()
+    monkeypatch.setattr(
+        "leann.cli.EmbeddingServerManager.list_daemons",
+        lambda: [
+            {
+                "pid": 301,
+                "port": 6001,
+                "backend_module_name": "leann_backend_hnsw.hnsw_embedding_server",
+                "config_signature": {"model_name": "m-a"},
+            },
+            {
+                "pid": 302,
+                "port": 6002,
+                "backend_module_name": "leann_backend_diskann.diskann_embedding_server",
+                "config_signature": {"model_name": "m-b"},
+            },
+        ],
+    )
+    args = argparse.Namespace(daemon_command="status", index_name=None)
+    asyncio.run(cli.daemon_command(args))
+    out = capsys.readouterr().out
+    assert "Active embedding daemons: 2" in out
+    assert "pid=301" in out
+    assert "pid=302" in out
+
+
+def test_daemon_stop_all_calls_manager(monkeypatch):
+    cli = LeannCLI()
+    captured = {"called": False}
+
+    def fake_stop_daemons(**kwargs):
+        captured["called"] = True
+        assert kwargs == {}
+        return 2
+
+    monkeypatch.setattr("leann.cli.EmbeddingServerManager.stop_daemons", fake_stop_daemons)
+    args = argparse.Namespace(daemon_command="stop", index_name=None, all=True)
+    asyncio.run(cli.daemon_command(args))
+    assert captured["called"] is True
