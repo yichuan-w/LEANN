@@ -42,6 +42,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         self.embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
         self.embedding_options = self.meta.get("embedding_options", {})
+        self.enable_warmup = bool(kwargs.get("enable_warmup", True))
+        self.use_daemon = bool(kwargs.get("use_daemon", True))
+        self.daemon_ttl_seconds = int(kwargs.get("daemon_ttl_seconds", 900))
 
         self.embedding_server_manager = EmbeddingServerManager(
             backend_module_name=backend_module_name,
@@ -88,7 +91,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             embedding_mode=self.embedding_mode,
             passages_file=passages_source_file,
             distance_metric=distance_metric,
-            enable_warmup=kwargs.get("enable_warmup", False),
+            enable_warmup=kwargs.get("enable_warmup", self.enable_warmup),
+            use_daemon=kwargs.get("use_daemon", self.use_daemon),
+            daemon_ttl_seconds=kwargs.get("daemon_ttl_seconds", self.daemon_ttl_seconds),
             provider_options=search_provider_options,
         )
         if not server_started:
@@ -131,7 +136,11 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 passages_source_file = self.index_dir / f"{self.index_path.name}.meta.json"
                 # Convert to absolute path to ensure server can find it
                 zmq_port = self._ensure_server_running(
-                    str(passages_source_file.resolve()), zmq_port
+                    str(passages_source_file.resolve()),
+                    zmq_port,
+                    enable_warmup=self.enable_warmup,
+                    use_daemon=self.use_daemon,
+                    daemon_ttl_seconds=self.daemon_ttl_seconds,
                 )
 
                 return self._compute_embedding_via_server([query], zmq_port)[

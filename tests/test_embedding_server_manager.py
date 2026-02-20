@@ -1,4 +1,5 @@
 import json
+import os
 import time
 
 import pytest
@@ -102,6 +103,7 @@ def test_server_restarts_when_metadata_changes(tmp_path, embedding_manager):
         port=6000,
         model_name="test-model",
         passages_file=str(meta_path),
+        use_daemon=False,
     )
     assert ok
     assert port == 6000
@@ -114,6 +116,7 @@ def test_server_restarts_when_metadata_changes(tmp_path, embedding_manager):
         port=6000,
         model_name="test-model",
         passages_file=str(meta_path),
+        use_daemon=False,
     )
     assert ok
     assert port_again == 6000
@@ -128,6 +131,7 @@ def test_server_restarts_when_metadata_changes(tmp_path, embedding_manager):
         port=6000,
         model_name="test-model",
         passages_file=str(meta_path),
+        use_daemon=False,
     )
     assert ok
     assert port_third == 6000
@@ -135,3 +139,77 @@ def test_server_restarts_when_metadata_changes(tmp_path, embedding_manager):
 
     updated_signature = start_calls[1]["passages_signature"]
     assert updated_signature != initial_signature
+
+
+def test_list_daemons_ignores_stale_records(tmp_path, monkeypatch):
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+
+    stale = registry_dir / "stale.json"
+    stale.write_text(
+        json.dumps(
+            {
+                "pid": 999999,
+                "port": 65531,
+                "backend_module_name": "leann_backend_hnsw.hnsw_embedding_server",
+                "config_signature": {"passages_file": "/tmp/a.meta.json"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    records = EmbeddingServerManager.list_daemons()
+    assert records == []
+    assert not stale.exists()
+
+
+def test_stop_daemons_filters_by_backend_and_passages(tmp_path, monkeypatch):
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+
+    meta_path = (tmp_path / "x.meta.json").resolve()
+    record = registry_dir / "daemon.json"
+    record.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "port": 6001,
+                "backend_module_name": "leann_backend_hnsw.hnsw_embedding_server",
+                "config_signature": {"passages_file": str(meta_path)},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        EmbeddingServerManager,
+        "list_daemons",
+        classmethod(
+            lambda cls: [
+                {
+                    "pid": 12345,
+                    "port": 6001,
+                    "backend_module_name": "leann_backend_hnsw.hnsw_embedding_server",
+                    "config_signature": {"passages_file": str(meta_path)},
+                    "record_path": str(record),
+                }
+            ]
+        ),
+    )
+
+    killed: list[tuple[int, int]] = []
+
+    def fake_kill(pid: int, sig: int):
+        killed.append((pid, sig))
+
+    monkeypatch.setattr(os, "kill", fake_kill)
+
+    stopped = EmbeddingServerManager.stop_daemons(
+        backend_module_name="leann_backend_hnsw.hnsw_embedding_server",
+        passages_file=str(meta_path),
+    )
+    assert stopped == 1
+    assert killed == [(12345, 15)]
+    assert not record.exists()

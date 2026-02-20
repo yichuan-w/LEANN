@@ -1,4 +1,5 @@
 import atexit
+import hashlib
 import json
 import logging
 import os
@@ -7,7 +8,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from .settings import encode_provider_options
 
@@ -44,6 +45,17 @@ def _check_port(port: int) -> bool:
     """Check if a port is in use"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(("localhost", port)) == 0
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """Best-effort liveness check for a process id."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
 
 
 # Note: All cross-process scanning helpers removed for simplicity
@@ -146,6 +158,8 @@ class EmbeddingServerManager:
         self.server_port: Optional[int] = None
         # Track last-started config for in-process reuse only
         self._server_config: Optional[dict] = None
+        self._daemon_mode = False
+        self._registry_path: Optional[Path] = None
         self._atexit_registered = False
         # Also register a weakref finalizer to ensure cleanup when manager is GC'ed
         try:
@@ -166,12 +180,16 @@ class EmbeddingServerManager:
         # passages_file may be present in kwargs for server CLI, but we don't need it here
         provider_options = kwargs.pop("provider_options", None)
         passages_file = kwargs.get("passages_file", "")
+        distance_metric = kwargs.get("distance_metric", "")
+        use_daemon = bool(kwargs.get("use_daemon", True))
+        daemon_ttl_seconds = int(kwargs.get("daemon_ttl_seconds", 900))
 
         config_signature = self._build_config_signature(
             model_name=model_name,
             embedding_mode=embedding_mode,
             provider_options=provider_options,
             passages_file=passages_file,
+            distance_metric=distance_metric,
         )
 
         # If this manager already has a live server, just reuse it
@@ -184,10 +202,20 @@ class EmbeddingServerManager:
             logger.info("Reusing in-process server")
             return True, self.server_port
 
-        # Configuration changed, stop existing server before starting a new one
-        if self.server_process and self.server_process.poll() is None:
+        # Configuration changed, stop existing ephemeral server before starting a new one
+        if self.server_process and self.server_process.poll() is None and not self._daemon_mode:
             logger.info("Existing server configuration differs; restarting embedding server")
             self.stop_server()
+
+        # Reuse an already-running daemon from registry if possible.
+        if use_daemon and not _is_colab_environment():
+            adopted = self._adopt_registered_server(config_signature)
+            if adopted is not None:
+                self.server_process = None
+                self.server_port = adopted
+                self._server_config = config_signature
+                self._daemon_mode = True
+                return True, adopted
 
         # For Colab environment, use a different strategy
         if _is_colab_environment():
@@ -209,7 +237,7 @@ class EmbeddingServerManager:
             return False, port
 
         # Start a new server
-        return self._start_new_server(
+        started, actual_port = self._start_new_server(
             actual_port,
             model_name,
             embedding_mode,
@@ -217,6 +245,15 @@ class EmbeddingServerManager:
             config_signature=config_signature,
             **kwargs,
         )
+        if started:
+            self._daemon_mode = use_daemon
+            if use_daemon:
+                self._registry_path = self._write_registry_record(
+                    port=actual_port,
+                    config_signature=config_signature,
+                    daemon_ttl_seconds=daemon_ttl_seconds,
+                )
+        return started, actual_port
 
     def _build_config_signature(
         self,
@@ -225,12 +262,17 @@ class EmbeddingServerManager:
         embedding_mode: str,
         provider_options: Optional[dict],
         passages_file: Optional[str],
+        distance_metric: Optional[str],
     ) -> dict:
         """Create a signature describing the current server configuration."""
+        passages_path = ""
+        if passages_file:
+            passages_path = _safe_resolve(Path(passages_file))
         return {
             "model_name": model_name,
-            "passages_file": passages_file or "",
+            "passages_file": passages_path,
             "embedding_mode": embedding_mode,
+            "distance_metric": distance_metric or "",
             "provider_options": provider_options or {},
             "passages_signature": _build_passages_signature(passages_file),
         }
@@ -337,6 +379,12 @@ class EmbeddingServerManager:
             command.extend(["--embedding-mode", embedding_mode])
         if kwargs.get("distance_metric"):
             command.extend(["--distance-metric", kwargs["distance_metric"]])
+        if kwargs.get("enable_warmup", True):
+            command.append("--enable-warmup")
+        if kwargs.get("use_daemon", True):
+            command.append("--daemon-mode")
+            ttl = int(kwargs.get("daemon_ttl_seconds", 900))
+            command.extend(["--daemon-ttl", str(ttl)])
 
         return command
 
@@ -441,6 +489,15 @@ class EmbeddingServerManager:
 
     def stop_server(self):
         """Stops the embedding server process if it's running."""
+        if self._daemon_mode:
+            # Daemon is intentionally process-global: this manager detaches by default.
+            self.server_process = None
+            self.server_port = None
+            self._server_config = None
+            self._daemon_mode = False
+            self._registry_path = None
+            return
+
         if not self.server_process:
             return
 
@@ -505,7 +562,7 @@ class EmbeddingServerManager:
             pass
 
     def _adopt_existing_server(self, *args, **kwargs) -> None:
-        # Removed: cross-process adoption no longer supported
+        # Legacy no-op retained for compatibility.
         return
 
     def _launch_server_process_colab(
@@ -572,3 +629,128 @@ class EmbeddingServerManager:
         logger.error(f"Colab server failed to start within {max_wait} seconds.")
         self.stop_server()
         return False, port
+
+    @staticmethod
+    def _registry_dir() -> Path:
+        return Path.home() / ".leann" / "servers"
+
+    def _registry_key(self, config_signature: dict[str, Any]) -> str:
+        payload = {
+            "backend_module_name": self.backend_module_name,
+            "config_signature": config_signature,
+        }
+        encoded = json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _write_registry_record(
+        self,
+        *,
+        port: int,
+        config_signature: dict[str, Any],
+        daemon_ttl_seconds: int,
+    ) -> Path:
+        registry_dir = self._registry_dir()
+        registry_dir.mkdir(parents=True, exist_ok=True)
+        registry_path = registry_dir / f"{self._registry_key(config_signature)}.json"
+        record = {
+            "pid": self.server_process.pid if self.server_process else None,
+            "port": port,
+            "backend_module_name": self.backend_module_name,
+            "daemon_ttl_seconds": int(daemon_ttl_seconds),
+            "created_at": time.time(),
+            "config_signature": config_signature,
+        }
+        registry_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        return registry_path
+
+    def _adopt_registered_server(self, config_signature: dict[str, Any]) -> Optional[int]:
+        registry_dir = self._registry_dir()
+        if not registry_dir.exists():
+            return None
+
+        target = registry_dir / f"{self._registry_key(config_signature)}.json"
+        if not target.exists():
+            return None
+
+        try:
+            record = json.loads(target.read_text(encoding="utf-8"))
+        except Exception:
+            target.unlink(missing_ok=True)
+            return None
+
+        if record.get("backend_module_name") != self.backend_module_name:
+            target.unlink(missing_ok=True)
+            return None
+        if record.get("config_signature") != config_signature:
+            target.unlink(missing_ok=True)
+            return None
+
+        pid = int(record.get("pid") or 0)
+        port = int(record.get("port") or 0)
+        if not _pid_is_alive(pid) or not _check_port(port):
+            target.unlink(missing_ok=True)
+            return None
+
+        self._registry_path = target
+        logger.info("Reusing daemonized embedding server on port %s", port)
+        return port
+
+    @classmethod
+    def list_daemons(cls) -> list[dict[str, Any]]:
+        registry_dir = cls._registry_dir()
+        if not registry_dir.exists():
+            return []
+
+        records: list[dict[str, Any]] = []
+        for record_path in sorted(registry_dir.glob("*.json")):
+            try:
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+            except Exception:
+                record_path.unlink(missing_ok=True)
+                continue
+
+            pid = int(record.get("pid") or 0)
+            port = int(record.get("port") or 0)
+            alive = _pid_is_alive(pid) and _check_port(port)
+            if not alive:
+                record_path.unlink(missing_ok=True)
+                continue
+
+            record["record_path"] = str(record_path)
+            records.append(record)
+        return records
+
+    @classmethod
+    def stop_daemons(
+        cls,
+        *,
+        backend_module_name: Optional[str] = None,
+        passages_file: Optional[str] = None,
+    ) -> int:
+        resolved_passages_file = (
+            _safe_resolve(Path(passages_file)) if passages_file else None
+        )
+        stopped = 0
+        for record in cls.list_daemons():
+            if backend_module_name and record.get("backend_module_name") != backend_module_name:
+                continue
+
+            record_passages = (
+                record.get("config_signature", {}).get("passages_file")
+                if isinstance(record.get("config_signature"), dict)
+                else None
+            )
+            if resolved_passages_file and record_passages != resolved_passages_file:
+                continue
+
+            pid = int(record.get("pid") or 0)
+            try:
+                os.kill(pid, 15)
+                stopped += 1
+            except OSError:
+                pass
+
+            record_path = record.get("record_path")
+            if record_path:
+                Path(record_path).unlink(missing_ok=True)
+        return stopped

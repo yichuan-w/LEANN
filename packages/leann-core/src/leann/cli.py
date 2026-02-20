@@ -14,6 +14,7 @@ from llama_index.core.node_parser import SentenceSplitter
 from tqdm import tqdm
 
 from .api import LeannBuilder, LeannChat, LeannSearcher
+from .embedding_server_manager import EmbeddingServerManager
 from .interactive_utils import create_cli_session
 from .registry import register_project_directory
 from .settings import (
@@ -370,6 +371,81 @@ Examples:
             default=None,
             help="Prompt template to prepend to query for embedding (e.g., 'query: ' for search)",
         )
+        search_parser.add_argument(
+            "--daemon",
+            dest="use_daemon",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable cross-process daemon reuse for embedding server (default: enabled)",
+        )
+        search_parser.add_argument(
+            "--daemon-ttl",
+            type=int,
+            default=900,
+            help="Daemon idle TTL in seconds (default: 900, 0 = never expire)",
+        )
+        search_parser.add_argument(
+            "--warmup",
+            dest="enable_warmup",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable warmup when starting embedding server (default: enabled)",
+        )
+
+        # Warmup command
+        warmup_parser = subparsers.add_parser("warmup", help="Warm up an index embedding server")
+        warmup_parser.add_argument("index_name", help="Index name")
+        warmup_parser.add_argument(
+            "--daemon",
+            dest="use_daemon",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable daemon mode for warmup (default: enabled)",
+        )
+        warmup_parser.add_argument(
+            "--daemon-ttl",
+            type=int,
+            default=900,
+            help="Daemon idle TTL in seconds (default: 900, 0 = never expire)",
+        )
+        warmup_parser.add_argument(
+            "--warmup",
+            dest="enable_warmup",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable warmup request itself (default: enabled)",
+        )
+
+        # Daemon command
+        daemon_parser = subparsers.add_parser("daemon", help="Manage embedding daemons")
+        daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_command")
+
+        daemon_start = daemon_subparsers.add_parser("start", help="Start daemon for an index")
+        daemon_start.add_argument("index_name", help="Index name")
+        daemon_start.add_argument(
+            "--daemon-ttl",
+            type=int,
+            default=900,
+            help="Daemon idle TTL in seconds (default: 900, 0 = never expire)",
+        )
+        daemon_start.add_argument(
+            "--warmup",
+            dest="enable_warmup",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable startup warmup (default: enabled)",
+        )
+
+        daemon_stop = daemon_subparsers.add_parser("stop", help="Stop daemon(s)")
+        daemon_stop.add_argument("index_name", nargs="?", help="Index name to stop")
+        daemon_stop.add_argument(
+            "--all",
+            action="store_true",
+            help="Stop all LEANN embedding daemons",
+        )
+
+        daemon_status = daemon_subparsers.add_parser("status", help="Show daemon status")
+        daemon_status.add_argument("index_name", nargs="?", help="Optional index name filter")
 
         # Ask command
         ask_parser = subparsers.add_parser("ask", help="Ask questions")
@@ -1814,111 +1890,103 @@ Examples:
                     print(f"  - {file_path}")
                     print(f"    chunks: {chunk_display}")
 
-    async def search_documents(self, args):
-        index_name = args.index_name
-        query = args.query
-
-        # First try to find the index in current project
-        index_path = self.get_index_path(index_name)
+    def _resolve_index_path(
+        self,
+        index_name: str,
+        *,
+        non_interactive: bool = True,
+        purpose: str = "use",
+    ) -> Optional[str]:
+        """Resolve index path from current project or registered projects."""
         if self.index_exists(index_name):
-            # Found in current project, use it
-            pass
-        else:
-            # Search across all registered projects (like list_indexes does)
-            all_matches = self._find_all_matching_indexes(index_name)
-            if not all_matches:
-                print(
-                    f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
-                )
-                return
-            elif len(all_matches) == 1:
-                # Found exactly one match, use it
-                match = all_matches[0]
-                if match["kind"] == "cli":
-                    index_path = str(match["index_dir"] / "documents.leann")
-                else:
-                    # App format: use the meta file to construct the path
-                    meta_file = match["meta_file"]
-                    file_base = match["file_base"]
-                    index_path = str(meta_file.parent / f"{file_base}.leann")
+            return self.get_index_path(index_name)
 
+        all_matches = self._find_all_matching_indexes(index_name)
+        if not all_matches:
+            print(
+                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
+            )
+            return None
+
+        def _match_to_path(match: dict[str, Any]) -> str:
+            if match["kind"] == "cli":
+                return str(match["index_dir"] / "documents.leann")
+            meta_file = match["meta_file"]
+            file_base = match["file_base"]
+            return str(meta_file.parent / f"{file_base}.leann")
+
+        if len(all_matches) == 1:
+            match = all_matches[0]
+            project_info = (
+                "current project"
+                if match["is_current"]
+                else f"project '{match['project_path'].name}'"
+            )
+            print(f"Using index '{index_name}' from {project_info}")
+            return _match_to_path(match)
+
+        if non_interactive:
+            current_matches = [m for m in all_matches if m["is_current"]]
+            match = current_matches[0] if current_matches else all_matches[0]
+            location_desc = (
+                "current project" if match["is_current"] else f"project '{match['project_path'].name}'"
+            )
+            print(
+                f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
+            )
+            return _match_to_path(match)
+
+        print(f"Found {len(all_matches)} indexes named '{index_name}':")
+        for i, match in enumerate(all_matches, 1):
+            project_path = match["project_path"]
+            is_current = match["is_current"]
+            kind = match.get("kind", "cli")
+            if is_current:
+                print(f"   {i}. 🏠 Current project ({'CLI' if kind == 'cli' else 'APP'})")
+            else:
+                print(f"   {i}. 📂 {project_path.name} ({'CLI' if kind == 'cli' else 'APP'})")
+
+        try:
+            choice = input(f"Which index to {purpose}? (1-{len(all_matches)}): ").strip()
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(all_matches):
+                match = all_matches[choice_idx]
                 project_info = (
                     "current project"
                     if match["is_current"]
                     else f"project '{match['project_path'].name}'"
                 )
                 print(f"Using index '{index_name}' from {project_info}")
-            else:
-                # Multiple matches found
-                if args.non_interactive:
-                    # Non-interactive mode: automatically select the best match
-                    # Priority: current project first, then first available
-                    current_matches = [m for m in all_matches if m["is_current"]]
-                    if current_matches:
-                        match = current_matches[0]
-                        location_desc = "current project"
-                    else:
-                        match = all_matches[0]
-                        location_desc = f"project '{match['project_path'].name}'"
+                return _match_to_path(match)
+            print("Invalid choice. Aborting.")
+            return None
+        except (ValueError, KeyboardInterrupt):
+            print("Invalid input. Aborting.")
+            return None
 
-                    if match["kind"] == "cli":
-                        index_path = str(match["index_dir"] / "documents.leann")
-                    else:
-                        meta_file = match["meta_file"]
-                        file_base = match["file_base"]
-                        index_path = str(meta_file.parent / f"{file_base}.leann")
+    async def search_documents(self, args):
+        index_name = args.index_name
+        query = args.query
 
-                    print(
-                        f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
-                    )
-                else:
-                    # Interactive mode: ask user to choose
-                    print(f"Found {len(all_matches)} indexes named '{index_name}':")
-                    for i, match in enumerate(all_matches, 1):
-                        project_path = match["project_path"]
-                        is_current = match["is_current"]
-                        kind = match.get("kind", "cli")
-
-                        if is_current:
-                            print(
-                                f"   {i}. 🏠 Current project ({'CLI' if kind == 'cli' else 'APP'})"
-                            )
-                        else:
-                            print(
-                                f"   {i}. 📂 {project_path.name} ({'CLI' if kind == 'cli' else 'APP'})"
-                            )
-
-                    try:
-                        choice = input(f"Which index to search? (1-{len(all_matches)}): ").strip()
-                        choice_idx = int(choice) - 1
-                        if 0 <= choice_idx < len(all_matches):
-                            match = all_matches[choice_idx]
-                            if match["kind"] == "cli":
-                                index_path = str(match["index_dir"] / "documents.leann")
-                            else:
-                                meta_file = match["meta_file"]
-                                file_base = match["file_base"]
-                                index_path = str(meta_file.parent / f"{file_base}.leann")
-
-                            project_info = (
-                                "current project"
-                                if match["is_current"]
-                                else f"project '{match['project_path'].name}'"
-                            )
-                            print(f"Using index '{index_name}' from {project_info}")
-                        else:
-                            print("Invalid choice. Aborting search.")
-                            return
-                    except (ValueError, KeyboardInterrupt):
-                        print("Invalid input. Aborting search.")
-                        return
+        index_path = self._resolve_index_path(
+            index_name,
+            non_interactive=args.non_interactive,
+            purpose="search",
+        )
+        if not index_path:
+            return
 
         # Build provider_options for runtime override
         provider_options = {}
         if args.embedding_prompt_template:
             provider_options["prompt_template"] = args.embedding_prompt_template
 
-        searcher = LeannSearcher(index_path=index_path)
+        searcher = LeannSearcher(
+            index_path=index_path,
+            enable_warmup=args.enable_warmup,
+            use_daemon=args.use_daemon,
+            daemon_ttl_seconds=args.daemon_ttl,
+        )
         results = searcher.search(
             query,
             top_k=args.top_k,
@@ -1953,6 +2021,105 @@ Examples:
             print(f"   {result.text[:200]}...")
             print(f"   Source: {result.metadata.get('source', '')}")
             print()
+
+    async def warmup_index(self, args):
+        index_path = self._resolve_index_path(
+            args.index_name,
+            non_interactive=True,
+            purpose="warm up",
+        )
+        if not index_path:
+            return
+
+        searcher = LeannSearcher(
+            index_path=index_path,
+            recompute_embeddings=True,
+            enable_warmup=args.enable_warmup,
+            use_daemon=args.use_daemon,
+            daemon_ttl_seconds=args.daemon_ttl,
+        )
+        if args.enable_warmup:
+            searcher.warmup()
+        print(
+            f"Warmed index '{args.index_name}' (daemon={'on' if args.use_daemon else 'off'}, ttl={args.daemon_ttl}s)"
+        )
+
+    async def daemon_command(self, args):
+        if not args.daemon_command:
+            print("Please specify one of: start, stop, status")
+            return
+
+        if args.daemon_command == "status":
+            records = EmbeddingServerManager.list_daemons()
+            if args.index_name:
+                index_path = self._resolve_index_path(
+                    args.index_name,
+                    non_interactive=True,
+                    purpose="check daemon status for",
+                )
+                if not index_path:
+                    return
+                meta_path = str(Path(f"{index_path}.meta.json").resolve())
+                records = [
+                    r
+                    for r in records
+                    if r.get("config_signature", {}).get("passages_file") == meta_path
+                ]
+
+            if not records:
+                print("No active embedding daemons.")
+                return
+
+            print(f"Active embedding daemons: {len(records)}")
+            for record in records:
+                cfg = record.get("config_signature", {})
+                print(
+                    f"- pid={record.get('pid')} port={record.get('port')} backend={record.get('backend_module_name')} model={cfg.get('model_name')}"
+                )
+            return
+
+        if args.daemon_command == "start":
+            index_path = self._resolve_index_path(
+                args.index_name,
+                non_interactive=True,
+                purpose="start daemon for",
+            )
+            if not index_path:
+                return
+
+            searcher = LeannSearcher(
+                index_path=index_path,
+                recompute_embeddings=True,
+                enable_warmup=args.enable_warmup,
+                use_daemon=True,
+                daemon_ttl_seconds=args.daemon_ttl,
+            )
+            searcher.warmup()
+            print(
+                f"Daemon started for '{args.index_name}' (ttl={args.daemon_ttl}s, warmup={'on' if args.enable_warmup else 'off'})"
+            )
+            return
+
+        if args.daemon_command == "stop":
+            if args.all:
+                stopped = EmbeddingServerManager.stop_daemons()
+                print(f"Stopped {stopped} daemon(s).")
+                return
+
+            if not args.index_name:
+                print("Provide an index name or pass --all.")
+                return
+
+            index_path = self._resolve_index_path(
+                args.index_name,
+                non_interactive=True,
+                purpose="stop daemon for",
+            )
+            if not index_path:
+                return
+            meta_path = str(Path(f"{index_path}.meta.json").resolve())
+            stopped = EmbeddingServerManager.stop_daemons(passages_file=meta_path)
+            print(f"Stopped {stopped} daemon(s) for index '{args.index_name}'.")
 
     async def ask_questions(self, args):
         index_name = args.index_name
@@ -2148,6 +2315,11 @@ Examples:
         elif args.command == "search":
             with suppress_cpp_output(suppress):
                 await self.search_documents(args)
+        elif args.command == "warmup":
+            with suppress_cpp_output(suppress):
+                await self.warmup_index(args)
+        elif args.command == "daemon":
+            await self.daemon_command(args)
         elif args.command == "ask":
             with suppress_cpp_output(suppress):
                 await self.ask_questions(args)

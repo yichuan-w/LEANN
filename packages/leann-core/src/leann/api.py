@@ -884,6 +884,8 @@ class LeannBuilder:
                         embedding_mode=passage_meta_mode,
                         passages_file=str(meta_path),
                         distance_metric=distance_metric,
+                        use_daemon=False,
+                        enable_warmup=False,
                         provider_options=passage_provider_options,
                     )
                     if not server_started:
@@ -946,6 +948,8 @@ class LeannSearcher:
         index_path: str,
         enable_warmup: bool = True,
         recompute_embeddings: bool = True,
+        use_daemon: bool = True,
+        daemon_ttl_seconds: int = 900,
         **backend_kwargs,
     ):
         # Fix path resolution for Colab and other environments
@@ -985,9 +989,13 @@ class LeannSearcher:
         # Warmup flag: keep using the existing enable_warmup parameter,
         # but default it to True so cold-start happens earlier.
         self._warmup: bool = bool(enable_warmup)
+        self._use_daemon: bool = bool(use_daemon)
+        self._daemon_ttl_seconds: int = int(daemon_ttl_seconds)
 
         final_kwargs = {**self.meta_data.get("backend_kwargs", {}), **backend_kwargs}
         final_kwargs["enable_warmup"] = self._warmup
+        final_kwargs["use_daemon"] = self._use_daemon
+        final_kwargs["daemon_ttl_seconds"] = self._daemon_ttl_seconds
         if self.embedding_options:
             final_kwargs.setdefault("embedding_options", self.embedding_options)
         self.backend_impl: LeannBackendSearcherInterface = backend_factory.searcher(
@@ -997,23 +1005,17 @@ class LeannSearcher:
 
         # Optional one-shot warmup at construction time to hide cold-start latency.
         if self._warmup:
-            try:
-                _ = self.backend_impl.compute_query_embedding(
-                    "__LEANN_WARMUP__",
-                    use_server_if_available=self.recompute_embeddings,
-                )
-            except Exception as exc:
-                logger.warning(f"Warmup embedding failed (ignored): {exc}")
+            self.warmup()
 
-        # Optional one-shot warmup at construction time to hide cold-start latency.
-        if self._warmup:
-            try:
-                _ = self.backend_impl.compute_query_embedding(
-                    "__LEANN_WARMUP__",
-                    use_server_if_available=self.recompute_embeddings,
-                )
-            except Exception as exc:
-                logger.warning(f"Warmup embedding failed (ignored): {exc}")
+    def warmup(self) -> None:
+        """Warm up embedding path so first user query is faster."""
+        try:
+            _ = self.backend_impl.compute_query_embedding(
+                "__LEANN_WARMUP__",
+                use_server_if_available=self.recompute_embeddings,
+            )
+        except Exception as exc:
+            logger.warning(f"Warmup embedding failed (ignored): {exc}")
 
     def search(
         self,
@@ -1109,6 +1111,9 @@ class LeannSearcher:
                 zmq_port = self.backend_impl._ensure_server_running(
                     self.meta_path_str,
                     port=expected_zmq_port,
+                    enable_warmup=self._warmup,
+                    use_daemon=self._use_daemon,
+                    daemon_ttl_seconds=self._daemon_ttl_seconds,
                     **kwargs,
                 )
                 del expected_zmq_port
