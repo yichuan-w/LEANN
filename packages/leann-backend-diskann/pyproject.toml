@@ -16,6 +16,5 @@ wheel.packages = ["leann_backend_diskann"]
 editable.mode = "redirect"
 cmake.build-type = "Release"
 build.verbose = true
-build.tool-args = ["-j8"]
 # Let CMake find packages via Homebrew prefix
 cmake.define = {CMAKE_PREFIX_PATH = {env = "CMAKE_PREFIX_PATH"}, OpenMP_ROOT = {env = "OpenMP_ROOT"}}
