@@ -246,11 +246,6 @@ jobs:
 
       - name: Build packages
         run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            export CMAKE_ARGS="-DBLA_VENDOR=OpenBLAS -DBLAS_LIBRARIES=${OPENBLAS_LIB} -DLAPACK_LIBRARIES=${OPENBLAS_LIB}"
-            echo "Using CMAKE_ARGS on Windows: ${CMAKE_ARGS}"
-          fi
-
           # Build core (platform independent)
           cd packages/leann-core
           uv build
