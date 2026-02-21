@@ -806,9 +806,7 @@ class EmbeddingServerManager:
         backend_module_name: Optional[str] = None,
         passages_file: Optional[str] = None,
     ) -> int:
-        resolved_passages_file = (
-            _safe_resolve(Path(passages_file)) if passages_file else None
-        )
+        resolved_passages_file = _safe_resolve(Path(passages_file)) if passages_file else None
         stopped = 0
         for record in cls.list_daemons():
             if backend_module_name and record.get("backend_module_name") != backend_module_name:

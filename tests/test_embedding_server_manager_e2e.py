@@ -55,7 +55,9 @@ def test_daemon_reuse_with_real_subprocess(tmp_path, monkeypatch):
     assert len(records) == 1
     assert int(records[0]["pid"]) == pid1
 
-    stopped = EmbeddingServerManager.stop_daemons(backend_module_name="fake_embedding_server_module")
+    stopped = EmbeddingServerManager.stop_daemons(
+        backend_module_name="fake_embedding_server_module"
+    )
     assert stopped == 1
 
 

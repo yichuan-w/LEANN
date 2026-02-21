@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import time
+from typing import Any, cast
 
 import pytest
 from leann.embedding_server_manager import EmbeddingServerManager
@@ -392,7 +393,7 @@ def test_corrupted_registry_file_is_recovered_on_start(tmp_path, monkeypatch):
 def test_stop_server_detaches_when_daemon_mode(monkeypatch):
     """Daemon mode should detach manager without terminating shared process."""
     manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
-    manager.server_process = DummyProcess(pid=55555)
+    manager.server_process = cast(Any, DummyProcess(pid=55555))
     manager.server_port = 6031
     manager._server_config = {"model_name": "m"}
     manager._daemon_mode = True
@@ -426,6 +427,7 @@ def test_concurrent_daemon_start_only_spawns_once(tmp_path, monkeypatch):
     monkeypatch.setattr("leann.embedding_server_manager._pid_is_alive", lambda pid: pid in (77777,))
 
     starts = []
+
     def fake_start_new_server(self, port, model_name, embedding_mode, **kwargs):
         # Force overlap window between two starters.
         time.sleep(0.05)
@@ -464,7 +466,7 @@ def test_registry_record_write_is_atomic(tmp_path, monkeypatch):
     monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
 
     manager = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
-    manager.server_process = DummyProcess(pid=88888)
+    manager.server_process = cast(Any, DummyProcess(pid=88888))
 
     calls = []
     real_replace = os.replace

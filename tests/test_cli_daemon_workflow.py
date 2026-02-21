@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from leann.cli import LeannCLI
 
@@ -13,7 +14,7 @@ def test_search_passes_daemon_flags_to_searcher(monkeypatch):
         lambda *args, **kwargs: "/tmp/demo/documents.leann",
     )
 
-    captured = {"init": None, "search": None}
+    captured: dict[str, dict[str, Any]] = {"init": {}, "search": {}}
 
     class DummySearcher:
         def __init__(self, *args, **kwargs):
@@ -57,7 +58,7 @@ def test_warmup_command_calls_searcher_warmup(monkeypatch):
         lambda *args, **kwargs: "/tmp/demo/documents.leann",
     )
 
-    state = {"warmup_called": 0}
+    state: dict[str, int] = {"warmup_called": 0}
 
     class DummySearcher:
         def __init__(self, *args, **kwargs):
@@ -100,7 +101,10 @@ def test_daemon_status_filters_by_index(monkeypatch, capsys):
                 "pid": 202,
                 "port": 5558,
                 "backend_module_name": "leann_backend_hnsw.hnsw_embedding_server",
-                "config_signature": {"passages_file": "/tmp/other/doc.meta.json", "model_name": "m2"},
+                "config_signature": {
+                    "passages_file": "/tmp/other/doc.meta.json",
+                    "model_name": "m2",
+                },
             },
         ],
     )
@@ -120,7 +124,7 @@ def test_daemon_stop_by_index_calls_stop_daemons(monkeypatch):
         "_resolve_index_path",
         lambda *args, **kwargs: "/tmp/demo/documents.leann",
     )
-    captured = {"kwargs": None}
+    captured: dict[str, dict[str, Any]] = {"kwargs": {}}
 
     def fake_stop_daemons(**kwargs):
         captured["kwargs"] = kwargs
@@ -131,7 +135,6 @@ def test_daemon_stop_by_index_calls_stop_daemons(monkeypatch):
     args = argparse.Namespace(daemon_command="stop", index_name="demo", all=False)
     asyncio.run(cli.daemon_command(args))
 
-    assert captured["kwargs"] is not None
     assert captured["kwargs"]["passages_file"].endswith("documents.leann.meta.json")
 
 
@@ -143,7 +146,7 @@ def test_daemon_start_calls_searcher_warmup(monkeypatch):
         lambda *args, **kwargs: "/tmp/demo/documents.leann",
     )
 
-    state = {"warmup_called": 0, "init_kwargs": None}
+    state: dict[str, Any] = {"warmup_called": 0, "init_kwargs": {}}
 
     class DummySearcher:
         def __init__(self, *args, **kwargs):

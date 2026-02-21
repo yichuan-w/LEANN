@@ -1929,7 +1929,9 @@ Examples:
             current_matches = [m for m in all_matches if m["is_current"]]
             match = current_matches[0] if current_matches else all_matches[0]
             location_desc = (
-                "current project" if match["is_current"] else f"project '{match['project_path'].name}'"
+                "current project"
+                if match["is_current"]
+                else f"project '{match['project_path'].name}'"
             )
             print(
                 f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
