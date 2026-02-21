@@ -88,10 +88,11 @@ wheels/
 test_indices*/
 test_*.py
 !tests/**
-tests/**/.DS_Store
-tests/**/__pycache__/
-tests/**/*.cpython-*.pyc
-tests/**/*.cpython-*.pyo
+# Re-ignore common generated artifacts globally (especially after allowlist rules).
+**/.DS_Store
+**/__pycache__/
+**/*.cpython-*.pyc
+**/*.cpython-*.pyo
 packages/leann-backend-diskann/third_party/DiskANN/_deps/
 
 *.meta.json
