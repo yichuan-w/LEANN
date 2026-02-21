@@ -197,8 +197,10 @@ jobs:
             exit 1
           fi
           "${VCPKG_INSTALLATION_ROOT}/vcpkg" install zeromq:x64-windows
+          "${VCPKG_INSTALLATION_ROOT}/vcpkg" install openblas:x64-windows
           echo "PKG_CONFIG_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows" >> "$GITHUB_ENV"
+          echo "OPENBLAS_LIB=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/openblas.lib" >> "$GITHUB_ENV"
           pkg-config --version || true
           where pkg-config || true
           pkg-config --modversion libzmq || true
@@ -244,6 +246,11 @@ jobs:
 
       - name: Build packages
         run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            export CMAKE_ARGS="-DBLA_VENDOR=OpenBLAS -DBLAS_LIBRARIES=${OPENBLAS_LIB} -DLAPACK_LIBRARIES=${OPENBLAS_LIB}"
+            echo "Using CMAKE_ARGS on Windows: ${CMAKE_ARGS}"
+          fi
+
           # Build core (platform independent)
           cd packages/leann-core
           uv build
