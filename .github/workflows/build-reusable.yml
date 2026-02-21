@@ -53,6 +53,9 @@ jobs:
   build:
     needs: [lint, type-check]
     name: Build ${{ matrix.os }} Python ${{ matrix.python }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         include:
@@ -109,6 +112,11 @@ jobs:
             python: '3.12'
           - os: macos-26
             python: '3.13'
+          # Windows validation (native HNSW + DiskANN build/install path)
+          - os: windows-2022
+            python: '3.11'
+          - os: windows-2022
+            python: '3.12'
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -177,6 +185,12 @@ jobs:
           # Don't install LLVM, use system clang for better compatibility
           brew install libomp boost protobuf zeromq
 
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install swig -y --no-progress
+          choco install nuget.commandline -y --no-progress
+
       - name: Install build dependencies
         run: |
           uv python install ${{ matrix.python }}
@@ -189,8 +203,10 @@ jobs:
           uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             uv pip install --python "$BUILD_PY" auditwheel
-          else
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
             uv pip install --python "$BUILD_PY" delocate
+          else
+            uv pip install --python "$BUILD_PY" delvewheel
           fi
 
           if [[ "$RUNNER_OS" == "Windows" ]]; then

@@ -29,21 +29,26 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 endif()
 
-# Find ZMQ using pkg-config with IMPORTED_TARGET for automatic target creation
-find_package(PkgConfig REQUIRED)
+# Find ZMQ via pkg-config on Unix-like platforms only.
+# Windows builds do not need this here and often lack pkg-config.
+if(NOT WIN32)
+    find_package(PkgConfig REQUIRED)
 
-# On ARM64 macOS, ensure pkg-config finds ARM64 Homebrew packages first
-if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-    set(ENV{PKG_CONFIG_PATH} "/opt/homebrew/lib/pkgconfig:/opt/homebrew/share/pkgconfig:$ENV{PKG_CONFIG_PATH}")
-endif()
+    # On ARM64 macOS, ensure pkg-config finds ARM64 Homebrew packages first
+    if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+        set(ENV{PKG_CONFIG_PATH} "/opt/homebrew/lib/pkgconfig:/opt/homebrew/share/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+    endif()
 
-pkg_check_modules(ZMQ REQUIRED IMPORTED_TARGET libzmq)
+    pkg_check_modules(ZMQ REQUIRED IMPORTED_TARGET libzmq)
 
-# This creates PkgConfig::ZMQ target automatically with correct properties
-if(TARGET PkgConfig::ZMQ)
-    message(STATUS "Found and configured ZMQ target: PkgConfig::ZMQ")
+    # This creates PkgConfig::ZMQ target automatically with correct properties
+    if(TARGET PkgConfig::ZMQ)
+        message(STATUS "Found and configured ZMQ target: PkgConfig::ZMQ")
+    else()
+        message(FATAL_ERROR "pkg_check_modules did not create IMPORTED target for ZMQ.")
+    endif()
 else()
-    message(FATAL_ERROR "pkg_check_modules did not create IMPORTED target for ZMQ.")
+    message(STATUS "Skipping pkg-config/libzmq discovery on Windows")
 endif()
 
 # Add cppzmq headers
