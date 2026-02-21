@@ -192,8 +192,16 @@ jobs:
           choco install swig -y --no-progress
           choco install nuget.commandline -y --no-progress
           choco install pkgconfiglite -y --no-progress
+          if [[ -z "${VCPKG_INSTALLATION_ROOT:-}" ]]; then
+            echo "VCPKG_INSTALLATION_ROOT is not set on this runner"
+            exit 1
+          fi
+          "${VCPKG_INSTALLATION_ROOT}/vcpkg" install zeromq:x64-windows
+          echo "PKG_CONFIG_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows" >> "$GITHUB_ENV"
           pkg-config --version || true
           where pkg-config || true
+          pkg-config --modversion libzmq || true
 
       - name: Install build dependencies
         run: |
