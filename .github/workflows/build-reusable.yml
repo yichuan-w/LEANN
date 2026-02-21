@@ -57,7 +57,7 @@ jobs:
       run:
         shell: bash
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           # Note: Python 3.9 dropped - uses PEP 604 union syntax (str | None)
@@ -192,10 +192,8 @@ jobs:
           choco install swig -y --no-progress
           choco install nuget.commandline -y --no-progress
           choco install pkgconfiglite -y --no-progress
-          choco install zeromq -y --no-progress
           pkg-config --version || true
           where pkg-config || true
-          where zmq.h || true
 
       - name: Install build dependencies
         run: |
