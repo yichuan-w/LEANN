@@ -12,7 +12,8 @@ license = { text = "MIT" }
 
 # All required dependencies included
 dependencies = [
-    "numpy>=1.20.0,<2",
+    "numpy>=1.20.0,<2; python_version < '3.13'",
+    "numpy>=2,<3; python_version >= '3.13'",
     "tqdm>=4.60.0",
     "psutil>=5.8.0",
     "pyzmq>=23.0.0",

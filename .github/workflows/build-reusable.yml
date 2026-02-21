@@ -67,13 +67,13 @@ jobs:
           - os: ubuntu-22.04
             python: '3.13'
           # ARM64 Linux builds
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-22.04-arm
             python: '3.10'
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-22.04-arm
             python: '3.11'
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-22.04-arm
             python: '3.12'
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-22.04-arm
             python: '3.13'
           - os: macos-14
             python: '3.10'
