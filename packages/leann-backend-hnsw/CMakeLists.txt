@@ -56,7 +56,7 @@ add_compile_definitions(MSGPACK_NO_BOOST)
 include_directories(third_party/msgpack-c/include)
 
 # Faiss configuration - streamlined build
-set(FAISS_ENABLE_PYTHON ON CACHE BOOL "" FORCE)
+set(FAISS_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
 set(FAISS_ENABLE_GPU OFF CACHE BOOL "" FORCE)
 set(FAISS_ENABLE_EXTRAS OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
