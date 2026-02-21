@@ -88,6 +88,10 @@ wheels/
 test_indices*/
 test_*.py
 !tests/**
+tests/**/.DS_Store
+tests/**/__pycache__/
+tests/**/*.cpython-*.pyc
+tests/**/*.cpython-*.pyo
 packages/leann-backend-diskann/third_party/DiskANN/_deps/
 
 *.meta.json
