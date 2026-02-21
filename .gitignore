@@ -20,6 +20,7 @@ demo/experiment_results/**/*.json
 *.json
 *.png
 !.vscode/*.json
+!.devcontainer/*.json
 *.sh
 *.txt
 !CMakeLists.txt
@@ -87,6 +88,11 @@ wheels/
 test_indices*/
 test_*.py
 !tests/**
+# Re-ignore common generated artifacts globally (especially after allowlist rules).
+**/.DS_Store
+**/__pycache__/
+**/*.cpython-*.pyc
+**/*.cpython-*.pyo
 packages/leann-backend-diskann/third_party/DiskANN/_deps/
 
 *.meta.json

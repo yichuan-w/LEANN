@@ -9,8 +9,50 @@ on:
         type: string
 
 jobs:
+  verify-ci:
+    name: Verify main CI
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Require latest main CI success
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          MAIN_SHA=$(gh api repos/${GITHUB_REPOSITORY}/commits/main --jq '.sha')
+          RUN_ID=$(gh api repos/${GITHUB_REPOSITORY}/actions/workflows/build-and-publish.yml/runs \
+            --method GET \
+            --field branch=main \
+            --field head_sha="${MAIN_SHA}" \
+            --field per_page=1 \
+            --jq '.workflow_runs[0].id')
+
+          if [ -z "${RUN_ID}" ] || [ "${RUN_ID}" = "null" ]; then
+            echo "❌ No CI run found for main @ ${MAIN_SHA}"
+            exit 1
+          fi
+
+          STATUS=$(gh api repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID} --jq '.status')
+          CONCLUSION=$(gh api repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID} --jq '.conclusion')
+          URL=$(gh api repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID} --jq '.html_url')
+
+          echo "CI run: ${URL}"
+          if [ "${STATUS}" != "completed" ] || [ "${CONCLUSION}" != "success" ]; then
+            echo "❌ CI not successful for main @ ${MAIN_SHA}"
+            echo "Status: ${STATUS}"
+            echo "Conclusion: ${CONCLUSION}"
+            exit 1
+          fi
+
+          echo "✅ CI succeeded for main @ ${MAIN_SHA}"
+
   update-version:
     name: Update Version
+    needs: verify-ci
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -74,7 +74,12 @@ for batch_query in dataloader:
     qs.extend(list(torch.unbind(embeddings_query.to("cpu"))))
 print(qs[0].shape)
 # %%
-page_filenames = sorted(os.listdir("./pages"), key=lambda n: int(re.search(r"\d+", n).group()))
+def _page_sort_key(name: str) -> int:
+    match = re.search(r"\d+", name)
+    return int(match.group()) if match else -1
+
+
+page_filenames = sorted(os.listdir("./pages"), key=_page_sort_key)
 images = [Image.open(os.path.join("./pages", name)) for name in page_filenames]
 
 dataloader = DataLoader(
