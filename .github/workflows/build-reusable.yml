@@ -198,6 +198,7 @@ jobs:
           fi
           "${VCPKG_INSTALLATION_ROOT}/vcpkg" install zeromq:x64-windows
           "${VCPKG_INSTALLATION_ROOT}/vcpkg" install openblas:x64-windows
+          "${VCPKG_INSTALLATION_ROOT}/vcpkg" install lapack:x64-windows
           echo "PKG_CONFIG_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows" >> "$GITHUB_ENV"
           echo "OPENBLAS_LIB=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/openblas.lib" >> "$GITHUB_ENV"
