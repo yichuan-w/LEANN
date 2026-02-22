@@ -210,7 +210,23 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          uv python install ${{ matrix.python }}
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 5s: $*"
+              sleep 5
+              n=$((n + 1))
+            done
+          }
+
+          retry 5 uv python install ${{ matrix.python }}
           uv venv --python ${{ matrix.python }} .uv-build
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             BUILD_PY=".uv-build\\Scripts\\python.exe"
@@ -373,8 +389,24 @@ jobs:
 
       - name: Install built packages for testing
         run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 5s: $*"
+              sleep 5
+              n=$((n + 1))
+            done
+          }
+
           # Create uv-managed virtual environment with the requested interpreter
-          uv python install ${{ matrix.python }}
+          retry 5 uv python install ${{ matrix.python }}
           uv venv --python ${{ matrix.python }}
           source .venv/bin/activate || source .venv/Scripts/activate
 
