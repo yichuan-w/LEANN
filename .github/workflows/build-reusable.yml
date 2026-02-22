@@ -189,6 +189,22 @@ jobs:
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 10s: $*"
+              sleep 10
+              n=$((n + 1))
+            done
+          }
+
           choco install swig -y --no-progress
           choco install nuget.commandline -y --no-progress
           choco install pkgconfiglite -y --no-progress
@@ -196,11 +212,11 @@ jobs:
             echo "VCPKG_INSTALLATION_ROOT is not set on this runner"
             exit 1
           fi
-          "${VCPKG_INSTALLATION_ROOT}/vcpkg" install zeromq:x64-windows
-          "${VCPKG_INSTALLATION_ROOT}/vcpkg" install openblas:x64-windows
-          "${VCPKG_INSTALLATION_ROOT}/vcpkg" install lapack:x64-windows
-          "${VCPKG_INSTALLATION_ROOT}/vcpkg" install boost-program-options:x64-windows
-          "${VCPKG_INSTALLATION_ROOT}/vcpkg" install protobuf:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install zeromq:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install openblas:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install lapack:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install boost-program-options:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install protobuf:x64-windows
           echo "PKG_CONFIG_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows" >> "$GITHUB_ENV"
           echo "OPENBLAS_LIB=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/openblas.lib" >> "$GITHUB_ENV"
