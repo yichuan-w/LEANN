@@ -249,13 +249,13 @@ jobs:
           else
             BUILD_PY=".uv-build/bin/python"
           fi
-          uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
+          retry 5 uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            uv pip install --python "$BUILD_PY" auditwheel
+            retry 5 uv pip install --python "$BUILD_PY" auditwheel
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            uv pip install --python "$BUILD_PY" delocate
+            retry 5 uv pip install --python "$BUILD_PY" delocate
           else
-            uv pip install --python "$BUILD_PY" delvewheel
+            retry 5 uv pip install --python "$BUILD_PY" delvewheel
           fi
 
           if [[ "$RUNNER_OS" == "Windows" ]]; then
