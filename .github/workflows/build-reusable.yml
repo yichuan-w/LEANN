@@ -208,6 +208,8 @@ jobs:
           choco install swig -y --no-progress
           choco install nuget.commandline -y --no-progress
           choco install pkgconfiglite -y --no-progress
+          echo "C:/ProgramData/chocolatey/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_EXECUTABLE=C:/ProgramData/chocolatey/bin/pkg-config.exe" >> "$GITHUB_ENV"
           if [[ -z "${VCPKG_INSTALLATION_ROOT:-}" ]]; then
             echo "VCPKG_INSTALLATION_ROOT is not set on this runner"
             exit 1
