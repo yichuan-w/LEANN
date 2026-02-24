@@ -171,8 +171,9 @@ class IVFSearcher(BaseSearcher):
             query = query.astype(np.float32)
         if self.distance_metric == "cosine":
             query = _normalize_l2(query)
-        nprobe = nprobe or min(complexity, self._index.nlist)
-        self._index.nprobe = nprobe
+        ivf_index = faiss.extract_index_ivf(self._index)
+        nprobe = nprobe or min(complexity, ivf_index.nlist)
+        ivf_index.nprobe = nprobe
         distances, label_rows = self._index.search(query, top_k)
 
         def map_label(x: int) -> str:
