@@ -115,9 +115,7 @@ if __name__ == "__main__":
     print("- 'What are the main techniques LEANN uses?'")
     print("- 'What is the technique DLPM?'")
     print("- 'Who does Elizabeth Bennet marry?'")
-    print(
-        "- 'What is the problem of developing pan gu model Huawei meets? (盘古大模型开发中遇到什么问题?)'"
-    )
+    print("- 'What challenges did Huawei face while developing the Pangu model?'")
     print("\nNEW: Code-aware chunking available!")
     print("- Use --enable-code-chunking to enable AST-aware chunking for code files")
     print("- Supports Python, Java, C#, TypeScript files")
