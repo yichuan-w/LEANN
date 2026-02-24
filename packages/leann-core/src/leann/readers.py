@@ -64,7 +64,7 @@ class ChromeHistoryReader(BaseReader):
                 if 0 < max_count <= len(docs):
                     break
 
-                last_visit, url, title, visit_count, typed_count, _hidden = row
+                last_visit, url, title, visit_count, _typed_count, _hidden = row
                 if not title or not url:
                     continue
 
