@@ -1,25 +1,23 @@
-# Kullanıcı Scriptleri: Günlük Yaşamda LEANN
+# User Scripts: Daily Life with LEANN
 
-Bu dokümantasyon, LEANN'ı günlük yaşamda kullanmak için hazırlanmış otomasyon scriptlerini açıklar.
+This documentation describes the automation scripts prepared for using LEANN in daily life.
 
-## Kurulum
+## Installation
 
-### 1. Scriptleri İndirme
-
-Bu scriptleri kullanmak için önce LEANN repository'sini klonlayın:
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/yichuan-w/LEANN.git
 cd LEANN
 ```
 
-### 2. Scriptleri ~/bin Klasörüne Kopyalama
+### 2. Copy Scripts to ~/bin Folder
 
 ```bash
-# ~/.bin klasörü oluşturma (yoksa)
+# Create ~/bin directory if it doesn't exist
 mkdir -p ~/bin
 
-# Scriptleri kopyalama
+# Copy scripts
 cp bin/leann-sync-all.sh ~/bin/
 cp bin/leann-sync-dev.sh ~/bin/
 cp bin/leann-sync-personal.sh ~/bin/
@@ -28,105 +26,105 @@ cp bin/leann-sync-mail.sh ~/bin/
 cp bin/leann-sync-imessage.sh ~/bin/
 cp bin/leann-sync-calendar.sh ~/bin/
 
-# Çalıştırılabilir yapma
+# Make executable
 chmod +x ~/bin/leann-*.sh
 ```
 
-### 3. PATH'e Ekleme
+### 3. Add to PATH
 
 ```bash
-# ~/.zshrc veya ~/.bashrc dosyanıza ekleyin
+# Add to ~/.zshrc or ~/.bashrc
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-### 4. Ollama Kurulumu (Embedding için)
+### 4. Install Ollama (for Embedding)
 
 ```bash
-# Ollama'yı başlatma
+# Start Ollama
 ollama serve &
 
-# Embedding modeli indirme
+# Download embedding model
 ollama pull nomic-embed-text
 ```
 
-### 5. LEANN Kurulumu
+### 5. Install LEANN
 
 ```bash
 cd LEANN
 uv sync --extra diskann
 ```
 
-## Kullanım
+## Usage
 
-### Hızlı Başlangıç
+### Quick Start
 
 ```bash
-# Tüm indexleri güncelle
+# Update all indexes
 leann-sync-all.sh
 ```
 
-### Bireysel Scriptler
+### Individual Scripts
 
-| Script | Açıklama |
-|--------|-----------|
-| `leann-sync-all.sh` | Tüm indexleri sırayla günceller |
-| `leann-sync-dev.sh` | Geliştirme ortamı kodlarını indeksler |
-| `leann-sync-personal.sh` | Kişisel belgeleri (Documents, Nextcloud) indeksler |
-| `leann-sync-brave.sh` | Brave tarayıcı geçmişini indeksler |
-| `leann-sync-mail.sh` | Apple Mail e-postalarını indeksler |
-| `leann-sync-imessage.sh` | iMessage mesajlarını indeksler |
-| `leann-sync-calendar.sh` | Apple Calendar etkinliklerini indeksler |
+| Script | Description |
+|--------|-------------|
+| `leann-sync-all.sh` | Updates all indexes sequentially |
+| `leann-sync-dev.sh` | Indexes development environment code |
+| `leann-sync-personal.sh` | Indexes personal documents (Documents, Nextcloud) |
+| `leann-sync-brave.sh` | Indexes Brave browser history |
+| `leann-sync-mail.sh` | Indexes Apple Mail emails |
+| `leann-sync-imessage.sh` | Indexes iMessage messages |
+| `leann-sync-calendar.sh` | Indexes Apple Calendar events |
 
-### Örnek Kullanım Senaryoları
+### Example Usage Scenarios
 
-#### Senaryo 1: Günlük Geliştirme İş Akışı
+#### Scenario 1: Daily Development Workflow
 
 ```bash
-# Her sabah geliştirme ortamınızı güncelleyin
+# Update your development environment every morning
 leann-sync-dev.sh
 ```
 
-Bu komut:
-- ~/Development klasöründeki kodlarınızı tarar
-- AST-aware chunking ile kod yapısını korur
-- DiskANN backend ile indeks oluşturur
+This command:
+- Scans code in ~/Development folder
+- Preserves code structure with AST-aware chunking
+- Creates index with DiskANN backend
 
-#### Senaryo 2: Kişisel Doküman Arama
+#### Scenario 2: Personal Document Search
 
 ```bash
-# Kişisel belgelerinizi indeksleyin
+# Index your personal documents
 leann-sync-personal.sh
 ```
 
-Bu komut:
-- ~/Documents, ~/Nextcloud, ~/Nextcloud2 klasörlerini tarar
-- Tüm belgeleri (PDF, TXT, MD, Word, Excel, PowerPoint) indeksler
+This command:
+- Scans ~/Documents, ~/Nextcloud, ~/Nextcloud2 folders
+- Indexes all documents (PDF, TXT, MD, Word, Excel, PowerPoint)
 
-#### Senaryo 3: Tarayıcı Geçmişi Arama
+#### Scenario 3: Browser History Search
 
 ```bash
-# Brave tarayıcı geçmişinizi indeksleyin
+# Index your Brave browser history
 leann-sync-brave.sh
 ```
 
-#### Senaryo 4: E-posta Arama
+#### Scenario 4: Email Search
 
 ```bash
-# Apple Mail e-postalarınızı indeksleyin
+# Index your Apple Mail emails
 leann-sync-mail.sh
 ```
 
-#### Senaryo 5: iMessage Arama
+#### Scenario 5: iMessage Search
 
 ```bash
-# iMessage mesajlarınızı indeksleyin
+# Index your iMessage messages
 leann-sync-imessage.sh
 ```
 
-## Script Özelleştirme
+## Script Customization
 
-### Kendi Scriptinizi Oluşturma
+### Create Your Own Script
 
 ```bash
 #!/bin/bash
@@ -143,82 +141,82 @@ leann build my-custom-index \
   --force
 ```
 
-### Parametre Değiştirme
+### Modify Parameters
 
-Scriptlerdeki parametreleri kendi ihtiyaçlarınıza göre değiştirebilirsiniz:
+You can modify parameters in scripts according to your needs:
 
 ```bash
-# Daha büyük chunk boyutu
+# Larger chunk size
 --doc-chunk-size 2048
 
-# Embedding modeli değiştirme
+# Change embedding model
 --embedding-model BAAI/bge-base-en-v1.5
 
-# HNSW backend kullanma
+# Use HNSW backend
 --backend-name hnsw
 ```
 
-## Sıkça Sorulan Sorular
+## Frequently Asked Questions
 
-### S: "leann: command not found" hatası alıyorum
+### Q: I get "leann: command not found" error
 
-C: LEANN kurulumunun PATH'e eklendiğinden emin olun:
+Make sure LEANN installation is in your PATH:
 ```bash
 export PATH="/path/to/LEANN/packages/leann-core:$PATH"
 ```
 
-### S: Ollama bağlantısı başarısız
+### Q: Ollama connection failed
 
-C: Ollama'nın çalıştığını kontrol edin:
+Make sure Ollama is running:
 ```bash
 ollama serve &
 ollama list
 ```
 
-### S: Index oluşturma çok yavaş
+### Q: Index creation is too slow
 
-C: Daha küçük bir dataset ile test edin:
+Try with a smaller dataset:
 ```bash
 --max-items 1000
 ```
 
-## İleri Düzey Kullanım
+## Advanced Usage
 
-### LEANN CLI Komutları
+### LEANN CLI Commands
 
 ```bash
-# Index oluşturma
+# Create index
 leann build my-index --docs ./documents
 
-# Arama
-leann search my-index "arama sorgusu"
+# Search
+leann search my-index "search query"
 
-# Soru sorma
+# Ask questions
 leann ask my-index --interactive
 
-# Indexleri listeleme
+# List indexes
 leann list
 
-# Index kaldırma
+# Remove index
 leann remove my-index
 ```
 
-### Embedding Modları
+### Embedding Modes
 
-| Mod | Açıklama |
-|-----|-----------|
-| `sentence-transformers` | HuggingFace modelleri |
+| Mode | Description |
+|------|-------------|
+| `sentence-transformers` | HuggingFace models |
 | `openai` | OpenAI API |
 | `mlx` | Apple Silicon MLX |
-| `ollama` | Yerel Ollama |
+| `ollama` | Local Ollama |
 
-### Backend Seçimi
+### Backend Selection
 
-| Backend | Kullanım |
+| Backend | Use Case |
 |---------|----------|
-| `hnsw` | Küçük-orta ölçekli (<10M vektör) |
-| `diskann` | Büyük ölçekli, disk tabanlı |
+| `hnsw` | Small-medium scale (<10M vectors) |
+| `diskann` | Large scale, disk-based |
 
 ---
 
-Bu dokümantasyon, LEANN'ın günlük kullanımını kolaylaştırmak için hazırlanmıştır. Herhangi bir sorunuz varsa, lütfen GitHub Issues üzerinden sorun.
+This documentation is prepared to make LEANN easy to use in daily life. If you have any questions, please ask on GitHub Issues.
