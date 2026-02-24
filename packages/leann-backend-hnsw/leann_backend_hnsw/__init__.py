@@ -25,13 +25,12 @@ def _configure_windows_dll_search_path() -> None:
             ]
         )
 
-    candidate_dirs.extend(
-        [
-            Path(r"C:\vcpkg\installed\x64-windows\bin"),
-            Path(r"C:\vcpkg\installed\x64-windows\debug\bin"),
-            Path(r"C:\vcpkg\installed\x64-windows\tools\protobuf"),
-        ]
-    )
+    for path_entry in os.environ.get("PATH", "").split(";"):
+        entry = path_entry.strip()
+        if not entry:
+            continue
+        if "vcpkg" in entry.lower():
+            candidate_dirs.append(Path(entry))
 
     seen: set[str] = set()
     for dll_dir in candidate_dirs:
