@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -56,11 +58,12 @@ class TestMerkleTreeCompare(unittest.TestCase):
 
 class TestFileSynchronizer(unittest.TestCase):
     def test_generate_file_hashes(self):
-        fs = FileSynchronizer("/tmp", auto_load=False)
+        temp_dir = tempfile.gettempdir()
+        fs = FileSynchronizer(temp_dir, auto_load=False)
 
         mock_file = Mock()
         mock_file.text = "hello world"
-        mock_file.metadata = {"file_path": "/tmp/file.txt"}
+        mock_file.metadata = {"file_path": os.path.join(temp_dir, "file.txt")}
 
         mock_reader_instance = Mock()
         mock_reader_instance.iter_data.return_value = [
@@ -72,7 +75,7 @@ class TestFileSynchronizer(unittest.TestCase):
 
             result = fs.generate_file_hashes()
 
-        assert result == {"/tmp/file.txt": hash_data("hello world")}
+        assert result == {os.path.join(temp_dir, "file.txt"): hash_data("hello world")}
 
     def test_build_merkle_tree(self):
         fs = FileSynchronizer(".", auto_load=False)

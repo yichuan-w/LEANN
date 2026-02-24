@@ -220,6 +220,9 @@ jobs:
           echo "PKG_CONFIG_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows" >> "$GITHUB_ENV"
           echo "OPENBLAS_LIB=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/openblas.lib" >> "$GITHUB_ENV"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/bin" >> "$GITHUB_PATH"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/debug/bin" >> "$GITHUB_PATH"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/tools/protobuf" >> "$GITHUB_PATH"
           pkg-config --version || true
           where pkg-config || true
           pkg-config --modversion libzmq || true
