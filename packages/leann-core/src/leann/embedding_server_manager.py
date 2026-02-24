@@ -7,6 +7,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -23,6 +24,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 _LOCK_STALE_SECONDS = 600
+_REGISTRY_LOCKS_GUARD = threading.Lock()
+_REGISTRY_LOCKS: dict[str, threading.Lock] = {}
 
 
 def _is_colab_environment() -> bool:
@@ -662,10 +665,16 @@ class EmbeddingServerManager:
         """Best-effort cross-process lock around a daemon registry key."""
         lock_file = None
         lock_info_path: Optional[Path] = None
+        thread_lock: Optional[threading.Lock] = None
         try:
             lock_path = self._registry_dir()
             lock_path.mkdir(parents=True, exist_ok=True)
             lock_key = self._registry_key(config_signature)
+
+            with _REGISTRY_LOCKS_GUARD:
+                thread_lock = _REGISTRY_LOCKS.setdefault(lock_key, threading.Lock())
+            thread_lock.acquire()
+
             lock_file = (lock_path / f"{lock_key}.lock").open("a+")
             lock_info_path = lock_path / f"{lock_key}.lockinfo.json"
             self._recover_stale_lock_info(lock_info_path)
@@ -689,6 +698,8 @@ class EmbeddingServerManager:
                 except Exception:
                     pass
                 lock_file.close()
+            if thread_lock is not None and thread_lock.locked():
+                thread_lock.release()
 
     def _recover_stale_lock_info(self, lock_info_path: Path) -> None:
         if not lock_info_path.exists():
