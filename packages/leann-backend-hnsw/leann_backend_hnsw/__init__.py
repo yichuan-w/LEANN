@@ -48,4 +48,4 @@ def _configure_windows_dll_search_path() -> None:
 
 _configure_windows_dll_search_path()
 
-from . import hnsw_backend as hnsw_backend
+from . import hnsw_backend as hnsw_backend  # noqa: E402
