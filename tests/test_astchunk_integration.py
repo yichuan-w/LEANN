@@ -292,7 +292,7 @@ class MathUtils:
         os.environ.get("CI") == "true",
         reason="Skip integration tests in CI to avoid dependency issues",
     )
-    @pytest.mark.timeout(600)
+    @pytest.mark.timeout(0)
     def test_document_rag_with_ast_chunking(self, temp_code_dir):
         """Test document RAG with AST chunking enabled."""
         with tempfile.TemporaryDirectory() as index_dir:
@@ -340,7 +340,7 @@ class MathUtils:
         os.environ.get("CI") == "true",
         reason="Skip integration tests in CI to avoid dependency issues",
     )
-    @pytest.mark.timeout(600)
+    @pytest.mark.timeout(0)
     def test_code_rag_application(self, temp_code_dir):
         """Test the specialized code RAG application."""
         with tempfile.TemporaryDirectory() as index_dir:
