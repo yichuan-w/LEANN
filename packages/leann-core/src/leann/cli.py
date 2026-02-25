@@ -1920,7 +1920,7 @@ Examples:
 
     async def index_wechat(self, args):
         """Build an index from WeChat chat history."""
-        from .readers import WeChatReader
+        from .readers import WeChatHistoryReader
 
         index_name = args.index_name
         index_dir = self.indexes_dir / index_name
@@ -1928,8 +1928,9 @@ Examples:
 
         print("💬 Indexing WeChat chat history...")
 
-        reader = WeChatReader(export_dir=args.export_dir)
-        documents = reader.load_data(max_count=args.max_items)
+        reader = WeChatHistoryReader()
+        export_dir = getattr(args, "export_dir", "./wechat_export")
+        documents = reader.load_data(wechat_export_dir=export_dir, max_count=args.max_items)
 
         if not documents:
             print("❌ No WeChat data found. Make sure WeChat is exported first.")
@@ -1968,7 +1969,7 @@ Examples:
 
         print("💬 Indexing iMessage history...")
 
-        reader = IMessageReader(db_path=args.db_path)
+        reader = IMessageReader()
         documents = reader.load_data(max_count=args.max_items)
 
         if not documents:
@@ -2000,7 +2001,7 @@ Examples:
 
     async def index_slack(self, args):
         """Build an index from Slack workspace via MCP."""
-        from .readers import SlackReader
+        from .readers import SlackMCPReader
 
         index_name = args.index_name
         index_dir = self.indexes_dir / index_name
@@ -2008,12 +2009,11 @@ Examples:
 
         print("📱 Indexing Slack workspace...")
 
-        reader = SlackReader(
-            mcp_server=args.mcp_server,
+        reader = SlackMCPReader(
+            mcp_server_command=args.mcp_server,
             workspace_name=args.workspace_name,
-            channels=args.channels,
         )
-        documents = reader.load_data()
+        documents = await reader.load_data(channels=args.channels)
 
         if not documents:
             print("❌ No Slack data found. Make sure MCP server is running.")
@@ -2052,8 +2052,8 @@ Examples:
 
         print("🤖 Indexing ChatGPT export...")
 
-        reader = ChatGPTReader(export_path=args.export_path)
-        documents = reader.load_data(max_count=args.max_items)
+        reader = ChatGPTReader()
+        documents = reader.load_data(export_path=args.export_path)
 
         if not documents:
             print("❌ No ChatGPT data found. Make sure export file is valid.")
@@ -2092,8 +2092,8 @@ Examples:
 
         print("🤖 Indexing Claude export...")
 
-        reader = ClaudeReader(export_path=args.export_path)
-        documents = reader.load_data(max_count=args.max_items)
+        reader = ClaudeReader()
+        documents = reader.load_data(export_path=args.export_path)
 
         if not documents:
             print("❌ No Claude data found. Make sure export file is valid.")
