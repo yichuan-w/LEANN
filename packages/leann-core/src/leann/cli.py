@@ -1851,8 +1851,7 @@ Examples:
                     current_sources[_normalize_path(path)] = os.path.getmtime(path)
 
             if not manifest or not meta_path.exists():
-                # Legacy index without manifest — rebuild to enable future incrementals
-                print("Rebuilding index (enabling incremental support)...")
+                print("Rebuilding index (legacy format detected, enabling incremental support)...")
             else:
                 new_paths = {p for p in current_sources if p not in manifest}
                 removed_paths = {p for p in manifest if p not in current_sources}
@@ -1879,6 +1878,29 @@ Examples:
                     and meta.get("embedding_model") == args.embedding_model
                     and meta.get("embedding_mode") == args.embedding_mode
                 )
+
+                if not can_incremental and (removed_paths or modified_paths):
+                    reasons = []
+                    if removed_paths:
+                        reasons.append(f"{len(removed_paths)} file(s) removed")
+                    if modified_paths:
+                        reasons.append(f"{len(modified_paths)} file(s) modified")
+                    print(
+                        f"Incremental update not possible ({', '.join(reasons)}); "
+                        f"falling back to full rebuild."
+                    )
+                elif not can_incremental:
+                    blockers = []
+                    if meta.get("backend_name") not in ("hnsw", "ivf"):
+                        blockers.append(f"backend '{meta.get('backend_name')}' does not support incremental updates")
+                    if meta.get("is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)):
+                        blockers.append("index is compact (read-only); rebuild with --no-compact to enable incremental updates")
+                    if meta.get("embedding_model") != args.embedding_model:
+                        blockers.append(f"embedding model changed ('{meta.get('embedding_model')}' -> '{args.embedding_model}')")
+                    if meta.get("embedding_mode") != args.embedding_mode:
+                        blockers.append(f"embedding mode changed ('{meta.get('embedding_mode')}' -> '{args.embedding_mode}')")
+                    if blockers:
+                        print(f"Incremental update not possible: {'; '.join(blockers)}. Falling back to full rebuild.")
 
                 if can_incremental and new_paths:
                     new_chunks = [
@@ -1922,7 +1944,7 @@ Examples:
                     for chunk in new_chunks:
                         builder_inc.add_text(chunk["text"], metadata=chunk["metadata"])
                     print(
-                        f"Updating index '{index_name}' with {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
+                        f"Incremental update: adding {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
                     )
                     builder_inc.update_index(index_path)
                     for p in new_paths:
@@ -1932,7 +1954,6 @@ Examples:
                     self.register_project_dir()
                     return
                 else:
-                    # Modifications, removals, or incompatible index — auto-rebuild
                     changes = []
                     if new_paths:
                         changes.append(f"+{len(new_paths)} added")
@@ -1940,8 +1961,8 @@ Examples:
                         changes.append(f"~{len(modified_paths)} modified")
                     if removed_paths:
                         changes.append(f"-{len(removed_paths)} removed")
-                    reason = ", ".join(changes) if changes else "incompatible index format"
-                    print(f"Rebuilding index ({reason})...")
+                    summary = ", ".join(changes) if changes else "incompatible index format"
+                    print(f"Full rebuild starting ({summary})...")
 
         index_dir.mkdir(parents=True, exist_ok=True)
 
