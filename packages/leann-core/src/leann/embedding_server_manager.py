@@ -46,10 +46,9 @@ def _flock_acquire(lock_file) -> None:  # type: ignore[type-arg]
     except OSError:
         return
 
-    try:
-        import msvcrt
-    except ImportError:
+    if sys.platform != "win32":
         return
+    import msvcrt
 
     # msvcrt.locking operates on byte ranges; ensure the file has content.
     lock_file.seek(0, 2)
@@ -83,6 +82,8 @@ def _flock_release(lock_file) -> None:  # type: ignore[type-arg]
     except OSError:
         return
 
+    if sys.platform != "win32":
+        return
     try:
         import msvcrt
 
