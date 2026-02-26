@@ -2182,14 +2182,17 @@ Examples:
         *,
         non_interactive: bool = True,
         purpose: str = "use",
+        quiet: bool = False,
     ) -> Optional[str]:
         """Resolve index path from current project or registered projects."""
+        _print = (lambda *a, **kw: print(*a, file=sys.stderr, **kw)) if quiet else print
+
         if self.index_exists(index_name):
             return self.get_index_path(index_name)
 
         all_matches = self._find_all_matching_indexes(index_name)
         if not all_matches:
-            print(
+            _print(
                 f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
             )
             return None
@@ -2208,7 +2211,7 @@ Examples:
                 if match["is_current"]
                 else f"project '{match['project_path'].name}'"
             )
-            print(f"Using index '{index_name}' from {project_info}")
+            _print(f"Using index '{index_name}' from {project_info}")
             return _match_to_path(match)
 
         if non_interactive:
@@ -2219,7 +2222,7 @@ Examples:
                 if match["is_current"]
                 else f"project '{match['project_path'].name}'"
             )
-            print(
+            _print(
                 f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
             )
             return _match_to_path(match)
@@ -2255,11 +2258,13 @@ Examples:
     async def search_documents(self, args):
         index_name = args.index_name
         query = args.query
+        json_mode = getattr(args, "json", False)
 
         index_path = self._resolve_index_path(
             index_name,
             non_interactive=args.non_interactive,
             purpose="search",
+            quiet=json_mode,
         )
         if not index_path:
             return
@@ -2269,24 +2274,40 @@ Examples:
         if args.embedding_prompt_template:
             provider_options["prompt_template"] = args.embedding_prompt_template
 
-        searcher = LeannSearcher(
-            index_path=index_path,
-            enable_warmup=args.enable_warmup,
-            use_daemon=args.use_daemon,
-            daemon_ttl_seconds=args.daemon_ttl,
-        )
-        results = searcher.search(
-            query,
-            top_k=args.top_k,
-            complexity=args.complexity,
-            beam_width=args.beam_width,
-            prune_ratio=args.prune_ratio,
-            recompute_embeddings=args.recompute_embeddings,
-            pruning_strategy=args.pruning_strategy,
-            provider_options=provider_options if provider_options else None,
-        )
+        if json_mode:
+            sys.stdout.flush()
+            saved_fd = os.dup(1)
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, 1)
+            os.close(devnull)
 
-        if getattr(args, "json", False):
+        try:
+            searcher = LeannSearcher(
+                index_path=index_path,
+                enable_warmup=args.enable_warmup,
+                use_daemon=args.use_daemon,
+                daemon_ttl_seconds=args.daemon_ttl,
+            )
+            results = searcher.search(
+                query,
+                top_k=args.top_k,
+                complexity=args.complexity,
+                beam_width=args.beam_width,
+                prune_ratio=args.prune_ratio,
+                recompute_embeddings=args.recompute_embeddings,
+                pruning_strategy=args.pruning_strategy,
+                provider_options=provider_options if provider_options else None,
+            )
+        finally:
+            if json_mode:
+                import ctypes
+
+                libc = ctypes.CDLL(None)
+                libc.fflush(None)
+                os.dup2(saved_fd, 1)
+                os.close(saved_fd)
+
+        if json_mode:
             json_results = [
                 {
                     "id": r.id,

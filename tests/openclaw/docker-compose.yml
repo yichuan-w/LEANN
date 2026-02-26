@@ -1,0 +1,13 @@
+services:
+  openclaw-test:
+    image: ghcr.io/phioranex/openclaw-docker:latest
+    container_name: openclaw-leann-test
+    environment:
+      - HOME=/home/node
+    volumes:
+      - ./docker-data:/home/node/.openclaw
+      - ../../:/leann-tree:ro
+    ports:
+      - "18790:18789"
+    entrypoint: ["/app/node_modules/.pnpm/node_modules/.bin/openclaw"]
+    command: ["gateway", "run", "--port", "18789", "--allow-unconfigured", "--verbose"]

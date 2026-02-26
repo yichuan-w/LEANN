@@ -1289,7 +1289,7 @@ class LeannSearcher:
                     enriched_results.append(
                         SearchResult(
                             id=string_id,
-                            score=dist,
+                            score=float(dist),
                             text=passage_data["text"],
                             metadata=passage_data.get("metadata", {}),
                         )
