@@ -1892,15 +1892,27 @@ Examples:
                 elif not can_incremental:
                     blockers = []
                     if meta.get("backend_name") not in ("hnsw", "ivf"):
-                        blockers.append(f"backend '{meta.get('backend_name')}' does not support incremental updates")
-                    if meta.get("is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)):
-                        blockers.append("index is compact (read-only); rebuild with --no-compact to enable incremental updates")
+                        blockers.append(
+                            f"backend '{meta.get('backend_name')}' does not support incremental updates"
+                        )
+                    if meta.get(
+                        "is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)
+                    ):
+                        blockers.append(
+                            "index is compact (read-only); rebuild with --no-compact to enable incremental updates"
+                        )
                     if meta.get("embedding_model") != args.embedding_model:
-                        blockers.append(f"embedding model changed ('{meta.get('embedding_model')}' -> '{args.embedding_model}')")
+                        blockers.append(
+                            f"embedding model changed ('{meta.get('embedding_model')}' -> '{args.embedding_model}')"
+                        )
                     if meta.get("embedding_mode") != args.embedding_mode:
-                        blockers.append(f"embedding mode changed ('{meta.get('embedding_mode')}' -> '{args.embedding_mode}')")
+                        blockers.append(
+                            f"embedding mode changed ('{meta.get('embedding_mode')}' -> '{args.embedding_mode}')"
+                        )
                     if blockers:
-                        print(f"Incremental update not possible: {'; '.join(blockers)}. Falling back to full rebuild.")
+                        print(
+                            f"Incremental update not possible: {'; '.join(blockers)}. Falling back to full rebuild."
+                        )
 
                 if can_incremental and new_paths:
                     new_chunks = [
