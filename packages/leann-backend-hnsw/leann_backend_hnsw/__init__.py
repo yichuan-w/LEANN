@@ -1,13 +1,21 @@
-from __future__ import annotations
-
 import os
 from pathlib import Path
 
-_DLL_DIR_HANDLES = []
+_DLL_DIR_HANDLES: list[object] = []
 
 
 def _configure_windows_dll_search_path() -> None:
-    """Ensure Windows can resolve native DLL dependencies for FAISS bindings."""
+    """Register vcpkg DLL directories so Windows can resolve native dependencies.
+
+    Python 3.8+ no longer searches PATH for DLL dependencies of native
+    extensions (see https://github.com/numpy/numpy/wiki/windows-dll-notes).
+    The standard workaround is ``os.add_dll_directory``.
+
+    This only matters for **CI builds and source installs** where C++ deps
+    (OpenBLAS, ZeroMQ, protobuf, …) live in a vcpkg tree.  Pre-built wheels
+    shipped via PyPI bundle all required DLLs inside the wheel (via
+    delvewheel), so end-users installing with ``pip install`` are unaffected.
+    """
     if os.name != "nt" or not hasattr(os, "add_dll_directory"):
         return
 
