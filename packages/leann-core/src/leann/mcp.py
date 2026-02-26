@@ -99,7 +99,6 @@ def handle_request(request):
                         },
                     }
 
-                # Build simplified command with non-interactive flag for MCP compatibility
                 cmd = [
                     "leann",
                     "search",
@@ -108,6 +107,7 @@ def handle_request(request):
                     f"--top-k={args.get('top_k', 5)}",
                     f"--complexity={args.get('complexity', 32)}",
                     "--non-interactive",
+                    "--json",
                 ]
                 if args.get("show_metadata", False):
                     cmd.append("--show-metadata")

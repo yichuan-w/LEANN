@@ -21,6 +21,7 @@ demo/experiment_results/**/*.json
 *.png
 !.vscode/*.json
 !.devcontainer/*.json
+!skills/**/claw.json
 *.sh
 *.txt
 !CMakeLists.txt
