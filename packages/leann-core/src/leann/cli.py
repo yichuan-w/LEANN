@@ -290,8 +290,8 @@ Examples:
         build_parser.add_argument(
             "--compact",
             action=argparse.BooleanOptionalAction,
-            default=True,
-            help="Use compact storage (default: true). Must be `no-compact` for `no-recompute` build.",
+            default=False,
+            help="Use compact (CSR) graph storage. Compact indices are read-only and cannot be updated incrementally. Default: false (allows incremental updates while still pruning embeddings for 97%% compression).",
         )
         build_parser.add_argument(
             "--recompute",
@@ -361,9 +361,25 @@ Examples:
         # Watch command
         watch_parser = subparsers.add_parser(
             "watch",
-            help="Compare current files against last checkpoint and report changes",
+            help="Monitor source files and auto-rebuild index when changes are detected",
         )
         watch_parser.add_argument("index_name", help="Index name")
+        watch_parser.add_argument(
+            "--interval",
+            type=int,
+            default=5,
+            help="Poll interval in seconds (default: 5)",
+        )
+        watch_parser.add_argument(
+            "--once",
+            action="store_true",
+            help="Check once for changes and exit (do not loop)",
+        )
+        watch_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Report changes without rebuilding (original watch behavior)",
+        )
 
         # Search command
         search_parser = subparsers.add_parser("search", help="Search documents")
@@ -389,6 +405,11 @@ Examples:
             choices=["global", "local", "proportional"],
             default="global",
             help="Pruning strategy (default: global)",
+        )
+        search_parser.add_argument(
+            "--json",
+            action="store_true",
+            help="Output results as JSON array (machine-readable)",
         )
         search_parser.add_argument(
             "--non-interactive",
@@ -1632,6 +1653,24 @@ Examples:
             return None
         return ["**/.*"]
 
+    def _build_embedding_options(self, args) -> dict[str, Any]:
+        """Build embedding provider options dict from CLI args."""
+        opts: dict[str, Any] = {}
+        if args.embedding_mode == "ollama":
+            opts["host"] = resolve_ollama_host(args.embedding_host)
+        elif args.embedding_mode == "openai":
+            opts["base_url"] = resolve_openai_base_url(args.embedding_api_base)
+            resolved_key = resolve_openai_api_key(args.embedding_api_key)
+            if resolved_key:
+                opts["api_key"] = resolved_key
+        if args.query_prompt_template:
+            if args.embedding_prompt_template:
+                opts["build_prompt_template"] = args.embedding_prompt_template
+            opts["query_prompt_template"] = args.query_prompt_template
+        elif args.embedding_prompt_template:
+            opts["prompt_template"] = args.embedding_prompt_template
+        return opts
+
     def _resolve_sync_roots(self, docs_paths: list[str]) -> list[str]:
         roots: set[str] = set()
         for path in docs_paths:
@@ -1800,128 +1839,115 @@ Examples:
             print("No documents found")
             return
 
-        # Incremental build: index exists and no --force -> add only new files
+        # Idempotent build: detect changes and choose the minimal work path
         if index_dir.exists() and not args.force:
             manifest = load_sources_manifest(index_dir, "documents.leann")
-            if not manifest:
-                print("Index was built before incremental support. Use --force to rebuild.")
-                return
-            current_sources = {}
+            meta_path = index_dir / "documents.leann.meta.json"
+
+            current_sources: dict[str, float] = {}
             for c in all_texts:
                 path = c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source")
                 if path and os.path.isfile(path):
                     current_sources[_normalize_path(path)] = os.path.getmtime(path)
-            new_paths = {p for p in current_sources if p not in manifest}
-            if not new_paths:
-                print("Index up to date. Use --force to rebuild from scratch.")
-                return
-            new_chunks = [
-                c
-                for c in all_texts
-                if _normalize_path(
-                    c.get("metadata", {}).get("file_path")
-                    or c.get("metadata", {}).get("source")
-                    or ""
-                )
-                in new_paths
-            ]
-            meta_path = index_dir / "documents.leann.meta.json"
-            if not meta_path.exists():
-                print("Index metadata missing. Use --force to rebuild.")
-                return
-            with open(meta_path, encoding="utf-8") as f:
-                meta = json.load(f)
-            if meta.get("backend_name") != "hnsw":
-                print(
-                    f"Incremental update only supported for HNSW backend (index uses '{meta.get('backend_name')}'). Use --force to rebuild."
-                )
-                return
-            if meta.get("is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)):
-                print(
-                    "Incremental update requires a non-compact index. Use --force and rebuild with --no-compact."
-                )
-                return
-            if (
-                meta.get("embedding_model") != args.embedding_model
-                or meta.get("embedding_mode") != args.embedding_mode
-            ):
-                print(
-                    "Use the same --embedding-model and --embedding-mode as the existing index for incremental update."
-                )
-                return
-            from collections import defaultdict
 
-            by_path = defaultdict(list)
-            for c in new_chunks:
-                path = (
-                    c.get("metadata", {}).get("file_path")
-                    or c.get("metadata", {}).get("source")
-                    or ""
+            if not manifest or not meta_path.exists():
+                # Legacy index without manifest — rebuild to enable future incrementals
+                print("Rebuilding index (enabling incremental support)...")
+            else:
+                new_paths = {p for p in current_sources if p not in manifest}
+                removed_paths = {p for p in manifest if p not in current_sources}
+                modified_paths = {
+                    p
+                    for p in current_sources
+                    if p in manifest and current_sources[p] != manifest[p]
+                }
+
+                if not new_paths and not removed_paths and not modified_paths:
+                    print("Index up to date.")
+                    return
+
+                with open(meta_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+
+                can_incremental = (
+                    not removed_paths
+                    and not modified_paths
+                    and meta.get("backend_name") in ("hnsw", "ivf")
+                    and not meta.get(
+                        "is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)
+                    )
+                    and meta.get("embedding_model") == args.embedding_model
+                    and meta.get("embedding_mode") == args.embedding_mode
                 )
-                by_path[_normalize_path(path)].append(c)
-            for path_key, path_chunks in by_path.items():
-                for idx, c in enumerate(path_chunks):
-                    sid = hashlib.sha256(f"{path_key}:{idx}".encode()).hexdigest()[:16]
-                    c.setdefault("metadata", {})["id"] = sid
-                    c["id"] = sid
-            embedding_options_inc: dict[str, Any] = {}
-            if args.embedding_mode == "ollama":
-                embedding_options_inc["host"] = resolve_ollama_host(args.embedding_host)
-            elif args.embedding_mode == "openai":
-                embedding_options_inc["base_url"] = resolve_openai_base_url(args.embedding_api_base)
-                resolved_embedding_key = resolve_openai_api_key(args.embedding_api_key)
-                if resolved_embedding_key:
-                    embedding_options_inc["api_key"] = resolved_embedding_key
-            if args.query_prompt_template:
-                if args.embedding_prompt_template:
-                    embedding_options_inc["build_prompt_template"] = args.embedding_prompt_template
-                embedding_options_inc["query_prompt_template"] = args.query_prompt_template
-            elif args.embedding_prompt_template:
-                embedding_options_inc["prompt_template"] = args.embedding_prompt_template
-            builder_inc = LeannBuilder(
-                backend_name=args.backend_name,
-                embedding_model=args.embedding_model,
-                embedding_mode=args.embedding_mode,
-                embedding_options=embedding_options_inc or None,
-                graph_degree=args.graph_degree,
-                complexity=args.complexity,
-                is_compact=args.compact,
-                is_recompute=args.recompute,
-                num_threads=args.num_threads,
-            )
-            for chunk in new_chunks:
-                builder_inc.add_text(chunk["text"], metadata=chunk["metadata"])
-            print(
-                f"Updating index '{index_name}' with {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
-            )
-            builder_inc.update_index(index_path)
-            for p in new_paths:
-                manifest[p] = current_sources[p]
-            save_sources_manifest(index_dir, "documents.leann", manifest)
-            print(f"Index updated at {index_path}")
-            self.register_project_dir()
-            return
+
+                if can_incremental and new_paths:
+                    new_chunks = [
+                        c
+                        for c in all_texts
+                        if _normalize_path(
+                            c.get("metadata", {}).get("file_path")
+                            or c.get("metadata", {}).get("source")
+                            or ""
+                        )
+                        in new_paths
+                    ]
+                    from collections import defaultdict
+
+                    by_path: dict[str, list] = defaultdict(list)
+                    for c in new_chunks:
+                        path = (
+                            c.get("metadata", {}).get("file_path")
+                            or c.get("metadata", {}).get("source")
+                            or ""
+                        )
+                        by_path[_normalize_path(path)].append(c)
+                    for path_key, path_chunks in by_path.items():
+                        for idx, c in enumerate(path_chunks):
+                            sid = hashlib.sha256(f"{path_key}:{idx}".encode()).hexdigest()[:16]
+                            c.setdefault("metadata", {})["id"] = sid
+                            c["id"] = sid
+
+                    embedding_options_inc = self._build_embedding_options(args)
+                    builder_inc = LeannBuilder(
+                        backend_name=args.backend_name,
+                        embedding_model=args.embedding_model,
+                        embedding_mode=args.embedding_mode,
+                        embedding_options=embedding_options_inc or None,
+                        graph_degree=args.graph_degree,
+                        complexity=args.complexity,
+                        is_compact=args.compact,
+                        is_recompute=args.recompute,
+                        num_threads=args.num_threads,
+                    )
+                    for chunk in new_chunks:
+                        builder_inc.add_text(chunk["text"], metadata=chunk["metadata"])
+                    print(
+                        f"Updating index '{index_name}' with {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
+                    )
+                    builder_inc.update_index(index_path)
+                    for p in new_paths:
+                        manifest[p] = current_sources[p]
+                    save_sources_manifest(index_dir, "documents.leann", manifest)
+                    print(f"Index updated at {index_path}")
+                    self.register_project_dir()
+                    return
+                else:
+                    # Modifications, removals, or incompatible index — auto-rebuild
+                    changes = []
+                    if new_paths:
+                        changes.append(f"+{len(new_paths)} added")
+                    if modified_paths:
+                        changes.append(f"~{len(modified_paths)} modified")
+                    if removed_paths:
+                        changes.append(f"-{len(removed_paths)} removed")
+                    reason = ", ".join(changes) if changes else "incompatible index format"
+                    print(f"Rebuilding index ({reason})...")
 
         index_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"Building index '{index_name}' with {args.backend_name} backend...")
 
-        embedding_options: dict[str, Any] = {}
-        if args.embedding_mode == "ollama":
-            embedding_options["host"] = resolve_ollama_host(args.embedding_host)
-        elif args.embedding_mode == "openai":
-            embedding_options["base_url"] = resolve_openai_base_url(args.embedding_api_base)
-            resolved_embedding_key = resolve_openai_api_key(args.embedding_api_key)
-            if resolved_embedding_key:
-                embedding_options["api_key"] = resolved_embedding_key
-        if args.query_prompt_template:
-            # New format: separate templates
-            if args.embedding_prompt_template:
-                embedding_options["build_prompt_template"] = args.embedding_prompt_template
-            embedding_options["query_prompt_template"] = args.query_prompt_template
-        elif args.embedding_prompt_template:
-            # Old format: single template (backward compat)
-            embedding_options["prompt_template"] = args.embedding_prompt_template
+        embedding_options = self._build_embedding_options(args)
 
         builder = LeannBuilder(
             backend_name=args.backend_name,
@@ -1959,20 +1985,16 @@ Examples:
         # Register this project directory in global registry
         self.register_project_dir()
 
-    async def watch_index(self, args):
-        index_name = args.index_name
+    def _watch_check_changes(self, index_name: str) -> tuple[set[str], set[str], set[str]]:
+        """Check for file changes in watched directories. Returns (added, removed, modified) paths."""
         resolved = self._resolve_index_for_watch(index_name)
         if not resolved:
-            return
+            return set(), set(), set()
 
         index_dir = resolved["index_dir"]
-        passages_file = resolved["passages_file"]
         sync_config_path = index_dir / "sync_roots.json"
         if not sync_config_path.exists():
-            print(
-                f"Sync config not found for index '{index_name}'. Rebuild the index to enable watch."
-            )
-            return
+            return set(), set(), set()
 
         with open(sync_config_path, encoding="utf-8") as f:
             config = json.load(f)
@@ -1980,14 +2002,6 @@ Examples:
         roots = config.get("roots") or []
         include_extensions = config.get("include_extensions")
         ignore_patterns = config.get("ignore_patterns")
-        if not roots:
-            print(f"No sync roots found for index '{index_name}'.")
-            return
-        if not passages_file.exists():
-            print(f"Passages file not found: {passages_file}")
-            return
-
-        chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file)
 
         added_paths: set[str] = set()
         removed_paths: set[str] = set()
@@ -2003,33 +2017,131 @@ Examples:
                 )
                 added, removed, modified = fs.check_for_changes()
             except Exception as exc:
-                print(f"⚠️  Failed to check {root}: {exc}")
+                print(f"Warning: Failed to check {root}: {exc}")
                 continue
-
             added_paths.update(added)
             removed_paths.update(removed)
             modified_paths.update(modified)
 
-        if not added_paths and not removed_paths and not modified_paths:
-            print("No changes detected.")
-        else:
-            print("\n=== Changes since last checkpoint ===")
-            for label, paths in (
-                ("added", sorted(added_paths)),
-                ("removed", sorted(removed_paths)),
-                ("modified", sorted(modified_paths)),
-            ):
-                if not paths:
-                    continue
-                print(f"\n{label} ({len(paths)}):")
-                for file_path in paths:
-                    normalized_path = str(Path(file_path).resolve())
-                    chunk_ids = chunk_ids_by_file.get(normalized_path) or []
-                    if not chunk_ids:
-                        chunk_ids = chunk_ids_by_file.get(file_path) or []
-                    chunk_display = ", ".join(chunk_ids) if chunk_ids else "(not in index)"
-                    print(f"  - {file_path}")
-                    print(f"    chunks: {chunk_display}")
+        return added_paths, removed_paths, modified_paths
+
+    def _watch_report_changes(
+        self,
+        index_name: str,
+        added: set[str],
+        removed: set[str],
+        modified: set[str],
+    ) -> None:
+        """Print a summary of detected file changes."""
+        resolved = self._resolve_index_for_watch(index_name)
+        passages_file = resolved["passages_file"] if resolved else None
+
+        chunk_ids_by_file: dict[str, list[str]] = {}
+        if passages_file and passages_file.exists():
+            chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file)
+
+        print("\n=== Changes detected ===")
+        for label, paths in (
+            ("added", sorted(added)),
+            ("removed", sorted(removed)),
+            ("modified", sorted(modified)),
+        ):
+            if not paths:
+                continue
+            print(f"\n{label} ({len(paths)}):")
+            for file_path in paths:
+                normalized_path = str(Path(file_path).resolve())
+                chunk_ids = chunk_ids_by_file.get(normalized_path) or chunk_ids_by_file.get(
+                    file_path, []
+                )
+                chunk_display = ", ".join(chunk_ids) if chunk_ids else "(not in index)"
+                print(f"  - {file_path}")
+                print(f"    chunks: {chunk_display}")
+
+    async def _watch_trigger_build(self, index_name: str) -> None:
+        """Trigger an idempotent build for the given index, reusing its stored config."""
+        resolved = self._resolve_index_for_watch(index_name)
+        if not resolved:
+            return
+        index_dir = resolved["index_dir"]
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            return
+        with open(sync_config_path, encoding="utf-8") as f:
+            config = json.load(f)
+        roots = config.get("roots") or []
+        if not roots:
+            return
+
+        meta_path = index_dir / "documents.leann.meta.json"
+        if not meta_path.exists():
+            print(f"Index metadata missing for '{index_name}', cannot rebuild.")
+            return
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+
+        parser = self.create_parser()
+        build_args_list = [
+            "build",
+            index_name,
+            "--docs",
+            *roots,
+            "--backend-name",
+            meta.get("backend_name", "hnsw"),
+            "--embedding-model",
+            meta.get("embedding_model", "all-MiniLM-L6-v2"),
+            "--embedding-mode",
+            meta.get("embedding_mode", "sentence-transformers"),
+        ]
+        bkw = meta.get("backend_kwargs", {})
+        if not bkw.get("is_compact", False):
+            build_args_list.append("--no-compact")
+        if bkw.get("is_recompute", True):
+            build_args_list.append("--recompute")
+
+        build_args = parser.parse_args(build_args_list)
+        await self.build_index(build_args)
+
+    async def watch_index(self, args):
+        index_name = args.index_name
+        resolved = self._resolve_index_for_watch(index_name)
+        if not resolved:
+            return
+
+        index_dir = resolved["index_dir"]
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            print(
+                f"Sync config not found for index '{index_name}'. "
+                f"Run 'leann build {index_name} --docs <dir>' first."
+            )
+            return
+
+        dry_run = getattr(args, "dry_run", False)
+        once = getattr(args, "once", False)
+        interval = getattr(args, "interval", 5)
+
+        if once:
+            added, removed, modified = self._watch_check_changes(index_name)
+            if not added and not removed and not modified:
+                print("No changes detected.")
+                return
+            self._watch_report_changes(index_name, added, removed, modified)
+            if not dry_run:
+                await self._watch_trigger_build(index_name)
+            return
+
+        print(f"Watching index '{index_name}' (interval={interval}s, ctrl-c to stop)...")
+        try:
+            while True:
+                added, removed, modified = self._watch_check_changes(index_name)
+                if added or removed or modified:
+                    self._watch_report_changes(index_name, added, removed, modified)
+                    if not dry_run:
+                        await self._watch_trigger_build(index_name)
+                await asyncio.sleep(interval)
+        except KeyboardInterrupt:
+            print("\nWatch stopped.")
 
     def _resolve_index_path(
         self,
@@ -2141,25 +2253,36 @@ Examples:
             provider_options=provider_options if provider_options else None,
         )
 
+        if getattr(args, "json", False):
+            json_results = [
+                {
+                    "id": r.id,
+                    "score": r.score,
+                    "text": r.text,
+                    "metadata": r.metadata,
+                }
+                for r in results
+            ]
+            print(json.dumps(json_results, ensure_ascii=False, indent=2))
+            return
+
         print(f"Search results for '{query}' (top {len(results)}):")
         for i, result in enumerate(results, 1):
             print(f"{i}. Score: {result.score:.3f}")
 
-            # Display metadata if flag is set
             if args.show_metadata and result.metadata:
                 file_path = result.metadata.get("file_path", "")
                 if file_path:
-                    print(f"   📄 File: {file_path}")
+                    print(f"   File: {file_path}")
 
                 file_name = result.metadata.get("file_name", "")
                 if file_name and file_name != file_path:
-                    print(f"   📝 Name: {file_name}")
+                    print(f"   Name: {file_name}")
 
-                # Show timestamps if available
                 if "creation_date" in result.metadata:
-                    print(f"   🕐 Created: {result.metadata['creation_date']}")
+                    print(f"   Created: {result.metadata['creation_date']}")
                 if "last_modified_date" in result.metadata:
-                    print(f"   🕑 Modified: {result.metadata['last_modified_date']}")
+                    print(f"   Modified: {result.metadata['last_modified_date']}")
 
             print(f"   {result.text[:200]}...")
             print(f"   Source: {result.metadata.get('source', '')}")
