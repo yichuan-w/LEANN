@@ -3,47 +3,103 @@ Tests for incremental build (Feature #89).
 
 When an index already exists and build is run again without --force,
 only new files are indexed and appended to the existing index (HNSW, non-compact only).
+Change detection uses content-hash (merkle tree) via FileSynchronizer.
 """
 
-import json
 import os
 from pathlib import Path
 
 import pytest
-from leann.cli import (
-    SOURCES_MANIFEST_FILENAME,
-    _normalize_path,
-    load_sources_manifest,
-    save_sources_manifest,
-)
+from leann.cli import _normalize_path
+from leann.sync import FileSynchronizer
 
 
 def test_normalize_path():
     assert _normalize_path("") == ""
     assert _normalize_path("/a/b") == "/a/b" or "a" in _normalize_path("/a/b")
-    # Resolve so relative becomes absolute
     rel = "foo/bar"
     out = _normalize_path(rel)
     assert Path(out).is_absolute() or out == rel
 
 
-def test_load_sources_manifest_missing(tmp_path):
-    assert load_sources_manifest(tmp_path, "documents.leann") == {}
+def test_file_synchronizer_detect_changes(tmp_path):
+    """FileSynchronizer detect_changes returns all files as added when no snapshot exists."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.txt").write_text("hello", encoding="utf-8")
+    snapshot = str(tmp_path / "test.pickle")
+    fs = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    added, removed, modified = fs.detect_changes()
+    assert len(added) == 1
+    assert len(removed) == 0
+    assert len(modified) == 0
 
 
-def test_load_sources_manifest_empty(tmp_path):
-    (tmp_path / SOURCES_MANIFEST_FILENAME).write_text('{"sources": {}}', encoding="utf-8")
-    assert load_sources_manifest(tmp_path, "documents.leann") == {}
+def test_file_synchronizer_no_changes_after_commit(tmp_path):
+    """After commit, detect_changes should report no changes if files haven't changed."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.txt").write_text("hello", encoding="utf-8")
+    snapshot = str(tmp_path / "test.pickle")
+    fs = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    fs.detect_changes()
+    fs.commit()
+
+    fs2 = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    added, removed, modified = fs2.detect_changes()
+    assert not added and not removed and not modified
 
 
-def test_save_and_load_sources_manifest(tmp_path):
-    sources = {"/path/to/a": 12345.0, "/path/to/b": 67890.0}
-    save_sources_manifest(tmp_path, "documents.leann", sources)
-    loaded = load_sources_manifest(tmp_path, "documents.leann")
-    assert loaded == sources
-    raw = (tmp_path / SOURCES_MANIFEST_FILENAME).read_text(encoding="utf-8")
-    data = json.loads(raw)
-    assert data.get("sources") == sources
+def test_file_synchronizer_detects_new_file(tmp_path):
+    """Adding a file after commit should be detected as added."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.txt").write_text("hello", encoding="utf-8")
+    snapshot = str(tmp_path / "test.pickle")
+    fs = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    fs.detect_changes()
+    fs.commit()
+
+    (docs / "b.txt").write_text("world", encoding="utf-8")
+    fs2 = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    added, removed, modified = fs2.detect_changes()
+    assert len(added) == 1
+    assert len(removed) == 0
+    assert len(modified) == 0
+
+
+def test_file_synchronizer_detects_modification(tmp_path):
+    """Changing file content should be detected as modified."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.txt").write_text("hello", encoding="utf-8")
+    snapshot = str(tmp_path / "test.pickle")
+    fs = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    fs.detect_changes()
+    fs.commit()
+
+    (docs / "a.txt").write_text("changed", encoding="utf-8")
+    fs2 = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    added, removed, modified = fs2.detect_changes()
+    assert len(modified) == 1
+    assert len(added) == 0
+
+
+def test_file_synchronizer_touch_no_false_positive(tmp_path):
+    """Touching a file (mtime change, same content) should NOT report as modified."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    f = docs / "a.txt"
+    f.write_text("hello", encoding="utf-8")
+    snapshot = str(tmp_path / "test.pickle")
+    fs = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    fs.detect_changes()
+    fs.commit()
+
+    os.utime(f, None)
+    fs2 = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
+    added, removed, modified = fs2.detect_changes()
+    assert not added and not removed and not modified
 
 
 @pytest.mark.skipif(
@@ -52,6 +108,9 @@ def test_save_and_load_sources_manifest(tmp_path):
 )
 def test_incremental_build_adds_only_new_files(tmp_path):
     """Build once with one file, add a second file, run build again without --force; index grows."""
+    import asyncio
+
+    from leann.api import LeannSearcher
     from leann.cli import LeannCLI
 
     docs_dir = tmp_path / "docs"
@@ -59,7 +118,6 @@ def test_incremental_build_adds_only_new_files(tmp_path):
     (docs_dir / "a.txt").write_text("First document content for indexing.", encoding="utf-8")
 
     cli = LeannCLI()
-    # Override indexes_dir so we use tmp_path for index
     cli.indexes_dir = tmp_path / ".leann" / "indexes"
     cli.indexes_dir.mkdir(parents=True, exist_ok=True)
     index_name = "incr_test"
@@ -83,17 +141,9 @@ def test_incremental_build_adds_only_new_files(tmp_path):
             "--force",
         ]
     )
-    import asyncio
-
     asyncio.run(cli.build_index(args))
     assert index_dir.exists()
-    meta_file = index_dir / "documents.leann.meta.json"
-    assert meta_file.exists()
-    manifest_file = index_dir / "documents.leann.sources.json"
-    assert manifest_file.exists(), "Full build should write sources manifest"
-    with open(manifest_file, encoding="utf-8") as f:
-        manifest = json.load(f)
-    assert len(manifest.get("sources", {})) == 1
+    assert (index_dir / "documents.leann.meta.json").exists()
 
     # Add second file
     (docs_dir / "b.txt").write_text("Second document content.", encoding="utf-8")
@@ -116,15 +166,7 @@ def test_incremental_build_adds_only_new_files(tmp_path):
     )
     asyncio.run(cli.build_index(args2))
 
-    with open(manifest_file, encoding="utf-8") as f:
-        manifest2 = json.load(f)
-    assert len(manifest2.get("sources", {})) == 2, (
-        "Manifest should list both files after incremental"
-    )
-
-    # Index should still be searchable
-    from leann.api import LeannSearcher
-
+    # Index should still be searchable and contain both files
     searcher = LeannSearcher(index_path)
     results = searcher.search("Second document", top_k=3)
     searcher.cleanup()
