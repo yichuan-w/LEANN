@@ -1,8 +1,8 @@
 """
-IVF backend: FAISS IndexIVFFlat wrapped in IndexIDMap2 for stable add/delete by passage id.
+IVF backend: FAISS IndexIVFFlat with DirectMap.Hashtable for add/remove by passage id.
 
-Provides clean add_vectors() and remove_ids() APIs (aligned with HNSW update_index flow)
-so the core can do incremental updates: detect changed chunk ids, delete and re-insert.
+Uses IndexIVFFlat + DirectMap.Hashtable (no IndexIDMap2) so remove_ids works correctly.
+Provides add_vectors() and remove_ids() for incremental updates.
 """
 
 import json
@@ -125,12 +125,12 @@ class IVFBuilder(LeannBackendBuilderInterface):
         )
         ivf = faiss.IndexIVFFlat(quantizer, dim, self.nlist, metric_enum)
         ivf.train(data)
-        index = faiss.IndexIDMap2(ivf)
+        ivf.set_direct_map_type(faiss.DirectMap.Hashtable)
         faiss_ids = np.arange(n, dtype=np.int64)
-        index.add_with_ids(data, faiss_ids)
+        ivf.add_with_ids(data, faiss_ids)
 
         index_file = index_dir / f"{index_prefix}.index"
-        faiss.write_index(index, str(index_file))
+        faiss.write_index(ivf, str(index_file))
 
         id_to_passage = dict(enumerate(ids))
         _save_id_map(index_dir, index_prefix, id_to_passage, next_id=n)
