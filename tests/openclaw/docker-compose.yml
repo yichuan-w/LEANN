@@ -4,10 +4,13 @@ services:
     container_name: openclaw-leann-test
     environment:
       - HOME=/home/node
+      - OLLAMA_API_KEY=ollama-local
     volumes:
       - ./docker-data:/home/node/.openclaw
       - ../../:/leann-tree:ro
     ports:
       - "18790:18789"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     entrypoint: ["/app/node_modules/.pnpm/node_modules/.bin/openclaw"]
-    command: ["gateway", "run", "--port", "18789", "--allow-unconfigured", "--verbose"]
+    command: ["gateway", "run", "--port", "18789", "--bind", "lan", "--allow-unconfigured", "--verbose"]
