@@ -26,8 +26,6 @@ pytestmark = [
 ]
 
 
-
-
 @pytest.fixture(scope="module")
 def mcp_index(tmp_path_factory):
     """Build a real LEANN index once for the entire module."""
@@ -43,19 +41,21 @@ def mcp_index(tmp_path_factory):
     cli.indexes_dir.mkdir(parents=True)
 
     parser = cli.create_parser()
-    args = parser.parse_args([
-        "build",
-        "openclaw-memory",
-        "--docs",
-        str(docs),
-        "--backend-name",
-        "hnsw",
-        "--no-compact",
-        "--embedding-model",
-        "all-MiniLM-L6-v2",
-        "--embedding-mode",
-        "sentence-transformers",
-    ])
+    args = parser.parse_args(
+        [
+            "build",
+            "openclaw-memory",
+            "--docs",
+            str(docs),
+            "--backend-name",
+            "hnsw",
+            "--no-compact",
+            "--embedding-model",
+            "all-MiniLM-L6-v2",
+            "--embedding-mode",
+            "sentence-transformers",
+        ]
+    )
     asyncio.get_event_loop().run_until_complete(cli.build_index(args))
 
     index_dir = cli.indexes_dir / "openclaw-memory"
@@ -143,7 +143,8 @@ def test_mcp_stdio_protocol(mcp_index):
     """Spawn the MCP server as a subprocess, send JSON-RPC via stdin, read responses."""
     leann_mcp_bin = shutil.which("leann_mcp")
     if not leann_mcp_bin:
-        pytest.skip("leann_mcp not on PATH")  # type: ignore[call-overload]
+        pytest.skip("leann_mcp not on PATH")
+    mcp_bin: str = leann_mcp_bin
 
     requests = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
@@ -152,7 +153,7 @@ def test_mcp_stdio_protocol(mcp_index):
     stdin_data = "\n".join(json.dumps(r) for r in requests) + "\n"
 
     proc = subprocess.run(
-        [leann_mcp_bin],
+        [mcp_bin],
         input=stdin_data,
         capture_output=True,
         text=True,

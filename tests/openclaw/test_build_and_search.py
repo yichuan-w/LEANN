@@ -95,7 +95,9 @@ def test_search_returns_json(cli_instance, memory_fixtures, capsys):
 
 def test_search_relevance(cli_instance, memory_fixtures, capsys):
     """Top result for 'payment gateway' should come from the Feb 20 memory."""
-    results = _build_and_search(cli_instance, memory_fixtures, capsys, "payment gateway timeout fix")
+    results = _build_and_search(
+        cli_instance, memory_fixtures, capsys, "payment gateway timeout fix"
+    )
     top_text = results[0]["text"].lower()
     assert "payment" in top_text or "gateway" in top_text or "hotfix" in top_text
 
@@ -132,7 +134,15 @@ def test_incremental_add(cli_instance, memory_fixtures, capsys):
 
     search_args = _parse_args(
         cli_instance,
-        ["search", "openclaw-memory", "LEANN OpenClaw integration test", "--top-k", "3", "--json", "--non-interactive"],
+        [
+            "search",
+            "openclaw-memory",
+            "LEANN OpenClaw integration test",
+            "--top-k",
+            "3",
+            "--json",
+            "--non-interactive",
+        ],
     )
     asyncio.get_event_loop().run_until_complete(cli_instance.search_documents(search_args))
 

@@ -20,11 +20,22 @@ uv tool install leann-core --with leann
 
 ### 2. Build an index on your memory files
 
+Using Ollama embeddings (recommended if you already run Ollama):
+
 ```bash
 leann build openclaw-memory \
   --docs ~/.openclaw/workspace/MEMORY.md ~/.openclaw/workspace/memory/ \
-  --embedding-model all-MiniLM-L6-v2 \
-  --embedding-mode sentence-transformers
+  --embedding-mode ollama \
+  --embedding-model nomic-embed-text
+```
+
+Or using local sentence-transformers (no Ollama required):
+
+```bash
+leann build openclaw-memory \
+  --docs ~/.openclaw/workspace/MEMORY.md ~/.openclaw/workspace/memory/ \
+  --embedding-mode sentence-transformers \
+  --embedding-model all-MiniLM-L6-v2
 ```
 
 Add extra directories if you have them:
@@ -34,15 +45,17 @@ leann build openclaw-memory \
   --docs ~/.openclaw/workspace/MEMORY.md \
         ~/.openclaw/workspace/memory/ \
         ~/Documents/notes/ \
-  --embedding-model all-MiniLM-L6-v2
+  --embedding-mode ollama \
+  --embedding-model nomic-embed-text
 ```
 
 ### 3. Register the MCP server with OpenClaw
 
-Add to your OpenClaw MCP config (`~/.openclaw/config/mcp.json`):
+Add to `~/.openclaw/openclaw.json`:
 
-```json
+```json5
 {
+  // ... your existing config ...
   "mcpServers": {
     "leann": {
       "command": "leann_mcp",
@@ -91,6 +104,32 @@ Setup steps (install + build index) are the same as above.
 
 ---
 
+## Important: Ollama Configuration
+
+If you use Ollama as your OpenClaw model provider, make sure your
+`~/.openclaw/openclaw.json` uses the **native Ollama API** — not the
+OpenAI-compatible endpoint:
+
+```json5
+{
+  "models": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://127.0.0.1:11434",  // no /v1 suffix
+        "apiKey": "ollama-local",
+        "api": "ollama"  // NOT "openai-completions" or "openai-responses"
+      }
+    }
+  }
+}
+```
+
+Using `"openai-completions"` or `"openai-responses"` silently breaks tool
+calling — the model outputs tool calls as plain text instead of structured
+`tool_calls`. See [astral-sh/ty#21243](https://github.com/openclaw/openclaw/issues/21243).
+
+---
+
 ## Storage Comparison
 
 | Scenario | Default memory-core | LEANN |
@@ -99,7 +138,8 @@ Setup steps (install + build index) are the same as above.
 | + session transcripts (~100K chunks) | ~190 MB | **~6 MB** |
 | + 10 GB indexed documents (~500K chunks) | ~950 MB | **~30 MB** |
 
-All numbers assume 384-dimensional embeddings (all-MiniLM-L6-v2).
+All numbers assume 384-dimensional embeddings (all-MiniLM-L6-v2 or
+nomic-embed-text).
 
 ---
 
@@ -120,3 +160,7 @@ pre-warm.
 **Memory files changed but search results are stale**
 Re-run `leann build openclaw-memory --docs ...` — it detects changes
 automatically and only re-indexes what changed.
+
+**Agent doesn't use LEANN tools**
+Make sure your Ollama model supports tool calling (e.g. `qwen3:8b` or larger).
+Smaller models like `qwen3:4b` may not reliably invoke tools.
