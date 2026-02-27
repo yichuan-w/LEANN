@@ -2067,7 +2067,7 @@ lint = [
     { name = "ruff", specifier = "==0.12.7" },
 ]
 test = [
-    { name = "pytest", specifier = ">=7.0" },
+    { name = "pytest", specifier = ">=9.0" },
     { name = "pytest-cov", specifier = ">=4.0" },
     { name = "pytest-timeout", specifier = ">=2.0" },
     { name = "pytest-xdist", specifier = ">=3.0" },

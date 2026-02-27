@@ -144,7 +144,7 @@ def test_mcp_stdio_protocol(mcp_index):
     leann_mcp_bin = shutil.which("leann_mcp")
     if not leann_mcp_bin:
         pytest.skip("leann_mcp not on PATH")
-    mcp_bin: str = leann_mcp_bin
+    assert leann_mcp_bin is not None
 
     requests = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
@@ -153,7 +153,7 @@ def test_mcp_stdio_protocol(mcp_index):
     stdin_data = "\n".join(json.dumps(r) for r in requests) + "\n"
 
     proc = subprocess.run(
-        [mcp_bin],
+        [leann_mcp_bin],
         input=stdin_data,
         capture_output=True,
         text=True,
