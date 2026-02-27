@@ -2409,7 +2409,7 @@ Examples:
                 if "last_modified_date" in result.metadata:
                     print(f"   Modified: {result.metadata['last_modified_date']}")
 
-            print(f"   {result.text[:200]}...")
+            print(f"   {result.text}")
             print(f"   Source: {result.metadata.get('source', '')}")
             print()
 

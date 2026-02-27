@@ -172,3 +172,71 @@ def test_incremental_build_adds_only_new_files(tmp_path):
     searcher.cleanup()
     assert len(results) >= 1
     assert "Second" in results[0].text or "document" in results[0].text
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") == "true",
+    reason="Skip in CI to avoid embedding/model load",
+)
+def test_ivf_incremental_add_then_remove_searchable(tmp_path):
+    """IVF: add content, search finds it; delete content, incremental build, search no longer finds it."""
+    import asyncio
+
+    from leann.api import LeannSearcher
+    from leann.cli import LeannCLI
+
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    unique_phrase = "XYZZY_PLUGH_INCR_TEST_12345"
+    (docs_dir / "f.txt").write_text(
+        f"Initial content.\n\n{unique_phrase}\n\nMore text here.",
+        encoding="utf-8",
+    )
+    # Add extra files so IVF has enough training points (nlist=100)
+    for i in range(110):
+        (docs_dir / f"filler_{i:03d}.txt").write_text(
+            f"Filler document {i} with some content to create enough chunks.",
+            encoding="utf-8",
+        )
+
+    cli = LeannCLI()
+    cli.indexes_dir = tmp_path / ".leann" / "indexes"
+    cli.indexes_dir.mkdir(parents=True, exist_ok=True)
+    index_name = "ivf_incr_test"
+    index_path = cli.get_index_path(index_name)
+
+    parser = cli.create_parser()
+    build_args = [
+        "build",
+        index_name,
+        "--docs",
+        str(docs_dir),
+        "--backend-name",
+        "ivf",
+        "--embedding-model",
+        "all-MiniLM-L6-v2",
+        "--embedding-mode",
+        "sentence-transformers",
+    ]
+
+    asyncio.run(cli.build_index(parser.parse_args([*build_args, "--force"])))
+
+    searcher = LeannSearcher(index_path)
+    results = searcher.search(unique_phrase, top_k=5)
+    searcher.cleanup()
+    assert len(results) >= 1, "Added content should be searchable"
+    assert unique_phrase in results[0].text
+
+    # Remove the unique phrase from the file
+    (docs_dir / "f.txt").write_text("Initial content.\n\nMore text here.", encoding="utf-8")
+
+    # Incremental build (IVF remove+add)
+    asyncio.run(cli.build_index(parser.parse_args(build_args)))
+
+    # Deleted content should no longer be searchable
+    searcher = LeannSearcher(index_path)
+    results = searcher.search(unique_phrase, top_k=5)
+    searcher.cleanup()
+    assert all(unique_phrase not in r.text for r in results), (
+        "Deleted content should not appear in search results"
+    )
