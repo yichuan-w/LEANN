@@ -93,13 +93,17 @@ class FileSynchronizer:
 
     def generate_file_hashes(self):
         file_hashes = {}
-        reader = SimpleDirectoryReader(
-            self.root_dir,
-            recursive=True,
-            exclude=self.ignore_patterns,
-            required_exts=self.include_extensions,
-            exclude_empty=False,
-        )
+        try:
+            reader = SimpleDirectoryReader(
+                self.root_dir,
+                recursive=True,
+                exclude=self.ignore_patterns,
+                required_exts=self.include_extensions,
+                exclude_empty=False,
+            )
+        except ValueError:
+            # Empty directory — no files to hash
+            return file_hashes
         # print('reader.iter_data() length', len(list(reader.iter_data())))
 
         for file in reader.iter_data():
