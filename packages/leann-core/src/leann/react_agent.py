@@ -17,6 +17,7 @@ from typing import Any
 
 from .api import LeannSearcher, SearchResult
 from .chat import LLMInterface, get_llm
+from .web_search import WebSearcher
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,8 @@ class ReActAgent:
         llm: LLMInterface | None = None,
         llm_config: dict[str, Any] | None = None,
         max_iterations: int = 5,
+        serper_api_key: str | None = None,
+        jina_api_key: str | None = None,
     ):
         """
         Initialize the ReAct agent.
@@ -55,6 +58,7 @@ class ReActAgent:
             self.llm = llm
         self.max_iterations = max_iterations
         self.search_history: list[dict[str, Any]] = []
+        self.web_searcher = WebSearcher(api_key=serper_api_key, jina_api_key=jina_api_key)
 
     def _format_search_results(self, results: list[SearchResult]) -> str:
         """Format search results as a string for the LLM."""
@@ -71,11 +75,20 @@ class ReActAgent:
         self, question: str, iteration: int, previous_observations: list[str]
     ) -> str:
         """Create the ReAct prompt for the LLM."""
-        prompt = f"""You are a helpful assistant that answers questions by searching through a knowledge base.
+        prompt = f"""You are a helpful assistant that answers questions by searching through a knowledge base AND the internet.
 
 Question: {question}
 
-You can search the knowledge base by using the action: search("query")
+You have access to two tools:
+1. leann_search("query"): Search the local private knowledge base (code, docs, history).
+2. web_search("query"): Search the public internet for up-to-date information.
+3. visit_page("url"): Read the full content of a specific URL.
+
+Strategies:
+- Use `leann_search` for internal project details, code implementation, or private history.
+- Use `web_search` for public documentation, latest news, or general concepts.
+- Use `visit_page` if you found a relevant link but need the full details.
+- You can Combine both!
 
 Previous observations:
 """
@@ -88,13 +101,23 @@ Previous observations:
         prompt += f"""
 Current iteration: {iteration}/{self.max_iterations}
 
-Think step by step:
-1. If you need more information, use search("your search query")
-2. If you have enough information, provide your final answer
+Think step by step.
+Format your response EXACTLY like this:
 
-Format your response as:
 Thought: [your reasoning]
-Action: search("query") OR Final Answer: [your answer]
+Action: web_search("your query")
+
+OR
+
+Thought: [your reasoning]
+Action: leann_search("your query")
+
+OR
+
+Thought: [your reasoning]
+Action: Final Answer: [your answer]
+
+IMPORTANT: You MUST start a new line with "Action:" to trigger a tool.
 """
 
         return prompt
@@ -131,30 +154,17 @@ Action: search("query") OR Final Answer: [your answer]
             action = None
         elif "Action:" in response:
             action_part = response.split("Action:")[1].strip()
-            # Try to extract search query
-            if 'search("' in action_part:
-                start = action_part.find('search("') + 7
-                end = action_part.find('")', start)
-                if end != -1:
-                    action = action_part[start:end]
-                else:
-                    # Try with single quote
-                    end = action_part.find('")', start)
-                    if end != -1:
-                        action = action_part[start:end]
-            elif "search(" in action_part:
-                # Handle without quotes
-                start = action_part.find("search(") + 7
-                end = action_part.find(")", start)
-                if end != -1:
-                    action = action_part[start:end].strip('"').strip("'")
-        elif "search(" in response.lower():
-            # Try to extract search query even if format is slightly different
+
+            # Use regex to extract action - handles all cases correctly
             import re
 
-            match = re.search(r'search\(["\']([^"\']+)["\']\)', response, re.IGNORECASE)
+            # Try to match web_search, leann_search, search, or visit_page
+            match = re.search(
+                r'(web_search|leann_search|visit_page|search)\(["\']([^"\']+)["\']\)',
+                action_part,
+            )
             if match:
-                action = match.group(1)
+                action = f"{match.group(1)}:{match.group(2)}"
 
         return thought, action
 
@@ -218,13 +228,42 @@ Action: search("query") OR Final Answer: [your answer]
                 return final_answer
 
             # Perform search action
-            logger.info(f'🔍 Action: search("{action}")')
-            results = self.search(action, top_k=top_k)
+            logger.info(f"🔍 Action: {action}")
 
-            # Format observation
-            observation = self._format_search_results(results)
+            results_count = 0
+
+            if action.startswith("web_search:"):
+                query = action.split(":", 1)[1]
+                # Perform web search directly to get objects and count
+                web_results = self.web_searcher.search(query, top_k=top_k)
+                results_count = len(web_results)
+
+                if not web_results:
+                    observation = "No web results found."
+                else:
+                    formatted = []
+                    for i, res in enumerate(web_results, 1):
+                        formatted.append(
+                            f"[Web Result {i}]\nTitle: {res['title']}\nLink: {res['link']}\nSnippet: {res['snippet']}"
+                        )
+                    observation = "\n\n".join(formatted)
+
+            elif action.startswith("visit_page:"):
+                url = action.split(":", 1)[1]
+                content = self.web_searcher.get_page_content(url)
+                results_count = 1
+                # Truncate content to avoid token limit overflow (adjust limit as needed)
+                observation = f"Content of {url}:\n{content[:15000]}"
+
+            else:
+                # Default to local search
+                query = action.split(":", 1)[1] if ":" in action else action
+                results = self.search(query, top_k=top_k)
+                results_count = len(results)
+                observation = self._format_search_results(results)
+
             previous_observations.append(observation)
-            all_context.append(f"Search: {action}\n{observation}")
+            all_context.append(f"Action: {action}\n{observation}")
 
             # Store in history
             self.search_history.append(
@@ -232,12 +271,12 @@ Action: search("query") OR Final Answer: [your answer]
                     "iteration": iteration,
                     "thought": thought,
                     "action": action,
-                    "results_count": len(results),
+                    "results_count": results_count,
                 }
             )
 
             # If no results, might want to stop early
-            if not results and iteration >= 2:
+            if results_count == 0 and iteration >= 2:
                 logger.warning("No results found, asking LLM for final answer...")
                 final_prompt = f"""Based on the previous searches, provide your best answer to the question.
 
@@ -270,6 +309,8 @@ def create_react_agent(
     index_path: str,
     llm_config: dict[str, Any] | None = None,
     max_iterations: int = 5,
+    serper_api_key: str | None = None,
+    jina_api_key: str | None = None,
     **searcher_kwargs,
 ) -> ReActAgent:
     """
@@ -285,4 +326,10 @@ def create_react_agent(
         ReActAgent instance
     """
     searcher = LeannSearcher(index_path, **searcher_kwargs)
-    return ReActAgent(searcher=searcher, llm_config=llm_config, max_iterations=max_iterations)
+    return ReActAgent(
+        searcher=searcher,
+        llm_config=llm_config,
+        max_iterations=max_iterations,
+        serper_api_key=serper_api_key,
+        jina_api_key=jina_api_key,
+    )

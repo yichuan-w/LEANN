@@ -718,10 +718,12 @@ class LeannBuilder:
 
         logger.info(f"Index built successfully from precomputed embeddings: {index_path}")
 
-    def update_index(self, index_path: str):
-        """Append new passages and vectors to an existing HNSW index."""
-        if not self.chunks:
-            raise ValueError("No new chunks provided for update.")
+    def update_index(self, index_path: str, remove_passage_ids: Optional[list[str]] = None) -> None:
+        """Append new passages and vectors to an existing index (HNSW or IVF).
+        For IVF, optional remove_passage_ids removes those ids first (e.g. from file-change API).
+        """
+        if not self.chunks and not remove_passage_ids:
+            raise ValueError("No new chunks or passage ids to remove provided for update.")
 
         path = Path(index_path)
         index_dir = path.parent
@@ -736,7 +738,7 @@ class LeannBuilder:
         if not meta_path.exists() or not passages_file.exists() or not offset_file.exists():
             raise FileNotFoundError("Index metadata or passage files are missing; cannot update.")
         if not index_file.exists():
-            raise FileNotFoundError(f"HNSW index file not found: {index_file}")
+            raise FileNotFoundError(f"Index file not found: {index_file}")
 
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
@@ -746,12 +748,39 @@ class LeannBuilder:
                 f"Index was built with backend '{backend_name}', cannot update with '{self.backend_name}'."
             )
 
+        with open(offset_file, "rb") as f:
+            offset_map: dict[str, int] = pickle.load(f)
+        existing_ids = set(offset_map.keys())
+
+        # IVF: optional delete (for reindex / file-change: remove then re-insert)
+        if remove_passage_ids and backend_name == "ivf":
+            try:
+                from leann_backend_ivf import remove_ids as ivf_remove_ids
+
+                ivf_remove_ids(str(path), remove_passage_ids)
+            except ImportError:
+                raise RuntimeError(
+                    "IVF backend required for remove_ids. Install leann-backend-ivf."
+                )
+            for pid in remove_passage_ids:
+                offset_map.pop(pid, None)
+            with open(offset_file, "wb") as f:
+                pickle.dump(offset_map, f)
+
+        if not self.chunks:
+            meta["total_passages"] = len(offset_map)
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self.chunks.clear()
+            return
+
         meta_backend_kwargs = meta.get("backend_kwargs", {})
-        index_is_compact = meta.get("is_compact", meta_backend_kwargs.get("is_compact", True))
-        if index_is_compact:
-            raise ValueError(
-                "Compact HNSW indices do not support in-place updates. Rebuild required."
-            )
+        if backend_name == "hnsw":
+            index_is_compact = meta.get("is_compact", meta_backend_kwargs.get("is_compact", True))
+            if index_is_compact:
+                raise ValueError(
+                    "Compact HNSW indices do not support in-place updates. Rebuild required."
+                )
 
         distance_metric = meta_backend_kwargs.get(
             "distance_metric", self.backend_kwargs.get("distance_metric", "mips")
@@ -761,10 +790,6 @@ class LeannBuilder:
             or meta_backend_kwargs.get("is_recompute")
             or self.backend_kwargs.get("is_recompute")
         )
-
-        with open(offset_file, "rb") as f:
-            offset_map: dict[str, int] = pickle.load(f)
-        existing_ids = set(offset_map.keys())
 
         valid_chunks: list[dict[str, Any]] = []
         for chunk in self.chunks:
@@ -797,13 +822,68 @@ class LeannBuilder:
                 f"Dimension mismatch during update: existing index uses {expected_dim}, got {embedding_dim}."
             )
 
-        from leann_backend_hnsw import faiss
-
         embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
         if distance_metric == "cosine":
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
             norms[norms == 0] = 1
             embeddings = embeddings / norms
+
+        # IVF: add_vectors then append passages/offset (no ZMQ/server)
+        if backend_name == "ivf":
+            for i, chunk in enumerate(valid_chunks):
+                pid = chunk.get("id") or chunk.get("metadata", {}).get("id")
+                if not pid:
+                    pid = str(len(offset_map) + i)
+                chunk.setdefault("metadata", {})["id"] = pid
+                chunk["id"] = pid
+            passage_ids = [c["id"] for c in valid_chunks]
+            try:
+                from leann_backend_ivf import add_vectors as ivf_add_vectors
+
+                ivf_add_vectors(str(path), embeddings, passage_ids)
+            except ImportError:
+                raise RuntimeError("IVF backend required. Install leann-backend-ivf.")
+            rollback_passages_size = passages_file.stat().st_size if passages_file.exists() else 0
+            offset_map_backup = offset_map.copy()
+            try:
+                with open(passages_file, "a", encoding="utf-8") as f:
+                    for chunk in valid_chunks:
+                        off = f.tell()
+                        json.dump(
+                            {
+                                "id": chunk["id"],
+                                "text": chunk["text"],
+                                "metadata": chunk.get("metadata", {}),
+                            },
+                            f,
+                            ensure_ascii=False,
+                        )
+                        f.write("\n")
+                        offset_map[chunk["id"]] = off
+                with open(offset_file, "wb") as f:
+                    pickle.dump(offset_map, f)
+                meta["total_passages"] = len(offset_map)
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+                logger.info(
+                    "Appended %d passages to IVF index '%s'. Total: %d",
+                    len(valid_chunks),
+                    index_path,
+                    len(offset_map),
+                )
+            except Exception:
+                if passages_file.exists():
+                    with open(passages_file, "rb+") as f:
+                        f.truncate(rollback_passages_size)
+                offset_map = offset_map_backup
+                with open(offset_file, "wb") as f:
+                    pickle.dump(offset_map, f)
+                raise
+            self.chunks.clear()
+            return
+
+        # HNSW path below
+        from leann_backend_hnsw import faiss
 
         index = faiss.read_index(str(index_file))
         if hasattr(index, "is_recompute"):

@@ -5,12 +5,14 @@
 The LEANN ReAct (Reasoning + Acting) Agent enables **multiturn retrieval and reasoning** for complex queries that require multiple search iterations. Unlike the standard `leann ask` command which performs a single search and answer, the ReAct agent can:
 
 - **Reason** about what information is needed
-- **Act** by performing targeted searches
+- **Act** by performing targeted searches (both local and web)
 - **Observe** the results and iterate
 - **Answer** based on all gathered context
 
 This is particularly useful for questions that require:
 - Multiple pieces of information from different parts of your index
+- **Combining local knowledge with current web information**
+- **Accessing external documentation or latest updates**
 - Iterative refinement of search queries
 - Complex reasoning that builds on previous findings
 
@@ -19,7 +21,10 @@ This is particularly useful for questions that require:
 The ReAct agent follows a **Thought → Action → Observation** loop:
 
 1. **Thought**: The agent analyzes the question and determines what information is needed
-2. **Action**: The agent performs a search query based on its reasoning
+2. **Action**: The agent performs a search based on its reasoning, choosing from:
+   - `leann_search("query")` - Search your local private knowledge base
+   - `web_search("query")` - Search the public internet for current information
+   - `visit_page("url")` - Fetch and read the full content of a specific web page
 3. **Observation**: The agent reviews the search results
 4. **Iteration**: The process repeats until the agent has enough information or reaches the maximum iteration limit
 5. **Final Answer**: The agent synthesizes all gathered information into a comprehensive answer
@@ -51,16 +56,16 @@ leann react my-index "What are the main features discussed?" \
 - `--max-iterations`: Maximum number of search iterations (default: `5`)
 - `--api-base`: Base URL for OpenAI-compatible APIs
 - `--api-key`: API key for cloud LLM providers
+- `--serper-api-key`: Serper API key for web search (enables web_search action)
+- `--jina-api-key`: Jina AI API key for enhanced page content fetching (optional)
 
 ### Python API
 
 ```python
-from leann import create_react_agent, LeannSearcher
+from leann import create_react_agent
+import os
 
-# Create a searcher
-searcher = LeannSearcher(index_path="path/to/index.leann")
-
-# Create the ReAct agent
+# Create the ReAct agent with web search enabled
 agent = create_react_agent(
     index_path="path/to/index.leann",
     llm_config={
@@ -68,18 +73,125 @@ agent = create_react_agent(
         "model": "qwen3:8b",
         "host": "http://localhost:11434"  # optional
     },
-    max_iterations=5
+    max_iterations=5,
+    serper_api_key=os.getenv("SERPER_API_KEY")  # Enable web search
 )
 
-# Run the agent
-answer = agent.run("What are the main topics covered in the documentation?", top_k=5)
+# Run the agent - it will automatically choose between local and web search
+answer = agent.run("What are the latest Python 3.13 features?", top_k=5)
 print(answer)
 
-# Access search history
+# Access search history to see which actions were used
 if agent.search_history:
     print(f"\nSearch History ({len(agent.search_history)} iterations):")
     for entry in agent.search_history:
-        print(f"  {entry['iteration']}. {entry['action']} ({entry['results_count']} results)")
+        action_type = "Web" if "web_search" in entry['action'] else "Local"
+        print(f"  {entry['iteration']}. [{action_type}] {entry['action']} ({entry['results_count']} results)")
+```
+
+## Web Search Integration
+
+The ReAct agent can seamlessly combine searches from your local knowledge base with real-time web searches, enabling it to answer questions that require both private and public information.
+
+### Enabling Web Search
+
+**Get a Serper API Key:**
+1. Visit https://serper.dev/
+2. Sign up for a free account (2,500 queries/month free)
+3. Copy your API key
+
+**Use web search via CLI:**
+```bash
+# Set API key as environment variable
+export SERPER_API_KEY="your-api-key-here"
+
+# Run with web search enabled
+leann react my-index "What are the latest AI developments?" \
+  --llm ollama \
+  --model qwen3:8b \
+  --serper-api-key $SERPER_API_KEY
+```
+
+**Or pass the key directly:**
+```bash
+leann react my-index "question" \
+  --llm ollama \
+  --serper-api-key sk-your-key-here
+```
+
+### How the Agent Chooses Actions
+
+The agent intelligently decides which action to use based on the question:
+
+- **`leann_search("query")`** - For questions about your private data:
+  - Code in your repository
+  - Internal documentation
+  - Chat history, notes, or private files
+  - Project-specific details
+
+- **`web_search("query")`** - For questions requiring current/public information:
+  - Latest news or updates
+  - Current best practices
+  - Public documentation
+  - General knowledge or concepts
+
+- **`visit_page("url")`** - To read specific web pages:
+  - When a URL is mentioned in the question
+  - When search results contain a relevant link
+  - To get detailed information from a specific source
+
+### Web Search Examples
+
+**Example 1: Pure Web Search**
+```bash
+leann react my-index "What are the latest features in Python 3.13?" \
+  --serper-api-key $SERPER_API_KEY
+```
+Agent actions:
+1. `web_search("Python 3.13 features latest")` → Gets current information from the web
+2. Returns answer based on web results
+
+**Example 2: Combining Local + Web**
+```bash
+leann react my-index "Compare our authentication implementation with current security best practices" \
+  --serper-api-key $SERPER_API_KEY \
+  --max-iterations 8
+```
+Agent actions:
+1. `leann_search("authentication implementation")` → Finds your code
+2. `web_search("authentication security best practices 2025")` → Gets current standards
+3. Compares and provides recommendations
+
+**Example 3: Following Web Links**
+```bash
+leann react my-index "What does the official Python async documentation say about event loops?" \
+  --serper-api-key $SERPER_API_KEY \
+  --jina-api-key $JINA_API_KEY
+```
+Agent actions:
+1. `web_search("Python async event loop documentation")` → Finds official docs link
+2. `visit_page("https://docs.python.org/3/library/asyncio-eventloop.html")` → Reads full page
+3. Answers based on official documentation
+
+### Web Search Output
+
+When using web search, you'll see indicators in the output:
+
+```
+🤖 Starting ReAct agent with index 'my-index'...
+
+--- Iteration 1/5 ---
+💭 Thought: I need current information about Python 3.13
+🔍 Action: web_search("Python 3.13 new features")
+
+[Web Result 1]
+Title: Python 3.13 Release Highlights
+Link: https://docs.python.org/3.13/whatsnew/3.13.html
+Snippet: Python 3.13 introduces a new interactive interpreter...
+
+--- Iteration 2/5 ---
+💭 Thought: I have enough information
+✅ Final Answer: Python 3.13 introduces several key features...
 ```
 
 ## Example Use Cases
@@ -222,11 +334,17 @@ LEANN is a vector database with several key features:
 
 ## Future Enhancements
 
-This is the first implementation (1/N) of Deep-Research integration. Future enhancements may include:
-- Web search integration for external information
+This is part of ongoing Deep-Research integration. Current capabilities:
+- ✅ Web search integration for external information (via Serper API)
+- ✅ Page content fetching (via Jina AI Reader)
+- ✅ Intelligent action selection between local and web search
+
+Potential future enhancements:
 - More sophisticated reasoning strategies
 - Parallel search execution
 - Better query optimization
+- Additional web search backends (Tavily, Bing, etc.)
+- Caching of web search results
 
 ## Related Documentation
 
