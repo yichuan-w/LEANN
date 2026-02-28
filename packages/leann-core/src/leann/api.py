@@ -764,6 +764,7 @@ class LeannBuilder:
                 )
             for pid in remove_passage_ids:
                 offset_map.pop(pid, None)
+            existing_ids -= set(remove_passage_ids)
             with open(offset_file, "wb") as f:
                 pickle.dump(offset_map, f)
 
@@ -803,7 +804,12 @@ class LeannBuilder:
             valid_chunks.append(chunk)
 
         if not valid_chunks:
-            raise ValueError("No valid chunks to append.")
+            # Remove-only or file emptied: we may have already removed ids, just update meta
+            meta["total_passages"] = len(offset_map)
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self.chunks.clear()
+            return
 
         texts_to_embed = [chunk["text"] for chunk in valid_chunks]
         embeddings = compute_embeddings(

@@ -343,8 +343,8 @@ Examples:
         watch_parser.add_argument(
             "--interval",
             type=int,
-            default=5,
-            help="Poll interval in seconds (default: 5)",
+            default=30,
+            help="Poll interval in seconds (default: 30)",
         )
         watch_parser.add_argument(
             "--once",
@@ -1657,19 +1657,16 @@ Examples:
                 roots.add(str(path_obj.parent))
         return sorted(roots)
 
-    def _build_synchronizers(
+    def _create_synchronizers(
         self,
-        docs_paths: list[str],
         index_dir: Path,
-        file_types: Optional[str] = None,
-        include_hidden: bool = False,
+        roots: list[str],
+        include_extensions: Optional[list[str]] = None,
+        ignore_patterns: Optional[list[str]] = None,
     ) -> list[FileSynchronizer]:
-        """Create FileSynchronizers for each source root, with snapshots stored in the index dir."""
-        sync_roots = self._resolve_sync_roots(docs_paths)
-        include_extensions = self._parse_file_types(file_types)
-        ignore_patterns = self._sync_ignore_patterns(include_hidden)
+        """Create FileSynchronizers with snapshots stored in the index dir. Shared by build and watch."""
         synchronizers: list[FileSynchronizer] = []
-        for root in sync_roots:
+        for root in roots:
             tag = hashlib.sha256(root.encode()).hexdigest()[:12]
             snapshot_path = str(index_dir / f"sync_{tag}.pickle")
             try:
@@ -1683,6 +1680,19 @@ Examples:
             except Exception as exc:
                 print(f"Warning: Failed to init synchronizer for {root}: {exc}")
         return synchronizers
+
+    def _build_synchronizers(
+        self,
+        docs_paths: list[str],
+        index_dir: Path,
+        file_types: Optional[str] = None,
+        include_hidden: bool = False,
+    ) -> list[FileSynchronizer]:
+        """Create FileSynchronizers for build from docs_paths."""
+        roots = self._resolve_sync_roots(docs_paths)
+        include_extensions = self._parse_file_types(file_types)
+        ignore_patterns = self._sync_ignore_patterns(include_hidden)
+        return self._create_synchronizers(index_dir, roots, include_extensions, ignore_patterns)
 
     def _detect_build_changes(
         self,
@@ -1762,6 +1772,27 @@ Examples:
             f"Incremental update: adding {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
         )
         builder.update_index(index_path)
+        print(f"Index updated at {index_path}")
+        return True
+
+    def _incremental_ivf_remove_only(
+        self, index_path: str, index_dir: Path, removed_paths: set[str], args
+    ) -> bool:
+        """IVF remove-only fast path: remove chunk IDs without loading or chunking documents."""
+        passages_file = index_dir / "documents.leann.passages.jsonl"
+        if not passages_file.exists():
+            return False
+        chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file)
+        ids_to_remove: list[str] = []
+        for p in removed_paths:
+            ids_to_remove.extend(chunk_ids_by_file.get(p, []))
+        if not ids_to_remove:
+            return False
+        print(
+            f"Incremental IVF update (-{len(removed_paths)} removed): removing {len(ids_to_remove)} old chunks..."
+        )
+        builder = self._make_incremental_builder(args)
+        builder.update_index(index_path, remove_passage_ids=ids_to_remove)
         print(f"Index updated at {index_path}")
         return True
 
@@ -1994,14 +2025,7 @@ Examples:
             paragraph_separator="\n\n",
         )
 
-        all_texts = self.load_documents(
-            docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
-        )
-        if not all_texts:
-            print("No documents found")
-            return
-
-        # Idempotent build: detect changes via content hash (merkle tree) and choose minimal work path
+        # Detect changes first so we can skip load_documents for remove-only
         index_dir.mkdir(parents=True, exist_ok=True)
         synchronizers = self._build_synchronizers(
             docs_paths, index_dir, file_types=args.file_types, include_hidden=args.include_hidden
@@ -2014,6 +2038,17 @@ Examples:
             if not new_paths and not removed_paths and not modified_paths:
                 print("Index up to date.")
                 return
+
+            # Show change summary (add / modify / delete) before build
+            change_parts = []
+            if new_paths:
+                change_parts.append(f"+{len(new_paths)} added")
+            if modified_paths:
+                change_parts.append(f"~{len(modified_paths)} modified")
+            if removed_paths:
+                change_parts.append(f"-{len(removed_paths)} removed")
+            if change_parts:
+                print(f"Changes: {', '.join(change_parts)}")
 
             if meta_path.exists():
                 with open(meta_path, encoding="utf-8") as f:
@@ -2038,6 +2073,35 @@ Examples:
                     and not is_compact
                     and same_embedding
                 )
+
+                # Remove-only fast path: no load/chunk, just remove IDs from index
+                if can_ivf_update and removed_paths and not new_paths and not modified_paths:
+                    result = self._incremental_ivf_remove_only(
+                        index_path, index_dir, removed_paths, args
+                    )
+                    if result:
+                        self._commit_synchronizers(synchronizers)
+                        self._write_sync_config(
+                            index_dir,
+                            self._resolve_sync_roots(docs_paths),
+                            self._parse_file_types(args.file_types),
+                            self._sync_ignore_patterns(args.include_hidden),
+                        )
+                        self.register_project_dir()
+                        return
+
+                # Load only changed files (no need to load/chunk the entire corpus)
+                paths_to_load = new_paths | modified_paths
+                all_texts = self.load_documents(
+                    list(paths_to_load),
+                    args.file_types,
+                    include_hidden=args.include_hidden,
+                    args=args,
+                )
+                # Proceed even when all_texts is empty (e.g. file emptied): we still need to remove old chunks
+                if not all_texts and not (can_ivf_update and (modified_paths or removed_paths)):
+                    print("No documents found")
+                    return
 
                 if can_ivf_update and (new_paths or modified_paths or removed_paths):
                     result = self._incremental_ivf_update(
@@ -2081,6 +2145,17 @@ Examples:
                 else:
                     self._log_rebuild_reason(meta, args, new_paths, removed_paths, modified_paths)
 
+        # Full rebuild: load documents if not already loaded (first build or force)
+        try:
+            _ = all_texts
+        except NameError:
+            all_texts = self.load_documents(
+                docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+            )
+        if not all_texts:
+            print("No documents found")
+            return
+
         print(f"Building index '{index_name}' with {args.backend_name} backend...")
 
         builder = LeannBuilder(
@@ -2111,7 +2186,7 @@ Examples:
         self.register_project_dir()
 
     def _watch_check_changes(self, index_name: str) -> tuple[set[str], set[str], set[str]]:
-        """Check for file changes in watched directories. Returns (added, removed, modified) paths."""
+        """Check for file changes using the same snapshots as build (index_dir)."""
         resolved = self._resolve_index_for_watch(index_name)
         if not resolved:
             return set(), set(), set()
@@ -2125,30 +2200,16 @@ Examples:
             config = json.load(f)
 
         roots = config.get("roots") or []
-        include_extensions = config.get("include_extensions")
-        ignore_patterns = config.get("ignore_patterns")
+        if not roots:
+            return set(), set(), set()
 
-        added_paths: set[str] = set()
-        removed_paths: set[str] = set()
-        modified_paths: set[str] = set()
-
-        for root in roots:
-            try:
-                fs = FileSynchronizer(
-                    root_dir=root,
-                    ignore_patterns=ignore_patterns,
-                    include_extensions=include_extensions,
-                    auto_load=True,
-                )
-                added, removed, modified = fs.check_for_changes()
-            except Exception as exc:
-                print(f"Warning: Failed to check {root}: {exc}")
-                continue
-            added_paths.update(added)
-            removed_paths.update(removed)
-            modified_paths.update(modified)
-
-        return added_paths, removed_paths, modified_paths
+        synchronizers = self._create_synchronizers(
+            index_dir,
+            roots,
+            include_extensions=config.get("include_extensions"),
+            ignore_patterns=config.get("ignore_patterns"),
+        )
+        return self._detect_build_changes(synchronizers)
 
     def _watch_report_changes(
         self,
