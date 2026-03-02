@@ -240,3 +240,134 @@ def test_ivf_incremental_add_then_remove_searchable(tmp_path):
     assert all(unique_phrase not in r.text for r in results), (
         "Deleted content should not appear in search results"
     )
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") == "true",
+    reason="Skip in CI to avoid embedding/model load",
+)
+def test_ivf_multiple_incremental_no_duplicates(tmp_path):
+    """IVF: modifying the same file across multiple incremental builds must not create duplicate chunks."""
+    import asyncio
+    import json
+    import pickle
+
+    from leann.api import LeannSearcher
+    from leann.cli import LeannCLI
+
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+
+    target_phrase_v1 = "UNIQUE_TARGET_V1_ALPHA_BRAVO"
+    target_phrase_v2 = "UNIQUE_TARGET_V2_CHARLIE_DELTA"
+    target_phrase_v3 = "UNIQUE_TARGET_V3_ECHO_FOXTROT"
+
+    (docs_dir / "target.txt").write_text(
+        f"Version one content.\n\n{target_phrase_v1}\n\nEnd of version one.",
+        encoding="utf-8",
+    )
+    # Filler files for IVF training (nlist=100)
+    for i in range(110):
+        (docs_dir / f"filler_{i:03d}.txt").write_text(
+            f"Filler document {i} with unique content for padding the IVF index.",
+            encoding="utf-8",
+        )
+
+    cli = LeannCLI()
+    cli.indexes_dir = tmp_path / ".leann" / "indexes"
+    cli.indexes_dir.mkdir(parents=True, exist_ok=True)
+    index_name = "ivf_dup_test"
+    index_path = cli.get_index_path(index_name)
+    index_dir = cli.indexes_dir / index_name
+
+    parser = cli.create_parser()
+    build_args = [
+        "build",
+        index_name,
+        "--docs",
+        str(docs_dir),
+        "--backend-name",
+        "ivf",
+        "--embedding-model",
+        "all-MiniLM-L6-v2",
+        "--embedding-mode",
+        "sentence-transformers",
+    ]
+
+    # --- Initial build (--force) ---
+    asyncio.run(cli.build_index(parser.parse_args([*build_args, "--force"])))
+
+    searcher = LeannSearcher(index_path)
+    results = searcher.search(target_phrase_v1, top_k=10)
+    searcher.cleanup()
+    v1_hits = [r for r in results if target_phrase_v1 in r.text]
+    assert len(v1_hits) >= 1, "V1 content should be searchable after initial build"
+
+    # --- Modify target file to V2, incremental build ---
+    (docs_dir / "target.txt").write_text(
+        f"Version two content.\n\n{target_phrase_v2}\n\nEnd of version two.",
+        encoding="utf-8",
+    )
+    asyncio.run(cli.build_index(parser.parse_args(build_args)))
+
+    searcher = LeannSearcher(index_path)
+    results_v2 = searcher.search(target_phrase_v1, top_k=10)
+    searcher.cleanup()
+    assert all(target_phrase_v1 not in r.text for r in results_v2), (
+        "V1 content should be gone after first incremental update"
+    )
+
+    searcher = LeannSearcher(index_path)
+    results_v2b = searcher.search(target_phrase_v2, top_k=10)
+    searcher.cleanup()
+    v2_hits = [r for r in results_v2b if target_phrase_v2 in r.text]
+    assert len(v2_hits) >= 1, "V2 content should be searchable"
+
+    # --- Modify target file to V3, second incremental build ---
+    (docs_dir / "target.txt").write_text(
+        f"Version three content.\n\n{target_phrase_v3}\n\nEnd of version three.",
+        encoding="utf-8",
+    )
+    asyncio.run(cli.build_index(parser.parse_args(build_args)))
+
+    # V1 and V2 should be gone, only V3 present
+    searcher = LeannSearcher(index_path)
+    results_v3_check_v1 = searcher.search(target_phrase_v1, top_k=10)
+    searcher.cleanup()
+    assert all(target_phrase_v1 not in r.text for r in results_v3_check_v1), (
+        "V1 content should NOT appear after two incremental updates"
+    )
+
+    searcher = LeannSearcher(index_path)
+    results_v3_check_v2 = searcher.search(target_phrase_v2, top_k=10)
+    searcher.cleanup()
+    assert all(target_phrase_v2 not in r.text for r in results_v3_check_v2), (
+        "V2 content should NOT appear after second incremental update"
+    )
+
+    searcher = LeannSearcher(index_path)
+    results_v3 = searcher.search(target_phrase_v3, top_k=10)
+    searcher.cleanup()
+    v3_hits = [r for r in results_v3 if target_phrase_v3 in r.text]
+    assert len(v3_hits) >= 1, "V3 content should be searchable"
+
+    # --- Verify passages.jsonl has no stale entries ---
+    passages_file = index_dir / "documents.leann.passages.jsonl"
+    offset_file = index_dir / "documents.leann.passages.idx"
+    with open(offset_file, "rb") as f:
+        offset_map = pickle.load(f)
+    live_ids = set(offset_map.keys())
+
+    jsonl_ids = []
+    with open(passages_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            jsonl_ids.append(data["id"])
+
+    stale_ids = [pid for pid in jsonl_ids if pid not in live_ids]
+    assert len(stale_ids) == 0, (
+        f"passages.jsonl has {len(stale_ids)} stale entries not in offset_map: {stale_ids[:5]}"
+    )

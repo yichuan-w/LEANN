@@ -5,8 +5,10 @@ import hashlib
 import io
 import json
 import os
+import pickle
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -1735,6 +1737,14 @@ Examples:
                 c.setdefault("metadata", {})["id"] = sid
                 c["id"] = sid
 
+    @staticmethod
+    def _assign_unique_chunk_ids(chunks: list[dict]) -> None:
+        """Assign unique IDs for incremental (avoids collision when path lookup misses some old ids)."""
+        for c in chunks:
+            sid = uuid.uuid4().hex[:16]
+            c.setdefault("metadata", {})["id"] = sid
+            c["id"] = sid
+
     def _chunks_for_paths(self, all_texts: list[dict], paths: set[str]) -> list[dict]:
         """Filter chunks belonging to the given file paths."""
         return [
@@ -1788,10 +1798,21 @@ Examples:
         passages_file = index_dir / "documents.leann.passages.jsonl"
         if not passages_file.exists():
             return False
-        chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file)
+        offset_file = index_dir / "documents.leann.passages.idx"
+        live_ids: set[str] | None = None
+        if offset_file.exists():
+            with open(offset_file, "rb") as f:
+                live_ids = set(pickle.load(f).keys())
+        chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file, live_ids=live_ids)
+        roots = self._load_sync_roots(index_dir)
         ids_to_remove: list[str] = []
+        seen_ids: set[str] = set()
         for p in removed_paths:
-            ids_to_remove.extend(chunk_ids_by_file.get(p, []))
+            for key in self._path_lookup_keys(p, roots):
+                for pid in chunk_ids_by_file.get(key, []):
+                    if pid not in seen_ids:
+                        seen_ids.add(pid)
+                        ids_to_remove.append(pid)
         if not ids_to_remove:
             return False
         print(
@@ -1802,6 +1823,15 @@ Examples:
         print(f"Index updated at {index_path}")
         return True
 
+    def _path_lookup_keys(self, path: str, roots: list[str]) -> list[str]:
+        """Return path variations for lookup (sync paths may be relative to roots)."""
+        keys = [path, _normalize_path(path)]
+        for root in roots:
+            candidate = str((Path(root) / path).resolve())
+            if candidate not in keys:
+                keys.append(candidate)
+        return keys
+
     def _incremental_ivf_update(
         self,
         index_path: str,
@@ -1811,22 +1841,41 @@ Examples:
         new_paths: set[str],
         removed_paths: set[str],
         modified_paths: set[str],
+        sync_roots: list[str],
     ) -> bool:
         """IVF incremental update: remove old chunks for modified/removed files, add new chunks."""
         passages_file = index_dir / "documents.leann.passages.jsonl"
+        offset_file = index_dir / "documents.leann.passages.idx"
+        live_ids: set[str] | None = None
+        if offset_file.exists():
+            with open(offset_file, "rb") as f:
+                live_ids = set(pickle.load(f).keys())
         chunk_ids_by_file = (
-            self._load_chunk_ids_by_file(passages_file) if passages_file.exists() else {}
+            self._load_chunk_ids_by_file(passages_file, live_ids=live_ids)
+            if passages_file.exists()
+            else {}
         )
 
         # Collect old chunk IDs to remove (modified + removed files)
+        # Try all path variations: same file can have different path formats in passages
         ids_to_remove: list[str] = []
+        seen_ids: set[str] = set()
         for p in modified_paths | removed_paths:
-            ids_to_remove.extend(chunk_ids_by_file.get(p, []))
+            for key in self._path_lookup_keys(p, sync_roots):
+                for pid in chunk_ids_by_file.get(key, []):
+                    if pid not in seen_ids:
+                        seen_ids.add(pid)
+                        ids_to_remove.append(pid)
 
         # Collect new chunks to add (modified + new files)
+        # Build path set for matching: chunks may have paths in different formats
         changed_paths = new_paths | modified_paths
-        new_chunks = self._chunks_for_paths(all_texts, changed_paths)
-        self._assign_chunk_ids(new_chunks)
+        path_set: set[str] = set()
+        for p in changed_paths:
+            path_set.update(self._path_lookup_keys(p, sync_roots))
+        new_chunks = self._chunks_for_paths(all_texts, path_set)
+        # Use unique IDs: passages can have mixed path formats so we may miss some ids_to_remove
+        self._assign_unique_chunk_ids(new_chunks)
 
         if not ids_to_remove and not new_chunks:
             return False
@@ -1913,6 +1962,18 @@ Examples:
         with open(sync_config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
+    def _load_sync_roots(self, index_dir: Path) -> list[str]:
+        """Load sync roots from index dir (for path resolution in incremental updates)."""
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            return []
+        try:
+            with open(sync_config_path, encoding="utf-8") as f:
+                config = json.load(f)
+            return config.get("roots") or []
+        except (json.JSONDecodeError, OSError):
+            return []
+
     def _resolve_index_for_watch(self, index_name: str) -> Optional[dict[str, Path]]:
         if self.index_exists(index_name):
             index_dir = self.indexes_dir / index_name
@@ -1950,7 +2011,14 @@ Examples:
 
         return {"index_dir": index_dir, "passages_file": passages_file}
 
-    def _load_chunk_ids_by_file(self, passages_file: Path) -> dict[str, list[str]]:
+    def _load_chunk_ids_by_file(
+        self, passages_file: Path, live_ids: set[str] | None = None
+    ) -> dict[str, list[str]]:
+        """Load chunk IDs grouped by file path from passages.jsonl.
+
+        If *live_ids* is provided, skip entries whose ID is not in the set
+        (filters out stale entries left by prior incremental updates).
+        """
         chunk_ids_by_file: dict[str, list[str]] = {}
         with open(passages_file, encoding="utf-8") as f:
             for line in f:
@@ -1967,6 +2035,8 @@ Examples:
                     continue
                 chunk_id = data.get("id")
                 if chunk_id is None:
+                    continue
+                if live_ids is not None and str(chunk_id) not in live_ids:
                     continue
                 normalized_path = str(Path(file_path).resolve())
                 chunk_ids_by_file.setdefault(normalized_path, []).append(str(chunk_id))
@@ -2097,9 +2167,24 @@ Examples:
                         return
 
                 # Load only changed files (no need to load/chunk the entire corpus)
+                # Resolve paths relative to sync roots (sync returns paths relative to each root)
+                roots = self._resolve_sync_roots(docs_paths)
                 paths_to_load = new_paths | modified_paths
+                resolved_paths: list[str] = []
+                for p in paths_to_load:
+                    path_obj = Path(p)
+                    if path_obj.is_absolute() and path_obj.exists():
+                        resolved_paths.append(p)
+                    else:
+                        for root in roots:
+                            candidate = Path(root) / p
+                            if candidate.exists():
+                                resolved_paths.append(str(candidate.resolve()))
+                                break
+                        else:
+                            resolved_paths.append(p)  # fallback: pass as-is
                 all_texts = self.load_documents(
-                    list(paths_to_load),
+                    resolved_paths,
                     args.file_types,
                     include_hidden=args.include_hidden,
                     args=args,
@@ -2118,6 +2203,7 @@ Examples:
                         new_paths,
                         removed_paths,
                         modified_paths,
+                        roots,
                     )
                     if result:
                         self._commit_synchronizers(synchronizers)

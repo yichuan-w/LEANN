@@ -718,6 +718,31 @@ class LeannBuilder:
 
         logger.info(f"Index built successfully from precomputed embeddings: {index_path}")
 
+    @staticmethod
+    def _compact_passages(
+        passages_file: Path, offset_file: Path, offset_map: dict[str, int]
+    ) -> None:
+        """Rewrite passages.jsonl keeping only entries referenced by offset_map."""
+        live_entries: list[str] = []
+        for _pid, offset in sorted(offset_map.items(), key=lambda x: x[1]):
+            with open(passages_file, encoding="utf-8") as f:
+                f.seek(offset)
+                live_entries.append(f.readline())
+
+        tmp_file = passages_file.with_suffix(".jsonl.tmp")
+        new_offset_map: dict[str, int] = {}
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            for line in live_entries:
+                data = json.loads(line)
+                new_offset_map[data["id"]] = f.tell()
+                f.write(line if line.endswith("\n") else line + "\n")
+
+        tmp_file.replace(passages_file)
+        offset_map.clear()
+        offset_map.update(new_offset_map)
+        with open(offset_file, "wb") as f:
+            pickle.dump(offset_map, f)
+
     def update_index(self, index_path: str, remove_passage_ids: Optional[list[str]] = None) -> None:
         """Append new passages and vectors to an existing index (HNSW or IVF).
         For IVF, optional remove_passage_ids removes those ids first (e.g. from file-change API).
@@ -757,7 +782,14 @@ class LeannBuilder:
             try:
                 from leann_backend_ivf import remove_ids as ivf_remove_ids
 
-                ivf_remove_ids(str(path), remove_passage_ids)
+                nremoved = ivf_remove_ids(str(path), remove_passage_ids)
+                if nremoved < len(remove_passage_ids):
+                    logger.warning(
+                        "IVF update_index: removed %d of %d requested passage IDs "
+                        "(some may have been stale).",
+                        nremoved,
+                        len(remove_passage_ids),
+                    )
             except ImportError:
                 raise RuntimeError(
                     "IVF backend required for remove_ids. Install leann-backend-ivf."
@@ -765,8 +797,9 @@ class LeannBuilder:
             for pid in remove_passage_ids:
                 offset_map.pop(pid, None)
             existing_ids -= set(remove_passage_ids)
-            with open(offset_file, "wb") as f:
-                pickle.dump(offset_map, f)
+
+            # Compact passages.jsonl: rewrite keeping only entries in offset_map
+            self._compact_passages(passages_file, offset_file, offset_map)
 
         if not self.chunks:
             meta["total_passages"] = len(offset_map)
