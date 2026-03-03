@@ -23,9 +23,9 @@ dependencies = [
     "ollama",
     "requests>=2.25.0",
     "sentence-transformers>=3.0.0",
-    # Pin transformers below 4.46: 4.46.0 introduced Python 3.10-only typing (PEP 604) and
-    # breaks our Python 3.9 test matrix when pulled in by sentence-transformers.
-    "transformers<4.46",
+    # Keep Py3.9 compatible below 4.46; allow newer for Py>=3.10 (e.g., ColQwen/ColPali).
+    "transformers<4.46; python_version < '3.10'",
+    "transformers>=4.53.1,<4.58; python_version >= '3.10'",
     "openai>=1.0.0",
     # PDF parsing dependencies - essential for document processing
     "PyPDF2>=3.0.0",

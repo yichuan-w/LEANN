@@ -70,7 +70,7 @@ def _get_backend_leann_multi_vector() -> type:
     if backend_path is None:
         # Fallback to local implementation in this module
         try:
-            cls = LeannMultiVector  # type: ignore[name-defined]
+            cls = LeannMultiVector
             _BACKEND_LEANN_CLASS = cls
             return cls
         except Exception as e:
@@ -87,7 +87,7 @@ def _get_backend_leann_multi_vector() -> type:
         raise ImportError(f"Failed to create spec for backend module at {backend_path}")
     backend_module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = backend_module
-    spec.loader.exec_module(backend_module)  # type: ignore[assignment]
+    spec.loader.exec_module(backend_module)
 
     if not hasattr(backend_module, "LeannMultiVector"):
         raise ImportError(f"'LeannMultiVector' not found in backend module at {backend_path}")
@@ -954,7 +954,7 @@ class LeannMultiVector:
         mapping: dict[int, list[int]] = {}
         for idx, meta in enumerate(self._labels_meta):
             try:
-                doc_id = int(meta["doc_id"])  # type: ignore[index]
+                doc_id = int(meta["doc_id"])
             except Exception:
                 continue
             mapping.setdefault(doc_id, []).append(idx)
@@ -996,7 +996,7 @@ class LeannMultiVector:
                 except Exception:
                     continue
                 if 0 <= idx < len(self._labels_meta):
-                    doc_id = int(self._labels_meta[idx]["doc_id"])  # type: ignore[index]
+                    doc_id = int(self._labels_meta[idx]["doc_id"])
                 else:
                     continue
                 score = float(distances[b][k])
@@ -1067,13 +1067,15 @@ class LeannMultiVector:
                 except Exception:
                     continue
                 if 0 <= idx < len(self._labels_meta):
-                    candidate_doc_ids.add(int(self._labels_meta[idx]["doc_id"]))  # type: ignore[index]
+                    candidate_doc_ids.add(int(self._labels_meta[idx]["doc_id"]))
 
         # Exact scoring per doc (parallelized)
-        assert self._docid_to_indices is not None
+        docid_to_indices = self._docid_to_indices
+        if docid_to_indices is None:
+            return []
 
         def _score_one(doc_id: int) -> tuple[float, int]:
-            token_indices = self._docid_to_indices.get(doc_id, [])
+            token_indices = docid_to_indices.get(doc_id, [])
             if not token_indices:
                 return (0.0, doc_id)
             doc_vecs = np.asarray(all_embeddings[token_indices], dtype=np.float32)
@@ -1125,11 +1127,13 @@ class LeannMultiVector:
         if all_embeddings.dtype != np.float32:
             all_embeddings = all_embeddings.astype(np.float32)
 
-        assert self._docid_to_indices is not None
-        candidate_doc_ids = list(self._docid_to_indices.keys())
+        docid_to_indices = self._docid_to_indices
+        if docid_to_indices is None:
+            return []
+        candidate_doc_ids = list(docid_to_indices.keys())
 
         def _score_one(doc_id: int, _all_embeddings=all_embeddings) -> tuple[float, int]:
-            token_indices = self._docid_to_indices.get(doc_id, [])
+            token_indices = docid_to_indices.get(doc_id, [])
             if not token_indices:
                 return (0.0, doc_id)
             doc_vecs = np.asarray(_all_embeddings[token_indices], dtype=np.float32)

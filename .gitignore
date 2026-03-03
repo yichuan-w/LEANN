@@ -20,6 +20,7 @@ demo/experiment_results/**/*.json
 *.json
 *.png
 !.vscode/*.json
+!.devcontainer/*.json
 *.sh
 *.txt
 !CMakeLists.txt
@@ -111,3 +112,8 @@ apps/multimodal/vision-based-pdf-multi-vector/multi-vector-colpali-native-weavia
 
 # AUR build directory (Arch Linux)
 paru-bin/
+merkle-tree-test/
+test-code/
+localtestmcp/
+*.csv
+*.pickle

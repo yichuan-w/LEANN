@@ -718,10 +718,37 @@ class LeannBuilder:
 
         logger.info(f"Index built successfully from precomputed embeddings: {index_path}")
 
-    def update_index(self, index_path: str):
-        """Append new passages and vectors to an existing HNSW index."""
-        if not self.chunks:
-            raise ValueError("No new chunks provided for update.")
+    @staticmethod
+    def _compact_passages(
+        passages_file: Path, offset_file: Path, offset_map: dict[str, int]
+    ) -> None:
+        """Rewrite passages.jsonl keeping only entries referenced by offset_map."""
+        live_entries: list[str] = []
+        for _pid, offset in sorted(offset_map.items(), key=lambda x: x[1]):
+            with open(passages_file, encoding="utf-8") as f:
+                f.seek(offset)
+                live_entries.append(f.readline())
+
+        tmp_file = passages_file.with_suffix(".jsonl.tmp")
+        new_offset_map: dict[str, int] = {}
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            for line in live_entries:
+                data = json.loads(line)
+                new_offset_map[data["id"]] = f.tell()
+                f.write(line if line.endswith("\n") else line + "\n")
+
+        tmp_file.replace(passages_file)
+        offset_map.clear()
+        offset_map.update(new_offset_map)
+        with open(offset_file, "wb") as f:
+            pickle.dump(offset_map, f)
+
+    def update_index(self, index_path: str, remove_passage_ids: Optional[list[str]] = None) -> None:
+        """Append new passages and vectors to an existing index (HNSW or IVF).
+        For IVF, optional remove_passage_ids removes those ids first (e.g. from file-change API).
+        """
+        if not self.chunks and not remove_passage_ids:
+            raise ValueError("No new chunks or passage ids to remove provided for update.")
 
         path = Path(index_path)
         index_dir = path.parent
@@ -736,7 +763,7 @@ class LeannBuilder:
         if not meta_path.exists() or not passages_file.exists() or not offset_file.exists():
             raise FileNotFoundError("Index metadata or passage files are missing; cannot update.")
         if not index_file.exists():
-            raise FileNotFoundError(f"HNSW index file not found: {index_file}")
+            raise FileNotFoundError(f"Index file not found: {index_file}")
 
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
@@ -746,12 +773,48 @@ class LeannBuilder:
                 f"Index was built with backend '{backend_name}', cannot update with '{self.backend_name}'."
             )
 
+        with open(offset_file, "rb") as f:
+            offset_map: dict[str, int] = pickle.load(f)
+        existing_ids = set(offset_map.keys())
+
+        # IVF: optional delete (for reindex / file-change: remove then re-insert)
+        if remove_passage_ids and backend_name == "ivf":
+            try:
+                from leann_backend_ivf import remove_ids as ivf_remove_ids
+
+                nremoved = ivf_remove_ids(str(path), remove_passage_ids)
+                if nremoved < len(remove_passage_ids):
+                    logger.warning(
+                        "IVF update_index: removed %d of %d requested passage IDs "
+                        "(some may have been stale).",
+                        nremoved,
+                        len(remove_passage_ids),
+                    )
+            except ImportError:
+                raise RuntimeError(
+                    "IVF backend required for remove_ids. Install leann-backend-ivf."
+                )
+            for pid in remove_passage_ids:
+                offset_map.pop(pid, None)
+            existing_ids -= set(remove_passage_ids)
+
+            # Compact passages.jsonl: rewrite keeping only entries in offset_map
+            self._compact_passages(passages_file, offset_file, offset_map)
+
+        if not self.chunks:
+            meta["total_passages"] = len(offset_map)
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self.chunks.clear()
+            return
+
         meta_backend_kwargs = meta.get("backend_kwargs", {})
-        index_is_compact = meta.get("is_compact", meta_backend_kwargs.get("is_compact", True))
-        if index_is_compact:
-            raise ValueError(
-                "Compact HNSW indices do not support in-place updates. Rebuild required."
-            )
+        if backend_name == "hnsw":
+            index_is_compact = meta.get("is_compact", meta_backend_kwargs.get("is_compact", True))
+            if index_is_compact:
+                raise ValueError(
+                    "Compact HNSW indices do not support in-place updates. Rebuild required."
+                )
 
         distance_metric = meta_backend_kwargs.get(
             "distance_metric", self.backend_kwargs.get("distance_metric", "mips")
@@ -761,10 +824,6 @@ class LeannBuilder:
             or meta_backend_kwargs.get("is_recompute")
             or self.backend_kwargs.get("is_recompute")
         )
-
-        with open(offset_file, "rb") as f:
-            offset_map: dict[str, int] = pickle.load(f)
-        existing_ids = set(offset_map.keys())
 
         valid_chunks: list[dict[str, Any]] = []
         for chunk in self.chunks:
@@ -778,7 +837,12 @@ class LeannBuilder:
             valid_chunks.append(chunk)
 
         if not valid_chunks:
-            raise ValueError("No valid chunks to append.")
+            # Remove-only or file emptied: we may have already removed ids, just update meta
+            meta["total_passages"] = len(offset_map)
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self.chunks.clear()
+            return
 
         texts_to_embed = [chunk["text"] for chunk in valid_chunks]
         embeddings = compute_embeddings(
@@ -797,13 +861,68 @@ class LeannBuilder:
                 f"Dimension mismatch during update: existing index uses {expected_dim}, got {embedding_dim}."
             )
 
-        from leann_backend_hnsw import faiss  # type: ignore
-
         embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
         if distance_metric == "cosine":
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
             norms[norms == 0] = 1
             embeddings = embeddings / norms
+
+        # IVF: add_vectors then append passages/offset (no ZMQ/server)
+        if backend_name == "ivf":
+            for i, chunk in enumerate(valid_chunks):
+                pid = chunk.get("id") or chunk.get("metadata", {}).get("id")
+                if not pid:
+                    pid = str(len(offset_map) + i)
+                chunk.setdefault("metadata", {})["id"] = pid
+                chunk["id"] = pid
+            passage_ids = [c["id"] for c in valid_chunks]
+            try:
+                from leann_backend_ivf import add_vectors as ivf_add_vectors
+
+                ivf_add_vectors(str(path), embeddings, passage_ids)
+            except ImportError:
+                raise RuntimeError("IVF backend required. Install leann-backend-ivf.")
+            rollback_passages_size = passages_file.stat().st_size if passages_file.exists() else 0
+            offset_map_backup = offset_map.copy()
+            try:
+                with open(passages_file, "a", encoding="utf-8") as f:
+                    for chunk in valid_chunks:
+                        off = f.tell()
+                        json.dump(
+                            {
+                                "id": chunk["id"],
+                                "text": chunk["text"],
+                                "metadata": chunk.get("metadata", {}),
+                            },
+                            f,
+                            ensure_ascii=False,
+                        )
+                        f.write("\n")
+                        offset_map[chunk["id"]] = off
+                with open(offset_file, "wb") as f:
+                    pickle.dump(offset_map, f)
+                meta["total_passages"] = len(offset_map)
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+                logger.info(
+                    "Appended %d passages to IVF index '%s'. Total: %d",
+                    len(valid_chunks),
+                    index_path,
+                    len(offset_map),
+                )
+            except Exception:
+                if passages_file.exists():
+                    with open(passages_file, "rb+") as f:
+                        f.truncate(rollback_passages_size)
+                offset_map = offset_map_backup
+                with open(offset_file, "wb") as f:
+                    pickle.dump(offset_map, f)
+                raise
+            self.chunks.clear()
+            return
+
+        # HNSW path below
+        from leann_backend_hnsw import faiss
 
         index = faiss.read_index(str(index_file))
         if hasattr(index, "is_recompute"):
@@ -884,6 +1003,8 @@ class LeannBuilder:
                         embedding_mode=passage_meta_mode,
                         passages_file=str(meta_path),
                         distance_metric=distance_metric,
+                        use_daemon=False,
+                        enable_warmup=False,
                         provider_options=passage_provider_options,
                     )
                     if not server_started:
@@ -946,6 +1067,8 @@ class LeannSearcher:
         index_path: str,
         enable_warmup: bool = True,
         recompute_embeddings: bool = True,
+        use_daemon: bool = True,
+        daemon_ttl_seconds: int = 900,
         **backend_kwargs,
     ):
         # Fix path resolution for Colab and other environments
@@ -985,9 +1108,13 @@ class LeannSearcher:
         # Warmup flag: keep using the existing enable_warmup parameter,
         # but default it to True so cold-start happens earlier.
         self._warmup: bool = bool(enable_warmup)
+        self._use_daemon: bool = bool(use_daemon)
+        self._daemon_ttl_seconds: int = int(daemon_ttl_seconds)
 
         final_kwargs = {**self.meta_data.get("backend_kwargs", {}), **backend_kwargs}
         final_kwargs["enable_warmup"] = self._warmup
+        final_kwargs["use_daemon"] = self._use_daemon
+        final_kwargs["daemon_ttl_seconds"] = self._daemon_ttl_seconds
         if self.embedding_options:
             final_kwargs.setdefault("embedding_options", self.embedding_options)
         self.backend_impl: LeannBackendSearcherInterface = backend_factory.searcher(
@@ -997,23 +1124,17 @@ class LeannSearcher:
 
         # Optional one-shot warmup at construction time to hide cold-start latency.
         if self._warmup:
-            try:
-                _ = self.backend_impl.compute_query_embedding(
-                    "__LEANN_WARMUP__",
-                    use_server_if_available=self.recompute_embeddings,
-                )
-            except Exception as exc:
-                logger.warning(f"Warmup embedding failed (ignored): {exc}")
+            self.warmup()
 
-        # Optional one-shot warmup at construction time to hide cold-start latency.
-        if self._warmup:
-            try:
-                _ = self.backend_impl.compute_query_embedding(
-                    "__LEANN_WARMUP__",
-                    use_server_if_available=self.recompute_embeddings,
-                )
-            except Exception as exc:
-                logger.warning(f"Warmup embedding failed (ignored): {exc}")
+    def warmup(self) -> None:
+        """Warm up embedding path so first user query is faster."""
+        try:
+            _ = self.backend_impl.compute_query_embedding(
+                "__LEANN_WARMUP__",
+                use_server_if_available=self.recompute_embeddings,
+            )
+        except Exception as exc:
+            logger.warning(f"Warmup embedding failed (ignored): {exc}")
 
     def search(
         self,
@@ -1109,6 +1230,9 @@ class LeannSearcher:
                 zmq_port = self.backend_impl._ensure_server_running(
                     self.meta_path_str,
                     port=expected_zmq_port,
+                    enable_warmup=self._warmup,
+                    use_daemon=self._use_daemon,
+                    daemon_ttl_seconds=self._daemon_ttl_seconds,
                     **kwargs,
                 )
                 del expected_zmq_port
@@ -1256,10 +1380,13 @@ class LeannSearcher:
 
     def _bm25_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Perform BM25 search on raw passages"""
-        if not self.bm25_scorer:
+        if self.bm25_scorer is None:
             self._init_bm25()
             logger.info("  BM25 scorer initialized")
-        return self.bm25_scorer.search(query, top_k)
+        scorer = self.bm25_scorer
+        if scorer is None:
+            raise RuntimeError("BM25 scorer failed to initialize")
+        return scorer.search(query, top_k)
 
     def _find_jsonl_file(self) -> Optional[str]:
         """Find the .jsonl file containing raw passages for grep search"""

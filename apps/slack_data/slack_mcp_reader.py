@@ -50,7 +50,7 @@ class SlackMCPReader:
         self.max_messages_per_conversation = max_messages_per_conversation
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self.mcp_process = None
+        self.mcp_process: asyncio.subprocess.Process | None = None
 
     async def start_mcp_server(self):
         """Start the MCP server process."""
@@ -75,14 +75,17 @@ class SlackMCPReader:
 
     async def send_mcp_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Send a request to the MCP server and get response."""
-        if not self.mcp_process:
+        proc = self.mcp_process
+        if proc is None:
             raise RuntimeError("MCP server not started")
+        if proc.stdin is None or proc.stdout is None:
+            raise RuntimeError("MCP server stdio not available")
 
         request_json = json.dumps(request) + "\n"
-        self.mcp_process.stdin.write(request_json.encode())
-        await self.mcp_process.stdin.drain()
+        proc.stdin.write(request_json.encode())
+        await proc.stdin.drain()
 
-        response_line = await self.mcp_process.stdout.readline()
+        response_line = await proc.stdout.readline()
         if not response_line:
             raise RuntimeError("No response from MCP server")
 

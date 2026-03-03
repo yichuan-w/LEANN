@@ -25,8 +25,8 @@ from .cli import LeannCLI
 def _ensure_fastapi():
     """Lazy import FastAPI and Pydantic, with a clear error if missing."""
     try:
-        from fastapi import FastAPI, HTTPException  # type: ignore
-        from pydantic import BaseModel  # type: ignore
+        from fastapi import FastAPI, HTTPException
+        from pydantic import BaseModel
     except ImportError as e:  # pragma: no cover - dependency error path
         raise RuntimeError(
             "FastAPI and pydantic are required for the LEANN HTTP server.\n"
@@ -67,7 +67,7 @@ def _list_current_project_indexes() -> list[dict[str, Any]]:
     current_path = Path.cwd()
     indexes: list[dict[str, Any]] = []
 
-    for idx in cli._discover_indexes_in_project(current_path):  # type: ignore[attr-defined]
+    for idx in cli._discover_indexes_in_project(current_path):
         # `idx` includes keys like: name, type (cli/app), status, size_mb
         indexes.append(
             {
@@ -139,7 +139,7 @@ def create_app():
         try:
             index_path = _resolve_index_path(index_name)
         except FileNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))  # type: ignore[misc]
+            raise HTTPException(status_code=404, detail=str(e))
 
         searcher = LeannSearcher(index_path=index_path)
         results = searcher.search(
@@ -177,7 +177,7 @@ def main() -> None:
         leann serve
     """
     try:
-        import uvicorn  # type: ignore
+        import uvicorn
     except ImportError as e:  # pragma: no cover - dependency error path
         raise RuntimeError(
             "uvicorn is required to run the LEANN HTTP server.\n"

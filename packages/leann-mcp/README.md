@@ -4,6 +4,8 @@ Transform your development workflow with intelligent code assistance using LEANN
 
 For agent-facing discovery details, see `llms.txt` in the repository root.
 
+**Backend work (IVF, incremental build, reindex):** See [BACKEND.md](./BACKEND.md) for how the MCP server relates to backends and for notes on #231, #89, and #141.
+
 ## Prerequisites
 
 Install LEANN globally for MCP integration (with default backend):

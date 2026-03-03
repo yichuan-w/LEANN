@@ -1,8 +1,14 @@
 import argparse
 import asyncio
 import contextlib
+import hashlib
+import io
+import json
 import os
+import pickle
+import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -11,6 +17,7 @@ from llama_index.core.node_parser import SentenceSplitter
 from tqdm import tqdm
 
 from .api import LeannBuilder, LeannChat, LeannSearcher
+from .embedding_server_manager import EmbeddingServerManager
 from .interactive_utils import create_cli_session
 from .registry import register_project_directory
 from .settings import (
@@ -19,36 +26,72 @@ from .settings import (
     resolve_openai_api_key,
     resolve_openai_base_url,
 )
+from .sync import FileSynchronizer
+
+
+def _normalize_path(path: str) -> str:
+    """Return absolute path string for consistent keys."""
+    if not path:
+        return path
+    return str(Path(path).resolve())
 
 
 @contextlib.contextmanager
 def suppress_cpp_output(suppress: bool = True):
-    """Context manager to suppress C++ stdout/stderr output from FAISS/HNSW.
+    """Context manager to suppress C++ stdout/stderr output from FAISS/HNSW
+    while preserving Python print() output.
 
-    This redirects file descriptors at the OS level to suppress native C++ output
-    that cannot be controlled via Python's logging framework.
+    C++ native code writes directly to OS file descriptors (fd 1 / fd 2).
+    Python print() goes through sys.stdout / sys.stderr, which are Python
+    file objects.  We redirect the OS fds to /dev/null (silencing C++) but
+    point sys.stdout / sys.stderr at copies of the *original* fds so that
+    Python output still reaches the terminal.
     """
     if not suppress:
         yield
         return
 
-    # Save original file descriptors
-    old_stdout_fd = os.dup(1)
-    old_stderr_fd = os.dup(2)
+    # 1. Duplicate the original OS file descriptors
+    saved_stdout_fd = os.dup(1)
+    saved_stderr_fd = os.dup(2)
+
+    # 2. Build Python file objects that write to the saved (real) fds.
+    #    closefd=False so closing these wrappers won't close the duped fds.
+    py_stdout = io.TextIOWrapper(
+        io.FileIO(saved_stdout_fd, mode="w", closefd=False), encoding=sys.stdout.encoding or "utf-8"
+    )
+    py_stderr = io.TextIOWrapper(
+        io.FileIO(saved_stderr_fd, mode="w", closefd=False), encoding=sys.stderr.encoding or "utf-8"
+    )
+
+    old_sys_stdout = sys.stdout
+    old_sys_stderr = sys.stderr
 
     try:
-        # Open /dev/null for writing
+        # 3. Redirect OS-level fds to /dev/null → silences C++ output
         devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, 1)  # Redirect stdout
-        os.dup2(devnull, 2)  # Redirect stderr
+        os.dup2(devnull, 1)
+        os.dup2(devnull, 2)
         os.close(devnull)
+
+        # 4. Point Python's sys.stdout/stderr at the real terminal
+        sys.stdout = py_stdout
+        sys.stderr = py_stderr
+
         yield
     finally:
-        # Restore original file descriptors
-        os.dup2(old_stdout_fd, 1)
-        os.dup2(old_stderr_fd, 2)
-        os.close(old_stdout_fd)
-        os.close(old_stderr_fd)
+        # 5. Restore everything
+        #    Flush wrappers first (they still need the saved fds to be open)
+        py_stdout.flush()
+        py_stderr.flush()
+
+        sys.stdout = old_sys_stdout
+        sys.stderr = old_sys_stderr
+
+        os.dup2(saved_stdout_fd, 1)
+        os.dup2(saved_stderr_fd, 2)
+        os.close(saved_stdout_fd)
+        os.close(saved_stderr_fd)
 
 
 def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
@@ -124,6 +167,7 @@ Examples:
   leann build my-ppts --docs ./ --file-types .pptx,.pdf                  # Index only PowerPoint and PDF files
   leann search my-docs "query"                                           # Search in my-docs index
   leann ask my-docs "question"                                           # Ask my-docs index
+  leann react my-docs "complex question"                                 # Use ReAct agent for multiturn retrieval
   leann list                                                             # List all stored indexes
   leann remove my-docs                                                   # Remove an index (local first, then global)
             """,
@@ -162,7 +206,7 @@ Examples:
             "--backend-name",
             type=str,
             default="hnsw",
-            choices=["hnsw", "diskann"],
+            choices=["hnsw", "diskann", "ivf"],
             help="Backend to use (default: hnsw)",
         )
         build_parser.add_argument(
@@ -209,7 +253,10 @@ Examples:
             help="Prompt template for queries (different from build template for task-specific models)",
         )
         build_parser.add_argument(
-            "--force", "-f", action="store_true", help="Force rebuild existing index"
+            "--force",
+            "-f",
+            action="store_true",
+            help="Force full rebuild of existing index (without this, build does incremental update: add new files only)",
         )
         build_parser.add_argument(
             "--graph-degree", type=int, default=32, help="Graph degree (default: 32)"
@@ -221,8 +268,8 @@ Examples:
         build_parser.add_argument(
             "--compact",
             action=argparse.BooleanOptionalAction,
-            default=True,
-            help="Use compact storage (default: true). Must be `no-compact` for `no-recompute` build.",
+            default=False,
+            help="Use compact (CSR) graph storage. Compact indices are read-only and cannot be updated incrementally. Default: false (allows incremental updates while still pruning embeddings for 97%% compression).",
         )
         build_parser.add_argument(
             "--recompute",
@@ -289,6 +336,29 @@ Examples:
             help="Fall back to traditional chunking if AST chunking fails (default: True)",
         )
 
+        # Watch command
+        watch_parser = subparsers.add_parser(
+            "watch",
+            help="Monitor source files and auto-rebuild index when changes are detected",
+        )
+        watch_parser.add_argument("index_name", help="Index name")
+        watch_parser.add_argument(
+            "--interval",
+            type=int,
+            default=30,
+            help="Poll interval in seconds (default: 30)",
+        )
+        watch_parser.add_argument(
+            "--once",
+            action="store_true",
+            help="Check once for changes and exit (do not loop)",
+        )
+        watch_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Report changes without rebuilding (original watch behavior)",
+        )
+
         # Search command
         search_parser = subparsers.add_parser("search", help="Search documents")
         search_parser.add_argument("index_name", help="Index name")
@@ -315,6 +385,11 @@ Examples:
             help="Pruning strategy (default: global)",
         )
         search_parser.add_argument(
+            "--json",
+            action="store_true",
+            help="Output results as JSON array (machine-readable)",
+        )
+        search_parser.add_argument(
             "--non-interactive",
             action="store_true",
             help="Non-interactive mode: automatically select index without prompting",
@@ -330,6 +405,81 @@ Examples:
             default=None,
             help="Prompt template to prepend to query for embedding (e.g., 'query: ' for search)",
         )
+        search_parser.add_argument(
+            "--daemon",
+            dest="use_daemon",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable cross-process daemon reuse for embedding server (default: enabled)",
+        )
+        search_parser.add_argument(
+            "--daemon-ttl",
+            type=int,
+            default=900,
+            help="Daemon idle TTL in seconds (default: 900, 0 = never expire)",
+        )
+        search_parser.add_argument(
+            "--warmup",
+            dest="enable_warmup",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable warmup when starting embedding server (default: enabled)",
+        )
+
+        # Warmup command
+        warmup_parser = subparsers.add_parser("warmup", help="Warm up an index embedding server")
+        warmup_parser.add_argument("index_name", help="Index name")
+        warmup_parser.add_argument(
+            "--daemon",
+            dest="use_daemon",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable daemon mode for warmup (default: enabled)",
+        )
+        warmup_parser.add_argument(
+            "--daemon-ttl",
+            type=int,
+            default=900,
+            help="Daemon idle TTL in seconds (default: 900, 0 = never expire)",
+        )
+        warmup_parser.add_argument(
+            "--warmup",
+            dest="enable_warmup",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable warmup request itself (default: enabled)",
+        )
+
+        # Daemon command
+        daemon_parser = subparsers.add_parser("daemon", help="Manage embedding daemons")
+        daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_command")
+
+        daemon_start = daemon_subparsers.add_parser("start", help="Start daemon for an index")
+        daemon_start.add_argument("index_name", help="Index name")
+        daemon_start.add_argument(
+            "--daemon-ttl",
+            type=int,
+            default=900,
+            help="Daemon idle TTL in seconds (default: 900, 0 = never expire)",
+        )
+        daemon_start.add_argument(
+            "--warmup",
+            dest="enable_warmup",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable startup warmup (default: enabled)",
+        )
+
+        daemon_stop = daemon_subparsers.add_parser("stop", help="Stop daemon(s)")
+        daemon_stop.add_argument("index_name", nargs="?", help="Index name to stop")
+        daemon_stop.add_argument(
+            "--all",
+            action="store_true",
+            help="Stop all LEANN embedding daemons",
+        )
+
+        daemon_status = daemon_subparsers.add_parser("status", help="Show daemon status")
+        daemon_status.add_argument("index_name", nargs="?", help="Optional index name filter")
 
         # Ask command
         ask_parser = subparsers.add_parser("ask", help="Ask questions")
@@ -394,6 +544,56 @@ Examples:
             type=str,
             default=None,
             help="API key for cloud LLM providers (OpenAI, Anthropic)",
+        )
+
+        # React command (multiturn retrieval agent)
+        react_parser = subparsers.add_parser(
+            "react", help="Use ReAct agent for multiturn retrieval and reasoning"
+        )
+        react_parser.add_argument("index_name", help="Index name")
+        react_parser.add_argument("query", help="Question to research")
+        react_parser.add_argument(
+            "--llm",
+            type=str,
+            default="ollama",
+            choices=["simulated", "ollama", "hf", "openai", "anthropic"],
+            help="LLM provider (default: ollama)",
+        )
+        react_parser.add_argument(
+            "--model", type=str, default="qwen3:8b", help="Model name (default: qwen3:8b)"
+        )
+        react_parser.add_argument(
+            "--host",
+            type=str,
+            default=None,
+            help="Override Ollama-compatible host (defaults to LEANN_OLLAMA_HOST/OLLAMA_HOST)",
+        )
+        react_parser.add_argument(
+            "--top-k", type=int, default=5, help="Number of results per search (default: 5)"
+        )
+        react_parser.add_argument(
+            "--max-iterations",
+            type=int,
+            default=5,
+            help="Maximum number of search iterations (default: 5)",
+        )
+        react_parser.add_argument(
+            "--api-base",
+            type=str,
+            default=None,
+            help="Base URL for OpenAI-compatible APIs (e.g., http://localhost:10000/v1)",
+        )
+        react_parser.add_argument(
+            "--api-key",
+            type=str,
+            default=None,
+            help="API key for cloud LLM providers (OpenAI, Anthropic)",
+        )
+        react_parser.add_argument(
+            "--serper-api-key", type=str, default=None, help="Serper API key for web search"
+        )
+        react_parser.add_argument(
+            "--jina-api-key", type=str, default=None, help="Jina API key for content parsing"
         )
 
         # List command
@@ -1386,6 +1586,16 @@ Examples:
                 file_path = doc.metadata.get("file_path", "")
                 is_code_file = any(source_path.endswith(ext) for ext in code_file_exts)
 
+                # For code files, prepend line numbers so chunks carry them
+                if is_code_file:
+                    from llama_index.core.schema import MediaResource
+
+                    original_text = doc.get_content()
+                    lines = original_text.split("\n")
+                    width = len(str(len(lines)))
+                    numbered = "\n".join(f"{i + 1:>{width}}|{line}" for i, line in enumerate(lines))
+                    doc.text_resource = MediaResource(text=numbered)
+
                 # Extract metadata to preserve with chunks
                 chunk_metadata = {
                     "file_path": file_path or source_path,
@@ -1404,10 +1614,435 @@ Examples:
                 nodes = parser.get_nodes_from_documents([doc])
 
                 for node in nodes:
-                    all_texts.append({"text": node.get_content(), "metadata": chunk_metadata})
+                    text = node.get_content()
+                    # For code chunks, trim a partial first line left by overlap
+                    # (a valid line starts with digits followed by '|')
+                    if is_code_file and text and not text[0].isdigit():
+                        first_nl = text.find("\n")
+                        if first_nl != -1:
+                            text = text[first_nl + 1 :]
+                    all_texts.append({"text": text, "metadata": chunk_metadata})
 
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
+
+    def _parse_file_types(self, custom_file_types: Optional[str]) -> Optional[list[str]]:
+        if not custom_file_types:
+            return None
+        extensions = [ext.strip() for ext in custom_file_types.split(",") if ext.strip()]
+        return [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+
+    def _sync_ignore_patterns(self, include_hidden: bool) -> Optional[list[str]]:
+        if include_hidden:
+            return None
+        return ["**/.*"]
+
+    def _build_embedding_options(self, args) -> dict[str, Any]:
+        """Build embedding provider options dict from CLI args."""
+        opts: dict[str, Any] = {}
+        if args.embedding_mode == "ollama":
+            opts["host"] = resolve_ollama_host(args.embedding_host)
+        elif args.embedding_mode == "openai":
+            opts["base_url"] = resolve_openai_base_url(args.embedding_api_base)
+            resolved_key = resolve_openai_api_key(args.embedding_api_key)
+            if resolved_key:
+                opts["api_key"] = resolved_key
+        if args.query_prompt_template:
+            if args.embedding_prompt_template:
+                opts["build_prompt_template"] = args.embedding_prompt_template
+            opts["query_prompt_template"] = args.query_prompt_template
+        elif args.embedding_prompt_template:
+            opts["prompt_template"] = args.embedding_prompt_template
+        return opts
+
+    def _resolve_sync_roots(self, docs_paths: list[str]) -> list[str]:
+        roots: set[str] = set()
+        for path in docs_paths:
+            path_obj = Path(path).resolve()
+            if path_obj.is_dir():
+                roots.add(str(path_obj))
+            elif path_obj.is_file():
+                roots.add(str(path_obj.parent))
+        return sorted(roots)
+
+    def _create_synchronizers(
+        self,
+        index_dir: Path,
+        roots: list[str],
+        include_extensions: Optional[list[str]] = None,
+        ignore_patterns: Optional[list[str]] = None,
+    ) -> list[FileSynchronizer]:
+        """Create FileSynchronizers with snapshots stored in the index dir. Shared by build and watch."""
+        synchronizers: list[FileSynchronizer] = []
+        for root in roots:
+            tag = hashlib.sha256(root.encode()).hexdigest()[:12]
+            snapshot_path = str(index_dir / f"sync_{tag}.pickle")
+            try:
+                fs = FileSynchronizer(
+                    root_dir=root,
+                    ignore_patterns=ignore_patterns,
+                    include_extensions=include_extensions,
+                    snapshot_path=snapshot_path,
+                )
+                synchronizers.append(fs)
+            except Exception as exc:
+                print(f"Warning: Failed to init synchronizer for {root}: {exc}")
+        return synchronizers
+
+    def _build_synchronizers(
+        self,
+        docs_paths: list[str],
+        index_dir: Path,
+        file_types: Optional[str] = None,
+        include_hidden: bool = False,
+    ) -> list[FileSynchronizer]:
+        """Create FileSynchronizers for build from docs_paths."""
+        roots = self._resolve_sync_roots(docs_paths)
+        include_extensions = self._parse_file_types(file_types)
+        ignore_patterns = self._sync_ignore_patterns(include_hidden)
+        return self._create_synchronizers(index_dir, roots, include_extensions, ignore_patterns)
+
+    def _detect_build_changes(
+        self,
+        synchronizers: list[FileSynchronizer],
+    ) -> tuple[set[str], set[str], set[str]]:
+        """Detect added/removed/modified files across all source roots using content hashes."""
+        all_added: set[str] = set()
+        all_removed: set[str] = set()
+        all_modified: set[str] = set()
+        for fs in synchronizers:
+            added, removed, modified = fs.detect_changes()
+            all_added.update(added)
+            all_removed.update(removed)
+            all_modified.update(modified)
+        return all_added, all_removed, all_modified
+
+    def _commit_synchronizers(self, synchronizers: list[FileSynchronizer]) -> None:
+        """Persist all synchronizer snapshots after a successful build."""
+        for fs in synchronizers:
+            fs.commit()
+
+    @staticmethod
+    def _assign_chunk_ids(chunks: list[dict]) -> None:
+        """Assign stable IDs to chunks based on their file path and position."""
+        from collections import defaultdict
+
+        by_path: dict[str, list] = defaultdict(list)
+        for c in chunks:
+            p = c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source") or ""
+            by_path[_normalize_path(p)].append(c)
+        for path_key, path_chunks in by_path.items():
+            for idx, c in enumerate(path_chunks):
+                sid = hashlib.sha256(f"{path_key}:{idx}".encode()).hexdigest()[:16]
+                c.setdefault("metadata", {})["id"] = sid
+                c["id"] = sid
+
+    @staticmethod
+    def _assign_unique_chunk_ids(chunks: list[dict]) -> None:
+        """Assign unique IDs for incremental (avoids collision when path lookup misses some old ids)."""
+        for c in chunks:
+            sid = uuid.uuid4().hex[:16]
+            c.setdefault("metadata", {})["id"] = sid
+            c["id"] = sid
+
+    def _chunks_for_paths(self, all_texts: list[dict], paths: set[str]) -> list[dict]:
+        """Filter chunks belonging to the given file paths."""
+        return [
+            c
+            for c in all_texts
+            if _normalize_path(
+                c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source") or ""
+            )
+            in paths
+        ]
+
+    def _make_incremental_builder(self, args) -> "LeannBuilder":
+        return LeannBuilder(
+            backend_name=args.backend_name,
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=self._build_embedding_options(args) or None,
+            graph_degree=args.graph_degree,
+            complexity=args.complexity,
+            is_compact=args.compact,
+            is_recompute=args.recompute,
+            num_threads=args.num_threads,
+        )
+
+    def _incremental_add_only(
+        self,
+        index_path: str,
+        all_texts: list[dict],
+        args,
+        new_paths: set[str],
+    ) -> bool:
+        """Add-only incremental update (works for HNSW and IVF)."""
+        new_chunks = self._chunks_for_paths(all_texts, new_paths)
+        if not new_chunks:
+            return False
+        self._assign_chunk_ids(new_chunks)
+        builder = self._make_incremental_builder(args)
+        for chunk in new_chunks:
+            builder.add_text(chunk["text"], metadata=chunk["metadata"])
+        print(
+            f"Incremental update: adding {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
+        )
+        builder.update_index(index_path)
+        print(f"Index updated at {index_path}")
+        return True
+
+    def _incremental_ivf_remove_only(
+        self, index_path: str, index_dir: Path, removed_paths: set[str], args
+    ) -> bool:
+        """IVF remove-only fast path: remove chunk IDs without loading or chunking documents."""
+        passages_file = index_dir / "documents.leann.passages.jsonl"
+        if not passages_file.exists():
+            return False
+        offset_file = index_dir / "documents.leann.passages.idx"
+        live_ids: set[str] | None = None
+        if offset_file.exists():
+            with open(offset_file, "rb") as f:
+                live_ids = set(pickle.load(f).keys())
+        chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file, live_ids=live_ids)
+        roots = self._load_sync_roots(index_dir)
+        ids_to_remove: list[str] = []
+        seen_ids: set[str] = set()
+        for p in removed_paths:
+            for key in self._path_lookup_keys(p, roots):
+                for pid in chunk_ids_by_file.get(key, []):
+                    if pid not in seen_ids:
+                        seen_ids.add(pid)
+                        ids_to_remove.append(pid)
+        if not ids_to_remove:
+            return False
+        print(
+            f"Incremental IVF update (-{len(removed_paths)} removed): removing {len(ids_to_remove)} old chunks..."
+        )
+        builder = self._make_incremental_builder(args)
+        builder.update_index(index_path, remove_passage_ids=ids_to_remove)
+        print(f"Index updated at {index_path}")
+        return True
+
+    def _path_lookup_keys(self, path: str, roots: list[str]) -> list[str]:
+        """Return path variations for lookup (sync paths may be relative to roots)."""
+        keys = [path, _normalize_path(path)]
+        for root in roots:
+            candidate = str((Path(root) / path).resolve())
+            if candidate not in keys:
+                keys.append(candidate)
+        return keys
+
+    def _incremental_ivf_update(
+        self,
+        index_path: str,
+        index_dir: Path,
+        all_texts: list[dict],
+        args,
+        new_paths: set[str],
+        removed_paths: set[str],
+        modified_paths: set[str],
+        sync_roots: list[str],
+    ) -> bool:
+        """IVF incremental update: remove old chunks for modified/removed files, add new chunks."""
+        passages_file = index_dir / "documents.leann.passages.jsonl"
+        offset_file = index_dir / "documents.leann.passages.idx"
+        live_ids: set[str] | None = None
+        if offset_file.exists():
+            with open(offset_file, "rb") as f:
+                live_ids = set(pickle.load(f).keys())
+        chunk_ids_by_file = (
+            self._load_chunk_ids_by_file(passages_file, live_ids=live_ids)
+            if passages_file.exists()
+            else {}
+        )
+
+        # Collect old chunk IDs to remove (modified + removed files)
+        # Try all path variations: same file can have different path formats in passages
+        ids_to_remove: list[str] = []
+        seen_ids: set[str] = set()
+        for p in modified_paths | removed_paths:
+            for key in self._path_lookup_keys(p, sync_roots):
+                for pid in chunk_ids_by_file.get(key, []):
+                    if pid not in seen_ids:
+                        seen_ids.add(pid)
+                        ids_to_remove.append(pid)
+
+        # Collect new chunks to add (modified + new files)
+        # Build path set for matching: chunks may have paths in different formats
+        changed_paths = new_paths | modified_paths
+        path_set: set[str] = set()
+        for p in changed_paths:
+            path_set.update(self._path_lookup_keys(p, sync_roots))
+        new_chunks = self._chunks_for_paths(all_texts, path_set)
+        # Use unique IDs: passages can have mixed path formats so we may miss some ids_to_remove
+        self._assign_unique_chunk_ids(new_chunks)
+
+        if not ids_to_remove and not new_chunks:
+            return False
+
+        builder = self._make_incremental_builder(args)
+        for chunk in new_chunks:
+            builder.add_text(chunk["text"], metadata=chunk["metadata"])
+
+        parts = []
+        if ids_to_remove:
+            parts.append(f"removing {len(ids_to_remove)} old chunks")
+        if new_chunks:
+            parts.append(f"adding {len(new_chunks)} new chunks")
+        file_parts = []
+        if new_paths:
+            file_parts.append(f"+{len(new_paths)} added")
+        if modified_paths:
+            file_parts.append(f"~{len(modified_paths)} modified")
+        if removed_paths:
+            file_parts.append(f"-{len(removed_paths)} removed")
+        print(f"Incremental IVF update ({', '.join(file_parts)}): {', '.join(parts)}...")
+
+        builder.update_index(
+            index_path, remove_passage_ids=ids_to_remove if ids_to_remove else None
+        )
+        print(f"Index updated at {index_path}")
+        return True
+
+    @staticmethod
+    def _log_rebuild_reason(
+        meta: dict, args, new_paths: set, removed_paths: set, modified_paths: set
+    ) -> None:
+        """Print a human-readable explanation of why incremental update is not possible."""
+        if removed_paths or modified_paths:
+            reasons = []
+            if removed_paths:
+                reasons.append(f"{len(removed_paths)} file(s) removed")
+            if modified_paths:
+                reasons.append(f"{len(modified_paths)} file(s) modified")
+            print(
+                f"Incremental update not possible ({', '.join(reasons)}); falling back to full rebuild."
+            )
+            return
+
+        blockers = []
+        if meta.get("backend_name") not in ("hnsw", "ivf"):
+            blockers.append(
+                f"backend '{meta.get('backend_name')}' does not support incremental updates"
+            )
+        if meta.get("is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)):
+            blockers.append("index is compact (read-only); rebuild with --no-compact to enable")
+        if meta.get("embedding_model") != args.embedding_model:
+            blockers.append(
+                f"embedding model changed ('{meta.get('embedding_model')}' -> '{args.embedding_model}')"
+            )
+        if meta.get("embedding_mode") != args.embedding_mode:
+            blockers.append(
+                f"embedding mode changed ('{meta.get('embedding_mode')}' -> '{args.embedding_mode}')"
+            )
+        if blockers:
+            print(
+                f"Incremental update not possible: {'; '.join(blockers)}. Falling back to full rebuild."
+            )
+        else:
+            changes = []
+            if new_paths:
+                changes.append(f"+{len(new_paths)} added")
+            summary = ", ".join(changes) if changes else "unknown reason"
+            print(f"Full rebuild starting ({summary})...")
+
+    def _write_sync_config(
+        self,
+        index_dir: Path,
+        roots: list[str],
+        include_extensions: Optional[list[str]],
+        ignore_patterns: Optional[list[str]],
+    ) -> None:
+        sync_config_path = index_dir / "sync_roots.json"
+        config = {
+            "roots": roots,
+            "include_extensions": include_extensions,
+            "ignore_patterns": ignore_patterns,
+        }
+        with open(sync_config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+
+    def _load_sync_roots(self, index_dir: Path) -> list[str]:
+        """Load sync roots from index dir (for path resolution in incremental updates)."""
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            return []
+        try:
+            with open(sync_config_path, encoding="utf-8") as f:
+                config = json.load(f)
+            return config.get("roots") or []
+        except (json.JSONDecodeError, OSError):
+            return []
+
+    def _resolve_index_for_watch(self, index_name: str) -> Optional[dict[str, Path]]:
+        if self.index_exists(index_name):
+            index_dir = self.indexes_dir / index_name
+            passages_file = index_dir / "documents.leann.passages.jsonl"
+            return {"index_dir": index_dir, "passages_file": passages_file}
+
+        all_matches = self._find_all_matching_indexes(index_name)
+        if not all_matches:
+            print(
+                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
+            )
+            return None
+
+        if len(all_matches) == 1:
+            match = all_matches[0]
+        else:
+            current_matches = [m for m in all_matches if m.get("is_current")]
+            match = current_matches[0] if current_matches else all_matches[0]
+            location_desc = (
+                "current project"
+                if match.get("is_current")
+                else f"project '{match['project_path'].name}'"
+            )
+            print(
+                f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
+            )
+
+        if match.get("kind") == "cli":
+            index_dir = match["index_dir"]
+            passages_file = index_dir / "documents.leann.passages.jsonl"
+        else:
+            index_dir = match["meta_file"].parent
+            file_base = match["file_base"]
+            passages_file = index_dir / f"{file_base}.passages.jsonl"
+
+        return {"index_dir": index_dir, "passages_file": passages_file}
+
+    def _load_chunk_ids_by_file(
+        self, passages_file: Path, live_ids: set[str] | None = None
+    ) -> dict[str, list[str]]:
+        """Load chunk IDs grouped by file path from passages.jsonl.
+
+        If *live_ids* is provided, skip entries whose ID is not in the set
+        (filters out stale entries left by prior incremental updates).
+        """
+        chunk_ids_by_file: dict[str, list[str]] = {}
+        with open(passages_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                metadata = data.get("metadata") or {}
+                file_path = metadata.get("file_path") or metadata.get("source")
+                if not file_path:
+                    continue
+                chunk_id = data.get("id")
+                if chunk_id is None:
+                    continue
+                if live_ids is not None and str(chunk_id) not in live_ids:
+                    continue
+                normalized_path = str(Path(file_path).resolve())
+                chunk_ids_by_file.setdefault(normalized_path, []).append(str(chunk_id))
+                if file_path != normalized_path:
+                    chunk_ids_by_file.setdefault(file_path, []).append(str(chunk_id))
+        return chunk_ids_by_file
 
     async def build_index(self, args):
         docs_paths = args.docs
@@ -1434,10 +2069,6 @@ Examples:
             print(f"  📁 Directories ({len(directories)}):")
             for i, dir_path in enumerate(directories, 1):
                 print(f"    {i}. {Path(dir_path).resolve()}")
-
-        if index_dir.exists() and not args.force:
-            print(f"Index '{index_name}' already exists. Use --force to rebuild.")
-            return
 
         # Configure chunking based on CLI args before loading documents
         # Guard against invalid configurations
@@ -1470,39 +2101,160 @@ Examples:
             paragraph_separator="\n\n",
         )
 
-        all_texts = self.load_documents(
-            docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+        # Detect changes first so we can skip load_documents for remove-only
+        index_dir.mkdir(parents=True, exist_ok=True)
+        synchronizers = self._build_synchronizers(
+            docs_paths, index_dir, file_types=args.file_types, include_hidden=args.include_hidden
         )
+
+        if index_dir.exists() and not args.force and synchronizers:
+            meta_path = index_dir / "documents.leann.meta.json"
+            new_paths, removed_paths, modified_paths = self._detect_build_changes(synchronizers)
+
+            if not new_paths and not removed_paths and not modified_paths:
+                print("Index up to date.")
+                return
+
+            # Show change summary (add / modify / delete) before build
+            change_parts = []
+            if new_paths:
+                change_parts.append(f"+{len(new_paths)} added")
+            if modified_paths:
+                change_parts.append(f"~{len(modified_paths)} modified")
+            if removed_paths:
+                change_parts.append(f"-{len(removed_paths)} removed")
+            if change_parts:
+                print(f"Changes: {', '.join(change_parts)}")
+
+            if meta_path.exists():
+                with open(meta_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+
+                backend_name = meta.get("backend_name")
+                is_compact = meta.get(
+                    "is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)
+                )
+                same_embedding = (
+                    meta.get("embedding_model") == args.embedding_model
+                    and meta.get("embedding_mode") == args.embedding_mode
+                )
+
+                # IVF supports remove+add, so it can handle modified and removed files incrementally
+                can_ivf_update = backend_name == "ivf" and not is_compact and same_embedding
+                # HNSW only supports add (no remove), so it needs add-only changes
+                can_add_only = (
+                    not removed_paths
+                    and not modified_paths
+                    and backend_name in ("hnsw", "ivf")
+                    and not is_compact
+                    and same_embedding
+                )
+
+                # Remove-only fast path: no load/chunk, just remove IDs from index
+                if can_ivf_update and removed_paths and not new_paths and not modified_paths:
+                    result = self._incremental_ivf_remove_only(
+                        index_path, index_dir, removed_paths, args
+                    )
+                    if result:
+                        self._commit_synchronizers(synchronizers)
+                        self._write_sync_config(
+                            index_dir,
+                            self._resolve_sync_roots(docs_paths),
+                            self._parse_file_types(args.file_types),
+                            self._sync_ignore_patterns(args.include_hidden),
+                        )
+                        self.register_project_dir()
+                        return
+
+                # Load only changed files (no need to load/chunk the entire corpus)
+                # Resolve paths relative to sync roots (sync returns paths relative to each root)
+                roots = self._resolve_sync_roots(docs_paths)
+                paths_to_load = new_paths | modified_paths
+                resolved_paths: list[str] = []
+                for p in paths_to_load:
+                    path_obj = Path(p)
+                    if path_obj.is_absolute() and path_obj.exists():
+                        resolved_paths.append(p)
+                    else:
+                        for root in roots:
+                            candidate = Path(root) / p
+                            if candidate.exists():
+                                resolved_paths.append(str(candidate.resolve()))
+                                break
+                        else:
+                            resolved_paths.append(p)  # fallback: pass as-is
+                all_texts = self.load_documents(
+                    resolved_paths,
+                    args.file_types,
+                    include_hidden=args.include_hidden,
+                    args=args,
+                )
+                # Proceed even when all_texts is empty (e.g. file emptied): we still need to remove old chunks
+                if not all_texts and not (can_ivf_update and (modified_paths or removed_paths)):
+                    print("No documents found")
+                    return
+
+                if can_ivf_update and (new_paths or modified_paths or removed_paths):
+                    result = self._incremental_ivf_update(
+                        index_path,
+                        index_dir,
+                        all_texts,
+                        args,
+                        new_paths,
+                        removed_paths,
+                        modified_paths,
+                        roots,
+                    )
+                    if result:
+                        self._commit_synchronizers(synchronizers)
+                        self._write_sync_config(
+                            index_dir,
+                            self._resolve_sync_roots(docs_paths),
+                            self._parse_file_types(args.file_types),
+                            self._sync_ignore_patterns(args.include_hidden),
+                        )
+                        self.register_project_dir()
+                        return
+
+                elif can_add_only and new_paths:
+                    result = self._incremental_add_only(
+                        index_path,
+                        all_texts,
+                        args,
+                        new_paths,
+                    )
+                    if result:
+                        self._commit_synchronizers(synchronizers)
+                        self._write_sync_config(
+                            index_dir,
+                            self._resolve_sync_roots(docs_paths),
+                            self._parse_file_types(args.file_types),
+                            self._sync_ignore_patterns(args.include_hidden),
+                        )
+                        self.register_project_dir()
+                        return
+
+                else:
+                    self._log_rebuild_reason(meta, args, new_paths, removed_paths, modified_paths)
+
+        # Full rebuild: load documents if not already loaded (first build or force)
+        try:
+            _ = all_texts
+        except NameError:
+            all_texts = self.load_documents(
+                docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+            )
         if not all_texts:
             print("No documents found")
             return
 
-        index_dir.mkdir(parents=True, exist_ok=True)
-
         print(f"Building index '{index_name}' with {args.backend_name} backend...")
-
-        embedding_options: dict[str, Any] = {}
-        if args.embedding_mode == "ollama":
-            embedding_options["host"] = resolve_ollama_host(args.embedding_host)
-        elif args.embedding_mode == "openai":
-            embedding_options["base_url"] = resolve_openai_base_url(args.embedding_api_base)
-            resolved_embedding_key = resolve_openai_api_key(args.embedding_api_key)
-            if resolved_embedding_key:
-                embedding_options["api_key"] = resolved_embedding_key
-        if args.query_prompt_template:
-            # New format: separate templates
-            if args.embedding_prompt_template:
-                embedding_options["build_prompt_template"] = args.embedding_prompt_template
-            embedding_options["query_prompt_template"] = args.query_prompt_template
-        elif args.embedding_prompt_template:
-            # Old format: single template (backward compat)
-            embedding_options["prompt_template"] = args.embedding_prompt_template
 
         builder = LeannBuilder(
             backend_name=args.backend_name,
             embedding_model=args.embedding_model,
             embedding_mode=args.embedding_mode,
-            embedding_options=embedding_options or None,
+            embedding_options=self._build_embedding_options(args) or None,
             graph_degree=args.graph_degree,
             complexity=args.complexity,
             is_compact=args.compact,
@@ -1514,116 +2266,260 @@ Examples:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
 
         builder.build_index(index_path)
+        for fs in synchronizers:
+            fs.create_snapshot()
+        self._write_sync_config(
+            index_dir,
+            self._resolve_sync_roots(docs_paths),
+            self._parse_file_types(args.file_types),
+            self._sync_ignore_patterns(args.include_hidden),
+        )
         print(f"Index built at {index_path}")
-
-        # Register this project directory in global registry
         self.register_project_dir()
 
-    async def search_documents(self, args):
-        index_name = args.index_name
-        query = args.query
+    def _watch_check_changes(self, index_name: str) -> tuple[set[str], set[str], set[str]]:
+        """Check for file changes using the same snapshots as build (index_dir)."""
+        resolved = self._resolve_index_for_watch(index_name)
+        if not resolved:
+            return set(), set(), set()
 
-        # First try to find the index in current project
-        index_path = self.get_index_path(index_name)
-        if self.index_exists(index_name):
-            # Found in current project, use it
-            pass
-        else:
-            # Search across all registered projects (like list_indexes does)
-            all_matches = self._find_all_matching_indexes(index_name)
-            if not all_matches:
-                print(
-                    f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
+        index_dir = resolved["index_dir"]
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            return set(), set(), set()
+
+        with open(sync_config_path, encoding="utf-8") as f:
+            config = json.load(f)
+
+        roots = config.get("roots") or []
+        if not roots:
+            return set(), set(), set()
+
+        synchronizers = self._create_synchronizers(
+            index_dir,
+            roots,
+            include_extensions=config.get("include_extensions"),
+            ignore_patterns=config.get("ignore_patterns"),
+        )
+        return self._detect_build_changes(synchronizers)
+
+    def _watch_report_changes(
+        self,
+        index_name: str,
+        added: set[str],
+        removed: set[str],
+        modified: set[str],
+    ) -> None:
+        """Print a summary of detected file changes."""
+        resolved = self._resolve_index_for_watch(index_name)
+        passages_file = resolved["passages_file"] if resolved else None
+
+        chunk_ids_by_file: dict[str, list[str]] = {}
+        if passages_file and passages_file.exists():
+            chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file)
+
+        print("\n=== Changes detected ===")
+        for label, paths in (
+            ("added", sorted(added)),
+            ("removed", sorted(removed)),
+            ("modified", sorted(modified)),
+        ):
+            if not paths:
+                continue
+            print(f"\n{label} ({len(paths)}):")
+            for file_path in paths:
+                normalized_path = str(Path(file_path).resolve())
+                chunk_ids = chunk_ids_by_file.get(normalized_path) or chunk_ids_by_file.get(
+                    file_path, []
                 )
-                return
-            elif len(all_matches) == 1:
-                # Found exactly one match, use it
-                match = all_matches[0]
-                if match["kind"] == "cli":
-                    index_path = str(match["index_dir"] / "documents.leann")
-                else:
-                    # App format: use the meta file to construct the path
-                    meta_file = match["meta_file"]
-                    file_base = match["file_base"]
-                    index_path = str(meta_file.parent / f"{file_base}.leann")
+                chunk_display = ", ".join(chunk_ids) if chunk_ids else "(not in index)"
+                print(f"  - {file_path}")
+                print(f"    chunks: {chunk_display}")
 
+    async def _watch_trigger_build(self, index_name: str) -> None:
+        """Trigger an idempotent build for the given index, reusing its stored config."""
+        resolved = self._resolve_index_for_watch(index_name)
+        if not resolved:
+            return
+        index_dir = resolved["index_dir"]
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            return
+        with open(sync_config_path, encoding="utf-8") as f:
+            config = json.load(f)
+        roots = config.get("roots") or []
+        if not roots:
+            return
+
+        meta_path = index_dir / "documents.leann.meta.json"
+        if not meta_path.exists():
+            print(f"Index metadata missing for '{index_name}', cannot rebuild.")
+            return
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+
+        parser = self.create_parser()
+        build_args_list = [
+            "build",
+            index_name,
+            "--docs",
+            *roots,
+            "--backend-name",
+            meta.get("backend_name", "hnsw"),
+            "--embedding-model",
+            meta.get("embedding_model", "all-MiniLM-L6-v2"),
+            "--embedding-mode",
+            meta.get("embedding_mode", "sentence-transformers"),
+        ]
+        bkw = meta.get("backend_kwargs", {})
+        if not bkw.get("is_compact", False):
+            build_args_list.append("--no-compact")
+        if bkw.get("is_recompute", True):
+            build_args_list.append("--recompute")
+
+        build_args = parser.parse_args(build_args_list)
+        await self.build_index(build_args)
+
+    async def watch_index(self, args):
+        index_name = args.index_name
+        resolved = self._resolve_index_for_watch(index_name)
+        if not resolved:
+            return
+
+        index_dir = resolved["index_dir"]
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            print(
+                f"Sync config not found for index '{index_name}'. "
+                f"Run 'leann build {index_name} --docs <dir>' first."
+            )
+            return
+
+        dry_run = getattr(args, "dry_run", False)
+        once = getattr(args, "once", False)
+        interval = getattr(args, "interval", 5)
+
+        if once:
+            added, removed, modified = self._watch_check_changes(index_name)
+            if not added and not removed and not modified:
+                print("No changes detected.")
+                return
+            self._watch_report_changes(index_name, added, removed, modified)
+            if not dry_run:
+                await self._watch_trigger_build(index_name)
+            return
+
+        print(f"Watching index '{index_name}' (interval={interval}s, ctrl-c to stop)...")
+        try:
+            while True:
+                added, removed, modified = self._watch_check_changes(index_name)
+                if added or removed or modified:
+                    self._watch_report_changes(index_name, added, removed, modified)
+                    if not dry_run:
+                        await self._watch_trigger_build(index_name)
+                await asyncio.sleep(interval)
+        except KeyboardInterrupt:
+            print("\nWatch stopped.")
+
+    def _resolve_index_path(
+        self,
+        index_name: str,
+        *,
+        non_interactive: bool = True,
+        purpose: str = "use",
+    ) -> Optional[str]:
+        """Resolve index path from current project or registered projects."""
+        if self.index_exists(index_name):
+            return self.get_index_path(index_name)
+
+        all_matches = self._find_all_matching_indexes(index_name)
+        if not all_matches:
+            print(
+                f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
+            )
+            return None
+
+        def _match_to_path(match: dict[str, Any]) -> str:
+            if match["kind"] == "cli":
+                return str(match["index_dir"] / "documents.leann")
+            meta_file = match["meta_file"]
+            file_base = match["file_base"]
+            return str(meta_file.parent / f"{file_base}.leann")
+
+        if len(all_matches) == 1:
+            match = all_matches[0]
+            project_info = (
+                "current project"
+                if match["is_current"]
+                else f"project '{match['project_path'].name}'"
+            )
+            print(f"Using index '{index_name}' from {project_info}")
+            return _match_to_path(match)
+
+        if non_interactive:
+            current_matches = [m for m in all_matches if m["is_current"]]
+            match = current_matches[0] if current_matches else all_matches[0]
+            location_desc = (
+                "current project"
+                if match["is_current"]
+                else f"project '{match['project_path'].name}'"
+            )
+            print(
+                f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
+            )
+            return _match_to_path(match)
+
+        print(f"Found {len(all_matches)} indexes named '{index_name}':")
+        for i, match in enumerate(all_matches, 1):
+            project_path = match["project_path"]
+            is_current = match["is_current"]
+            kind = match.get("kind", "cli")
+            if is_current:
+                print(f"   {i}. 🏠 Current project ({'CLI' if kind == 'cli' else 'APP'})")
+            else:
+                print(f"   {i}. 📂 {project_path.name} ({'CLI' if kind == 'cli' else 'APP'})")
+
+        try:
+            choice = input(f"Which index to {purpose}? (1-{len(all_matches)}): ").strip()
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(all_matches):
+                match = all_matches[choice_idx]
                 project_info = (
                     "current project"
                     if match["is_current"]
                     else f"project '{match['project_path'].name}'"
                 )
                 print(f"Using index '{index_name}' from {project_info}")
-            else:
-                # Multiple matches found
-                if args.non_interactive:
-                    # Non-interactive mode: automatically select the best match
-                    # Priority: current project first, then first available
-                    current_matches = [m for m in all_matches if m["is_current"]]
-                    if current_matches:
-                        match = current_matches[0]
-                        location_desc = "current project"
-                    else:
-                        match = all_matches[0]
-                        location_desc = f"project '{match['project_path'].name}'"
+                return _match_to_path(match)
+            print("Invalid choice. Aborting.")
+            return None
+        except (ValueError, KeyboardInterrupt):
+            print("Invalid input. Aborting.")
+            return None
 
-                    if match["kind"] == "cli":
-                        index_path = str(match["index_dir"] / "documents.leann")
-                    else:
-                        meta_file = match["meta_file"]
-                        file_base = match["file_base"]
-                        index_path = str(meta_file.parent / f"{file_base}.leann")
+    async def search_documents(self, args):
+        index_name = args.index_name
+        query = args.query
 
-                    print(
-                        f"Found {len(all_matches)} indexes named '{index_name}', using index from {location_desc}"
-                    )
-                else:
-                    # Interactive mode: ask user to choose
-                    print(f"Found {len(all_matches)} indexes named '{index_name}':")
-                    for i, match in enumerate(all_matches, 1):
-                        project_path = match["project_path"]
-                        is_current = match["is_current"]
-                        kind = match.get("kind", "cli")
-
-                        if is_current:
-                            print(
-                                f"   {i}. 🏠 Current project ({'CLI' if kind == 'cli' else 'APP'})"
-                            )
-                        else:
-                            print(
-                                f"   {i}. 📂 {project_path.name} ({'CLI' if kind == 'cli' else 'APP'})"
-                            )
-
-                    try:
-                        choice = input(f"Which index to search? (1-{len(all_matches)}): ").strip()
-                        choice_idx = int(choice) - 1
-                        if 0 <= choice_idx < len(all_matches):
-                            match = all_matches[choice_idx]
-                            if match["kind"] == "cli":
-                                index_path = str(match["index_dir"] / "documents.leann")
-                            else:
-                                meta_file = match["meta_file"]
-                                file_base = match["file_base"]
-                                index_path = str(meta_file.parent / f"{file_base}.leann")
-
-                            project_info = (
-                                "current project"
-                                if match["is_current"]
-                                else f"project '{match['project_path'].name}'"
-                            )
-                            print(f"Using index '{index_name}' from {project_info}")
-                        else:
-                            print("Invalid choice. Aborting search.")
-                            return
-                    except (ValueError, KeyboardInterrupt):
-                        print("Invalid input. Aborting search.")
-                        return
+        index_path = self._resolve_index_path(
+            index_name,
+            non_interactive=args.non_interactive,
+            purpose="search",
+        )
+        if not index_path:
+            return
 
         # Build provider_options for runtime override
         provider_options = {}
         if args.embedding_prompt_template:
             provider_options["prompt_template"] = args.embedding_prompt_template
 
-        searcher = LeannSearcher(index_path=index_path)
+        searcher = LeannSearcher(
+            index_path=index_path,
+            enable_warmup=args.enable_warmup,
+            use_daemon=args.use_daemon,
+            daemon_ttl_seconds=args.daemon_ttl,
+        )
         results = searcher.search(
             query,
             top_k=args.top_k,
@@ -1635,29 +2531,139 @@ Examples:
             provider_options=provider_options if provider_options else None,
         )
 
+        if getattr(args, "json", False):
+            json_results = [
+                {
+                    "id": r.id,
+                    "score": r.score,
+                    "text": r.text,
+                    "metadata": r.metadata,
+                }
+                for r in results
+            ]
+            print(json.dumps(json_results, ensure_ascii=False, indent=2))
+            return
+
         print(f"Search results for '{query}' (top {len(results)}):")
         for i, result in enumerate(results, 1):
             print(f"{i}. Score: {result.score:.3f}")
 
-            # Display metadata if flag is set
             if args.show_metadata and result.metadata:
                 file_path = result.metadata.get("file_path", "")
                 if file_path:
-                    print(f"   📄 File: {file_path}")
+                    print(f"   File: {file_path}")
 
                 file_name = result.metadata.get("file_name", "")
                 if file_name and file_name != file_path:
-                    print(f"   📝 Name: {file_name}")
+                    print(f"   Name: {file_name}")
 
-                # Show timestamps if available
                 if "creation_date" in result.metadata:
-                    print(f"   🕐 Created: {result.metadata['creation_date']}")
+                    print(f"   Created: {result.metadata['creation_date']}")
                 if "last_modified_date" in result.metadata:
-                    print(f"   🕑 Modified: {result.metadata['last_modified_date']}")
+                    print(f"   Modified: {result.metadata['last_modified_date']}")
 
-            print(f"   {result.text[:200]}...")
+            print(f"   {result.text}")
             print(f"   Source: {result.metadata.get('source', '')}")
             print()
+
+    async def warmup_index(self, args):
+        index_path = self._resolve_index_path(
+            args.index_name,
+            non_interactive=True,
+            purpose="warm up",
+        )
+        if not index_path:
+            return
+
+        searcher = LeannSearcher(
+            index_path=index_path,
+            recompute_embeddings=True,
+            enable_warmup=args.enable_warmup,
+            use_daemon=args.use_daemon,
+            daemon_ttl_seconds=args.daemon_ttl,
+        )
+        if args.enable_warmup:
+            searcher.warmup()
+        print(
+            f"Warmed index '{args.index_name}' (daemon={'on' if args.use_daemon else 'off'}, ttl={args.daemon_ttl}s)"
+        )
+
+    async def daemon_command(self, args):
+        if not args.daemon_command:
+            print("Please specify one of: start, stop, status")
+            return
+
+        if args.daemon_command == "status":
+            records = EmbeddingServerManager.list_daemons()
+            if args.index_name:
+                index_path = self._resolve_index_path(
+                    args.index_name,
+                    non_interactive=True,
+                    purpose="check daemon status for",
+                )
+                if not index_path:
+                    return
+                meta_path = str(Path(f"{index_path}.meta.json").resolve())
+                records = [
+                    r
+                    for r in records
+                    if r.get("config_signature", {}).get("passages_file") == meta_path
+                ]
+
+            if not records:
+                print("No active embedding daemons.")
+                return
+
+            print(f"Active embedding daemons: {len(records)}")
+            for record in records:
+                cfg = record.get("config_signature", {})
+                print(
+                    f"- pid={record.get('pid')} port={record.get('port')} backend={record.get('backend_module_name')} model={cfg.get('model_name')}"
+                )
+            return
+
+        if args.daemon_command == "start":
+            index_path = self._resolve_index_path(
+                args.index_name,
+                non_interactive=True,
+                purpose="start daemon for",
+            )
+            if not index_path:
+                return
+
+            searcher = LeannSearcher(
+                index_path=index_path,
+                recompute_embeddings=True,
+                enable_warmup=args.enable_warmup,
+                use_daemon=True,
+                daemon_ttl_seconds=args.daemon_ttl,
+            )
+            searcher.warmup()
+            print(
+                f"Daemon started for '{args.index_name}' (ttl={args.daemon_ttl}s, warmup={'on' if args.enable_warmup else 'off'})"
+            )
+            return
+
+        if args.daemon_command == "stop":
+            if args.all:
+                stopped = EmbeddingServerManager.stop_daemons()
+                print(f"Stopped {stopped} daemon(s).")
+                return
+
+            if not args.index_name:
+                print("Provide an index name or pass --all.")
+                return
+
+            index_path = self._resolve_index_path(
+                args.index_name,
+                non_interactive=True,
+                purpose="stop daemon for",
+            )
+            if not index_path:
+                return
+            meta_path = str(Path(f"{index_path}.meta.json").resolve())
+            stopped = EmbeddingServerManager.stop_daemons(passages_file=meta_path)
+            print(f"Stopped {stopped} daemon(s) for index '{args.index_name}'.")
 
     async def ask_questions(self, args):
         index_name = args.index_name
@@ -1727,6 +2733,79 @@ Examples:
 
             _ask_once(query)
 
+    async def react_agent(self, args):
+        """Run ReAct agent for multiturn retrieval."""
+        index_name = args.index_name
+        query = args.query
+
+        # Find the index (similar to search_documents)
+        index_path = self.get_index_path(index_name)
+        if self.index_exists(index_name):
+            pass
+        else:
+            all_matches = self._find_all_matching_indexes(index_name)
+            if not all_matches:
+                print(
+                    f"Index '{index_name}' not found. Use 'leann build {index_name} --docs <dir> [<dir2> ...]' to create it."
+                )
+                return
+            elif len(all_matches) == 1:
+                match = all_matches[0]
+                if match["kind"] == "cli":
+                    index_path = str(match["index_dir"] / "documents.leann")
+                else:
+                    meta_file = match["meta_file"]
+                    file_base = match["file_base"]
+                    index_path = str(meta_file.parent / f"{file_base}.leann")
+            else:
+                # Multiple matches - use first one for now
+                match = all_matches[0]
+                if match["kind"] == "cli":
+                    index_path = str(match["index_dir"] / "documents.leann")
+                else:
+                    meta_file = match["meta_file"]
+                    file_base = match["file_base"]
+                    index_path = str(meta_file.parent / f"{file_base}.leann")
+                print(f"Found {len(all_matches)} indexes named '{index_name}', using first match")
+
+        print(f"🤖 Starting ReAct agent with index '{index_name}'...")
+        print(f"Using {args.model} ({args.llm})")
+
+        llm_config = {"type": args.llm, "model": args.model}
+        if args.llm == "ollama":
+            llm_config["host"] = resolve_ollama_host(args.host)
+        elif args.llm == "openai":
+            llm_config["base_url"] = resolve_openai_base_url(args.api_base)
+            resolved_api_key = resolve_openai_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
+        elif args.llm == "anthropic":
+            if args.api_base:
+                llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
+            if args.api_key:
+                llm_config["api_key"] = args.api_key
+
+        from .react_agent import create_react_agent
+
+        agent = create_react_agent(
+            index_path=index_path,
+            llm_config=llm_config,
+            max_iterations=args.max_iterations,
+            serper_api_key=args.serper_api_key,
+            jina_api_key=args.jina_api_key,
+        )
+
+        print(f"\n🔍 Question: {query}\n")
+        answer = agent.run(query, top_k=args.top_k)
+        print(f"\n✅ Final Answer:\n{answer}\n")
+
+        if agent.search_history:
+            print(f"\n📊 Search History ({len(agent.search_history)} iterations):")
+            for entry in agent.search_history:
+                print(
+                    f"  {entry['iteration']}. {entry['action']} ({entry['results_count']} results)"
+                )
+
     async def serve_api(self, args):
         """Start the HTTP API server."""
         import os
@@ -1777,11 +2856,22 @@ Examples:
         elif args.command == "build":
             with suppress_cpp_output(suppress):
                 await self.build_index(args)
+        elif args.command == "watch":
+            await self.watch_index(args)
         elif args.command == "search":
             with suppress_cpp_output(suppress):
                 await self.search_documents(args)
+        elif args.command == "warmup":
+            with suppress_cpp_output(suppress):
+                await self.warmup_index(args)
+        elif args.command == "daemon":
+            await self.daemon_command(args)
         elif args.command == "ask":
-            await self.ask_questions(args)
+            with suppress_cpp_output(suppress):
+                await self.ask_questions(args)
+        elif args.command == "react":
+            with suppress_cpp_output(suppress):
+                await self.react_agent(args)
         elif args.command == "serve":
             await self.serve_api(args)
         else:

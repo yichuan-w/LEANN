@@ -1,0 +1,38 @@
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore
+
+# Build + test toolchain for local development in container.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        swig \
+        libomp-dev \
+        libboost-all-dev \
+        protobuf-compiler \
+        libzmq3-dev \
+        pkg-config \
+        libabsl-dev \
+        libaio-dev \
+        libprotobuf-dev \
+        libopenblas-dev \
+        liblapack-dev \
+        liblapacke-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m pip install --upgrade pip \
+    && pip install uv
+
+WORKDIR /workspace
+COPY . /workspace
+
+# Keep dependency install explicit; default includes lint + test groups.
+RUN uv sync --group lint --group test
+
+CMD ["/bin/bash"]

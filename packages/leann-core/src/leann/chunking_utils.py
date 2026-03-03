@@ -387,11 +387,20 @@ def create_text_chunks(
         code_docs, text_docs = detect_code_files(documents, local_code_extensions)
         if code_docs:
             try:
-                all_chunks.extend(
-                    create_ast_chunks(
-                        code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
-                    )
+                ast_chunks = create_ast_chunks(
+                    code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
                 )
+                # Prepend line numbers to code chunks for navigation
+                for chunk in ast_chunks:
+                    start_line = chunk.get("metadata", {}).get("start_line_no")
+                    if start_line is not None:
+                        lines = chunk["text"].split("\n")
+                        end_line = start_line + len(lines) - 1
+                        w = len(str(end_line))
+                        chunk["text"] = "\n".join(
+                            f"{start_line + i:>{w}}|{line}" for i, line in enumerate(lines)
+                        )
+                all_chunks.extend(ast_chunks)
             except Exception as e:
                 logger.error(f"AST chunking failed: {e}")
                 if ast_fallback_traditional:

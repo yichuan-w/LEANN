@@ -1,0 +1,82 @@
+import os
+import time
+from pathlib import Path
+
+from leann.embedding_server_manager import EmbeddingServerManager
+
+
+def _configure_fake_module_env(monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    support_path = str(root / "tests" / "support")
+    existing = os.environ.get("PYTHONPATH", "")
+    joined = support_path if not existing else f"{support_path}{os.pathsep}{existing}"
+    monkeypatch.setenv("PYTHONPATH", joined)
+
+
+def _wait_until(predicate, timeout=5.0, interval=0.05):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return False
+
+
+def test_daemon_reuse_with_real_subprocess(tmp_path, monkeypatch):
+    _configure_fake_module_env(monkeypatch)
+    monkeypatch.setattr(
+        EmbeddingServerManager, "_registry_dir", staticmethod(lambda: tmp_path / "servers")
+    )
+
+    manager1 = EmbeddingServerManager("fake_embedding_server_module")
+    ok1, port1 = manager1.start_server(
+        port=6151,
+        model_name="fake-model",
+        use_daemon=True,
+        daemon_ttl_seconds=60,
+        enable_warmup=True,
+    )
+    assert ok1 and port1 == 6151
+    assert manager1.server_process is not None
+    pid1 = manager1.server_process.pid
+
+    manager2 = EmbeddingServerManager("fake_embedding_server_module")
+    ok2, port2 = manager2.start_server(
+        port=6151,
+        model_name="fake-model",
+        use_daemon=True,
+        daemon_ttl_seconds=60,
+    )
+    assert ok2 and port2 == 6151
+    # Adoption path: no newly spawned process object attached.
+    assert manager2.server_process is None
+
+    records = EmbeddingServerManager.list_daemons()
+    assert len(records) == 1
+    assert int(records[0]["pid"]) == pid1
+
+    stopped = EmbeddingServerManager.stop_daemons(
+        backend_module_name="fake_embedding_server_module"
+    )
+    assert stopped == 1
+
+
+def test_daemon_ttl_expiry_with_real_subprocess(tmp_path, monkeypatch):
+    _configure_fake_module_env(monkeypatch)
+    monkeypatch.setattr(
+        EmbeddingServerManager, "_registry_dir", staticmethod(lambda: tmp_path / "servers")
+    )
+
+    manager = EmbeddingServerManager("fake_embedding_server_module")
+    ok, port = manager.start_server(
+        port=6152,
+        model_name="fake-model",
+        use_daemon=True,
+        daemon_ttl_seconds=1,
+        enable_warmup=False,
+    )
+    assert ok and port == 6152
+
+    # Fake daemon should self-exit after idle TTL.
+    expired = _wait_until(lambda: len(EmbeddingServerManager.list_daemons()) == 0, timeout=4.0)
+    assert expired

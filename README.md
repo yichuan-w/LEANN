@@ -3,17 +3,21 @@
 </p>
 
 <p align="center">
+  <a href="https://trendshift.io/repositories/15049" target="_blank">
+    <img src="https://trendshift.io/api/badge/repositories/15049" alt="yichuan-w/LEANN | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
+  </a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg" alt="Python Versions">
   <img src="https://github.com/yichuan-w/LEANN/actions/workflows/build-and-publish.yml/badge.svg" alt="CI Status">
   <img src="https://img.shields.io/badge/Platform-Ubuntu%20%26%20Arch%20%26%20WSL%20%7C%20macOS%20(ARM64%2FIntel)-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/MCP-Native%20Integration-blue" alt="MCP Integration">
-  <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ckd2f6w1-OX08~NN4gkWhh10PRVBj1Q">
+  <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ol2ww9ic-Eg_kB8omwe6xmYVd0epr4Q">
     <img src="https://img.shields.io/badge/Slack-Join-4A154B?logo=slack&logoColor=white" alt="Join Slack">
   </a>
-  <a href="assets/wechat_user_group.JPG" title="Join WeChat group">
-    <img src="https://img.shields.io/badge/WeChat-Join-2DC100?logo=wechat&logoColor=white" alt="Join WeChat group">
-  </a>
+
 </p>
 
 <div align="center">
@@ -24,6 +28,15 @@
     We track <b>zero telemetry</b>. This survey is the ONLY way to tell us if you want <br>
     <b>GPU Acceleration</b> or <b>More Integrations</b> next.<br>
     👉 <a href="https://forms.gle/rDbZf864gMNxhpTq8"><b>Click here to cast your vote (2 mins)</b></a>
+  </p>
+</div>
+
+<div align="center">
+  <h3>💬 Join our Slack community!</h3>
+  <p>
+    We'd love for you to be part of the LEANN community!<br>
+    👉 <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ol2ww9ic-Eg_kB8omwe6xmYVd0epr4Q"><b>Join LEANN Slack</b></a><br>
+    If the invite link has expired or you have trouble joining, please <a href="https://github.com/yichuan-w/LEANN/issues">open an issue</a> and we'll help you get in!
   </p>
 </div>
 
@@ -87,6 +100,8 @@ and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immed
 uv venv
 source .venv/bin/activate
 uv pip install leann
+
+# CPU-only (Linux): use the `cpu` extra (e.g. `leann[cpu]`)
 ```
 
 <!--
@@ -1069,6 +1084,9 @@ leann ask my-docs --interactive
 # Ask a single question (non-interactive)
 leann ask my-docs "Where are prompts configured?"
 
+# Detect file changes since last build/watch checkpoint
+leann watch my-docs
+
 # List all your indexes
 leann list
 
@@ -1080,6 +1098,7 @@ leann remove my-docs
 - Auto-detects document formats (PDF, TXT, MD, DOCX, PPTX + code files)
 - **🧠 AST-aware chunking** for Python, Java, C#, TypeScript files
 - Smart text chunking with overlap for all other content
+- **📂 File change detection** via Merkle tree snapshots (`leann watch`)
 - Multiple LLM providers (Ollama, OpenAI, HuggingFace)
 - Organized index storage in `.leann/indexes/` (project-local)
 - Support for advanced search parameters
@@ -1087,7 +1106,7 @@ leann remove my-docs
 <details>
 <summary><strong>📋 Click to expand: Complete CLI Reference</strong></summary>
 
-You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
+You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann watch --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
 
 **Build Command:**
 ```bash
@@ -1112,6 +1131,24 @@ Options:
   --complexity N                Search complexity (default: 64)
   --recompute / --no-recompute  Enable/disable embedding recomputation (default: enabled). Should not do a `no-recompute` search in a `recompute` build.
   --pruning-strategy {global,local,proportional}
+```
+
+**Watch Command:**
+```bash
+leann watch INDEX_NAME
+
+# Compares the current file system state against the last checkpoint (Merkle tree snapshot)
+# and reports which files have been added, removed, or modified, along with their chunk IDs.
+#
+# - Automatically saves a new checkpoint after detecting changes
+# - Each subsequent run compares against the most recent checkpoint
+# - File change detection uses SHA-256 content hashing via a Merkle tree
+#
+# Example output:
+#   === Changes since last checkpoint ===
+#   modified (1):
+#     - /path/to/file.py
+#       chunks: 42, 43, 44
 ```
 
 **Ask Command:**
