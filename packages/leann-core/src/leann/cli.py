@@ -1303,6 +1303,9 @@ Examples:
                             # exclude_hidden only affects directory scans; input_files are explicit
                             filename_as_id=True,
                         ).load_data()
+                        for doc in file_docs:
+                            if not doc.metadata.get("source"):
+                                doc.metadata["source"] = doc.metadata.get("file_path", "")
                         all_documents.extend(file_docs)
                         print(
                             f"    ✅ Loaded {len(file_docs)} document{'s' if len(file_docs) > 1 else ''}"
@@ -1584,7 +1587,9 @@ Examples:
                 # Check if this is a code file based on source path
                 source_path = doc.metadata.get("source", "")
                 file_path = doc.metadata.get("file_path", "")
-                is_code_file = any(source_path.endswith(ext) for ext in code_file_exts)
+                is_code_file = any(
+                    (source_path or file_path).endswith(ext) for ext in code_file_exts
+                )
 
                 # For code files, prepend line numbers so chunks carry them
                 if is_code_file:
@@ -1621,7 +1626,7 @@ Examples:
                         first_nl = text.find("\n")
                         if first_nl != -1:
                             text = text[first_nl + 1 :]
-                    all_texts.append({"text": text, "metadata": chunk_metadata})
+                    all_texts.append({"text": text, "metadata": chunk_metadata.copy()})
 
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
