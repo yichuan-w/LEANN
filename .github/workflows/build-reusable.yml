@@ -114,13 +114,14 @@ jobs:
           - os: macos-26
             python: '3.13'
           # Windows validation (native HNSW + DiskANN build/install path)
-          # Note: Python 3.14 excluded - pre-release, native extensions segfault
           - os: windows-2022
             python: '3.11'
           - os: windows-2022
             python: '3.12'
           - os: windows-2022
             python: '3.13'
+          - os: windows-2022
+            python: '3.14'
     runs-on: ${{ matrix.os }}
 
     steps:

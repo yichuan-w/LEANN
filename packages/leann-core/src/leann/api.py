@@ -1438,13 +1438,18 @@ class LeannSearcher:
         return matches[:top_k]
 
     def cleanup(self):
-        """Explicitly cleanup embedding server resources.
+        """Explicitly cleanup embedding server and backend index resources.
         This method should be called after you're done using the searcher,
         especially in test environments or batch processing scenarios.
+        On Windows, this releases file handles held by native backends
+        (e.g., DiskANN memory-mapped index files).
         """
         backend = getattr(self.backend_impl, "embedding_server_manager", None)
         if backend is not None:
             backend.stop_server()
+        close_fn = getattr(self.backend_impl, "close", None)
+        if close_fn is not None:
+            close_fn()
 
     # Enable automatic cleanup patterns
     def __enter__(self):

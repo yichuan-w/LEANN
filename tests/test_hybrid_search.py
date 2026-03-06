@@ -23,7 +23,7 @@ class TestHybridSearch:
         """Create a sample index for testing."""
         from leann.api import LeannBuilder, LeannSearcher
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             index_path = str(Path(temp_dir) / "test_hybrid.hnsw")
 
             # Create documents with diverse content for testing
@@ -57,7 +57,6 @@ class TestHybridSearch:
             searcher = LeannSearcher(index_path)
             yield searcher, texts
 
-            # Cleanup
             searcher.cleanup()
 
     def test_pure_vector_search(self, sample_index):
