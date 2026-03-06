@@ -24,6 +24,12 @@ sudo apt-get install libomp-dev libboost-all-dev protobuf-compiler \
     libabsl-dev libmkl-full-dev libaio-dev libzmq3-dev
 uv sync --extra diskann
 
+# Windows (requires VS 2022 Build Tools with C++ workload, vcpkg, chocolatey)
+choco install cmake swig pkgconfiglite nuget.commandline -y
+vcpkg install zeromq:x64-windows openblas:x64-windows lapack:x64-windows boost-program-options:x64-windows protobuf:x64-windows
+# Set CMAKE_PREFIX_PATH, PKG_CONFIG_PATH, OPENBLAS_LIB to vcpkg paths (see README)
+uv sync --extra diskann
+
 # Install lint tools
 uv sync --group lint
 

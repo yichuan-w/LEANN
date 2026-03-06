@@ -406,6 +406,27 @@ jobs:
           fi
           cd ../..
 
+      - name: Repair wheels (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Repair HNSW wheel
+          cd packages/leann-backend-hnsw
+          if [ -d dist ]; then
+            delvewheel repair dist/*.whl -w dist_repaired --add-path "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/bin"
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+
+          # Repair DiskANN wheel
+          cd packages/leann-backend-diskann
+          if [ -d dist ]; then
+            delvewheel repair dist/*.whl -w dist_repaired --add-path "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/bin"
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+
       - name: List built packages
         run: |
           echo "📦 Built packages:"
