@@ -1,3 +1,10 @@
+"""
+Optimized version of searcher_base.py with:
+1. Query embedding caching
+2. ZMQ connection reuse
+3. Model persistence checks
+"""
+
 import hashlib
 import json
 from abc import ABC, abstractmethod
@@ -11,7 +18,7 @@ from .interface import LeannBackendSearcherInterface
 
 
 class QueryEmbeddingCache:
-    """Hash-based cache for query embeddings to avoid recomputation."""
+    """Hash-based cache for query embeddings."""
 
     def __init__(self, max_size: int = 1000):
         self.cache: dict[str, np.ndarray] = {}
@@ -115,15 +122,14 @@ class ReusableZMQConnection:
         self.close()
 
 
-class BaseSearcher(LeannBackendSearcherInterface, ABC):
+class BaseSearcherOptimized(LeannBackendSearcherInterface, ABC):
     """
-    Abstract base class for Leann searchers, containing common logic for
-    loading metadata, managing embedding servers, and handling file paths.
+    Optimized base searcher with query embedding caching and ZMQ connection reuse.
     """
 
     def __init__(self, index_path: str, backend_module_name: str, **kwargs):
         """
-        Initializes the BaseSearcher.
+        Initializes the Optimized BaseSearcher.
 
         Args:
             index_path: Path to the Leann index file (e.g., '.../my_index.leann').
@@ -148,9 +154,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         self.embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
         self.embedding_options = self.meta.get("embedding_options", {})
-        self.enable_warmup = bool(kwargs.get("enable_warmup", True))
-        self.use_daemon = bool(kwargs.get("use_daemon", True))
-        self.daemon_ttl_seconds = int(kwargs.get("daemon_ttl_seconds", 900))
 
         self.embedding_server_manager = EmbeddingServerManager(
             backend_module_name=backend_module_name,
@@ -166,7 +169,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
     def _load_meta(self) -> dict[str, Any]:
         """Loads the metadata file associated with the index."""
-        # This is the corrected logic for finding the meta file.
         meta_path = self.index_dir / f"{self.index_path.name}.meta.json"
         if not meta_path.exists():
             raise FileNotFoundError(f"Leann metadata file not found at {meta_path}")
@@ -191,8 +193,6 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         )
 
         # Filter out ALL prompt templates from provider_options during search
-        # Templates are applied in compute_query_embedding (line 109-110) BEFORE server call
-        # The server should never apply templates during search to avoid double-templating
         search_provider_options = {
             k: v
             for k, v in self.embedding_options.items()
@@ -205,9 +205,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             embedding_mode=self.embedding_mode,
             passages_file=passages_source_file,
             distance_metric=distance_metric,
-            enable_warmup=kwargs.get("enable_warmup", self.enable_warmup),
-            use_daemon=kwargs.get("use_daemon", self.use_daemon),
-            daemon_ttl_seconds=kwargs.get("daemon_ttl_seconds", self.daemon_ttl_seconds),
+            enable_warmup=kwargs.get("enable_warmup", False),
+            use_daemon=kwargs.get("use_daemon", True),
+            daemon_ttl_seconds=kwargs.get("daemon_ttl_seconds", 900),
             provider_options=search_provider_options,
         )
         if not server_started:
@@ -239,16 +239,12 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         Returns:
             Query embedding as numpy array
         """
-        # Store original query for caching (before template is applied)
-        original_query = query
-
-        # Check cache first (before applying template)
-        cached = self.query_cache.get(original_query, query_template)
+        # Check cache first
+        cached = self.query_cache.get(query, query_template)
         if cached is not None:
             return cached
 
         # Apply query template BEFORE any computation path
-        # This ensures template is applied consistently for both server and fallback paths
         if query_template:
             query = f"{query_template}{query}"
 
@@ -258,19 +254,20 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 # Ensure we have a server with passages_file for compatibility
                 passages_source_file = self.index_dir / f"{self.index_path.name}.meta.json"
                 # Convert to absolute path to ensure server can find it
-                zmq_port = self._ensure_server_running(
-                    str(passages_source_file.resolve()),
-                    zmq_port,
-                    enable_warmup=self.enable_warmup,
-                    use_daemon=self.use_daemon,
-                    daemon_ttl_seconds=self.daemon_ttl_seconds,
+                actual_port = self._ensure_server_running(
+                    str(passages_source_file.resolve()), zmq_port
                 )
 
-                embedding = self._compute_embedding_via_server([query], zmq_port)[
+                # Use reusable connection
+                embedding = self._compute_embedding_via_server_optimized([query], actual_port)[
                     0:1
                 ]  # Return (1, D) shape
 
-                # Cache the result (use original query before template)
+                # Cache the result (use original query before template for cache key)
+                if query_template:
+                    original_query = query[len(query_template) :]
+                else:
+                    original_query = query
                 self.query_cache.put(original_query, embedding[0], query_template)
 
                 return embedding
@@ -289,28 +286,28 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             provider_options=self.embedding_options,
         )
 
-        # Cache the result (use original query before template)
+        # Cache the result
+        if query_template:
+            original_query = query[len(query_template) :]
+        else:
+            original_query = query
         self.query_cache.put(original_query, embedding[0], query_template)
 
         return embedding
 
-    def _compute_embedding_via_server(self, chunks: list, zmq_port: int) -> np.ndarray:
+    def _compute_embedding_via_server_optimized(self, chunks: list, zmq_port: int) -> np.ndarray:
         """Compute embeddings using the ZMQ embedding server with connection reuse."""
         # Ensure connection is established
         self.zmq_connection.connect(zmq_port)
 
-        try:
-            # Send request and get response using reusable connection
-            response = self.zmq_connection.send_recv(chunks)
+        # Send request and get response
+        response = self.zmq_connection.send_recv(chunks)
 
-            # Convert response to numpy array
-            if isinstance(response, list) and len(response) > 0:
-                return np.array(response, dtype=np.float32)
-            else:
-                raise RuntimeError("Invalid response from embedding server")
-
-        except Exception as e:
-            raise RuntimeError(f"Failed to compute embeddings via server: {e}")
+        # Convert response to numpy array
+        if isinstance(response, list) and len(response) > 0:
+            return np.array(response, dtype=np.float32)
+        else:
+            raise RuntimeError("Invalid response from embedding server")
 
     @abstractmethod
     def search(
