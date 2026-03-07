@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg" alt="Python Versions">
   <img src="https://github.com/yichuan-w/LEANN/actions/workflows/build-and-publish.yml/badge.svg" alt="CI Status">
-  <img src="https://img.shields.io/badge/Platform-Ubuntu%20%26%20Arch%20%26%20WSL%20%7C%20macOS%20(ARM64%2FIntel)-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Ubuntu%20%26%20Arch%20%26%20WSL%20%7C%20macOS%20(ARM64%2FIntel)%20%7C%20Windows-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/MCP-Native%20Integration-blue" alt="MCP Integration">
   <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ol2ww9ic-Eg_kB8omwe6xmYVd0epr4Q">
@@ -173,6 +173,29 @@ sudo dnf install -y libomp-devel boost-devel protobuf-compiler protobuf-devel \
 sudo dnf install -y intel-oneapi-mkl intel-oneapi-mkl-devel \
   intel-oneapi-openmp || sudo dnf install -y intel-oneapi-compiler
 source /opt/intel/oneapi/setvars.sh
+
+uv sync --extra diskann
+```
+
+**Windows:**
+
+Requires [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with the **C++ desktop development** workload, and [vcpkg](https://github.com/microsoft/vcpkg).
+
+```powershell
+# Install toolchain (if not already present)
+choco install cmake swig pkgconfiglite nuget.commandline -y
+
+# Install C++ dependencies via vcpkg
+vcpkg install zeromq:x64-windows openblas:x64-windows lapack:x64-windows `
+  boost-program-options:x64-windows protobuf:x64-windows
+
+# Set environment variables (adjust VCPKG_ROOT to your vcpkg path)
+$env:CMAKE_PREFIX_PATH = "$env:VCPKG_ROOT\installed\x64-windows"
+$env:PKG_CONFIG_PATH = "$env:VCPKG_ROOT\installed\x64-windows\lib\pkgconfig"
+$env:PKG_CONFIG_EXECUTABLE = "C:\ProgramData\chocolatey\bin\pkg-config.exe"
+$env:OPENBLAS_LIB = "$env:VCPKG_ROOT\installed\x64-windows\lib\openblas.lib"
+$env:PATH += ";$env:VCPKG_ROOT\installed\x64-windows\bin"
+$env:PATH += ";$env:VCPKG_ROOT\installed\x64-windows\tools\protobuf"
 
 uv sync --extra diskann
 ```

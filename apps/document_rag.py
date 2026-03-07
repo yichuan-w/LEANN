@@ -109,16 +109,14 @@ if __name__ == "__main__":
     import asyncio
 
     # Example queries for document RAG
-    print("\n📄 Document RAG Example")
+    print("\nDocument RAG Example")
     print("=" * 50)
     print("\nExample queries you can try:")
     print("- 'What are the main techniques LEANN uses?'")
     print("- 'What is the technique DLPM?'")
     print("- 'Who does Elizabeth Bennet marry?'")
-    print(
-        "- 'What is the problem of developing pan gu model Huawei meets? (盘古大模型开发中遇到什么问题?)'"
-    )
-    print("\n🚀 NEW: Code-aware chunking available!")
+    print("- 'What challenges did Huawei face while developing the Pangu model?'")
+    print("\nNEW: Code-aware chunking available!")
     print("- Use --enable-code-chunking to enable AST-aware chunking for code files")
     print("- Supports Python, Java, C#, TypeScript files")
     print("- Better semantic understanding of code structure")

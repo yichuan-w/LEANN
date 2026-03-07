@@ -53,7 +53,11 @@ jobs:
   build:
     needs: [lint, type-check]
     name: Build ${{ matrix.os }} Python ${{ matrix.python }}
+    defaults:
+      run:
+        shell: bash
     strategy:
+      fail-fast: true
       matrix:
         include:
           # Note: Python 3.9 dropped - uses PEP 604 union syntax (str | None)
@@ -109,6 +113,15 @@ jobs:
             python: '3.12'
           - os: macos-26
             python: '3.13'
+          # Windows validation (native HNSW + DiskANN build/install path)
+          - os: windows-2022
+            python: '3.11'
+          - os: windows-2022
+            python: '3.12'
+          - os: windows-2022
+            python: '3.13'
+          - os: windows-2022
+            python: '3.14'
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -177,20 +190,91 @@ jobs:
           # Don't install LLVM, use system clang for better compatibility
           brew install libomp boost protobuf zeromq
 
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 10s: $*"
+              sleep 10
+              n=$((n + 1))
+            done
+          }
+
+          retry 5 choco install swig -y --no-progress
+          retry 5 choco install nuget.commandline -y --no-progress
+          retry 5 choco install pkgconfiglite -y --no-progress
+          echo "C:/ProgramData/chocolatey/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_EXECUTABLE=C:/ProgramData/chocolatey/bin/pkg-config.exe" >> "$GITHUB_ENV"
+          if [[ -z "${VCPKG_INSTALLATION_ROOT:-}" ]]; then
+            echo "VCPKG_INSTALLATION_ROOT is not set on this runner"
+            exit 1
+          fi
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install zeromq:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install openblas:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install lapack:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install boost-program-options:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install protobuf:x64-windows
+
+          # DiskANN links against Intel OpenMP (libiomp5md) via NuGet during its
+          # CMake build.  The NuGet packages end up in a temp build dir that is
+          # cleaned up by `uv build`, so delvewheel can't find the DLL later.
+          # Download it here to a persistent, known location.
+          NUGET_PKG_DIR="${RUNNER_TEMP}/nuget_pkgs"
+          retry 5 nuget install intelopenmp.redist.win -Version 2022.0.3.3747 \
+            -ExcludeVersion -OutputDirectory "${NUGET_PKG_DIR}"
+          echo "INTEL_OMP_BIN_DIR=${NUGET_PKG_DIR}/intelopenmp.redist.win/runtimes/win-x64/native" >> "$GITHUB_ENV"
+
+          echo "PKG_CONFIG_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows" >> "$GITHUB_ENV"
+          echo "OPENBLAS_LIB=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/openblas.lib" >> "$GITHUB_ENV"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/bin" >> "$GITHUB_PATH"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/debug/bin" >> "$GITHUB_PATH"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/tools/protobuf" >> "$GITHUB_PATH"
+          pkg-config --version || true
+          where pkg-config || true
+          pkg-config --modversion libzmq || true
+
       - name: Install build dependencies
         run: |
-          uv python install ${{ matrix.python }}
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 5s: $*"
+              sleep 5
+              n=$((n + 1))
+            done
+          }
+
+          retry 5 uv python install ${{ matrix.python }}
           uv venv --python ${{ matrix.python }} .uv-build
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             BUILD_PY=".uv-build\\Scripts\\python.exe"
           else
             BUILD_PY=".uv-build/bin/python"
           fi
-          uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
+          retry 5 uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            uv pip install --python "$BUILD_PY" auditwheel
+            retry 5 uv pip install --python "$BUILD_PY" auditwheel
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            retry 5 uv pip install --python "$BUILD_PY" delocate
           else
-            uv pip install --python "$BUILD_PY" delocate
+            retry 5 uv pip install --python "$BUILD_PY" delvewheel
           fi
 
           if [[ "$RUNNER_OS" == "Windows" ]]; then
@@ -332,6 +416,52 @@ jobs:
           fi
           cd ../..
 
+      - name: Repair wheels (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Repair HNSW wheel
+          cd packages/leann-backend-hnsw
+          if [ -d dist ]; then
+            delvewheel repair dist/*.whl -w dist_repaired --add-path "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/bin"
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+
+          # Repair DiskANN wheel.
+          # DiskANN's CMake install bundles diskann.dll and libiomp5md.dll inside
+          # the wheel, but delvewheel doesn't search inside the wheel for deps.
+          # Extract the wheel so delvewheel can discover them via --add-path.
+          cd packages/leann-backend-diskann
+          if [ -d dist ]; then
+            # Extract the wheel and build --add-path with native Windows paths.
+            # mktemp returns Git Bash paths (/tmp/...) that delvewheel.exe can't
+            # resolve, so use Python for the entire extract-and-repair flow.
+            python -c "
+          import zipfile, sys, glob, tempfile, subprocess, os, shutil
+          whl = glob.glob('dist/*.whl')[0]
+          tmpdir = tempfile.mkdtemp(prefix='diskann_whl_')
+          zipfile.ZipFile(whl).extractall(tmpdir)
+
+          add_paths = [os.environ.get('VCPKG_INSTALLATION_ROOT','') + '/installed/x64-windows/bin',
+                       os.environ.get('INTEL_OMP_BIN_DIR','')]
+          for entry in os.listdir(tmpdir):
+              full = os.path.join(tmpdir, entry)
+              if os.path.isdir(full):
+                  add_paths.append(full)
+          add_path_str = ';'.join(p for p in add_paths if p)
+
+          print(f'add-path: {add_path_str}')
+          rc = subprocess.call([sys.executable, '-m', 'delvewheel', 'repair', whl,
+                                '-w', 'dist_repaired', '--add-path', add_path_str])
+          shutil.rmtree(tmpdir, ignore_errors=True)
+          sys.exit(rc)
+          "
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+
       - name: List built packages
         run: |
           echo "📦 Built packages:"
@@ -340,8 +470,24 @@ jobs:
 
       - name: Install built packages for testing
         run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 5s: $*"
+              sleep 5
+              n=$((n + 1))
+            done
+          }
+
           # Create uv-managed virtual environment with the requested interpreter
-          uv python install ${{ matrix.python }}
+          retry 5 uv python install ${{ matrix.python }}
           uv venv --python ${{ matrix.python }}
           source .venv/bin/activate || source .venv/Scripts/activate
 

@@ -5,8 +5,10 @@ import hashlib
 import io
 import json
 import os
+import pickle
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -26,36 +28,12 @@ from .settings import (
 )
 from .sync import FileSynchronizer
 
-# Manifest file for incremental build: maps source file path -> mtime
-SOURCES_MANIFEST_FILENAME = "documents.leann.sources.json"
-
 
 def _normalize_path(path: str) -> str:
-    """Return absolute path string for consistent manifest keys."""
+    """Return absolute path string for consistent keys."""
     if not path:
         return path
     return str(Path(path).resolve())
-
-
-def load_sources_manifest(index_dir: Path, index_name: str) -> dict[str, float]:
-    """Load sources manifest (path -> mtime). Returns {} if file missing or invalid."""
-    manifest_path = index_dir / SOURCES_MANIFEST_FILENAME
-    if not manifest_path.exists():
-        return {}
-    try:
-        with open(manifest_path, encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("sources", {})
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def save_sources_manifest(index_dir: Path, index_name: str, sources: dict[str, float]) -> None:
-    """Write sources manifest (path -> mtime)."""
-    manifest_path = index_dir / SOURCES_MANIFEST_FILENAME
-    index_dir.mkdir(parents=True, exist_ok=True)
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump({"sources": sources}, f, indent=2)
 
 
 @contextlib.contextmanager
@@ -367,8 +345,8 @@ Examples:
         watch_parser.add_argument(
             "--interval",
             type=int,
-            default=5,
-            help="Poll interval in seconds (default: 5)",
+            default=30,
+            help="Poll interval in seconds (default: 30)",
         )
         watch_parser.add_argument(
             "--once",
@@ -1319,6 +1297,9 @@ Examples:
                             # exclude_hidden only affects directory scans; input_files are explicit
                             filename_as_id=True,
                         ).load_data()
+                        for doc in file_docs:
+                            if not doc.metadata.get("source"):
+                                doc.metadata["source"] = doc.metadata.get("file_path", "")
                         all_documents.extend(file_docs)
                         print(
                             f"    ✅ Loaded {len(file_docs)} document{'s' if len(file_docs) > 1 else ''}"
@@ -1600,7 +1581,9 @@ Examples:
                 # Check if this is a code file based on source path
                 source_path = doc.metadata.get("source", "")
                 file_path = doc.metadata.get("file_path", "")
-                is_code_file = any(source_path.endswith(ext) for ext in code_file_exts)
+                is_code_file = any(
+                    (source_path or file_path).endswith(ext) for ext in code_file_exts
+                )
 
                 # For code files, prepend line numbers so chunks carry them
                 if is_code_file:
@@ -1637,7 +1620,7 @@ Examples:
                         first_nl = text.find("\n")
                         if first_nl != -1:
                             text = text[first_nl + 1 :]
-                    all_texts.append({"text": text, "metadata": chunk_metadata})
+                    all_texts.append({"text": text, "metadata": chunk_metadata.copy()})
 
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
@@ -1681,22 +1664,286 @@ Examples:
                 roots.add(str(path_obj.parent))
         return sorted(roots)
 
-    def _initialize_file_synchronizers(
+    def _create_synchronizers(
         self,
+        index_dir: Path,
         roots: list[str],
-        include_extensions: Optional[list[str]],
-        ignore_patterns: Optional[list[str]],
-    ) -> None:
+        include_extensions: Optional[list[str]] = None,
+        ignore_patterns: Optional[list[str]] = None,
+    ) -> list[FileSynchronizer]:
+        """Create FileSynchronizers with snapshots stored in the index dir. Shared by build and watch."""
+        synchronizers: list[FileSynchronizer] = []
         for root in roots:
+            tag = hashlib.sha256(root.encode()).hexdigest()[:12]
+            snapshot_path = str(index_dir / f"sync_{tag}.pickle")
             try:
-                FileSynchronizer(
+                fs = FileSynchronizer(
                     root_dir=root,
                     ignore_patterns=ignore_patterns,
                     include_extensions=include_extensions,
-                    auto_load=True,
+                    snapshot_path=snapshot_path,
                 )
+                synchronizers.append(fs)
             except Exception as exc:
-                print(f"⚠️  Failed to initialize file synchronizer for {root}: {exc}")
+                print(f"Warning: Failed to init synchronizer for {root}: {exc}")
+        return synchronizers
+
+    def _build_synchronizers(
+        self,
+        docs_paths: list[str],
+        index_dir: Path,
+        file_types: Optional[str] = None,
+        include_hidden: bool = False,
+    ) -> list[FileSynchronizer]:
+        """Create FileSynchronizers for build from docs_paths."""
+        roots = self._resolve_sync_roots(docs_paths)
+        include_extensions = self._parse_file_types(file_types)
+        ignore_patterns = self._sync_ignore_patterns(include_hidden)
+        return self._create_synchronizers(index_dir, roots, include_extensions, ignore_patterns)
+
+    def _detect_build_changes(
+        self,
+        synchronizers: list[FileSynchronizer],
+    ) -> tuple[set[str], set[str], set[str]]:
+        """Detect added/removed/modified files across all source roots using content hashes."""
+        all_added: set[str] = set()
+        all_removed: set[str] = set()
+        all_modified: set[str] = set()
+        for fs in synchronizers:
+            added, removed, modified = fs.detect_changes()
+            all_added.update(added)
+            all_removed.update(removed)
+            all_modified.update(modified)
+        return all_added, all_removed, all_modified
+
+    def _commit_synchronizers(self, synchronizers: list[FileSynchronizer]) -> None:
+        """Persist all synchronizer snapshots after a successful build."""
+        for fs in synchronizers:
+            fs.commit()
+
+    @staticmethod
+    def _assign_chunk_ids(chunks: list[dict]) -> None:
+        """Assign stable IDs to chunks based on their file path and position."""
+        from collections import defaultdict
+
+        by_path: dict[str, list] = defaultdict(list)
+        for c in chunks:
+            p = c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source") or ""
+            by_path[_normalize_path(p)].append(c)
+        for path_key, path_chunks in by_path.items():
+            for idx, c in enumerate(path_chunks):
+                sid = hashlib.sha256(f"{path_key}:{idx}".encode()).hexdigest()[:16]
+                c.setdefault("metadata", {})["id"] = sid
+                c["id"] = sid
+
+    @staticmethod
+    def _assign_unique_chunk_ids(chunks: list[dict]) -> None:
+        """Assign unique IDs for incremental (avoids collision when path lookup misses some old ids)."""
+        for c in chunks:
+            sid = uuid.uuid4().hex[:16]
+            c.setdefault("metadata", {})["id"] = sid
+            c["id"] = sid
+
+    def _chunks_for_paths(self, all_texts: list[dict], paths: set[str]) -> list[dict]:
+        """Filter chunks belonging to the given file paths."""
+        return [
+            c
+            for c in all_texts
+            if _normalize_path(
+                c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source") or ""
+            )
+            in paths
+        ]
+
+    def _make_incremental_builder(self, args) -> "LeannBuilder":
+        return LeannBuilder(
+            backend_name=args.backend_name,
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=self._build_embedding_options(args) or None,
+            graph_degree=args.graph_degree,
+            complexity=args.complexity,
+            is_compact=args.compact,
+            is_recompute=args.recompute,
+            num_threads=args.num_threads,
+        )
+
+    def _incremental_add_only(
+        self,
+        index_path: str,
+        all_texts: list[dict],
+        args,
+        new_paths: set[str],
+    ) -> bool:
+        """Add-only incremental update (works for HNSW and IVF)."""
+        new_chunks = self._chunks_for_paths(all_texts, new_paths)
+        if not new_chunks:
+            return False
+        self._assign_chunk_ids(new_chunks)
+        builder = self._make_incremental_builder(args)
+        for chunk in new_chunks:
+            builder.add_text(chunk["text"], metadata=chunk["metadata"])
+        print(
+            f"Incremental update: adding {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
+        )
+        builder.update_index(index_path)
+        print(f"Index updated at {index_path}")
+        return True
+
+    def _incremental_ivf_remove_only(
+        self, index_path: str, index_dir: Path, removed_paths: set[str], args
+    ) -> bool:
+        """IVF remove-only fast path: remove chunk IDs without loading or chunking documents."""
+        passages_file = index_dir / "documents.leann.passages.jsonl"
+        if not passages_file.exists():
+            return False
+        offset_file = index_dir / "documents.leann.passages.idx"
+        live_ids: set[str] | None = None
+        if offset_file.exists():
+            with open(offset_file, "rb") as f:
+                live_ids = set(pickle.load(f).keys())
+        chunk_ids_by_file = self._load_chunk_ids_by_file(passages_file, live_ids=live_ids)
+        roots = self._load_sync_roots(index_dir)
+        ids_to_remove: list[str] = []
+        seen_ids: set[str] = set()
+        for p in removed_paths:
+            for key in self._path_lookup_keys(p, roots):
+                for pid in chunk_ids_by_file.get(key, []):
+                    if pid not in seen_ids:
+                        seen_ids.add(pid)
+                        ids_to_remove.append(pid)
+        if not ids_to_remove:
+            return False
+        print(
+            f"Incremental IVF update (-{len(removed_paths)} removed): removing {len(ids_to_remove)} old chunks..."
+        )
+        builder = self._make_incremental_builder(args)
+        builder.update_index(index_path, remove_passage_ids=ids_to_remove)
+        print(f"Index updated at {index_path}")
+        return True
+
+    def _path_lookup_keys(self, path: str, roots: list[str]) -> list[str]:
+        """Return path variations for lookup (sync paths may be relative to roots)."""
+        keys = [path, _normalize_path(path)]
+        for root in roots:
+            candidate = str((Path(root) / path).resolve())
+            if candidate not in keys:
+                keys.append(candidate)
+        return keys
+
+    def _incremental_ivf_update(
+        self,
+        index_path: str,
+        index_dir: Path,
+        all_texts: list[dict],
+        args,
+        new_paths: set[str],
+        removed_paths: set[str],
+        modified_paths: set[str],
+        sync_roots: list[str],
+    ) -> bool:
+        """IVF incremental update: remove old chunks for modified/removed files, add new chunks."""
+        passages_file = index_dir / "documents.leann.passages.jsonl"
+        offset_file = index_dir / "documents.leann.passages.idx"
+        live_ids: set[str] | None = None
+        if offset_file.exists():
+            with open(offset_file, "rb") as f:
+                live_ids = set(pickle.load(f).keys())
+        chunk_ids_by_file = (
+            self._load_chunk_ids_by_file(passages_file, live_ids=live_ids)
+            if passages_file.exists()
+            else {}
+        )
+
+        # Collect old chunk IDs to remove (modified + removed files)
+        # Try all path variations: same file can have different path formats in passages
+        ids_to_remove: list[str] = []
+        seen_ids: set[str] = set()
+        for p in modified_paths | removed_paths:
+            for key in self._path_lookup_keys(p, sync_roots):
+                for pid in chunk_ids_by_file.get(key, []):
+                    if pid not in seen_ids:
+                        seen_ids.add(pid)
+                        ids_to_remove.append(pid)
+
+        # Collect new chunks to add (modified + new files)
+        # Build path set for matching: chunks may have paths in different formats
+        changed_paths = new_paths | modified_paths
+        path_set: set[str] = set()
+        for p in changed_paths:
+            path_set.update(self._path_lookup_keys(p, sync_roots))
+        new_chunks = self._chunks_for_paths(all_texts, path_set)
+        # Use unique IDs: passages can have mixed path formats so we may miss some ids_to_remove
+        self._assign_unique_chunk_ids(new_chunks)
+
+        if not ids_to_remove and not new_chunks:
+            return False
+
+        builder = self._make_incremental_builder(args)
+        for chunk in new_chunks:
+            builder.add_text(chunk["text"], metadata=chunk["metadata"])
+
+        parts = []
+        if ids_to_remove:
+            parts.append(f"removing {len(ids_to_remove)} old chunks")
+        if new_chunks:
+            parts.append(f"adding {len(new_chunks)} new chunks")
+        file_parts = []
+        if new_paths:
+            file_parts.append(f"+{len(new_paths)} added")
+        if modified_paths:
+            file_parts.append(f"~{len(modified_paths)} modified")
+        if removed_paths:
+            file_parts.append(f"-{len(removed_paths)} removed")
+        print(f"Incremental IVF update ({', '.join(file_parts)}): {', '.join(parts)}...")
+
+        builder.update_index(
+            index_path, remove_passage_ids=ids_to_remove if ids_to_remove else None
+        )
+        print(f"Index updated at {index_path}")
+        return True
+
+    @staticmethod
+    def _log_rebuild_reason(
+        meta: dict, args, new_paths: set, removed_paths: set, modified_paths: set
+    ) -> None:
+        """Print a human-readable explanation of why incremental update is not possible."""
+        if removed_paths or modified_paths:
+            reasons = []
+            if removed_paths:
+                reasons.append(f"{len(removed_paths)} file(s) removed")
+            if modified_paths:
+                reasons.append(f"{len(modified_paths)} file(s) modified")
+            print(
+                f"Incremental update not possible ({', '.join(reasons)}); falling back to full rebuild."
+            )
+            return
+
+        blockers = []
+        if meta.get("backend_name") not in ("hnsw", "ivf"):
+            blockers.append(
+                f"backend '{meta.get('backend_name')}' does not support incremental updates"
+            )
+        if meta.get("is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)):
+            blockers.append("index is compact (read-only); rebuild with --no-compact to enable")
+        if meta.get("embedding_model") != args.embedding_model:
+            blockers.append(
+                f"embedding model changed ('{meta.get('embedding_model')}' -> '{args.embedding_model}')"
+            )
+        if meta.get("embedding_mode") != args.embedding_mode:
+            blockers.append(
+                f"embedding mode changed ('{meta.get('embedding_mode')}' -> '{args.embedding_mode}')"
+            )
+        if blockers:
+            print(
+                f"Incremental update not possible: {'; '.join(blockers)}. Falling back to full rebuild."
+            )
+        else:
+            changes = []
+            if new_paths:
+                changes.append(f"+{len(new_paths)} added")
+            summary = ", ".join(changes) if changes else "unknown reason"
+            print(f"Full rebuild starting ({summary})...")
 
     def _write_sync_config(
         self,
@@ -1713,6 +1960,18 @@ Examples:
         }
         with open(sync_config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
+
+    def _load_sync_roots(self, index_dir: Path) -> list[str]:
+        """Load sync roots from index dir (for path resolution in incremental updates)."""
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            return []
+        try:
+            with open(sync_config_path, encoding="utf-8") as f:
+                config = json.load(f)
+            return config.get("roots") or []
+        except (json.JSONDecodeError, OSError):
+            return []
 
     def _resolve_index_for_watch(self, index_name: str) -> Optional[dict[str, Path]]:
         if self.index_exists(index_name):
@@ -1751,7 +2010,14 @@ Examples:
 
         return {"index_dir": index_dir, "passages_file": passages_file}
 
-    def _load_chunk_ids_by_file(self, passages_file: Path) -> dict[str, list[str]]:
+    def _load_chunk_ids_by_file(
+        self, passages_file: Path, live_ids: set[str] | None = None
+    ) -> dict[str, list[str]]:
+        """Load chunk IDs grouped by file path from passages.jsonl.
+
+        If *live_ids* is provided, skip entries whose ID is not in the set
+        (filters out stale entries left by prior incremental updates).
+        """
         chunk_ids_by_file: dict[str, list[str]] = {}
         with open(passages_file, encoding="utf-8") as f:
             for line in f:
@@ -1768,6 +2034,8 @@ Examples:
                     continue
                 chunk_id = data.get("id")
                 if chunk_id is None:
+                    continue
+                if live_ids is not None and str(chunk_id) not in live_ids:
                     continue
                 normalized_path = str(Path(file_path).resolve())
                 chunk_ids_by_file.setdefault(normalized_path, []).append(str(chunk_id))
@@ -1832,161 +2100,160 @@ Examples:
             paragraph_separator="\n\n",
         )
 
-        all_texts = self.load_documents(
-            docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+        # Detect changes first so we can skip load_documents for remove-only
+        index_dir.mkdir(parents=True, exist_ok=True)
+        synchronizers = self._build_synchronizers(
+            docs_paths, index_dir, file_types=args.file_types, include_hidden=args.include_hidden
         )
+
+        if index_dir.exists() and not args.force and synchronizers:
+            meta_path = index_dir / "documents.leann.meta.json"
+            new_paths, removed_paths, modified_paths = self._detect_build_changes(synchronizers)
+
+            if not new_paths and not removed_paths and not modified_paths:
+                print("Index up to date.")
+                return
+
+            # Show change summary (add / modify / delete) before build
+            change_parts = []
+            if new_paths:
+                change_parts.append(f"+{len(new_paths)} added")
+            if modified_paths:
+                change_parts.append(f"~{len(modified_paths)} modified")
+            if removed_paths:
+                change_parts.append(f"-{len(removed_paths)} removed")
+            if change_parts:
+                print(f"Changes: {', '.join(change_parts)}")
+
+            if meta_path.exists():
+                with open(meta_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+
+                backend_name = meta.get("backend_name")
+                is_compact = meta.get(
+                    "is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)
+                )
+                same_embedding = (
+                    meta.get("embedding_model") == args.embedding_model
+                    and meta.get("embedding_mode") == args.embedding_mode
+                )
+
+                # IVF supports remove+add, so it can handle modified and removed files incrementally
+                can_ivf_update = backend_name == "ivf" and not is_compact and same_embedding
+                # HNSW only supports add (no remove), so it needs add-only changes
+                can_add_only = (
+                    not removed_paths
+                    and not modified_paths
+                    and backend_name in ("hnsw", "ivf")
+                    and not is_compact
+                    and same_embedding
+                )
+
+                # Remove-only fast path: no load/chunk, just remove IDs from index
+                if can_ivf_update and removed_paths and not new_paths and not modified_paths:
+                    result = self._incremental_ivf_remove_only(
+                        index_path, index_dir, removed_paths, args
+                    )
+                    if result:
+                        self._commit_synchronizers(synchronizers)
+                        self._write_sync_config(
+                            index_dir,
+                            self._resolve_sync_roots(docs_paths),
+                            self._parse_file_types(args.file_types),
+                            self._sync_ignore_patterns(args.include_hidden),
+                        )
+                        self.register_project_dir()
+                        return
+
+                # Load only changed files (no need to load/chunk the entire corpus)
+                # Resolve paths relative to sync roots (sync returns paths relative to each root)
+                roots = self._resolve_sync_roots(docs_paths)
+                paths_to_load = new_paths | modified_paths
+                resolved_paths: list[str] = []
+                for p in paths_to_load:
+                    path_obj = Path(p)
+                    if path_obj.is_absolute() and path_obj.exists():
+                        resolved_paths.append(p)
+                    else:
+                        for root in roots:
+                            candidate = Path(root) / p
+                            if candidate.exists():
+                                resolved_paths.append(str(candidate.resolve()))
+                                break
+                        else:
+                            resolved_paths.append(p)  # fallback: pass as-is
+                all_texts = self.load_documents(
+                    resolved_paths,
+                    args.file_types,
+                    include_hidden=args.include_hidden,
+                    args=args,
+                )
+                # Proceed even when all_texts is empty (e.g. file emptied): we still need to remove old chunks
+                if not all_texts and not (can_ivf_update and (modified_paths or removed_paths)):
+                    print("No documents found")
+                    return
+
+                if can_ivf_update and (new_paths or modified_paths or removed_paths):
+                    result = self._incremental_ivf_update(
+                        index_path,
+                        index_dir,
+                        all_texts,
+                        args,
+                        new_paths,
+                        removed_paths,
+                        modified_paths,
+                        roots,
+                    )
+                    if result:
+                        self._commit_synchronizers(synchronizers)
+                        self._write_sync_config(
+                            index_dir,
+                            self._resolve_sync_roots(docs_paths),
+                            self._parse_file_types(args.file_types),
+                            self._sync_ignore_patterns(args.include_hidden),
+                        )
+                        self.register_project_dir()
+                        return
+
+                elif can_add_only and new_paths:
+                    result = self._incremental_add_only(
+                        index_path,
+                        all_texts,
+                        args,
+                        new_paths,
+                    )
+                    if result:
+                        self._commit_synchronizers(synchronizers)
+                        self._write_sync_config(
+                            index_dir,
+                            self._resolve_sync_roots(docs_paths),
+                            self._parse_file_types(args.file_types),
+                            self._sync_ignore_patterns(args.include_hidden),
+                        )
+                        self.register_project_dir()
+                        return
+
+                else:
+                    self._log_rebuild_reason(meta, args, new_paths, removed_paths, modified_paths)
+
+        # Full rebuild: load documents if not already loaded (first build or force)
+        try:
+            _ = all_texts
+        except NameError:
+            all_texts = self.load_documents(
+                docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+            )
         if not all_texts:
             print("No documents found")
             return
 
-        # Idempotent build: detect changes and choose the minimal work path
-        if index_dir.exists() and not args.force:
-            manifest = load_sources_manifest(index_dir, "documents.leann")
-            meta_path = index_dir / "documents.leann.meta.json"
-
-            current_sources: dict[str, float] = {}
-            for c in all_texts:
-                path = c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source")
-                if path and os.path.isfile(path):
-                    current_sources[_normalize_path(path)] = os.path.getmtime(path)
-
-            if not manifest or not meta_path.exists():
-                print("Rebuilding index (legacy format detected, enabling incremental support)...")
-            else:
-                new_paths = {p for p in current_sources if p not in manifest}
-                removed_paths = {p for p in manifest if p not in current_sources}
-                modified_paths = {
-                    p
-                    for p in current_sources
-                    if p in manifest and current_sources[p] != manifest[p]
-                }
-
-                if not new_paths and not removed_paths and not modified_paths:
-                    print("Index up to date.")
-                    return
-
-                with open(meta_path, encoding="utf-8") as f:
-                    meta = json.load(f)
-
-                can_incremental = (
-                    not removed_paths
-                    and not modified_paths
-                    and meta.get("backend_name") in ("hnsw", "ivf")
-                    and not meta.get(
-                        "is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)
-                    )
-                    and meta.get("embedding_model") == args.embedding_model
-                    and meta.get("embedding_mode") == args.embedding_mode
-                )
-
-                if not can_incremental and (removed_paths or modified_paths):
-                    reasons = []
-                    if removed_paths:
-                        reasons.append(f"{len(removed_paths)} file(s) removed")
-                    if modified_paths:
-                        reasons.append(f"{len(modified_paths)} file(s) modified")
-                    print(
-                        f"Incremental update not possible ({', '.join(reasons)}); "
-                        f"falling back to full rebuild."
-                    )
-                elif not can_incremental:
-                    blockers = []
-                    if meta.get("backend_name") not in ("hnsw", "ivf"):
-                        blockers.append(
-                            f"backend '{meta.get('backend_name')}' does not support incremental updates"
-                        )
-                    if meta.get(
-                        "is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)
-                    ):
-                        blockers.append(
-                            "index is compact (read-only); rebuild with --no-compact to enable incremental updates"
-                        )
-                    if meta.get("embedding_model") != args.embedding_model:
-                        blockers.append(
-                            f"embedding model changed ('{meta.get('embedding_model')}' -> '{args.embedding_model}')"
-                        )
-                    if meta.get("embedding_mode") != args.embedding_mode:
-                        blockers.append(
-                            f"embedding mode changed ('{meta.get('embedding_mode')}' -> '{args.embedding_mode}')"
-                        )
-                    if blockers:
-                        print(
-                            f"Incremental update not possible: {'; '.join(blockers)}. Falling back to full rebuild."
-                        )
-
-                if can_incremental and new_paths:
-                    new_chunks = [
-                        c
-                        for c in all_texts
-                        if _normalize_path(
-                            c.get("metadata", {}).get("file_path")
-                            or c.get("metadata", {}).get("source")
-                            or ""
-                        )
-                        in new_paths
-                    ]
-                    from collections import defaultdict
-
-                    by_path: dict[str, list] = defaultdict(list)
-                    for c in new_chunks:
-                        path = (
-                            c.get("metadata", {}).get("file_path")
-                            or c.get("metadata", {}).get("source")
-                            or ""
-                        )
-                        by_path[_normalize_path(path)].append(c)
-                    for path_key, path_chunks in by_path.items():
-                        for idx, c in enumerate(path_chunks):
-                            sid = hashlib.sha256(f"{path_key}:{idx}".encode()).hexdigest()[:16]
-                            c.setdefault("metadata", {})["id"] = sid
-                            c["id"] = sid
-
-                    embedding_options_inc = self._build_embedding_options(args)
-                    builder_inc = LeannBuilder(
-                        backend_name=args.backend_name,
-                        embedding_model=args.embedding_model,
-                        embedding_mode=args.embedding_mode,
-                        embedding_options=embedding_options_inc or None,
-                        graph_degree=args.graph_degree,
-                        complexity=args.complexity,
-                        is_compact=args.compact,
-                        is_recompute=args.recompute,
-                        num_threads=args.num_threads,
-                    )
-                    for chunk in new_chunks:
-                        builder_inc.add_text(chunk["text"], metadata=chunk["metadata"])
-                    print(
-                        f"Incremental update: adding {len(new_chunks)} chunks from {len(new_paths)} new file(s)..."
-                    )
-                    builder_inc.update_index(index_path)
-                    for p in new_paths:
-                        manifest[p] = current_sources[p]
-                    save_sources_manifest(index_dir, "documents.leann", manifest)
-                    print(f"Index updated at {index_path}")
-                    self.register_project_dir()
-                    return
-                else:
-                    changes = []
-                    if new_paths:
-                        changes.append(f"+{len(new_paths)} added")
-                    if modified_paths:
-                        changes.append(f"~{len(modified_paths)} modified")
-                    if removed_paths:
-                        changes.append(f"-{len(removed_paths)} removed")
-                    summary = ", ".join(changes) if changes else "incompatible index format"
-                    print(f"Full rebuild starting ({summary})...")
-
-        index_dir.mkdir(parents=True, exist_ok=True)
-
         print(f"Building index '{index_name}' with {args.backend_name} backend...")
-
-        embedding_options = self._build_embedding_options(args)
 
         builder = LeannBuilder(
             backend_name=args.backend_name,
             embedding_model=args.embedding_model,
             embedding_mode=args.embedding_mode,
-            embedding_options=embedding_options or None,
+            embedding_options=self._build_embedding_options(args) or None,
             graph_degree=args.graph_degree,
             complexity=args.complexity,
             is_compact=args.compact,
@@ -1998,28 +2265,19 @@ Examples:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
 
         builder.build_index(index_path)
-        # Write sources manifest for future incremental builds
-        full_sources = {}
-        for c in all_texts:
-            path = c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source")
-            if path and os.path.isfile(path):
-                full_sources[_normalize_path(path)] = os.path.getmtime(path)
-        if full_sources:
-            save_sources_manifest(index_dir, "documents.leann", full_sources)
+        for fs in synchronizers:
+            fs.create_snapshot()
+        self._write_sync_config(
+            index_dir,
+            self._resolve_sync_roots(docs_paths),
+            self._parse_file_types(args.file_types),
+            self._sync_ignore_patterns(args.include_hidden),
+        )
         print(f"Index built at {index_path}")
-
-        sync_roots = self._resolve_sync_roots(docs_paths)
-        if sync_roots:
-            include_extensions = self._parse_file_types(args.file_types)
-            ignore_patterns = self._sync_ignore_patterns(args.include_hidden)
-            self._initialize_file_synchronizers(sync_roots, include_extensions, ignore_patterns)
-            self._write_sync_config(index_dir, sync_roots, include_extensions, ignore_patterns)
-
-        # Register this project directory in global registry
         self.register_project_dir()
 
     def _watch_check_changes(self, index_name: str) -> tuple[set[str], set[str], set[str]]:
-        """Check for file changes in watched directories. Returns (added, removed, modified) paths."""
+        """Check for file changes using the same snapshots as build (index_dir)."""
         resolved = self._resolve_index_for_watch(index_name)
         if not resolved:
             return set(), set(), set()
@@ -2033,30 +2291,16 @@ Examples:
             config = json.load(f)
 
         roots = config.get("roots") or []
-        include_extensions = config.get("include_extensions")
-        ignore_patterns = config.get("ignore_patterns")
+        if not roots:
+            return set(), set(), set()
 
-        added_paths: set[str] = set()
-        removed_paths: set[str] = set()
-        modified_paths: set[str] = set()
-
-        for root in roots:
-            try:
-                fs = FileSynchronizer(
-                    root_dir=root,
-                    ignore_patterns=ignore_patterns,
-                    include_extensions=include_extensions,
-                    auto_load=True,
-                )
-                added, removed, modified = fs.check_for_changes()
-            except Exception as exc:
-                print(f"Warning: Failed to check {root}: {exc}")
-                continue
-            added_paths.update(added)
-            removed_paths.update(removed)
-            modified_paths.update(modified)
-
-        return added_paths, removed_paths, modified_paths
+        synchronizers = self._create_synchronizers(
+            index_dir,
+            roots,
+            include_extensions=config.get("include_extensions"),
+            ignore_patterns=config.get("ignore_patterns"),
+        )
+        return self._detect_build_changes(synchronizers)
 
     def _watch_report_changes(
         self,
@@ -2338,7 +2582,7 @@ Examples:
                 if "last_modified_date" in result.metadata:
                     print(f"   Modified: {result.metadata['last_modified_date']}")
 
-            print(f"   {result.text[:200]}...")
+            print(f"   {result.text}")
             print(f"   Source: {result.metadata.get('source', '')}")
             print()
 

@@ -7,6 +7,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -23,6 +24,73 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 _LOCK_STALE_SECONDS = 600
+_FLOCK_TIMEOUT_SECONDS = 300
+_REGISTRY_LOCKS_GUARD = threading.Lock()
+_REGISTRY_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _flock_acquire(lock_file) -> None:  # type: ignore[type-arg]
+    """Acquire an exclusive file lock for cross-process synchronisation.
+
+    Uses ``fcntl.flock`` on POSIX and ``msvcrt.locking`` on Windows.  Both are
+    auto-released when the file descriptor is closed or the owning process
+    exits, so a holder crash does not permanently block other waiters.
+    """
+    try:
+        import fcntl
+
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        return
+    except ImportError:
+        pass
+    except OSError:
+        return
+
+    if sys.platform != "win32":
+        return
+    import msvcrt
+
+    # msvcrt.locking operates on byte ranges; ensure the file has content.
+    lock_file.seek(0, 2)
+    if lock_file.tell() == 0:
+        lock_file.write("\n")
+        lock_file.flush()
+    lock_file.seek(0)
+
+    deadline = time.monotonic() + _FLOCK_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        try:
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            return
+        except OSError:
+            time.sleep(0.5)
+    logger.warning(
+        "Cross-process file lock timed out after %ds; proceeding without lock",
+        _FLOCK_TIMEOUT_SECONDS,
+    )
+
+
+def _flock_release(lock_file) -> None:  # type: ignore[type-arg]
+    """Release the file lock acquired by :func:`_flock_acquire`."""
+    try:
+        import fcntl
+
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        return
+    except ImportError:
+        pass
+    except OSError:
+        return
+
+    if sys.platform != "win32":
+        return
+    try:
+        import msvcrt
+
+        lock_file.seek(0)
+        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+    except (ImportError, OSError):
+        pass
 
 
 def _is_colab_environment() -> bool:
@@ -659,36 +727,43 @@ class EmbeddingServerManager:
 
     @contextlib.contextmanager
     def _registry_lock(self, config_signature: dict[str, Any]):
-        """Best-effort cross-process lock around a daemon registry key."""
+        """Best-effort lock around the daemon check-then-start critical section.
+
+        Two layers protect the registry from concurrent mutation:
+
+        1. **threading.Lock** (per registry key, module-global) — serialises
+           threads inside the same process.  POSIX ``fcntl.flock`` is
+           process-granularity and does *not* block concurrent threads within
+           a single process, so this layer is required on every platform.
+        2. **File lock** (``fcntl`` on POSIX, ``msvcrt`` on Windows) —
+           serialises separate OS processes.
+        """
         lock_file = None
         lock_info_path: Optional[Path] = None
+        thread_lock: Optional[threading.Lock] = None
         try:
             lock_path = self._registry_dir()
             lock_path.mkdir(parents=True, exist_ok=True)
             lock_key = self._registry_key(config_signature)
+
+            with _REGISTRY_LOCKS_GUARD:
+                thread_lock = _REGISTRY_LOCKS.setdefault(lock_key, threading.Lock())
+            thread_lock.acquire()
+
             lock_file = (lock_path / f"{lock_key}.lock").open("a+")
             lock_info_path = lock_path / f"{lock_key}.lockinfo.json"
             self._recover_stale_lock_info(lock_info_path)
-            try:
-                import fcntl
-
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            except Exception:
-                # Non-POSIX or unavailable locking: proceed without hard lock.
-                pass
+            _flock_acquire(lock_file)
             self._write_lock_info(lock_info_path)
             yield
         finally:
             if lock_info_path is not None:
                 lock_info_path.unlink(missing_ok=True)
             if lock_file is not None:
-                try:
-                    import fcntl
-
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-                except Exception:
-                    pass
+                _flock_release(lock_file)
                 lock_file.close()
+            if thread_lock is not None and thread_lock.locked():
+                thread_lock.release()
 
     def _recover_stale_lock_info(self, lock_info_path: Path) -> None:
         if not lock_info_path.exists():

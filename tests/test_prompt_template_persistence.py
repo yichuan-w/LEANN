@@ -33,7 +33,7 @@ class TestPromptTemplateMetadataPersistence:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture
@@ -145,7 +145,7 @@ class TestPromptTemplateAutoLoadOnSearch:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture
@@ -201,7 +201,7 @@ class TestQueryPromptTemplateAutoLoad:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture
@@ -422,7 +422,7 @@ class TestPromptTemplateReuseInChat:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture
@@ -466,7 +466,7 @@ class TestPromptTemplateIntegrationWithEmbeddingModes:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.mark.parametrize(
@@ -543,7 +543,7 @@ class TestQueryTemplateApplicationInComputeEmbedding:
     @pytest.fixture
     def temp_index_with_template(self):
         """Create a temporary index with query template in metadata"""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             index_dir = Path(tmpdir)
             index_file = index_dir / "test.leann"
             meta_file = index_dir / "test.leann.meta.json"

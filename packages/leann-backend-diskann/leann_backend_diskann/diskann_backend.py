@@ -359,6 +359,19 @@ class DiskannSearcher(BaseSearcher):
             self._index = None
             logger.debug("DiskANN searcher initialized (index will be loaded on first search)")
 
+    def close(self):
+        """Release the C++ index object and its file handles.
+
+        On Windows, open memory-mapped files prevent temp directory cleanup.
+        Call this (or use LeannSearcher as a context manager) before deleting
+        the index directory.
+        """
+        self._index = None
+        self._current_zmq_port = None
+        import gc
+
+        gc.collect()
+
     def _ensure_index_loaded(self, zmq_port: int):
         """Ensure the index is loaded with the correct zmq_port."""
         if self._index is None or self._current_zmq_port != zmq_port:

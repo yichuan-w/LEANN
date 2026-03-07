@@ -29,7 +29,8 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 endif()
 
-# Find ZMQ using pkg-config with IMPORTED_TARGET for automatic target creation
+# Find ZMQ via pkg-config on all platforms.
+# Windows CI installs pkgconfiglite + zeromq via vcpkg and exports PKG_CONFIG_PATH.
 find_package(PkgConfig REQUIRED)
 
 # On ARM64 macOS, ensure pkg-config finds ARM64 Homebrew packages first

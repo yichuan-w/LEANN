@@ -78,24 +78,32 @@ class FileSynchronizer:
         ignore_patterns: Optional[list] = None,
         include_extensions: Optional[list] = None,
         auto_load=True,
+        snapshot_path: Optional[str] = None,
     ):
         if not os.path.isdir(root_dir):
             raise ValueError("This is not a valid directory")
         self.root_dir = root_dir
         self.ignore_patterns = ignore_patterns
         self.include_extensions = include_extensions
+        self._custom_snapshot_path = snapshot_path
+        self._pending_tree: Optional[MerkleTree] = None
+        self.tree: Optional[MerkleTree] = None
         if auto_load:
             self.load_snapshot()
 
     def generate_file_hashes(self):
         file_hashes = {}
-        reader = SimpleDirectoryReader(
-            self.root_dir,
-            recursive=True,
-            exclude=self.ignore_patterns,
-            required_exts=self.include_extensions,
-            exclude_empty=False,
-        )
+        try:
+            reader = SimpleDirectoryReader(
+                self.root_dir,
+                recursive=True,
+                exclude=self.ignore_patterns,
+                required_exts=self.include_extensions,
+                exclude_empty=False,
+            )
+        except ValueError:
+            # Empty directory — no files to hash
+            return file_hashes
         # print('reader.iter_data() length', len(list(reader.iter_data())))
 
         for file in reader.iter_data():
@@ -128,20 +136,40 @@ class FileSynchronizer:
 
         return tree
 
-    def check_for_changes(self):
+    def detect_changes(self) -> tuple[list[str], list[str], list[str]]:
+        """Detect changes without persisting. Call commit() after successful processing."""
         file_hashes = self.generate_file_hashes()
         new_tree = self.build_merkle_tree(file_hashes)
+        self._pending_tree = new_tree
 
-        changes = self.tree.compare_with(new_tree)
+        if self.tree is None:
+            return list(file_hashes.keys()), [], []
 
-        if changes:
-            self.tree = new_tree
+        return self.tree.compare_with(new_tree)
+
+    def commit(self):
+        """Persist the pending snapshot after successful processing."""
+        if self._pending_tree is not None:
+            self.tree = self._pending_tree
+            self._pending_tree = None
             self.save_snapshot()
 
+    def create_snapshot(self):
+        """Build and persist a snapshot from the current file state (for initial / forced builds)."""
+        file_hashes = self.generate_file_hashes()
+        self.tree = self.build_merkle_tree(file_hashes)
+        self.save_snapshot()
+
+    def check_for_changes(self) -> tuple[list[str], list[str], list[str]]:
+        """Detect and auto-commit changes (convenience wrapper)."""
+        changes = self.detect_changes()
+        self.commit()
         return changes
 
     @property
     def snapshot_path(self):
+        if self._custom_snapshot_path:
+            return self._custom_snapshot_path
         return f"{self.root_dir}.sync_context.pickle"
 
     def save_snapshot(self):
@@ -155,7 +183,4 @@ class FileSynchronizer:
             with open(self.snapshot_path, "rb") as f:
                 self.tree = pickle.load(f)
         except FileNotFoundError:
-            file_hashes = self.generate_file_hashes()
-            self.tree = self.build_merkle_tree(file_hashes)
-            self.save_snapshot()
-            # yooooo
+            self.tree = None
