@@ -211,9 +211,19 @@ jobs:
 
           retry 5 choco install swig -y --no-progress
           retry 5 choco install nuget.commandline -y --no-progress
-          retry 5 choco install pkgconfiglite -y --no-progress
-          echo "C:/ProgramData/chocolatey/bin" >> "$GITHUB_PATH"
-          echo "PKG_CONFIG_EXECUTABLE=C:/ProgramData/chocolatey/bin/pkg-config.exe" >> "$GITHUB_ENV"
+          # pkgconfiglite via Chocolatey is flaky; fall back to direct download
+          PKG_CONFIG_DIR="C:/ProgramData/chocolatey/bin"
+          if ! retry 3 choco install pkgconfiglite -y --no-progress; then
+            echo "Chocolatey pkgconfiglite failed, downloading directly..."
+            PKG_CONFIG_DIR="${RUNNER_TEMP}/pkg-config"
+            mkdir -p "${PKG_CONFIG_DIR}"
+            curl -fsSL -o "${RUNNER_TEMP}/pkgconfiglite.zip" \
+              "https://sourceforge.net/projects/pkgconfiglite/files/0.28-1/pkg-config-lite-0.28-1_bin-win32.zip/download"
+            unzip -q "${RUNNER_TEMP}/pkgconfiglite.zip" -d "${RUNNER_TEMP}/pkgconfiglite"
+            cp "${RUNNER_TEMP}/pkgconfiglite/pkg-config-lite-0.28-1/bin/"* "${PKG_CONFIG_DIR}/"
+          fi
+          echo "${PKG_CONFIG_DIR}" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_EXECUTABLE=${PKG_CONFIG_DIR}/pkg-config.exe" >> "$GITHUB_ENV"
           if [[ -z "${VCPKG_INSTALLATION_ROOT:-}" ]]; then
             echo "VCPKG_INSTALLATION_ROOT is not set on this runner"
             exit 1
