@@ -1,8 +1,8 @@
 """
-IVF backend: FAISS IndexIVFFlat wrapped in IndexIDMap2 for stable add/delete by passage id.
+IVF backend: FAISS IndexIVFFlat with DirectMap.Hashtable for add/remove by passage id.
 
-Provides clean add_vectors() and remove_ids() APIs (aligned with HNSW update_index flow)
-so the core can do incremental updates: detect changed chunk ids, delete and re-insert.
+Uses IndexIVFFlat + DirectMap.Hashtable (no IndexIDMap2) so remove_ids works correctly.
+Provides add_vectors() and remove_ids() for incremental updates.
 """
 
 import json
@@ -125,12 +125,12 @@ class IVFBuilder(LeannBackendBuilderInterface):
         )
         ivf = faiss.IndexIVFFlat(quantizer, dim, self.nlist, metric_enum)
         ivf.train(data)
-        index = faiss.IndexIDMap2(ivf)
+        ivf.set_direct_map_type(faiss.DirectMap.Hashtable)
         faiss_ids = np.arange(n, dtype=np.int64)
-        index.add_with_ids(data, faiss_ids)
+        ivf.add_with_ids(data, faiss_ids)
 
         index_file = index_dir / f"{index_prefix}.index"
-        faiss.write_index(index, str(index_file))
+        faiss.write_index(ivf, str(index_file))
 
         id_to_passage = dict(enumerate(ids))
         _save_id_map(index_dir, index_prefix, id_to_passage, next_id=n)
@@ -263,6 +263,7 @@ def remove_ids(index_path: str, passage_ids: list[str]) -> int:
         return 0
 
     index = faiss.read_index(str(index_file))
+    ntotal_before = index.ntotal
     sel = np.array(to_remove_int, dtype=np.int64)
     nremoved = index.remove_ids(sel)
     faiss.write_index(index, str(index_file))
@@ -273,5 +274,18 @@ def remove_ids(index_path: str, passage_ids: list[str]) -> int:
             id_to_passage.pop(i, None)
     # passage_to_id is rebuilt from id_to_passage when we save; we don't decrease next_id so new adds get new ids
     _save_id_map(index_dir, index_prefix, id_to_passage, next_id=next_id)
-    logger.info("IVF remove_ids: removed %d vectors (requested %d)", nremoved, len(passage_ids))
+    logger.info(
+        "IVF remove_ids: ntotal %d -> %d, removed %d vectors (requested %d, found %d in id_map)",
+        ntotal_before,
+        index.ntotal,
+        nremoved,
+        len(passage_ids),
+        len(to_remove_int),
+    )
+    if nremoved != len(to_remove_int):
+        logger.warning(
+            "IVF remove_ids: FAISS removed %d but expected %d. Possible index inconsistency.",
+            nremoved,
+            len(to_remove_int),
+        )
     return nremoved

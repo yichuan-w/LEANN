@@ -117,4 +117,6 @@ apps/multimodal/vision-based-pdf-multi-vector/multi-vector-colpali-native-weavia
 paru-bin/
 merkle-tree-test/
 test-code/
+localtestmcp/
+*.csv
 *.pickle
