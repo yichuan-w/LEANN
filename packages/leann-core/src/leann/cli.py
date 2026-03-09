@@ -22,6 +22,8 @@ from .interactive_utils import create_cli_session
 from .registry import register_project_directory
 from .settings import (
     resolve_anthropic_base_url,
+    resolve_minimax_api_key,
+    resolve_minimax_base_url,
     resolve_ollama_host,
     resolve_openai_api_key,
     resolve_openai_base_url,
@@ -493,7 +495,7 @@ Examples:
             "--llm",
             type=str,
             default="ollama",
-            choices=["simulated", "ollama", "hf", "openai", "anthropic"],
+            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax"],
             help="LLM provider (default: ollama)",
         )
         ask_parser.add_argument(
@@ -556,7 +558,7 @@ Examples:
             "--llm",
             type=str,
             default="ollama",
-            choices=["simulated", "ollama", "hf", "openai", "anthropic"],
+            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax"],
             help="LLM provider (default: ollama)",
         )
         react_parser.add_argument(
@@ -2712,6 +2714,11 @@ Examples:
                 llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
             if args.api_key:
                 llm_config["api_key"] = args.api_key
+        elif args.llm == "minimax":
+            llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
+            resolved_api_key = resolve_minimax_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
 
         chat = LeannChat(index_path=index_path, llm_config=llm_config)
 
@@ -2804,6 +2811,11 @@ Examples:
                 llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
             if args.api_key:
                 llm_config["api_key"] = args.api_key
+        elif args.llm == "minimax":
+            llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
+            resolved_api_key = resolve_minimax_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
 
         from .react_agent import create_react_agent
 

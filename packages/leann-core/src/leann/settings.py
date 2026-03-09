@@ -10,6 +10,7 @@ from typing import Any
 _DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 _DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
+_DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 
 
 def _clean_url(value: str) -> str:
@@ -86,6 +87,31 @@ def resolve_anthropic_api_key(explicit: str | None = None) -> str | None:
         return explicit
 
     return os.getenv("ANTHROPIC_API_KEY")
+
+
+def resolve_minimax_base_url(explicit: str | None = None) -> str:
+    """Resolve the base URL for MiniMax-compatible services."""
+
+    candidates = (
+        explicit,
+        os.getenv("LEANN_MINIMAX_BASE_URL"),
+        os.getenv("MINIMAX_BASE_URL"),
+    )
+
+    for candidate in candidates:
+        if candidate:
+            return _clean_url(candidate)
+
+    return _clean_url(_DEFAULT_MINIMAX_BASE_URL)
+
+
+def resolve_minimax_api_key(explicit: str | None = None) -> str | None:
+    """Resolve the API key for MiniMax services."""
+
+    if explicit:
+        return explicit
+
+    return os.getenv("MINIMAX_API_KEY")
 
 
 def encode_provider_options(options: dict[str, Any] | None) -> str | None:
