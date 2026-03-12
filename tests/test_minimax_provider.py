@@ -6,7 +6,6 @@ We import from leann.settings and leann.chat directly to avoid triggering
 the full leann.__init__ import chain which requires C++ backend builds.
 """
 
-import importlib
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -15,9 +14,7 @@ import pytest
 
 # Add the leann-core source to sys.path so we can import submodules
 # without triggering __init__.py's backend imports.
-_LEANN_SRC = os.path.join(
-    os.path.dirname(__file__), "..", "packages", "leann-core", "src"
-)
+_LEANN_SRC = os.path.join(os.path.dirname(__file__), "..", "packages", "leann-core", "src")
 if _LEANN_SRC not in sys.path:
     sys.path.insert(0, os.path.abspath(_LEANN_SRC))
 
@@ -191,11 +188,13 @@ class TestGetLLMFactory:
     def test_get_llm_minimax_custom_base_url(self, mock_openai_cls):
         from leann.chat import MiniMaxChat, get_llm
 
-        llm = get_llm({
-            "type": "minimax",
-            "api_key": "test-key",
-            "base_url": "https://api.minimaxi.com/v1",
-        })
+        llm = get_llm(
+            {
+                "type": "minimax",
+                "api_key": "test-key",
+                "base_url": "https://api.minimaxi.com/v1",
+            }
+        )
         assert isinstance(llm, MiniMaxChat)
         assert llm.base_url == "https://api.minimaxi.com/v1"
 
