@@ -589,6 +589,18 @@ Examples:
             default=None,
             help="API key for cloud LLM providers (OpenAI, Anthropic)",
         )
+        react_parser.add_argument(
+            "--serper-api-key",
+            type=str,
+            default=None,
+            help="Serper API key for web search (or set SERPER_API_KEY env var)",
+        )
+        react_parser.add_argument(
+            "--jina-api-key",
+            type=str,
+            default=None,
+            help="Jina API key for page content fetching (or set JINA_API_KEY env var)",
+        )
 
         # List command
         subparsers.add_parser("list", help="List all indexes")
@@ -2811,7 +2823,14 @@ Examples:
             index_path=index_path,
             llm_config=llm_config,
             max_iterations=args.max_iterations,
+            serper_api_key=getattr(args, "serper_api_key", None),
+            jina_api_key=getattr(args, "jina_api_key", None),
         )
+
+        if agent.web_search_available:
+            print("🌐 Web search enabled (Serper API key detected)")
+        else:
+            print("📚 Local search only (no Serper API key)")
 
         print(f"\n🔍 Question: {query}\n")
         answer = agent.run(query, top_k=args.top_k)
@@ -2820,8 +2839,10 @@ Examples:
         if agent.search_history:
             print(f"\n📊 Search History ({len(agent.search_history)} iterations):")
             for entry in agent.search_history:
+                source_tag = f"[{entry.get('source', 'local')}]"
                 print(
-                    f"  {entry['iteration']}. {entry['action']} ({entry['results_count']} results)"
+                    f"  {entry['iteration']}. {source_tag} {entry['action']} "
+                    f"({entry['results_count']} results)"
                 )
 
     async def serve_api(self, args):
