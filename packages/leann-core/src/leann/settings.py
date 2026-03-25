@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Default fallbacks to preserve current behaviour while keeping them in one place.
 _DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 _DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 _DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
+_DEFAULT_NOVITA_BASE_URL = "https://api.novita.ai/openai"
 
 
 def _clean_url(value: str) -> str:
@@ -112,6 +116,42 @@ def resolve_minimax_api_key(explicit: str | None = None) -> str | None:
         return explicit
 
     return os.getenv("MINIMAX_API_KEY")
+
+
+def resolve_novita_base_url(explicit: str | None = None) -> str:
+    """Resolve the base URL for Novita AI services."""
+
+    candidates = (
+        explicit,
+        os.getenv("LEANN_NOVITA_BASE_URL"),
+        os.getenv("NOVITA_BASE_URL"),
+        os.getenv("OPENAI_BASE_URL"),  # Fallback to OpenAI base URL
+    )
+
+    for candidate in candidates:
+        if candidate:
+            return _clean_url(candidate)
+
+    return _clean_url(_DEFAULT_NOVITA_BASE_URL)
+
+
+def resolve_novita_api_key(explicit: str | None = None) -> str | None:
+    """Resolve the API key for Novita AI services."""
+
+    if explicit:
+        return explicit
+
+    novita_key = os.getenv("NOVITA_API_KEY")
+    if novita_key:
+        return novita_key
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        logger.warning(
+            "NOVITA_API_KEY not set, falling back to OPENAI_API_KEY. "
+            "This may cause authentication issues if the OpenAI key is not valid for Novita AI."
+        )
+    return openai_key
 
 
 def encode_provider_options(options: dict[str, Any] | None) -> str | None:

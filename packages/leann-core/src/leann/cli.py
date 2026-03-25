@@ -495,7 +495,7 @@ Examples:
             "--llm",
             type=str,
             default="ollama",
-            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax"],
+            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax", "novita"],
             help="LLM provider (default: ollama)",
         )
         ask_parser.add_argument(
@@ -558,7 +558,7 @@ Examples:
             "--llm",
             type=str,
             default="ollama",
-            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax"],
+            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax", "novita"],
             help="LLM provider (default: ollama)",
         )
         react_parser.add_argument(
