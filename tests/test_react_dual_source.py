@@ -3,32 +3,31 @@ Tests for ReAct agent dual-source routing (issue #283).
 Covers: prompt adaptation, web fallback, visit_page errors, routing, and pipeline.
 """
 
-import tempfile
 from unittest.mock import MagicMock, patch
 
-from leann.api import LeannBuilder, LeannSearcher
+from leann.api import SearchResult
 from leann.react_agent import ReActAgent
 from leann.web_search import WebSearcher
 
 
-def _make_index():
-    """Create a temp index and return (tmpdir, index_path, searcher)."""
-    tmpdir = tempfile.mkdtemp()
-    index_path = f"{tmpdir}/test.leann"
-    builder = LeannBuilder(backend_name="hnsw", embedding_model="BAAI/bge-small-en-v1.5")
-    builder.add_text(
-        "LEANN achieves 97% storage reduction via graph pruning.", metadata={"source": "docs"}
-    )
-    builder.add_text(
-        "The search function uses HNSW for approximate nearest neighbors.",
-        metadata={"source": "code"},
-    )
-    builder.add_text(
-        "Vector databases store embeddings for semantic search.", metadata={"source": "blog"}
-    )
-    builder.build_index(index_path)
-    searcher = LeannSearcher(index_path)
-    return tmpdir, index_path, searcher
+def _make_searcher() -> MagicMock:
+    """Create a lightweight mocked searcher for deterministic unit tests."""
+    searcher = MagicMock()
+    searcher.search.return_value = [
+        SearchResult(
+            id="1",
+            score=0.91,
+            text="LEANN achieves 97% storage reduction via graph pruning.",
+            metadata={"source": "docs"},
+        ),
+        SearchResult(
+            id="2",
+            score=0.83,
+            text="The search function uses HNSW for approximate nearest neighbors.",
+            metadata={"source": "code"},
+        ),
+    ]
+    return searcher
 
 
 # ── 1. Dual-source presence ──────────────────────────────────────────
@@ -36,7 +35,7 @@ def _make_index():
 
 def test_prompt_includes_web_tools_when_key_present():
     """When SERPER_API_KEY is set, prompt should list all three tools."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
     agent = ReActAgent(searcher=searcher, llm=MagicMock(), serper_api_key="test-key")
     prompt = agent._create_react_prompt("test question", 1, [])
     assert "web_search" in prompt
@@ -47,7 +46,7 @@ def test_prompt_includes_web_tools_when_key_present():
 
 def test_prompt_excludes_web_tools_when_no_key():
     """When no SERPER_API_KEY, prompt should only show leann_search."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
     with patch.dict("os.environ", {}, clear=False):
         agent = ReActAgent(searcher=searcher, llm=MagicMock(), serper_api_key=None)
     prompt = agent._create_react_prompt("test question", 1, [])
@@ -61,7 +60,7 @@ def test_prompt_excludes_web_tools_when_no_key():
 
 def test_local_only_routing():
     """Agent uses leann_search for local queries."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
     mock_llm = MagicMock()
     mock_llm.ask.side_effect = [
         'Thought: This is about our codebase.\nAction: leann_search("LEANN storage reduction")',
@@ -77,7 +76,7 @@ def test_local_only_routing():
 
 def test_web_only_routing():
     """Agent uses web_search for web queries (mocked)."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
 
     with patch.object(WebSearcher, "search") as mock_web:
         mock_web.return_value = [
@@ -104,7 +103,7 @@ def test_web_only_routing():
 
 def test_mixed_routing_local_then_web():
     """Agent uses leann_search first, then web_search."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
 
     with patch.object(WebSearcher, "search") as mock_web:
         mock_web.return_value = [
@@ -135,7 +134,7 @@ def test_mixed_routing_local_then_web():
 
 def test_web_results_formatted_as_observations():
     """Web search results are properly formatted and passed to the next iteration."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
 
     with patch.object(WebSearcher, "search") as mock_web:
         mock_web.return_value = [
@@ -159,7 +158,7 @@ def test_web_results_formatted_as_observations():
 
 def test_visit_page_content_truncated():
     """visit_page content is truncated to 15k chars."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
 
     with patch.object(WebSearcher, "get_page_content") as mock_fetch:
         mock_fetch.return_value = "x" * 20000
@@ -181,7 +180,7 @@ def test_visit_page_content_truncated():
 
 def test_leann_search_results_include_scores():
     """Local search results include scores and text snippets."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
     mock_llm = MagicMock()
     mock_llm.ask.side_effect = [
         'Thought: Search locally.\nAction: leann_search("LEANN")',
@@ -200,7 +199,7 @@ def test_leann_search_results_include_scores():
 
 def test_web_search_no_api_key_graceful():
     """web_search without API key returns clear fallback message, not a crash."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
 
     mock_llm = MagicMock()
     mock_llm.ask.side_effect = [
@@ -220,7 +219,7 @@ def test_web_search_no_api_key_graceful():
 
 def test_web_search_invalid_key_graceful():
     """Invalid Serper key returns error, agent continues."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
 
     with patch.object(WebSearcher, "search") as mock_web:
         mock_web.return_value = [
@@ -242,7 +241,7 @@ def test_web_search_invalid_key_graceful():
 
 def test_visit_page_404_graceful():
     """visit_page on a 404 URL returns error string, agent continues."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
 
     with patch.object(WebSearcher, "get_page_content") as mock_fetch:
         mock_fetch.return_value = "Error fetching content: 404 Not Found"
@@ -262,7 +261,7 @@ def test_visit_page_404_graceful():
 
 def test_max_iterations_with_mixed_sources():
     """Agent hitting max iterations with mixed sources still produces an answer."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
 
     with patch.object(WebSearcher, "search") as mock_web:
         mock_web.return_value = [
@@ -290,7 +289,7 @@ def test_max_iterations_with_mixed_sources():
 
 def test_search_history_has_source_field():
     """search_history entries include 'source' field for easy inspection."""
-    _, _, searcher = _make_index()
+    searcher = _make_searcher()
     mock_llm = MagicMock()
     mock_llm.ask.side_effect = [
         'Thought: Local search.\nAction: leann_search("test")',
