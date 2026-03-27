@@ -16,9 +16,16 @@ def _make_index():
     tmpdir = tempfile.mkdtemp()
     index_path = f"{tmpdir}/test.leann"
     builder = LeannBuilder(backend_name="hnsw", embedding_model="BAAI/bge-small-en-v1.5")
-    builder.add_text("LEANN achieves 97% storage reduction via graph pruning.", metadata={"source": "docs"})
-    builder.add_text("The search function uses HNSW for approximate nearest neighbors.", metadata={"source": "code"})
-    builder.add_text("Vector databases store embeddings for semantic search.", metadata={"source": "blog"})
+    builder.add_text(
+        "LEANN achieves 97% storage reduction via graph pruning.", metadata={"source": "docs"}
+    )
+    builder.add_text(
+        "The search function uses HNSW for approximate nearest neighbors.",
+        metadata={"source": "code"},
+    )
+    builder.add_text(
+        "Vector databases store embeddings for semantic search.", metadata={"source": "blog"}
+    )
     builder.build_index(index_path)
     searcher = LeannSearcher(index_path)
     return tmpdir, index_path, searcher
@@ -61,7 +68,7 @@ def test_local_only_routing():
         "Thought: I have the answer.\nAction: Final Answer: LEANN saves 97% storage.",
     ]
     agent = ReActAgent(searcher=searcher, llm=mock_llm, max_iterations=3)
-    answer = agent.run("How does LEANN reduce storage?", top_k=2)
+    agent.run("How does LEANN reduce storage?", top_k=2)
 
     assert len(agent.search_history) >= 1
     assert agent.search_history[0]["source"] == "local"
@@ -74,7 +81,11 @@ def test_web_only_routing():
 
     with patch.object(WebSearcher, "search") as mock_web:
         mock_web.return_value = [
-            {"title": "Python 3.13 News", "link": "https://python.org", "snippet": "New features in 3.13"}
+            {
+                "title": "Python 3.13 News",
+                "link": "https://python.org",
+                "snippet": "New features in 3.13",
+            }
         ]
         mock_llm = MagicMock()
         mock_llm.ask.side_effect = [
@@ -84,7 +95,7 @@ def test_web_only_routing():
         agent = ReActAgent(
             searcher=searcher, llm=mock_llm, max_iterations=3, serper_api_key="test-key"
         )
-        answer = agent.run("What's new in Python 3.13?", top_k=2)
+        agent.run("What's new in Python 3.13?", top_k=2)
 
         assert len(agent.search_history) >= 1
         assert agent.search_history[0]["source"] == "web"
@@ -97,7 +108,11 @@ def test_mixed_routing_local_then_web():
 
     with patch.object(WebSearcher, "search") as mock_web:
         mock_web.return_value = [
-            {"title": "Best Practices", "link": "https://example.com", "snippet": "Current best practices..."}
+            {
+                "title": "Best Practices",
+                "link": "https://example.com",
+                "snippet": "Current best practices...",
+            }
         ]
         mock_llm = MagicMock()
         mock_llm.ask.side_effect = [
@@ -108,7 +123,7 @@ def test_mixed_routing_local_then_web():
         agent = ReActAgent(
             searcher=searcher, llm=mock_llm, max_iterations=5, serper_api_key="test-key"
         )
-        answer = agent.run("Compare our search with best practices", top_k=2)
+        agent.run("Compare our search with best practices", top_k=2)
 
         assert len(agent.search_history) >= 2
         assert agent.search_history[0]["source"] == "local"
@@ -208,7 +223,9 @@ def test_web_search_invalid_key_graceful():
     _, _, searcher = _make_index()
 
     with patch.object(WebSearcher, "search") as mock_web:
-        mock_web.return_value = [{"title": "Error", "link": "", "snippet": "Web Search failed:401 Unauthorized"}]
+        mock_web.return_value = [
+            {"title": "Error", "link": "", "snippet": "Web Search failed:401 Unauthorized"}
+        ]
         mock_llm = MagicMock()
         mock_llm.ask.side_effect = [
             'Thought: Try web.\nAction: web_search("test")',

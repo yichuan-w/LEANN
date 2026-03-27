@@ -230,10 +230,7 @@ class ReActAgent:
                 else:
                     web_results = self.web_searcher.search(query_str, top_k=top_k)
 
-                    is_error = (
-                        len(web_results) == 1
-                        and web_results[0].get("title") == "Error"
-                    )
+                    is_error = len(web_results) == 1 and web_results[0].get("title") == "Error"
                     if is_error:
                         observation = (
                             f"Web search failed: {web_results[0].get('snippet', 'Unknown error')}. "
