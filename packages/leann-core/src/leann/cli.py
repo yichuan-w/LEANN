@@ -2841,7 +2841,7 @@ Examples:
         import os
 
         try:
-            from .server import main as server_main
+            from .server import serve_async
 
             # Override host/port if provided via CLI args
             if args.host:
@@ -2849,9 +2849,9 @@ Examples:
             if args.port:
                 os.environ["LEANN_SERVER_PORT"] = str(args.port)
 
-            # Run the server (this is blocking, so we don't await it)
-            # The server_main function handles uvicorn.run which blocks
-            server_main()
+            # Must await uvicorn on this loop: sync uvicorn.run() starts a nested loop
+            # and fails with "Cannot run the event loop while another loop is running".
+            await serve_async()
         except ImportError as e:
             print(
                 "❌ HTTP server dependencies not installed.\n"
