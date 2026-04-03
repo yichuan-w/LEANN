@@ -104,18 +104,20 @@ class FileSynchronizer:
         except ValueError:
             # Empty directory — no files to hash
             return file_hashes
-        # print('reader.iter_data() length', len(list(reader.iter_data())))
 
         for file in reader.iter_data():
-            if len(file) > 1:
-                # print('file length is greater than 1', file)
-                continue  # SimpleDirectoryReader can load more than 1 documents for weird file types e.g. PDFs
-            file = file[0]
+            if not file:
+                continue
+            file_path = file[0].metadata.get("file_path", "")
+            if not file_path:
+                continue
             try:
-                file_hash = hash_data(file.text)
-                file_hashes[file.metadata["file_path"]] = file_hash
+                # Combine text from all documents for this file (e.g., multi-page PDFs produce multiple docs)
+                combined_text = "".join(doc.text for doc in file)
+                file_hash = hash_data(combined_text)
+                file_hashes[file_path] = file_hash
             except Exception:
-                logger.error(f"Cannot hash file {file.metadata['file_path']}")
+                logger.error(f"Cannot hash file {file_path}")
                 continue
 
         return file_hashes
