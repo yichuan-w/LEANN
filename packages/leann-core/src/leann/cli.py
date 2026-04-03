@@ -170,6 +170,10 @@ Examples:
   leann search my-docs "query"                                           # Search in my-docs index
   leann ask my-docs "question"                                           # Ask my-docs index
   leann react my-docs "complex question"                                 # Use ReAct agent for multiturn retrieval
+  leann index-browser chrome                                             # Index Chrome browser history
+  leann index-email                                                      # Index Apple Mail
+  leann index-imessage                                                   # Index iMessage conversations
+  leann index-chatgpt --export-path ~/chatgpt-export.zip                 # Index ChatGPT export
   leann list                                                             # List all stored indexes
   leann remove my-docs                                                   # Remove an index (local first, then global)
             """,
@@ -590,6 +594,97 @@ Examples:
             type=str,
             default=None,
             help="API key for cloud LLM providers (OpenAI, Anthropic)",
+        )
+        react_parser.add_argument(
+            "--serper-api-key",
+            type=str,
+            default=None,
+            help="Serper API key for web search (or set SERPER_API_KEY env var)",
+        )
+        react_parser.add_argument(
+            "--jina-api-key",
+            type=str,
+            default=None,
+            help="Jina API key for page content fetching (or set JINA_API_KEY env var)",
+        )
+
+        # ── index-* commands: data source indexing ──────────────────────
+
+        def _add_index_args(p, default_name):
+            """Add common embedding and index args to an index-* subparser."""
+            p.add_argument(
+                "--index-name",
+                type=str,
+                default=default_name,
+                help=f"Index name (default: {default_name})",
+            )
+            p.add_argument(
+                "--embedding-model", type=str, default="facebook/contriever", help="Embedding model"
+            )
+            p.add_argument(
+                "--embedding-mode",
+                type=str,
+                default="sentence-transformers",
+                choices=["sentence-transformers", "openai", "mlx", "ollama"],
+                help="Embedding backend",
+            )
+            p.add_argument("--embedding-host", type=str, default=None, help="Ollama embedding host")
+            p.add_argument(
+                "--embedding-api-base",
+                type=str,
+                default=None,
+                help="OpenAI-compatible embedding base URL",
+            )
+            p.add_argument("--embedding-api-key", type=str, default=None, help="Embedding API key")
+            p.add_argument(
+                "--max-count", type=int, default=1000, help="Max items to index (default: 1000)"
+            )
+            p.add_argument(
+                "--no-recompute",
+                action="store_true",
+                help="Disable embedding recomputation (stores full embeddings)",
+            )
+
+        idx_browser = subparsers.add_parser(
+            "index-browser", help="Index browser history (Chrome/Brave)"
+        )
+        _add_index_args(idx_browser, "browser_history")
+        idx_browser.add_argument(
+            "browser",
+            nargs="?",
+            default="chrome",
+            choices=["chrome", "brave"],
+            help="Browser to index (default: chrome)",
+        )
+
+        idx_email = subparsers.add_parser("index-email", help="Index Apple Mail")
+        _add_index_args(idx_email, "email")
+
+        idx_calendar = subparsers.add_parser("index-calendar", help="Index Apple Calendar events")
+        _add_index_args(idx_calendar, "calendar")
+
+        idx_imessage = subparsers.add_parser("index-imessage", help="Index iMessage conversations")
+        _add_index_args(idx_imessage, "imessage")
+
+        idx_wechat = subparsers.add_parser("index-wechat", help="Index WeChat chat history")
+        _add_index_args(idx_wechat, "wechat")
+        idx_wechat.add_argument(
+            "--export-dir", type=str, required=True, help="Path to WeChat JSON export directory"
+        )
+
+        idx_chatgpt = subparsers.add_parser("index-chatgpt", help="Index ChatGPT export")
+        _add_index_args(idx_chatgpt, "chatgpt")
+        idx_chatgpt.add_argument(
+            "--export-path",
+            type=str,
+            required=True,
+            help="Path to ChatGPT export (chat.html or .zip)",
+        )
+
+        idx_claude = subparsers.add_parser("index-claude", help="Index Claude export")
+        _add_index_args(idx_claude, "claude")
+        idx_claude.add_argument(
+            "--export-path", type=str, required=True, help="Path to Claude export (.json or .zip)"
         )
 
         # List command
@@ -2760,6 +2855,177 @@ Examples:
 
             _ask_once(query)
 
+    # ── index-* shared handler ──────────────────────────────────────
+
+    async def _build_index_from_documents(self, args, documents: list):
+        """Shared builder for all index-* commands.
+
+        Accepts a list of llama-index Document objects (or dicts with 'text' and
+        'metadata' keys), builds a LEANN index with proper embedding and
+        recomputation settings.
+        """
+        if not documents:
+            print("No documents loaded — nothing to index.")
+            return
+
+        index_name = args.index_name
+        index_path = self.get_index_path(index_name)
+        is_recompute = not getattr(args, "no_recompute", False)
+
+        print(f"Building index '{index_name}' with {len(documents)} documents...")
+        print(f"  Embedding: {args.embedding_model} ({args.embedding_mode})")
+        print(f"  Recompute: {is_recompute}")
+
+        for attr in (
+            "embedding_prompt_template",
+            "query_prompt_template",
+            "embedding_host",
+            "embedding_api_base",
+            "embedding_api_key",
+        ):
+            if not hasattr(args, attr):
+                setattr(args, attr, None)
+
+        embedding_options = self._build_embedding_options(args) or None
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options,
+            is_recompute=is_recompute,
+        )
+
+        for doc in documents:
+            if hasattr(doc, "text"):
+                builder.add_text(
+                    doc.text, metadata=doc.metadata if hasattr(doc, "metadata") else {}
+                )
+            elif isinstance(doc, dict):
+                builder.add_text(doc["text"], metadata=doc.get("metadata", {}))
+
+        builder.build_index(index_path)
+        self.register_project_dir()
+        print(f"Index '{index_name}' built at {index_path}")
+
+    async def index_browser(self, args):
+        """Index browser history (Chrome or Brave)."""
+        from apps.history_data.history import ChromeHistoryReader
+
+        browser = getattr(args, "browser", "chrome")
+        profile_paths = {
+            "chrome": "~/Library/Application Support/Google/Chrome/Default",
+            "brave": "~/Library/Application Support/BraveSoftware/Brave-Browser/Default",
+        }
+        profile = os.path.expanduser(profile_paths.get(browser, profile_paths["chrome"]))
+        reader = ChromeHistoryReader()
+        docs = reader.load_data(chrome_profile_path=profile, max_count=args.max_count)
+        print(f"Loaded {len(docs)} {browser} history entries")
+        await self._build_index_from_documents(args, docs)
+
+    async def index_email(self, args):
+        """Index Apple Mail."""
+        from apps.email_data.LEANN_email_reader import EmlxReader, find_all_messages_directories
+
+        msg_dirs = find_all_messages_directories()
+        if not msg_dirs:
+            print("No Apple Mail Messages directories found.")
+            return
+        reader = EmlxReader()
+        docs = []
+        for msg_dir in msg_dirs:
+            docs.extend(reader.load_data(str(msg_dir), max_count=args.max_count))
+        await self._build_index_from_documents(args, docs)
+
+    async def index_calendar(self, args):
+        """Index Apple Calendar events."""
+        import shutil
+        import sqlite3
+
+        from llama_index.core import Document
+
+        docs = []
+        calendar_cache = Path.home() / "Library/Calendars/Calendar Cache"
+        if not calendar_cache.exists():
+            print("Apple Calendar Cache not found.")
+            return
+
+        temp_db = "/tmp/leann_calendar_index_copy"
+        try:
+            shutil.copy2(calendar_cache, temp_db)
+            conn = sqlite3.connect(temp_db)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT summary, description, location,
+                       datetime(start_date + 978307200, 'unixepoch', 'localtime') as start,
+                       datetime(end_date + 978307200, 'unixepoch', 'localtime') as end_time
+                FROM CI_EVENT ORDER BY start_date DESC LIMIT ?
+                """,
+                (args.max_count,),
+            )
+            for summary, description, location, start, end_time in cursor.fetchall():
+                if not summary:
+                    continue
+                text = (
+                    f"Event: {summary}\nStart: {start}\nEnd: {end_time}\n"
+                    f"Location: {location or ''}\nDescription: {description or ''}"
+                )
+                docs.append(Document(text=text, metadata={"event": summary, "start": start}))
+            conn.close()
+        except Exception as e:
+            print(f"Error reading Apple Calendar: {e}")
+        finally:
+            if os.path.exists(temp_db):
+                os.remove(temp_db)
+        await self._build_index_from_documents(args, docs)
+
+    async def index_imessage(self, args):
+        """Index iMessage conversations."""
+        from apps.imessage_data.imessage_reader import IMessageReader
+
+        reader = IMessageReader(concatenate_conversations=True)
+        docs = reader.load_data()
+        print(f"Loaded {len(docs)} iMessage conversations")
+        await self._build_index_from_documents(args, docs)
+
+    async def index_wechat(self, args):
+        """Index WeChat chat history from exported JSON."""
+        from apps.history_data.wechat_history import WeChatHistoryReader
+
+        reader = WeChatHistoryReader()
+        docs = reader.load_data(
+            input_dir=args.export_dir,
+            max_count=args.max_count,
+            concatenate_messages=True,
+        )
+        print(f"Loaded {len(docs)} WeChat conversations")
+        await self._build_index_from_documents(args, docs)
+
+    async def index_chatgpt(self, args):
+        """Index ChatGPT export data."""
+        from apps.chatgpt_data.chatgpt_reader import ChatGPTReader
+
+        reader = ChatGPTReader(concatenate_conversations=True)
+        docs = reader.load_data(
+            input_dir=args.export_path,
+            max_count=args.max_count,
+        )
+        print(f"Loaded {len(docs)} ChatGPT conversations")
+        await self._build_index_from_documents(args, docs)
+
+    async def index_claude(self, args):
+        """Index Claude export data."""
+        from apps.claude_data.claude_reader import ClaudeReader
+
+        reader = ClaudeReader(concatenate_conversations=True)
+        docs = reader.load_data(
+            input_dir=args.export_path,
+            max_count=args.max_count,
+        )
+        print(f"Loaded {len(docs)} Claude conversations")
+        await self._build_index_from_documents(args, docs)
+
     async def react_agent(self, args):
         """Run ReAct agent for multiturn retrieval."""
         index_name = args.index_name
@@ -2823,7 +3089,14 @@ Examples:
             index_path=index_path,
             llm_config=llm_config,
             max_iterations=args.max_iterations,
+            serper_api_key=getattr(args, "serper_api_key", None),
+            jina_api_key=getattr(args, "jina_api_key", None),
         )
+
+        if agent.web_search_available:
+            print("🌐 Web search enabled (Serper API key detected)")
+        else:
+            print("📚 Local search only (no Serper API key)")
 
         print(f"\n🔍 Question: {query}\n")
         answer = agent.run(query, top_k=args.top_k)
@@ -2832,8 +3105,10 @@ Examples:
         if agent.search_history:
             print(f"\n📊 Search History ({len(agent.search_history)} iterations):")
             for entry in agent.search_history:
+                source_tag = f"[{entry.get('source', 'local')}]"
                 print(
-                    f"  {entry['iteration']}. {entry['action']} ({entry['results_count']} results)"
+                    f"  {entry['iteration']}. {source_tag} {entry['action']} "
+                    f"({entry['results_count']} results)"
                 )
 
     async def serve_api(self, args):
@@ -2841,7 +3116,7 @@ Examples:
         import os
 
         try:
-            from .server import main as server_main
+            from .server import serve_async
 
             # Override host/port if provided via CLI args
             if args.host:
@@ -2849,9 +3124,9 @@ Examples:
             if args.port:
                 os.environ["LEANN_SERVER_PORT"] = str(args.port)
 
-            # Run the server (this is blocking, so we don't await it)
-            # The server_main function handles uvicorn.run which blocks
-            server_main()
+            # Must await uvicorn on this loop: sync uvicorn.run() starts a nested loop
+            # and fails with "Cannot run the event loop while another loop is running".
+            await serve_async()
         except ImportError as e:
             print(
                 "❌ HTTP server dependencies not installed.\n"
@@ -2904,6 +3179,26 @@ Examples:
                 await self.react_agent(args)
         elif args.command == "serve":
             await self.serve_api(args)
+        elif args.command in (
+            "index-browser",
+            "index-email",
+            "index-calendar",
+            "index-imessage",
+            "index-wechat",
+            "index-chatgpt",
+            "index-claude",
+        ):
+            handler = {
+                "index-browser": self.index_browser,
+                "index-email": self.index_email,
+                "index-calendar": self.index_calendar,
+                "index-imessage": self.index_imessage,
+                "index-wechat": self.index_wechat,
+                "index-chatgpt": self.index_chatgpt,
+                "index-claude": self.index_claude,
+            }[args.command]
+            with suppress_cpp_output(suppress):
+                await handler(args)
         else:
             parser.print_help()
 
