@@ -8,8 +8,8 @@ version = "0.3.7"
 dependencies = ["leann-core==0.3.7", "numpy", "protobuf>=3.19.0"]
 
 [tool.scikit-build]
-# Key: simplified CMake path
-cmake.source-dir = "third_party/DiskANN"
+# Root CMake forces USE_TCMALLOC=OFF before DiskANN options (see CMakeLists.txt).
+cmake.source-dir = "."
 # Key: Python package in root directory, paths match exactly
 wheel.packages = ["leann_backend_diskann"]
 # Use default redirect mode
@@ -17,4 +17,4 @@ editable.mode = "redirect"
 cmake.build-type = "Release"
 build.verbose = true
 # Let CMake find packages via Homebrew prefix
-cmake.define = {CMAKE_PREFIX_PATH = {env = "CMAKE_PREFIX_PATH"}, OpenMP_ROOT = {env = "OpenMP_ROOT"}}
+cmake.define = {CMAKE_PREFIX_PATH = {env = "CMAKE_PREFIX_PATH"}, OpenMP_ROOT = {env = "OpenMP_ROOT"}, USE_TCMALLOC = "OFF"}

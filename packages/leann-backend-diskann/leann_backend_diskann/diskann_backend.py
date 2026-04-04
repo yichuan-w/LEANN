@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import multiprocessing as mp
 import os
 import struct
 import sys
@@ -251,20 +252,82 @@ class DiskannBuilder(LeannBackendBuilderInterface):
             smart_build_mem = build_kwargs.get("build_memory_maximum", 8.0)
 
         try:
-            from . import _diskannpy as diskannpy  # type: ignore
+            # Build in a child process so native crashes/exits in diskannpy
+            # do not terminate the main CLI process silently.
+            def _run_build(
+                work_dir: str,
+                metric: Any,
+                data_file: str,
+                prefix: str,
+                complexity: int,
+                graph_degree: int,
+                search_mem: float,
+                build_mem: float,
+                num_threads: int,
+                pq_disk_bytes: int,
+                out_q: "mp.Queue[tuple[bool, str]]",
+            ) -> None:
+                try:
+                    from . import _diskannpy as diskannpy  # type: ignore
 
-            with chdir(index_dir):
-                diskannpy.build_disk_float_index(
+                    with chdir(work_dir):
+                        diskannpy.build_disk_float_index(
+                            metric,
+                            data_file,
+                            prefix,
+                            complexity,
+                            graph_degree,
+                            search_mem,
+                            build_mem,
+                            num_threads,
+                            pq_disk_bytes,
+                            "",
+                        )
+                    out_q.put((True, "ok"))
+                except Exception as e:
+                    out_q.put((False, str(e)))
+
+            queue: mp.Queue[tuple[bool, str]] = mp.Queue()
+            proc = mp.Process(
+                target=_run_build,
+                args=(
+                    str(index_dir),
                     metric_enum,
                     data_filename,
                     index_prefix,
-                    build_kwargs.get("complexity", 64),
-                    build_kwargs.get("graph_degree", 32),
-                    build_kwargs.get("search_memory_maximum", smart_search_mem),
-                    build_kwargs.get("build_memory_maximum", smart_build_mem),
-                    build_kwargs.get("num_threads", 8),
-                    build_kwargs.get("pq_disk_bytes", 0),
-                    "",
+                    int(build_kwargs.get("complexity", 64)),
+                    int(build_kwargs.get("graph_degree", 32)),
+                    float(build_kwargs.get("search_memory_maximum", smart_search_mem)),
+                    float(build_kwargs.get("build_memory_maximum", smart_build_mem)),
+                    int(build_kwargs.get("num_threads", 8)),
+                    int(build_kwargs.get("pq_disk_bytes", 0)),
+                    queue,
+                ),
+            )
+            proc.start()
+            proc.join()
+
+            if proc.exitcode != 0:
+                raise RuntimeError(
+                    f"DiskANN native build process exited unexpectedly with code {proc.exitcode}. "
+                    "Re-run with LEANN_LOG_LEVEL=DEBUG and check system logs."
+                )
+            if queue.empty():
+                raise RuntimeError(
+                    "DiskANN native build exited without status message. "
+                    "This usually indicates a native termination inside diskannpy."
+                )
+            ok, msg = queue.get_nowait()
+            if not ok:
+                raise RuntimeError(f"DiskANN build failed: {msg}")
+
+            # Validate expected output to catch silent native failures.
+            expected_disk_index = index_dir / f"{index_prefix}_disk.index"
+            if not expected_disk_index.exists():
+                produced = sorted(str(p.name) for p in index_dir.glob(f"{index_prefix}*"))
+                raise RuntimeError(
+                    "DiskANN build finished but expected index file is missing: "
+                    f"{expected_disk_index.name}. Produced files: {produced}"
                 )
 
             # Auto-partition if is_recompute is enabled
