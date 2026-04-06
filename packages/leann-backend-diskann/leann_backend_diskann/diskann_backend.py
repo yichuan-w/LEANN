@@ -218,6 +218,21 @@ class DiskannBuilder(LeannBackendBuilderInterface):
             logger.warning(f"Converting data to float32, shape: {data.shape}")
             data = data.astype(np.float32)
 
+        # DiskANN uses 256 PQ centroids by default for product quantization.
+        # When num_vectors < 256, MKL's cblas_sgemm receives degenerate matrix dimensions
+        # and emits non-fatal "Parameter N was incorrect" errors to stderr on Windows.
+        # The index still builds correctly, but the noise can be confusing.
+        # See: https://github.com/yichuan-w/LEANN/issues/280
+        _NUM_PQ_CENTROIDS = 256
+        if data.shape[0] < _NUM_PQ_CENTROIDS:
+            logger.warning(
+                f"DiskANN dataset has only {data.shape[0]} vector(s), which is fewer than "
+                f"the default number of PQ centroids ({_NUM_PQ_CENTROIDS}). "
+                f"On Windows with Intel MKL this produces non-fatal 'cblas_sgemm parameter' "
+                f"errors in the output — the index will still build correctly. "
+                f"Consider using '--backend-name hnsw' for small datasets to avoid these messages."
+            )
+
         data_filename = f"{index_prefix}_data.bin"
         _write_vectors_to_bin(data, index_dir / data_filename)
 
