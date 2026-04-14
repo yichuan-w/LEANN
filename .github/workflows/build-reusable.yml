@@ -636,11 +636,18 @@ jobs:
           uv python install 3.13
           uv venv --python 3.13
           source .venv/bin/activate || source .venv/Scripts/activate
-          uv pip install --find-links wheels leann-core
-          uv pip install --find-links wheels leann-backend-hnsw
-          uv pip install --find-links wheels leann-backend-diskann
-          uv pip install --find-links wheels leann-backend-ivf
-          uv pip install --find-links wheels leann
+          # Flatten artifact subdirectories into a single wheelhouse.
+          # actions/download-artifact stores each artifact in its own folder and
+          # pip/uv --find-links does not recurse into nested directories.
+          mkdir -p wheelhouse
+          find wheels -name "*.whl" -exec cp {} wheelhouse/ \;
+
+          # Install only from wheels produced in this workflow run.
+          uv pip install --no-index --find-links wheelhouse leann-core
+          uv pip install --no-index --find-links wheelhouse leann-backend-hnsw
+          uv pip install --no-index --find-links wheelhouse leann-backend-diskann
+          uv pip install --no-index --find-links wheelhouse leann-backend-ivf
+          uv pip install --no-index --find-links wheelhouse leann
 
       - name: Import & tiny runtime check
         env:
