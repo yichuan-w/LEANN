@@ -186,7 +186,7 @@ async def serve_async() -> None:
         ) from e
 
     app = create_app()
-    host = os.getenv("LEANN_SERVER_HOST", "0.0.0.0")
+    host = os.getenv("LEANN_SERVER_HOST", "127.0.0.1")
     port = int(os.getenv("LEANN_SERVER_PORT", "8000"))
     config = uvicorn.Config(app, host=host, port=port)
     server = uvicorn.Server(config)

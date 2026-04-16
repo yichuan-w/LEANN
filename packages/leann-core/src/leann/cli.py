@@ -702,7 +702,7 @@ Examples:
             "serve", help="Start HTTP API server for LEANN vector DB"
         )
         serve_parser.add_argument(
-            "--host", type=str, default=None, help="Host to bind to (default: 0.0.0.0)"
+            "--host", type=str, default=None, help="Host to bind to (default: 127.0.0.1)"
         )
         serve_parser.add_argument(
             "--port", type=int, default=None, help="Port to bind to (default: 8000)"
