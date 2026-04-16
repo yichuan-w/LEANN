@@ -642,12 +642,13 @@ jobs:
           mkdir -p wheelhouse
           find wheels -name "*.whl" -exec cp {} wheelhouse/ \;
 
-          # Install only from wheels produced in this workflow run.
-          uv pip install --no-index --find-links wheelhouse leann-core
-          uv pip install --no-index --find-links wheelhouse leann-backend-hnsw
-          uv pip install --no-index --find-links wheelhouse leann-backend-diskann
-          uv pip install --no-index --find-links wheelhouse leann-backend-ivf
-          uv pip install --no-index --find-links wheelhouse leann
+          # Prefer wheels produced in this workflow run for our internal packages,
+          # but still allow dependencies to be installed from the normal index.
+          uv pip install --find-links wheelhouse leann-core
+          uv pip install --find-links wheelhouse leann-backend-hnsw
+          uv pip install --find-links wheelhouse leann-backend-diskann
+          uv pip install --find-links wheelhouse leann-backend-ivf
+          uv pip install --find-links wheelhouse leann
 
       - name: Import & tiny runtime check
         env:
