@@ -63,12 +63,10 @@ def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
     else:
         project_dir = Path(project_dir)
 
-    # Only register directories that have some kind of LEANN content
-    # Either .leann/indexes/ (CLI format) or *.leann.meta.json files (apps format)
+    # Only register directories that have some kind of LEANN content.
+    # Check CLI-format first to avoid an expensive rglob on large directories.
     has_cli_indexes = (project_dir / ".leann" / "indexes").exists()
-    has_app_indexes = any(project_dir.rglob("*.leann.meta.json"))
-
-    if not (has_cli_indexes or has_app_indexes):
+    if not has_cli_indexes and not any(project_dir.rglob("*.leann.meta.json")):
         # Don't register if there are no LEANN indexes
         return
 
