@@ -35,9 +35,7 @@ def test_leann_core_numpy_is_bounded_below_3():
     data = _load_leann_core_pyproject()
     deps = data["project"].get("dependencies", [])
 
-    assert any(
-        dep.startswith("numpy") and ">=1.20.0" in dep and "<3" in dep for dep in deps
-    )
+    assert any(dep.startswith("numpy") and ">=1.20.0" in dep and "<3" in dep for dep in deps)
 
 
 def test_leann_core_cpu_extra_pins_cpu_torch():
