@@ -5,7 +5,7 @@ LEANN is a revolutionary vector database that democratizes personal AI. Transfor
 ## Installation
 
 ```bash
-# Default installation (includes both HNSW and DiskANN backends)
+# Default installation (HNSW, DiskANN, and IVF backends)
 uv pip install leann
 
 # CPU-only install (Linux)
@@ -23,8 +23,8 @@ from leann import LeannBuilder, LeannSearcher, LeannChat
 from pathlib import Path
 INDEX_PATH = str(Path("./").resolve() / "demo.leann")
 
-# Build an index (choose backend: "hnsw" or "diskann")
-builder = LeannBuilder(backend_name="hnsw")  # or "diskann" for large-scale deployments
+# Build an index (choose backend: "hnsw", "diskann", or "ivf" for incremental updates)
+builder = LeannBuilder(backend_name="hnsw")  # or "diskann" / "ivf"
 builder.add_text("LEANN saves 97% storage compared to traditional vector databases.")
 builder.add_text("Tung Tung Tung Sahur called—they need their banana‑crocodile hybrid back")
 builder.build_index(INDEX_PATH)

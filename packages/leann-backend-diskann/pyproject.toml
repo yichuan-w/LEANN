@@ -8,8 +8,8 @@ version = "0.3.7"
 dependencies = ["leann-core==0.3.7", "numpy", "protobuf>=3.19.0"]
 
 [tool.scikit-build]
-# Key: simplified CMake path
-cmake.source-dir = "third_party/DiskANN"
+# Root CMake forces USE_TCMALLOC=OFF before DiskANN options (see CMakeLists.txt).
+cmake.source-dir = "."
 # Key: Python package in root directory, paths match exactly
 wheel.packages = ["leann_backend_diskann"]
 # Use default redirect mode

@@ -363,6 +363,11 @@ jobs:
           fi
           cd ../..
 
+          # Build IVF backend (pure Python; depends on leann-core + faiss-cpu at install time)
+          cd packages/leann-backend-ivf
+          uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+          cd ../..
+
           # Build meta package (platform independent)
           cd packages/leann
           uv build
@@ -555,6 +560,13 @@ jobs:
             uv pip install --python "$UV_PY" ./packages/leann-backend-diskann
           fi
 
+          IVF_WHL=$(find packages/leann-backend-ivf/dist -maxdepth 1 -name "*.whl" -print -quit)
+          if [[ -n "$IVF_WHL" ]]; then
+            uv pip install --python "$UV_PY" "$IVF_WHL"
+          else
+            uv pip install --python "$UV_PY" ./packages/leann-backend-ivf
+          fi
+
           LEANN_WHL=$(find packages/leann/dist -maxdepth 1 -name "*.whl" -print -quit)
           if [[ -n "$LEANN_WHL" ]]; then
             uv pip install --python "$UV_PY" "$LEANN_WHL"
@@ -624,10 +636,19 @@ jobs:
           uv python install 3.13
           uv venv --python 3.13
           source .venv/bin/activate || source .venv/Scripts/activate
-          uv pip install --find-links wheels leann-core
-          uv pip install --find-links wheels leann-backend-hnsw
-          uv pip install --find-links wheels leann-backend-diskann
-          uv pip install --find-links wheels leann
+          # Flatten artifact subdirectories into a single wheelhouse.
+          # actions/download-artifact stores each artifact in its own folder and
+          # pip/uv --find-links does not recurse into nested directories.
+          mkdir -p wheelhouse
+          find wheels -name "*.whl" -exec cp {} wheelhouse/ \;
+
+          # Prefer wheels produced in this workflow run for our internal packages,
+          # but still allow dependencies to be installed from the normal index.
+          uv pip install --find-links wheelhouse leann-core
+          uv pip install --find-links wheelhouse leann-backend-hnsw
+          uv pip install --find-links wheelhouse leann-backend-diskann
+          uv pip install --find-links wheelhouse leann-backend-ivf
+          uv pip install --find-links wheelhouse leann
 
       - name: Import & tiny runtime check
         env:
@@ -639,6 +660,7 @@ jobs:
           import leann
           import leann_backend_hnsw as h
           import leann_backend_diskann as d
+          import leann_backend_ivf as ivf
           from leann import LeannBuilder, LeannSearcher
           b = LeannBuilder(backend_name="hnsw")
           b.add_text("hello arch")

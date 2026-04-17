@@ -73,9 +73,18 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
     message(STATUS "Configuring Faiss for ARM64 architecture")
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        # Use SVE optimization level for ARM64 Linux (as seen in Faiss conda build)
-        set(FAISS_OPT_LEVEL "sve" CACHE STRING "" FORCE)
-        message(STATUS "Setting FAISS_OPT_LEVEL to 'sve' for ARM64 Linux")
+        # Default generic: many ARM64 Linux hosts (GitHub ubuntu-*-arm, Ampere Altra,
+        # Graviton2) do not implement SVE. Faiss built with FAISS_OPT_LEVEL=sve uses
+        # -march=armv8-a+sve and can SIGILL on those CPUs. Opt in with
+        # -DLEANN_FAISS_ARM64_SVE=ON for Neoverse V1 / Graviton3+ and similar.
+        option(LEANN_FAISS_ARM64_SVE "Faiss SVE on ARM64 Linux (requires SVE at runtime)" OFF)
+        if(LEANN_FAISS_ARM64_SVE)
+            set(FAISS_OPT_LEVEL "sve" CACHE STRING "" FORCE)
+            message(STATUS "Setting FAISS_OPT_LEVEL to 'sve' for ARM64 Linux (LEANN_FAISS_ARM64_SVE=ON)")
+        else()
+            set(FAISS_OPT_LEVEL "generic" CACHE STRING "" FORCE)
+            message(STATUS "Setting FAISS_OPT_LEVEL to 'generic' for ARM64 Linux")
+        endif()
     else()
         # Use generic optimization for other ARM64 platforms (like macOS)
         set(FAISS_OPT_LEVEL "generic" CACHE STRING "" FORCE)
