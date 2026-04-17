@@ -581,28 +581,21 @@ class LeannBuilder:
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
 
-    def build_index_from_embeddings(self, index_path: str, embeddings_file: str):
-        """
-        Build an index from pre-computed embeddings stored in a pickle file.
+    def build_index_from_arrays(self, index_path: str, ids: list, embeddings: np.ndarray):
+        """Build an index from pre-computed embedding arrays.
+
+        This is the core method for building indexes from pre-computed embeddings.
+        Use this when embeddings are already in memory (e.g., from MLX, GPU computation,
+        or database queries). For pickle-file based workflows, use build_index_from_embeddings().
 
         Args:
             index_path: Path where the index will be saved
-            embeddings_file: Path to pickle file containing (ids, embeddings) tuple
+            ids: List of document IDs (will be converted to strings)
+            embeddings: numpy array of shape (n_documents, embedding_dim)
+
+        Raises:
+            ValueError: If ids and embeddings counts don't match, or dimension mismatch
         """
-        # Load pre-computed embeddings
-        with open(embeddings_file, "rb") as f:
-            data = pickle.load(f)
-
-        if not isinstance(data, tuple) or len(data) != 2:
-            raise ValueError(
-                f"Invalid embeddings file format. Expected tuple with 2 elements, got {type(data)}"
-            )
-
-        ids, embeddings = data
-
-        if not isinstance(embeddings, np.ndarray):
-            raise ValueError(f"Expected embeddings to be numpy array, got {type(embeddings)}")
-
         if len(ids) != embeddings.shape[0]:
             raise ValueError(
                 f"Mismatch between number of IDs ({len(ids)}) and embeddings ({embeddings.shape[0]})"
@@ -700,7 +693,6 @@ class LeannBuilder:
                 }
             ],
             "built_from_precomputed_embeddings": True,
-            "embeddings_source": str(embeddings_file),
         }
 
         if self.embedding_options:
@@ -717,6 +709,30 @@ class LeannBuilder:
             json.dump(meta_data, f, indent=2)
 
         logger.info(f"Index built successfully from precomputed embeddings: {index_path}")
+
+    def build_index_from_embeddings(self, index_path: str, embeddings_file: str):
+        """
+        Build an index from pre-computed embeddings stored in a pickle file.
+
+        Args:
+            index_path: Path where the index will be saved
+            embeddings_file: Path to pickle file containing (ids, embeddings) tuple
+        """
+        # Load pre-computed embeddings
+        with open(embeddings_file, "rb") as f:
+            data = pickle.load(f)
+
+        if not isinstance(data, tuple) or len(data) != 2:
+            raise ValueError(
+                f"Invalid embeddings file format. Expected tuple with 2 elements, got {type(data)}"
+            )
+
+        ids, embeddings = data
+
+        if not isinstance(embeddings, np.ndarray):
+            raise ValueError(f"Expected embeddings to be numpy array, got {type(embeddings)}")
+
+        self.build_index_from_arrays(index_path, ids, embeddings)
 
     @staticmethod
     def _compact_passages(

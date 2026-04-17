@@ -112,10 +112,11 @@ class FileSynchronizer:
             if not file_path:
                 continue
             try:
-                # Combine text from all documents for this file (e.g., multi-page PDFs produce multiple docs)
+                # Combine text from all documents for this file (e.g. multi-page PDFs).
+                # Previously we skipped len(file) > 1, which dropped every such file from
+                # file_hashes — first build then saw "no changes" with an empty index (#290).
                 combined_text = "".join(doc.text for doc in file)
-                file_hash = hash_data(combined_text)
-                file_hashes[file_path] = file_hash
+                file_hashes[file_path] = hash_data(combined_text)
             except Exception:
                 logger.error(f"Cannot hash file {file_path}")
                 continue

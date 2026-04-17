@@ -77,6 +77,29 @@ class TestFileSynchronizer(unittest.TestCase):
 
         assert result == {os.path.join(temp_dir, "file.txt"): hash_data("hello world")}
 
+    def test_generate_file_hashes_multi_document_same_path(self):
+        """Multi-page PDFs etc. yield multiple docs per path; combine text for hashing (#290)."""
+        temp_dir = tempfile.gettempdir()
+        path = os.path.join(temp_dir, "doc.pdf")
+        fs = FileSynchronizer(temp_dir, auto_load=False)
+
+        p1 = Mock()
+        p1.text = "aa"
+        p1.metadata = {"file_path": path}
+        p2 = Mock()
+        p2.text = "bb"
+        p2.metadata = {"file_path": path}
+
+        mock_reader_instance = Mock()
+        mock_reader_instance.iter_data.return_value = [[p1, p2]]
+
+        with patch("leann.sync.SimpleDirectoryReader") as mock_reader:
+            mock_reader.return_value = mock_reader_instance
+
+            result = fs.generate_file_hashes()
+
+        assert result == {path: hash_data("aabb")}
+
     def test_build_merkle_tree(self):
         fs = FileSynchronizer(".", auto_load=False)
 

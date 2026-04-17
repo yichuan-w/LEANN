@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+# setuptools>=77: SPDX `license` string (avoids deprecated license table warning).
+requires = ["setuptools>=77.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +9,7 @@ version = "0.3.7"
 description = "Core API and plugin system for LEANN"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 
 # All required dependencies included
 dependencies = [
