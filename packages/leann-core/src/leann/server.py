@@ -19,8 +19,28 @@ import os
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel as _BaseModel
+
 from .api import LeannSearcher
 from .cli import LeannCLI
+
+
+class SearchRequest(_BaseModel):
+    query: str
+    top_k: int = 5
+    complexity: int = 64
+    beam_width: int = 1
+    prune_ratio: float = 0.0
+    recompute_embeddings: bool = True
+    pruning_strategy: str = "global"
+    use_grep: bool = False
+
+
+class SearchResultModel(_BaseModel):
+    id: str
+    score: float
+    text: str
+    metadata: dict[str, Any]
 
 
 def _ensure_fastapi():
@@ -94,22 +114,6 @@ def create_app():
     """
 
     FastAPI, HTTPException, BaseModel = _ensure_fastapi()
-
-    class SearchRequest(BaseModel):
-        query: str
-        top_k: int = 5
-        complexity: int = 64
-        beam_width: int = 1
-        prune_ratio: float = 0.0
-        recompute_embeddings: bool = True
-        pruning_strategy: str = "global"
-        use_grep: bool = False
-
-    class SearchResultModel(BaseModel):
-        id: str
-        score: float
-        text: str
-        metadata: dict[str, Any]
 
     app = FastAPI(
         title="LEANN Vector DB Server",
