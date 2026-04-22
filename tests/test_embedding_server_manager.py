@@ -489,6 +489,141 @@ def test_registry_record_write_is_atomic(tmp_path, monkeypatch):
     assert dst.endswith(".json")
 
 
+def test_different_passages_files_start_separate_daemons(tmp_path, monkeypatch):
+    """Two managers with different passages files must NOT share a daemon (issue #281).
+
+    Simulates sequential test runs where each test builds its own index in a
+    separate directory but uses the same model and embedding mode.  A stale
+    daemon from run A should never be adopted by run B.
+    """
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+
+    # Each call to _get_available_port returns a strictly increasing port so
+    # that the two daemons land on different ports when they are not sharing.
+    port_seq = [6200]
+
+    def fake_get_available_port(start_port):
+        p = port_seq[0]
+        port_seq[0] += 1
+        return p
+
+    monkeypatch.setattr(
+        "leann.embedding_server_manager._get_available_port",
+        fake_get_available_port,
+    )
+
+    alive_pids: set[int] = set()
+    monkeypatch.setattr(
+        "leann.embedding_server_manager._pid_is_alive", lambda pid: pid in alive_pids
+    )
+    monkeypatch.setattr("leann.embedding_server_manager._check_port", lambda port: True)
+
+    pid_seq = [55001]
+    starts: list[dict] = []
+
+    def fake_start_new_server(self, port, model_name, embedding_mode, **kwargs):
+        pid = pid_seq[0]
+        pid_seq[0] += 1
+        alive_pids.add(pid)
+        starts.append({"port": port, "config": kwargs.get("config_signature")})
+        self.server_process = DummyProcess(pid=pid)
+        self.server_port = port
+        self._server_config = kwargs.get("config_signature")
+        return True, port
+
+    monkeypatch.setattr(EmbeddingServerManager, "_start_new_server", fake_start_new_server)
+
+    # Simulate two separate test runs, each in its own temp subdirectory,
+    # using the *same* filename patterns but *different* parent directories.
+    run_a = tmp_path / "run_a"
+    run_a.mkdir()
+    meta_a = run_a / "myindex.meta.json"
+    passages_a = run_a / "myindex.passages.jsonl"
+    passages_a.write_text("passage: hello world\n", encoding="utf-8")
+    _write_meta(meta_a, passages_a.name, "myindex.passages.idx", total=1)
+
+    run_b = tmp_path / "run_b"
+    run_b.mkdir()
+    meta_b = run_b / "myindex.meta.json"
+    passages_b = run_b / "myindex.passages.jsonl"
+    passages_b.write_text("passage: different content\n", encoding="utf-8")
+    _write_meta(meta_b, passages_b.name, "myindex.passages.idx", total=1)
+
+    # Run A: start daemon with index_a passages
+    manager_a = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    ok_a, port_a = manager_a.start_server(
+        port=6200,
+        model_name="test-model",
+        passages_file=str(meta_a),
+        use_daemon=True,
+    )
+    assert ok_a
+    assert len(starts) == 1, "First manager should start one daemon"
+
+    # Run B: a fresh manager with a DIFFERENT passages file must not adopt run A's daemon
+    manager_b = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    ok_b, port_b = manager_b.start_server(
+        port=6200,
+        model_name="test-model",
+        passages_file=str(meta_b),
+        use_daemon=True,
+    )
+    assert ok_b
+    assert len(starts) == 2, (
+        "A separate daemon must be spawned for each distinct passages file; "
+        "sharing daemons across different indices causes 'Failed to fetch embeddings' errors"
+    )
+    assert port_a != port_b, "Each index must communicate with its own daemon port"
+
+
+def test_same_passages_file_reuses_existing_daemon(tmp_path, monkeypatch):
+    """Two managers with identical passages files SHOULD share the same daemon."""
+    registry_dir = tmp_path / "servers"
+    registry_dir.mkdir()
+    monkeypatch.setattr(EmbeddingServerManager, "_registry_dir", staticmethod(lambda: registry_dir))
+    monkeypatch.setattr(
+        "leann.embedding_server_manager._get_available_port", lambda start_port: start_port
+    )
+
+    alive_pids: set[int] = {99001}
+    monkeypatch.setattr(
+        "leann.embedding_server_manager._pid_is_alive", lambda pid: pid in alive_pids
+    )
+    monkeypatch.setattr("leann.embedding_server_manager._check_port", lambda port: True)
+
+    starts: list[int] = []
+
+    def fake_start_new_server(self, port, model_name, embedding_mode, **kwargs):
+        starts.append(port)
+        self.server_process = DummyProcess(pid=99001)
+        self.server_port = port
+        self._server_config = kwargs.get("config_signature")
+        return True, port
+
+    monkeypatch.setattr(EmbeddingServerManager, "_start_new_server", fake_start_new_server)
+
+    meta = tmp_path / "shared.meta.json"
+    passages = tmp_path / "shared.passages.jsonl"
+    passages.write_text("shared passage\n", encoding="utf-8")
+    _write_meta(meta, passages.name, "shared.passages.idx", total=1)
+
+    manager1 = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    ok1, port1 = manager1.start_server(
+        port=6300, model_name="test-model", passages_file=str(meta), use_daemon=True
+    )
+    assert ok1 and len(starts) == 1
+
+    manager2 = EmbeddingServerManager("leann_backend_hnsw.hnsw_embedding_server")
+    ok2, port2 = manager2.start_server(
+        port=6300, model_name="test-model", passages_file=str(meta), use_daemon=True
+    )
+    assert ok2
+    assert len(starts) == 1, "Second manager should reuse the existing daemon, not start a new one"
+    assert port1 == port2, "Both managers should connect to the same daemon port"
+
+
 def test_stale_lock_info_removed_when_pid_dead(tmp_path, monkeypatch):
     registry_dir = tmp_path / "servers"
     registry_dir.mkdir()
