@@ -431,6 +431,17 @@ Examples:
             default=True,
             help="Enable/disable warmup when starting embedding server (default: enabled)",
         )
+        search_parser.add_argument(
+            "--metadata-filters",
+            type=str,
+            default=None,
+            help=(
+                'Filter results by metadata fields (JSON string). '
+                'Format: \'{"field": {"operator": value}}\'. '
+                'Operators: ==, !=, <, <=, >, >=, in, not_in, contains, starts_with, ends_with. '
+                'Example: \'{"chapter": {"<=": 5}, "genre": {"==": "fiction"}}\''
+            ),
+        )
 
         # Warmup command
         warmup_parser = subparsers.add_parser("warmup", help="Warm up an index embedding server")
@@ -2615,6 +2626,22 @@ Examples:
         if args.embedding_prompt_template:
             provider_options["prompt_template"] = args.embedding_prompt_template
 
+        # Parse --metadata-filters JSON string
+        metadata_filters = None
+        raw_filters = getattr(args, "metadata_filters", None)
+        if raw_filters:
+            try:
+                metadata_filters = json.loads(raw_filters)
+                if not isinstance(metadata_filters, dict):
+                    print(
+                        "Error: --metadata-filters must be a JSON object, "
+                        'e.g. \'{"chapter": {"<=": 5}}\''
+                    )
+                    return
+            except json.JSONDecodeError as e:
+                print(f"Error: --metadata-filters is not valid JSON: {e}")
+                return
+
         if json_mode:
             sys.stdout.flush()
             saved_fd = os.dup(1)
@@ -2638,6 +2665,7 @@ Examples:
                 recompute_embeddings=args.recompute_embeddings,
                 pruning_strategy=args.pruning_strategy,
                 provider_options=provider_options if provider_options else None,
+                metadata_filters=metadata_filters,
             )
         finally:
             if json_mode:

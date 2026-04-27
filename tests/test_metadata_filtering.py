@@ -340,6 +340,90 @@ class TestPassageManagerFiltering:
 # Integration tests would go here, but they require actual LEANN backend setup
 # These would test the full pipeline from LeannSearcher.search() with metadata_filters
 
+
+class TestCLIMetadataFilterParsing:
+    """Tests for CLI --metadata-filters argument parsing."""
+
+    def _parse_metadata_filters(self, raw_filters):
+        """Mirror the parsing logic from cli.py search_documents."""
+        import json
+
+        if not raw_filters:
+            return None
+        try:
+            parsed = json.loads(raw_filters)
+            if not isinstance(parsed, dict):
+                return "error: not a dict"
+            return parsed
+        except json.JSONDecodeError as e:
+            return f"error: {e}"
+
+    def test_valid_equality_filter(self):
+        raw = '{"genre": {"==": "fiction"}}'
+        result = self._parse_metadata_filters(raw)
+        assert result == {"genre": {"==": "fiction"}}
+
+    def test_valid_numeric_range_filter(self):
+        raw = '{"chapter": {"<=": 5}}'
+        result = self._parse_metadata_filters(raw)
+        assert result == {"chapter": {"<=": 5}}
+
+    def test_valid_compound_filter(self):
+        raw = '{"chapter": {"<=": 5}, "genre": {"==": "fiction"}}'
+        result = self._parse_metadata_filters(raw)
+        assert result == {"chapter": {"<=": 5}, "genre": {"==": "fiction"}}
+
+    def test_none_returns_none(self):
+        result = self._parse_metadata_filters(None)
+        assert result is None
+
+    def test_empty_string_returns_none(self):
+        result = self._parse_metadata_filters("")
+        assert result is None
+
+    def test_invalid_json_returns_error(self):
+        result = self._parse_metadata_filters("{not valid json}")
+        assert isinstance(result, str) and result.startswith("error:")
+
+    def test_non_dict_returns_error(self):
+        result = self._parse_metadata_filters("[1, 2, 3]")
+        assert result == "error: not a dict"
+
+    def test_filters_applied_to_results(self):
+        """Test that CLI-parsed filters actually work with MetadataFilterEngine."""
+        import json
+
+        engine = MetadataFilterEngine()
+        sample_results = [
+            {
+                "id": "doc1",
+                "score": 0.9,
+                "text": "Chapter 1 content",
+                "metadata": {"chapter": 1, "genre": "fiction"},
+            },
+            {
+                "id": "doc2",
+                "score": 0.8,
+                "text": "Chapter 6 content",
+                "metadata": {"chapter": 6, "genre": "fiction"},
+            },
+            {
+                "id": "doc3",
+                "score": 0.7,
+                "text": "Chapter 3 non-fiction",
+                "metadata": {"chapter": 3, "genre": "non-fiction"},
+            },
+        ]
+
+        # Parse filters as CLI would
+        raw = '{"chapter": {"<=": 5}, "genre": {"==": "fiction"}}'
+        filters = json.loads(raw)
+
+        results = engine.apply_filters(sample_results, filters)
+        assert len(results) == 1
+        assert results[0]["id"] == "doc1"
+
+
 if __name__ == "__main__":
     # Run basic smoke tests
     engine = MetadataFilterEngine()
