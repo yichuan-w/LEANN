@@ -436,9 +436,9 @@ Examples:
             type=str,
             default=None,
             help=(
-                'Filter results by metadata fields (JSON string). '
+                "Filter results by metadata fields (JSON string). "
                 'Format: \'{"field": {"operator": value}}\'. '
-                'Operators: ==, !=, <, <=, >, >=, in, not_in, contains, starts_with, ends_with. '
+                "Operators: ==, !=, <, <=, >, >=, in, not_in, contains, starts_with, ends_with. "
                 'Example: \'{"chapter": {"<=": 5}, "genre": {"==": "fiction"}}\''
             ),
         )
