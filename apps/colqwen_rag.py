@@ -133,7 +133,12 @@ class ColQwenRAG:
                 raise
 
     def _assert_supported_transformers(self) -> None:
-        """Fail fast on unsupported transformers versions."""
+        """Fail fast on transformers versions known to break ColPali/ColQwen2.
+
+        colpali_engine (ColQwen2) requires a recent 4.x line (e.g. >=4.46.1); an
+        older guard here rejected all of 4.46+, which made that stack impossible
+        to run even when dependencies resolved correctly (see issue #308).
+        """
         from importlib.metadata import PackageNotFoundError, version
 
         try:
@@ -156,13 +161,13 @@ class ColQwenRAG:
                 numbers.append(0)
             return tuple(numbers)  # type: ignore[return-value]
 
-        if _parse_semver(transformers_version) >= (4, 46, 0):
+        if _parse_semver(transformers_version) >= (5, 0, 0):
             raise RuntimeError(
                 "Unsupported transformers version detected. "
-                "LEANN currently requires transformers<4.46 due to typing changes "
-                "and transformers 5.x removing symbols such as HybridCache. "
-                "Please install a compatible version, e.g. "
-                '`pip install "transformers<4.46"`.'
+                "LEANN's ColQwen/ColPali path is not tested with transformers 5.x "
+                "(e.g. API removals such as HybridCache). "
+                "Install a 4.x release that satisfies colpali_engine, e.g. "
+                '`pip install "transformers>=4.46.1,<5"`.'
             )
 
     def _get_device(self):
