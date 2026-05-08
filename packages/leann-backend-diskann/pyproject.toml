@@ -1,5 +1,8 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "pybind11>=2.12.0", "numpy", "cmake>=3.30"]
+# Like leann-backend-hnsw: rely on system CMake on PATH (CI images + brew/apt ship it).
+# Listing cmake here forces a PyPI fetch during isolated builds and has flaked on
+# transient network timeouts (e.g. macOS runners failing to reach pypi.org/simple/cmake/).
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12.0", "numpy"]
 build-backend = "scikit_build_core.build"
 
 [project]

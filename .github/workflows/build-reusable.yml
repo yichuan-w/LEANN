@@ -139,7 +139,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev \
+          sudo apt-get install -y cmake libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev \
             pkg-config libabsl-dev libaio-dev libprotobuf-dev \
             patchelf
 
@@ -188,7 +188,9 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           # Don't install LLVM, use system clang for better compatibility
-          brew install libomp boost protobuf zeromq
+          # CMake is required for scikit-build (HNSW + DiskANN); install via brew so
+          # we do not depend on fetching the PyPI cmake package during uv build.
+          brew install cmake libomp boost protobuf zeromq
 
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
