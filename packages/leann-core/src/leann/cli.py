@@ -2669,10 +2669,7 @@ Examples:
             )
         finally:
             if json_mode:
-                import ctypes
-
-                libc = ctypes.CDLL(None)
-                libc.fflush(None)
+                sys.stdout.flush()
                 os.dup2(saved_fd, 1)
                 os.close(saved_fd)
 
