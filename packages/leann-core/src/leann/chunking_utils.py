@@ -312,16 +312,12 @@ def create_traditional_chunks(
 
     result = []
     for doc in documents:
-        # Extract document-level metadata
-        doc_metadata = {
-            "file_path": doc.metadata.get("file_path", ""),
-            "file_name": doc.metadata.get("file_name", ""),
-            "source": doc.metadata.get("source", ""),
-        }
-        if "creation_date" in doc.metadata:
-            doc_metadata["creation_date"] = doc.metadata["creation_date"]
-        if "last_modified_date" in doc.metadata:
-            doc_metadata["last_modified_date"] = doc.metadata["last_modified_date"]
+        # Propagate all document-level metadata to each chunk so custom fields
+        # (e.g. url/domain for browser_rag) remain available for metadata_filters.
+        doc_metadata = dict(doc.metadata) if doc.metadata else {}
+        doc_metadata.setdefault("file_path", "")
+        doc_metadata.setdefault("file_name", "")
+        doc_metadata.setdefault("source", "")
 
         try:
             nodes = node_parser.get_nodes_from_documents([doc])

@@ -2,6 +2,7 @@ import os
 import sqlite3
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from llama_index.core import Document
 from llama_index.core.readers.base import BaseReader
@@ -77,6 +78,7 @@ class ChromeHistoryReader(BaseReader):
                 last_visit, url, title, visit_count, typed_count, _hidden = row
 
                 # Create document content with metadata embedded in text
+                # (kept in body so semantic search still sees these fields)
                 doc_content = f"""
 [Title]: {title}
 [URL of the page]: {url}
@@ -85,10 +87,21 @@ class ChromeHistoryReader(BaseReader):
 [Typed times]: {typed_count}
 """
 
-                # Create document with embedded metadata
-                doc = Document(text=doc_content, metadata={"title": title[0:150]})
-                # if len(title) > 150:
-                #     print(f"Title is too long: {title}")
+                # Also expose structured fields via metadata so they can be used
+                # with metadata_filters at search time (see docs/metadata_filtering.md).
+                domain = urlparse(url).netloc if url else ""
+
+                doc = Document(
+                    text=doc_content,
+                    metadata={
+                        "title": (title or "")[0:150],
+                        "url": url or "",
+                        "domain": domain,
+                        "last_visited": str(last_visit) if last_visit is not None else "",
+                        "visit_count": int(visit_count) if visit_count is not None else 0,
+                        "typed_count": int(typed_count) if typed_count is not None else 0,
+                    },
+                )
                 docs.append(doc)
                 count += 1
 
