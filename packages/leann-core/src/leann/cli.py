@@ -562,6 +562,17 @@ Examples:
             default=None,
             help="API key for cloud LLM providers (OpenAI, Anthropic)",
         )
+        ask_parser.add_argument(
+            "--metadata-filters",
+            type=str,
+            default=None,
+            help=(
+                "Filter retrieved chunks by metadata fields before answering (JSON string). "
+                'Format: \'{"field": {"operator": value}}\'. '
+                "Operators: ==, !=, <, <=, >, >=, in, not_in, contains, starts_with, ends_with. "
+                'Example: \'{"chapter": {"<=": 5}, "genre": {"==": "fiction"}}\''
+            ),
+        )
 
         # React command (multiturn retrieval agent)
         react_parser = subparsers.add_parser(
@@ -2840,6 +2851,24 @@ Examples:
             if resolved_api_key:
                 llm_config["api_key"] = resolved_api_key
 
+        # Parse --metadata-filters JSON string (mirrors `leann search`).
+        # Run before constructing LeannChat so invalid filters fail fast without
+        # spinning up an embedding server.
+        metadata_filters = None
+        raw_filters = getattr(args, "metadata_filters", None)
+        if raw_filters:
+            try:
+                metadata_filters = json.loads(raw_filters)
+                if not isinstance(metadata_filters, dict):
+                    print(
+                        "Error: --metadata-filters must be a JSON object, "
+                        'e.g. \'{"chapter": {"<=": 5}}\''
+                    )
+                    return
+            except json.JSONDecodeError as e:
+                print(f"Error: --metadata-filters is not valid JSON: {e}")
+                return
+
         chat = LeannChat(index_path=index_path, llm_config=llm_config)
 
         llm_kwargs: dict[str, Any] = {}
@@ -2856,6 +2885,7 @@ Examples:
                 prune_ratio=args.prune_ratio,
                 recompute_embeddings=args.recompute_embeddings,
                 pruning_strategy=args.pruning_strategy,
+                metadata_filters=metadata_filters,
                 llm_kwargs=llm_kwargs,
             )
             query_completion_time = time.time() - query_start_time
