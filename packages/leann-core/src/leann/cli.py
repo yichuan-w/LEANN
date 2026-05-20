@@ -1890,7 +1890,32 @@ Examples:
             in paths
         ]
 
+    def _existing_index_id_scheme(self, index_path: str) -> Optional[str]:
+        """Return the passage_id_scheme recorded in an existing index's meta.json.
+
+        Returns None when the index doesn't exist yet or the field isn't
+        recorded (older indexes pre-#330). Callers should treat None as
+        "fall back to whatever the args say or the default".
+        """
+        meta_path = Path(index_path).with_suffix(".leann.meta.json")
+        if not meta_path.exists():
+            return None
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                return json.load(f).get("passage_id_scheme")
+        except Exception:
+            return None
+
     def _make_incremental_builder(self, args) -> "LeannBuilder":
+        # For incremental updates, the existing index's scheme wins. Otherwise
+        # IDs would mix schemes within one index, which breaks lookups.
+        existing_scheme = self._existing_index_id_scheme(self.get_index_path(args.index_name))
+        scheme = existing_scheme or getattr(args, "id_scheme", "sequential")
+        if existing_scheme and getattr(args, "id_scheme", existing_scheme) != existing_scheme:
+            print(
+                f"Note: --id-scheme={args.id_scheme} ignored — index '{args.index_name}' "
+                f"was built with passage_id_scheme={existing_scheme!r}, keeping that."
+            )
         return LeannBuilder(
             backend_name=args.backend_name,
             embedding_model=args.embedding_model,
@@ -1901,7 +1926,7 @@ Examples:
             is_compact=args.compact,
             is_recompute=args.recompute,
             num_threads=args.num_threads,
-            passage_id_scheme=getattr(args, "id_scheme", "sequential"),
+            passage_id_scheme=scheme,
         )
 
     def _incremental_add_only(
