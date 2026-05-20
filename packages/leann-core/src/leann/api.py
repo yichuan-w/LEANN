@@ -1212,6 +1212,12 @@ class LeannSearcher:
         )
         self.bm25_scorer: Optional[BM25Index] = None
 
+        # Surface the index's passage ID scheme so callers can introspect.
+        # Older indexes (pre-#330) don't record this field — they're sequential.
+        self.passage_id_scheme: str = self.meta_data.get(
+            "passage_id_scheme", PASSAGE_ID_SCHEME_SEQUENTIAL
+        )
+
         # Optional one-shot warmup at construction time to hide cold-start latency.
         if self._warmup:
             self.warmup()
