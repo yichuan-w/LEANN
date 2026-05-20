@@ -30,6 +30,15 @@ from .registry import BACKEND_REGISTRY
 
 logger = logging.getLogger(__name__)
 
+# Passage ID schemes recorded in <index>.meta.json["passage_id_scheme"].
+# - "sequential": today's default; IDs are str(insertion_index) (api.py:add_text).
+# - "content-hash": planned in #329; IDs are sha256(text)[:16], stable across
+#   file moves and reorderings.
+# Older indexes have no passage_id_scheme field — readers must default to
+# "sequential" when the key is absent. See #329 for the rollout plan.
+PASSAGE_ID_SCHEME_SEQUENTIAL = "sequential"
+PASSAGE_ID_SCHEME_CONTENT_HASH = "content-hash"
+
 
 def get_registered_backends() -> list[str]:
     """Get list of registered backend names."""
@@ -570,12 +579,13 @@ class LeannBuilder:
         builder_instance.build(embeddings, string_ids, index_path, **current_backend_kwargs)
         leann_meta_path = index_dir / f"{index_name}.meta.json"
         meta_data = {
-            "version": "1.0",
+            "version": "1.1",
             "backend_name": self.backend_name,
             "embedding_model": self.embedding_model,
             "dimensions": self.dimensions,
             "backend_kwargs": self.backend_kwargs,
             "embedding_mode": self.embedding_mode,
+            "passage_id_scheme": PASSAGE_ID_SCHEME_SEQUENTIAL,
             "passage_sources": [
                 {
                     "type": "jsonl",
@@ -714,12 +724,13 @@ class LeannBuilder:
         # Create metadata file
         leann_meta_path = index_dir / f"{index_name}.meta.json"
         meta_data = {
-            "version": "1.0",
+            "version": "1.1",
             "backend_name": self.backend_name,
             "embedding_model": self.embedding_model,
             "dimensions": self.dimensions,
             "backend_kwargs": self.backend_kwargs,
             "embedding_mode": self.embedding_mode,
+            "passage_id_scheme": PASSAGE_ID_SCHEME_SEQUENTIAL,
             "passage_sources": [
                 {
                     "type": "jsonl",
