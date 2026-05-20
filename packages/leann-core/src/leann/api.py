@@ -1165,7 +1165,7 @@ class LeannSearcher:
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
-        gemma: float = 1.0,
+        vector_weight: float = 1.0,
         provider_options: Optional[dict[str, Any]] = None,
         **kwargs,
     ) -> list[SearchResult]:
@@ -1189,12 +1189,26 @@ class LeannSearcher:
                 - Membership: "in", "not_in"
                 - String: "contains", "starts_with", "ends_with"
                 Example: {"chapter": {"<=": 5}, "tags": {"in": ["fiction", "drama"]}}
-            gemma: Weight of vector search results in hybrid search (0.0-1.0), 1 = pure vector search, 0 = pure keyword search
-            **kwargs: Backend-specific parameters
+            vector_weight: Weight of vector search in hybrid scoring (0.0-1.0).
+                1.0 = pure vector search (default), 0.0 = pure BM25 keyword search,
+                anything in between linearly fuses the two.
+            **kwargs: Backend-specific parameters. Accepts a deprecated `gemma=` alias
+                for `vector_weight`; passing it emits a DeprecationWarning.
 
         Returns:
             List of SearchResult objects with text, metadata, and similarity scores
         """
+        # Accept the legacy `gemma=` kwarg (typo of "gamma") as a deprecated alias
+        # for vector_weight. Pop before forwarding to backend so it doesn't leak.
+        if "gemma" in kwargs:
+            warnings.warn(
+                "search(gemma=...) is deprecated and will be removed in a future release; "
+                "use vector_weight= instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            vector_weight = kwargs.pop("gemma")
+
         # Handle grep search
         if use_grep:
             return self._grep_search(query, top_k)
@@ -1218,7 +1232,7 @@ class LeannSearcher:
             logger.warning(f"  ✅ Auto-adjusted top_k to {top_k} to match available documents")
 
         # Handle pure keyword search
-        if gemma == 0.0:
+        if vector_weight == 0.0:
             start_time = time.time()
             bm25_results = self._bm25_search(query, top_k)
             # Convert BM25 results to the expected format
@@ -1303,22 +1317,22 @@ class LeannSearcher:
             )
 
         # Handle hybrid search
-        if 0.0 < gemma < 1.0:
-            logger.info(f"  🌟 Hybrid search enabled with gemma={gemma}")
-            BM25_WEIGHT = 1.0 - gemma
+        if 0.0 < vector_weight < 1.0:
+            logger.info(f"  🌟 Hybrid search enabled with vector_weight={vector_weight}")
+            bm25_weight = 1.0 - vector_weight
             bm25_results = self._bm25_search(query, top_k)
             hybrid_scores: dict[str, float] = {}
-            # Add vector search scores (weighted by gemma)
+            # Add vector search scores (weighted by vector_weight)
             if "labels" in results and "distances" in results:
                 for doc_id, score in zip(results["labels"][0], results["distances"][0]):
-                    hybrid_scores[doc_id] = gemma * score
-            # Add BM25 scores (weighted by BM25_WEIGHT)
+                    hybrid_scores[doc_id] = vector_weight * score
+            # Add BM25 scores (weighted by bm25_weight)
             for bm25_result in bm25_results:
                 doc_id = bm25_result.id
                 if doc_id in hybrid_scores:
-                    hybrid_scores[doc_id] += BM25_WEIGHT * bm25_result.score
+                    hybrid_scores[doc_id] += bm25_weight * bm25_result.score
                 else:
-                    hybrid_scores[doc_id] = BM25_WEIGHT * bm25_result.score
+                    hybrid_scores[doc_id] = bm25_weight * bm25_result.score
 
             sorted_hybrid = sorted(hybrid_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
             results["labels"] = [[doc_id for doc_id, _ in sorted_hybrid]]
@@ -1555,9 +1569,17 @@ class LeannChat:
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
-        gemma: float = 1.0,
+        vector_weight: float = 1.0,
         **search_kwargs,
     ):
+        if "gemma" in search_kwargs:
+            warnings.warn(
+                "ask(gemma=...) is deprecated; use vector_weight= instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            vector_weight = search_kwargs.pop("gemma")
+
         if llm_kwargs is None:
             llm_kwargs = {}
         search_time = time.time()
@@ -1572,7 +1594,7 @@ class LeannChat:
             expected_zmq_port=expected_zmq_port,
             metadata_filters=metadata_filters,
             use_grep=use_grep,
-            gemma=gemma,
+            vector_weight=vector_weight,
             batch_size=batch_size,
             **search_kwargs,
         )
