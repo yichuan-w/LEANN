@@ -365,6 +365,18 @@ Examples:
             help="Report changes without rebuilding (original watch behavior)",
         )
 
+        rebuild_parser = subparsers.add_parser(
+            "rebuild",
+            help="Rebuild an existing index using its stored config (delta by default; --force for full rebuild)",
+        )
+        rebuild_parser.add_argument("index_name", help="Index name")
+        rebuild_parser.add_argument(
+            "-f",
+            "--force",
+            action="store_true",
+            help="Full rebuild from scratch instead of incremental delta",
+        )
+
         # Search command
         search_parser = subparsers.add_parser("search", help="Search documents")
         search_parser.add_argument("index_name", help="Index name")
@@ -2454,29 +2466,48 @@ Examples:
                 print(f"  - {file_path}")
                 print(f"    chunks: {chunk_display}")
 
-    async def _watch_trigger_build(self, index_name: str) -> None:
-        """Trigger an idempotent build for the given index, reusing its stored config."""
+    def _reconstruct_build_args(
+        self, index_name: str, *, force: bool = False, verbose: bool = False
+    ) -> Optional[list[str]]:
+        """Reconstruct the `leann build` CLI args for an existing index from its
+        stored config (.meta.json + sync_roots.json).
+
+        Returns None when the index can't be rebuilt this way (no sync config,
+        missing metadata, etc.). With verbose=True the reason gets printed (for
+        the user-driven `leann rebuild` path); with verbose=False the failures
+        are silent (for the watch loop, which polls and shouldn't spam logs).
+        """
         resolved = self._resolve_index_for_watch(index_name)
         if not resolved:
-            return
+            return None
         index_dir = resolved["index_dir"]
         sync_config_path = index_dir / "sync_roots.json"
         if not sync_config_path.exists():
-            return
+            if verbose:
+                print(
+                    f"Cannot rebuild '{index_name}': no sync config at {sync_config_path}. "
+                    f"This usually means the index was built via the Python API rather than "
+                    f"`leann build --docs <dir>`, so the original docs roots aren't recorded."
+                )
+            return None
         with open(sync_config_path, encoding="utf-8") as f:
             config = json.load(f)
         roots = config.get("roots") or []
         if not roots:
-            return
+            if verbose:
+                print(f"Cannot rebuild '{index_name}': sync config has no document roots.")
+            return None
 
         meta_path = index_dir / "documents.leann.meta.json"
         if not meta_path.exists():
-            print(f"Index metadata missing for '{index_name}', cannot rebuild.")
-            return
+            if verbose:
+                print(f"Cannot rebuild '{index_name}': index metadata missing at {meta_path}.")
+            else:
+                print(f"Index metadata missing for '{index_name}', cannot rebuild.")
+            return None
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
 
-        parser = self.create_parser()
         build_args_list = [
             "build",
             index_name,
@@ -2494,7 +2525,32 @@ Examples:
             build_args_list.append("--no-compact")
         if bkw.get("is_recompute", True):
             build_args_list.append("--recompute")
+        if force:
+            build_args_list.append("--force")
+        return build_args_list
 
+    async def rebuild_index(self, args) -> None:
+        """Rebuild an existing index using its stored config.
+
+        By default this is an incremental delta (leann build is idempotent and
+        only re-indexes added/changed/removed files). Pass --force to do a full
+        rebuild from scratch.
+        """
+        build_args_list = self._reconstruct_build_args(
+            args.index_name, force=getattr(args, "force", False), verbose=True
+        )
+        if build_args_list is None:
+            return
+        parser = self.create_parser()
+        build_args = parser.parse_args(build_args_list)
+        await self.build_index(build_args)
+
+    async def _watch_trigger_build(self, index_name: str) -> None:
+        """Trigger an idempotent build for the given index, reusing its stored config."""
+        build_args_list = self._reconstruct_build_args(index_name, verbose=False)
+        if build_args_list is None:
+            return
+        parser = self.create_parser()
         build_args = parser.parse_args(build_args_list)
         await self.build_index(build_args)
 
@@ -3218,6 +3274,9 @@ Examples:
                 await self.build_index(args)
         elif args.command == "watch":
             await self.watch_index(args)
+        elif args.command == "rebuild":
+            with suppress_cpp_output(suppress):
+                await self.rebuild_index(args)
         elif args.command == "search":
             with suppress_cpp_output(suppress):
                 await self.search_documents(args)
