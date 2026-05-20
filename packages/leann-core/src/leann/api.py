@@ -12,7 +12,6 @@ import subprocess
 import time
 import warnings
 from abc import ABC, abstractmethod
-from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
@@ -281,9 +280,9 @@ class PassageManager:
 class BM25Index(ABC):
     """Minimal contract for a BM25-style sparse index over LEANN passages.
 
-    Concrete implementations today: `BM25Scorer` (in-memory, fit-on-search).
-    Planned: an FTS5-backed implementation that builds at index-build time
-    and queries memory-bounded. See the design issue for the broader plan.
+    Today's only implementation is `Fts5BM25Index` (SQLite FTS5, built at
+    `leann build` time, queried memory-bounded). The historical in-memory
+    `BM25Scorer` was removed once the FTS5 path was stable.
     """
 
     @abstractmethod
@@ -304,88 +303,11 @@ class BM25Index(ABC):
         """
 
 
-class BM25Scorer(BM25Index):
-    def __init__(self, k1: float = 1.2, b: float = 0.75):
-        self.k1 = k1
-        self.b = b
-        self.doc_freqs = None  # How many docs contain each term (DF)
-        self.doc_lengths = {}  # How long each doc is (in words)
-        self.word_counts = {}  # How many times each word appears in each doc (TF)
-        self.avg_doc_length = None
-        self.corpus_size = None
-        self.idlist = set()  # List of all document IDs for easier searching
-
-    def _tokenize(self, text: str) -> list[str]:
-        return re.sub(r"[^\w\s]", "", text).lower().split()
-
-    def fit(self, documents: list[dict[str, Any]]):
-        """
-        Build BM25 statistics from a document corpus.
-        Must be called before scoring.
-        """
-        self.corpus_size = len(documents)
-        self.doc_lengths = {}
-        self.word_counts = {}
-        self.idlist = set()
-        doc_freqs = defaultdict(int)
-
-        for doc_data in documents:
-            doc_id = doc_data["id"]
-            words = self._tokenize(doc_data["text"])
-            doc_length = len(words)
-            self.doc_lengths[doc_id] = doc_length
-
-            unique_words = set(words)
-            for word in unique_words:
-                doc_freqs[word] += 1
-            self.word_counts[doc_id] = dict(Counter(words))
-            self.idlist.add(doc_id)
-
-        self.doc_freqs = dict(doc_freqs)
-        self.avg_doc_length = sum(self.doc_lengths.values()) / len(self.doc_lengths)
-
-    def score(self, query_words: list[str], document_id: str) -> float:
-        if (
-            self.doc_freqs is None
-            or self.doc_lengths == {}
-            or self.word_counts == {}
-            or self.avg_doc_length is None
-            or self.corpus_size is None
-        ):
-            raise ValueError("BM25 model not fitted. Call fit() before scoring.")
-
-        passage_words = self.word_counts[document_id]
-        passage_length = sum(passage_words.values())
-        score = 0.0
-        for word in query_words:
-            if word not in self.doc_freqs:
-                continue
-            word_freq = passage_words[word] if word in passage_words else 0
-            idf = np.log(
-                (self.corpus_size - self.doc_freqs[word] + 0.5) / (self.doc_freqs[word] + 0.5) + 1
-            )
-            tf = (word_freq * (self.k1 + 1)) / (
-                word_freq + self.k1 * (1 - self.b + self.b * (passage_length / self.avg_doc_length))
-            )
-            score += idf * tf
-        return score
-
-    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        query_words = self._tokenize(query)
-        scores = {doc_id: self.score(query_words, doc_id) for doc_id in self.idlist}
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return [
-            SearchResult(id=doc_id, score=score, text="", metadata={})
-            for doc_id, score in sorted_scores[:top_k]
-        ]
-
-
 class Fts5BM25Index(BM25Index):
     """BM25 over a SQLite FTS5 virtual table, persisted on disk.
 
     Built once at `leann build` time, queried memory-bounded at search time.
-    Avoids the in-memory term-frequency table that BM25Scorer keeps in RAM and
-    that gets re-fit on every cold start. See #327 for the broader plan.
+    SQLite owns the on-disk term/posting data; queries hit `bm25()` directly.
     """
 
     # SQLite's FTS5 bm25() returns lower-is-better. We negate so the rest of
@@ -425,9 +347,8 @@ class Fts5BM25Index(BM25Index):
             conn.close()
 
     def search(self, query: str, top_k: int = 5) -> list["SearchResult"]:
-        # Match the BM25Scorer tokenization for query consistency: strip
-        # punctuation, lowercase, OR the terms together. Avoids FTS5 query
-        # syntax surprises (`:`, `*`, etc.).
+        # Strip punctuation, lowercase, OR the terms together. Avoids FTS5
+        # query syntax surprises (`:`, `*`, etc.) for natural-language queries.
         terms = re.sub(r"[^\w\s]", "", query).lower().split()
         if not terms:
             return []
@@ -439,7 +360,10 @@ class Fts5BM25Index(BM25Index):
             "ORDER BY score DESC LIMIT ?",
             (fts5_query, top_k),
         ).fetchall()
-        return [SearchResult(id=doc_id, score=float(score), text="", metadata={}) for doc_id, score in rows]
+        return [
+            SearchResult(id=doc_id, score=float(score), text="", metadata={})
+            for doc_id, score in rows
+        ]
 
     def close(self) -> None:
         if self._conn is not None:
@@ -455,19 +379,16 @@ class LeannBuilder:
         dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
         embedding_options: Optional[dict[str, Any]] = None,
-        prebuild_bm25: bool = False,
         bm25_backend: str = "fts5",
         **backend_kwargs,
     ):
-        if bm25_backend not in ("memory", "fts5"):
+        if bm25_backend != "fts5":
             raise ValueError(
-                f"Unknown bm25_backend: {bm25_backend!r}. Expected 'memory' or 'fts5'."
+                f"Unknown bm25_backend: {bm25_backend!r}. Only 'fts5' is supported "
+                f"(the legacy in-memory backend was removed in this release; "
+                f"see #327 for the rationale)."
             )
         self.bm25_backend = bm25_backend
-        # FTS5 is now the default and only makes sense as a build-time artifact.
-        # `prebuild_bm25=True` also implies a build-time artifact, just with
-        # the legacy in-memory BM25Scorer pickled instead of a SQLite db.
-        self.prebuild_bm25 = prebuild_bm25 or bm25_backend == "fts5"
         self.backend_name = backend_name
         # Normalize incompatible combinations early (for consistent metadata)
         if backend_name == "hnsw":
@@ -684,15 +605,9 @@ class LeannBuilder:
             meta_data["is_compact"] = is_compact
             meta_data["is_pruned"] = bool(is_recompute)
 
-        if self.prebuild_bm25:
-            if self.bm25_backend == "fts5":
-                self._build_bm25_fts5(index_dir, index_name)
-                meta_data["bm25_backend"] = "fts5"
-                meta_data["bm25_db"] = f"{index_name}.bm25.sqlite"
-            else:
-                self._build_bm25_snapshot(index_dir, index_name)
-                meta_data["bm25_snapshot"] = f"{index_name}.bm25.pkl"
-                meta_data["bm25_backend"] = "memory"
+        self._build_bm25_fts5(index_dir, index_name)
+        meta_data["bm25_backend"] = "fts5"
+        meta_data["bm25_db"] = f"{index_name}.bm25.sqlite"
 
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
@@ -701,29 +616,13 @@ class LeannBuilder:
         """Build a SQLite FTS5 BM25 index alongside the vector index.
 
         Queries via SQLite's bm25() function — memory-bounded at search time
-        (the term/posting data lives on disk, not in RAM). Replaces
-        BM25Scorer's full-corpus-in-memory model for paper-scale corpora.
+        (the term/posting data lives on disk, not in RAM).
         """
         db_path = index_dir / f"{index_name}.bm25.sqlite"
         index = Fts5BM25Index(str(db_path))
         index.fit(self.chunks)
         index.close()
         logger.info(f"Wrote BM25 FTS5 index to {db_path}")
-
-    def _build_bm25_snapshot(self, index_dir: Path, index_name: str) -> None:
-        """Fit BM25Scorer on self.chunks and pickle alongside the index.
-
-        Lets LeannSearcher._init_bm25 load the fitted scorer on first BM25 query
-        instead of re-fitting against the passage JSONL — which scans every
-        passage and builds the full TF table in RAM, dominating first-search
-        latency on larger corpora.
-        """
-        bm25_path = index_dir / f"{index_name}.bm25.pkl"
-        scorer = BM25Scorer()
-        scorer.fit(self.chunks)
-        with open(bm25_path, "wb") as f:
-            pickle.dump(scorer, f, protocol=pickle.HIGHEST_PROTOCOL)
-        logger.info(f"Wrote BM25 snapshot to {bm25_path}")
 
     def build_index_from_arrays(self, index_path: str, ids: list, embeddings: np.ndarray):
         """Build an index from pre-computed embedding arrays.
@@ -1526,48 +1425,35 @@ class LeannSearcher:
         return enriched_results
 
     def _init_bm25(self) -> None:
-        """Initialize a BM25Index, preferring a build-time artifact when present."""
+        """Load the FTS5 BM25 index. Raises for older indexes lacking one.
+
+        The legacy in-memory BM25Scorer + pickle snapshot path was removed —
+        indexes built before the FTS5 backend either need `leann rebuild`
+        (CLI-built indexes recorded in sync_roots.json) or a fresh build.
+        """
         backend = self.meta_data.get("bm25_backend")
         meta_dir = Path(self.meta_path_str).parent
 
-        if backend == "fts5":
-            db_name = self.meta_data.get("bm25_db")
-            if db_name:
-                db_path = meta_dir / db_name
-                if db_path.exists():
-                    self.bm25_scorer = Fts5BM25Index(str(db_path))
-                    logger.info(f"Using FTS5 BM25 index at {db_path}")
-                    return
-                logger.warning(
-                    f"meta.json says bm25_backend=fts5 but {db_path} is missing; "
-                    f"falling back to fit-on-search."
-                )
-
-        snapshot_name = self.meta_data.get("bm25_snapshot")
-        if snapshot_name:
-            snapshot_path = meta_dir / snapshot_name
-            if snapshot_path.exists():
-                try:
-                    with open(snapshot_path, "rb") as f:
-                        self.bm25_scorer = pickle.load(f)
-                    logger.info(f"Loaded BM25 snapshot from {snapshot_path}")
-                    return
-                except Exception as exc:
-                    logger.warning(
-                        f"Failed to load BM25 snapshot at {snapshot_path}, "
-                        f"falling back to fit-on-search: {exc}"
-                    )
-
-        # No artifact (older indexes) or load failed: fit on the fly.
-        self.bm25_scorer = BM25Scorer()
-        passages = []
-        for passage_file in self.passage_manager.passage_files.values():
-            with open(passage_file, encoding="utf-8") as f:
-                for line in f:
-                    if line.strip():
-                        data = json.loads(line)
-                        passages.append(data)
-        self.bm25_scorer.fit(passages)
+        if backend != "fts5":
+            raise RuntimeError(
+                "This index has no FTS5 BM25 artifact (meta.json's "
+                f"bm25_backend={backend!r}). Hybrid / BM25 search requires "
+                "rebuilding: `leann rebuild <index>` for CLI-built indexes, "
+                "or rebuild via the Python API."
+            )
+        db_name = self.meta_data.get("bm25_db")
+        if not db_name:
+            raise RuntimeError(
+                "meta.json declares bm25_backend='fts5' but no bm25_db filename. "
+                "Index appears corrupt; rebuild required."
+            )
+        db_path = meta_dir / db_name
+        if not db_path.exists():
+            raise FileNotFoundError(
+                f"Expected FTS5 BM25 database at {db_path} but it's missing. Rebuild required."
+            )
+        self.bm25_scorer = Fts5BM25Index(str(db_path))
+        logger.info(f"Using FTS5 BM25 index at {db_path}")
 
     def _bm25_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Perform BM25 search on raw passages"""
