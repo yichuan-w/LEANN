@@ -11,6 +11,7 @@ import re
 import subprocess
 import time
 import warnings
+from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -277,7 +278,33 @@ class PassageManager:
         return self._total_count
 
 
-class BM25Scorer:
+class BM25Index(ABC):
+    """Minimal contract for a BM25-style sparse index over LEANN passages.
+
+    Concrete implementations today: `BM25Scorer` (in-memory, fit-on-search).
+    Planned: an FTS5-backed implementation that builds at index-build time
+    and queries memory-bounded. See the design issue for the broader plan.
+    """
+
+    @abstractmethod
+    def fit(self, documents: list[dict[str, Any]]) -> None:
+        """Build the index from a corpus.
+
+        `documents` is a list of `{"id": str, "text": str, ...}` entries. Extra
+        fields are ignored by BM25 implementations but preserved by the caller
+        for use elsewhere.
+        """
+
+    @abstractmethod
+    def search(self, query: str, top_k: int = 5) -> list["SearchResult"]:
+        """Return up to `top_k` SearchResult entries ranked by descending score.
+
+        Returned SearchResults have `id` and `score` populated; `text` and
+        `metadata` are filled in by `LeannSearcher` from the passage store.
+        """
+
+
+class BM25Scorer(BM25Index):
     def __init__(self, k1: float = 1.2, b: float = 0.75):
         self.k1 = k1
         self.b = b
