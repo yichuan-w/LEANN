@@ -385,6 +385,7 @@ class LeannBuilder:
         embedding_options: Optional[dict[str, Any]] = None,
         prebuild_bm25: bool = False,
         bm25_backend: str = "fts5",
+        passage_id_scheme: str = PASSAGE_ID_SCHEME_SEQUENTIAL,
         **backend_kwargs,
     ):
         if bm25_backend != "fts5":
@@ -392,6 +393,16 @@ class LeannBuilder:
             bm25_backend = "fts5"
         self.bm25_backend = bm25_backend
         self.prebuild_bm25 = prebuild_bm25 or bm25_backend == "fts5"
+        if passage_id_scheme not in (
+            PASSAGE_ID_SCHEME_SEQUENTIAL,
+            PASSAGE_ID_SCHEME_CONTENT_HASH,
+        ):
+            raise ValueError(
+                f"Unknown passage_id_scheme: {passage_id_scheme!r}. "
+                f"Expected one of: {PASSAGE_ID_SCHEME_SEQUENTIAL!r}, "
+                f"{PASSAGE_ID_SCHEME_CONTENT_HASH!r}."
+            )
+        self.passage_id_scheme = passage_id_scheme
         self.backend_name = backend_name
         # Normalize incompatible combinations early (for consistent metadata)
         if backend_name == "hnsw":
@@ -486,10 +497,23 @@ class LeannBuilder:
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
+    def _generate_passage_id(self, text: str) -> str:
+        """Generate a passage ID per the configured scheme.
+
+        sequential: str(insertion index) — fast, position-dependent, current default.
+        content-hash: sha256(text)[:16] — content-stable, dedup-friendly across
+        file moves and reorderings. See #329 for the design.
+        """
+        if self.passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
+            import hashlib
+
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+        return str(len(self.chunks))
+
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
-        passage_id = metadata.get("id", str(len(self.chunks)))
+        passage_id = metadata.get("id") or self._generate_passage_id(text)
         chunk_data = {"id": passage_id, "text": text, "metadata": metadata}
         self.chunks.append(chunk_data)
 
@@ -585,7 +609,7 @@ class LeannBuilder:
             "dimensions": self.dimensions,
             "backend_kwargs": self.backend_kwargs,
             "embedding_mode": self.embedding_mode,
-            "passage_id_scheme": PASSAGE_ID_SCHEME_SEQUENTIAL,
+            "passage_id_scheme": self.passage_id_scheme,
             "passage_sources": [
                 {
                     "type": "jsonl",
@@ -730,7 +754,7 @@ class LeannBuilder:
             "dimensions": self.dimensions,
             "backend_kwargs": self.backend_kwargs,
             "embedding_mode": self.embedding_mode,
-            "passage_id_scheme": PASSAGE_ID_SCHEME_SEQUENTIAL,
+            "passage_id_scheme": self.passage_id_scheme,
             "passage_sources": [
                 {
                     "type": "jsonl",
