@@ -456,7 +456,7 @@ class LeannBuilder:
         embedding_mode: str = "sentence-transformers",
         embedding_options: Optional[dict[str, Any]] = None,
         prebuild_bm25: bool = False,
-        bm25_backend: str = "memory",
+        bm25_backend: str = "fts5",
         **backend_kwargs,
     ):
         if bm25_backend not in ("memory", "fts5"):
@@ -464,8 +464,9 @@ class LeannBuilder:
                 f"Unknown bm25_backend: {bm25_backend!r}. Expected 'memory' or 'fts5'."
             )
         self.bm25_backend = bm25_backend
-        # If user picked fts5 explicitly, treat that as opting into prebuild —
-        # FTS5 only makes sense as a build-time artifact.
+        # FTS5 is now the default and only makes sense as a build-time artifact.
+        # `prebuild_bm25=True` also implies a build-time artifact, just with
+        # the legacy in-memory BM25Scorer pickled instead of a SQLite db.
         self.prebuild_bm25 = prebuild_bm25 or bm25_backend == "fts5"
         self.backend_name = backend_name
         # Normalize incompatible combinations early (for consistent metadata)
