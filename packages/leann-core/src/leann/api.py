@@ -388,8 +388,10 @@ class LeannBuilder:
         dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
         embedding_options: Optional[dict[str, Any]] = None,
+        prebuild_bm25: bool = False,
         **backend_kwargs,
     ):
+        self.prebuild_bm25 = prebuild_bm25
         self.backend_name = backend_name
         # Normalize incompatible combinations early (for consistent metadata)
         if backend_name == "hnsw":
@@ -605,8 +607,28 @@ class LeannBuilder:
             is_recompute = self.backend_kwargs.get("is_recompute", True)
             meta_data["is_compact"] = is_compact
             meta_data["is_pruned"] = bool(is_recompute)
+
+        if self.prebuild_bm25:
+            self._build_bm25_snapshot(index_dir, index_name)
+            meta_data["bm25_snapshot"] = f"{index_name}.bm25.pkl"
+
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
+
+    def _build_bm25_snapshot(self, index_dir: Path, index_name: str) -> None:
+        """Fit BM25Scorer on self.chunks and pickle alongside the index.
+
+        Lets LeannSearcher._init_bm25 load the fitted scorer on first BM25 query
+        instead of re-fitting against the passage JSONL — which scans every
+        passage and builds the full TF table in RAM, dominating first-search
+        latency on larger corpora.
+        """
+        bm25_path = index_dir / f"{index_name}.bm25.pkl"
+        scorer = BM25Scorer()
+        scorer.fit(self.chunks)
+        with open(bm25_path, "wb") as f:
+            pickle.dump(scorer, f, protocol=pickle.HIGHEST_PROTOCOL)
+        logger.info(f"Wrote BM25 snapshot to {bm25_path}")
 
     def build_index_from_arrays(self, index_path: str, ids: list, embeddings: np.ndarray):
         """Build an index from pre-computed embedding arrays.
@@ -1409,9 +1431,24 @@ class LeannSearcher:
         return enriched_results
 
     def _init_bm25(self) -> None:
-        """Initialize BM25 scorer"""
+        """Initialize BM25 scorer, preferring a build-time snapshot when present."""
+        snapshot_name = self.meta_data.get("bm25_snapshot")
+        if snapshot_name:
+            snapshot_path = Path(self.meta_path_str).parent / snapshot_name
+            if snapshot_path.exists():
+                try:
+                    with open(snapshot_path, "rb") as f:
+                        self.bm25_scorer = pickle.load(f)
+                    logger.info(f"Loaded BM25 snapshot from {snapshot_path}")
+                    return
+                except Exception as exc:
+                    logger.warning(
+                        f"Failed to load BM25 snapshot at {snapshot_path}, "
+                        f"falling back to fit-on-search: {exc}"
+                    )
+
+        # No snapshot (older indexes) or snapshot load failed: fit on the fly.
         self.bm25_scorer = BM25Scorer()
-        # Load all the files directly
         passages = []
         for passage_file in self.passage_manager.passage_files.values():
             with open(passage_file, encoding="utf-8") as f:
