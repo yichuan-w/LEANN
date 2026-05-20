@@ -1401,6 +1401,9 @@ class LeannSearcher:
         results: list[SearchResult],
     ) -> None:
         """Append a JSONL line to LEANN_QUERY_LOG for later benchmark replay."""
+        path = self._query_log_path
+        if path is None:
+            return
         entry: dict[str, Any] = {
             "ts": time.time(),
             "query": query,
@@ -1410,11 +1413,11 @@ class LeannSearcher:
         if query_embedding is not None:
             entry["embedding"] = query_embedding.flatten().tolist()
         try:
-            with open(self._query_log_path, "a", encoding="utf-8") as f:
+            with open(path, "a", encoding="utf-8") as f:
                 json.dump(entry, f)
                 f.write("\n")
         except Exception as exc:
-            logger.warning(f"Failed to append to query log {self._query_log_path}: {exc}")
+            logger.warning(f"Failed to append to query log {path}: {exc}")
 
     def _init_bm25(self) -> None:
         """Initialize BM25 scorer"""
