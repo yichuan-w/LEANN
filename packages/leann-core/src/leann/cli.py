@@ -19,7 +19,7 @@ from tqdm import tqdm
 from .api import LeannBuilder, LeannChat, LeannSearcher
 from .embedding_server_manager import EmbeddingServerManager
 from .interactive_utils import create_cli_session
-from .registry import register_project_directory
+from .registry import register_project_directory, walk_index_meta_files
 from .settings import (
     resolve_anthropic_base_url,
     resolve_minimax_api_key,
@@ -956,7 +956,7 @@ Examples:
 
         # 2. Apps format: *.leann.meta.json files anywhere in the project
         cli_indexes_dir = project_path / ".leann" / "indexes"
-        for meta_file in project_path.rglob("*.leann.meta.json"):
+        for meta_file in walk_index_meta_files(project_path):
             if meta_file.is_file():
                 # Skip CLI-built indexes (which store meta under .leann/indexes/<name>/)
                 try:
@@ -1068,7 +1068,10 @@ Examples:
             seen_app_meta = set()
 
             # 2a) by file base
-            for meta_file in project_path.rglob(f"{index_name}.leann.meta.json"):
+            target_name = f"{index_name}.leann.meta.json"
+            for meta_file in walk_index_meta_files(project_path):
+                if meta_file.name != target_name:
+                    continue
                 if meta_file.is_file():
                     # Skip CLI-built indexes' meta under .leann/indexes
                     try:
@@ -1095,7 +1098,7 @@ Examples:
                     )
 
             # 2b) by parent directory name
-            for meta_file in project_path.rglob("*.leann.meta.json"):
+            for meta_file in walk_index_meta_files(project_path):
                 if meta_file.is_file() and meta_file.parent.name == index_name:
                     # Skip CLI-built indexes' meta under .leann/indexes
                     try:

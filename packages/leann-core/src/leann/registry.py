@@ -4,6 +4,8 @@ import importlib
 import importlib.metadata
 import json
 import logging
+import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
 
@@ -14,6 +16,45 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BACKEND_REGISTRY: dict[str, "LeannBackendFactoryInterface"] = {}
+
+# Directories we never descend into during index discovery. These are caches,
+# dependencies, and build outputs that won't contain LEANN indexes and that
+# dominate walk latency under $HOME (especially macOS Library/). Keep this in
+# sync across cli.py callsites that scan for *.leann.meta.json files.
+INDEX_SCAN_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".cache",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".tox",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "Library",
+        "target",
+        "dist",
+        "build",
+        ".next",
+        ".nuxt",
+        ".gradle",
+    }
+)
+
+
+def walk_index_meta_files(root: Path) -> Iterator[Path]:
+    """Yield *.leann.meta.json files under root, pruning huge irrelevant dirs.
+
+    Faster than Path.rglob('*.leann.meta.json') on large home directories where
+    Library/, node_modules/, .venv/, .git/, etc. would otherwise dominate the walk.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in INDEX_SCAN_SKIP_DIRS]
+        for fname in filenames:
+            if fname.endswith(".leann.meta.json"):
+                yield Path(dirpath) / fname
 
 
 def register_backend(name: str):
@@ -64,9 +105,9 @@ def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
         project_dir = Path(project_dir)
 
     # Only register directories that have some kind of LEANN content.
-    # Check CLI-format first to avoid an expensive rglob on large directories.
+    # Check CLI-format first to avoid an expensive walk on large directories.
     has_cli_indexes = (project_dir / ".leann" / "indexes").exists()
-    if not has_cli_indexes and not any(project_dir.rglob("*.leann.meta.json")):
+    if not has_cli_indexes and not any(walk_index_meta_files(project_dir)):
         # Don't register if there are no LEANN indexes
         return
 
