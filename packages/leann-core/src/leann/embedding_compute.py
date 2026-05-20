@@ -12,10 +12,12 @@ import time
 from typing import Any, Optional, Protocol, cast
 
 import numpy as np
-import tiktoken
-import torch
 
 from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
+
+# torch and tiktoken are imported lazily inside the functions that use them, so
+# `import leann` (e.g. for MCP search over an existing index, BM25-only flows,
+# or non-embedding utilities) doesn't pull torch's ~1 GB of state into memory.
 
 # Set up logger with proper level
 logger = logging.getLogger(__name__)
@@ -144,6 +146,8 @@ def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
     """
     if not texts:
         return []
+
+    import tiktoken
 
     # Use tiktoken with cl100k_base encoding
     enc = tiktoken.get_encoding("cl100k_base")
@@ -419,6 +423,8 @@ def compute_embeddings_sentence_transformers(
         is_build: Whether this is a build operation (shows progress bar)
         adaptive_optimization: Whether to use adaptive optimization based on batch size
     """
+    import torch
+
     outer_start_time = time.time()
     # Handle empty input
     if not texts:

@@ -10,8 +10,6 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Optional, cast
 
-import torch
-
 from .settings import (
     resolve_anthropic_api_key,
     resolve_anthropic_base_url,
@@ -720,6 +718,8 @@ class HFChat(LLMInterface):
         logger.info(f"Generating with HuggingFace model, config: {generation_config}")
 
         # Generate
+        import torch
+
         with torch.no_grad():
             outputs = self.model.generate(**inputs, **generation_config)
 
