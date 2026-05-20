@@ -1464,34 +1464,6 @@ class LeannSearcher:
                 "grep command not found. Please install grep or use semantic search."
             )
 
-    def _python_regex_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """Fallback regex search"""
-        jsonl_file = self._find_jsonl_file()
-        if not jsonl_file:
-            raise FileNotFoundError("No .jsonl file found")
-
-        pattern = re.compile(re.escape(query), re.IGNORECASE)
-        matches = []
-
-        with open(jsonl_file, encoding="utf-8") as f:
-            for line_num, line in enumerate(f, 1):
-                if pattern.search(line):
-                    try:
-                        data = json.loads(line.strip())
-                        matches.append(
-                            SearchResult(
-                                id=data.get("id", str(line_num)),
-                                text=data.get("text", ""),
-                                metadata=data.get("metadata", {}),
-                                score=float(len(pattern.findall(data.get("text", "")))),
-                            )
-                        )
-                    except json.JSONDecodeError:
-                        continue
-
-        matches.sort(key=lambda x: x.score, reverse=True)
-        return matches[:top_k]
-
     def cleanup(self):
         """Explicitly cleanup embedding server and backend index resources.
         This method should be called after you're done using the searcher,
