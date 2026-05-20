@@ -347,6 +347,16 @@ Examples:
             default=True,
             help="Fall back to traditional chunking if AST chunking fails (default: True)",
         )
+        build_parser.add_argument(
+            "--id-scheme",
+            choices=["sequential", "content-hash"],
+            default="sequential",
+            help=(
+                "How passage IDs are assigned. 'sequential' (default) keys by insertion "
+                "order; 'content-hash' uses sha256(text)[:16], stable across file moves "
+                "and reorderings. See #329."
+            ),
+        )
 
         # Watch command
         watch_parser = subparsers.add_parser(
@@ -1891,6 +1901,7 @@ Examples:
             is_compact=args.compact,
             is_recompute=args.recompute,
             num_threads=args.num_threads,
+            passage_id_scheme=getattr(args, "id_scheme", "sequential"),
         )
 
     def _incremental_add_only(
@@ -2384,6 +2395,7 @@ Examples:
             is_compact=args.compact,
             is_recompute=args.recompute,
             num_threads=args.num_threads,
+            passage_id_scheme=getattr(args, "id_scheme", "sequential"),
         )
 
         for chunk in all_texts:
