@@ -125,13 +125,18 @@ def handle_request(request):
                 if args.get("show_metadata", False):
                     cmd.append("--show-metadata")
                 result = subprocess.run(
-                    cmd, capture_output=True, text=True, cwd=_base_dir,
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=_base_dir,
                 )
 
             elif tool_name == "leann_list":
                 result = subprocess.run(
                     [*_leann_cmd(), "list"],
-                    capture_output=True, text=True, cwd=_base_dir,
+                    capture_output=True,
+                    text=True,
+                    cwd=_base_dir,
                 )
 
             return {
