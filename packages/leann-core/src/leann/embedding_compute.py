@@ -816,6 +816,17 @@ def compute_embeddings_openai(
             max_batch_size,
         )
 
+    # Alibaba Cloud DashScope's OpenAI-compatible endpoint hard-limits embedding batches
+    # to 10 inputs per request (e.g. text-embedding-v4). Exceeding this returns HTTP 400:
+    #   "InternalError.Algo.InvalidParameter: Value error, batch size is invalid,
+    #    it should not be larger than 10.: input.contents"
+    if "dashscope" in (resolved_base_url or ""):
+        max_batch_size = min(max_batch_size, 10)
+        logger.info(
+            "Detected DashScope OpenAI-compatible base_url; capping embedding batch_size to %d.",
+            max_batch_size,
+        )
+
     # if avg len is less than 1000, use the max batch size
 
     try:

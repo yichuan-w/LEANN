@@ -53,9 +53,15 @@ def suppress_cpp_output(suppress: bool = True):
         yield
         return
 
-    # 1. Duplicate the original OS file descriptors
-    saved_stdout_fd = os.dup(1)
-    saved_stderr_fd = os.dup(2)
+    # 1. Duplicate the original OS file descriptors.
+    #    May fail in no-console environments (e.g. pythonw, Windows GUI apps)
+    #    where fd 1/2 are not valid — in that case, skip suppression.
+    try:
+        saved_stdout_fd = os.dup(1)
+        saved_stderr_fd = os.dup(2)
+    except OSError:
+        yield
+        return
 
     # 2. Build Python file objects that write to the saved (real) fds.
     #    closefd=False so closing these wrappers won't close the duped fds.
@@ -2653,12 +2659,16 @@ Examples:
                 print(f"Error: --metadata-filters is not valid JSON: {e}")
                 return
 
+        saved_fd = None
         if json_mode:
             sys.stdout.flush()
-            saved_fd = os.dup(1)
-            devnull = os.open(os.devnull, os.O_WRONLY)
-            os.dup2(devnull, 1)
-            os.close(devnull)
+            try:
+                saved_fd = os.dup(1)
+                devnull = os.open(os.devnull, os.O_WRONLY)
+                os.dup2(devnull, 1)
+                os.close(devnull)
+            except OSError:
+                saved_fd = None
 
         try:
             searcher = LeannSearcher(
@@ -2679,7 +2689,7 @@ Examples:
                 metadata_filters=metadata_filters,
             )
         finally:
-            if json_mode:
+            if saved_fd is not None:
                 sys.stdout.flush()
                 os.dup2(saved_fd, 1)
                 os.close(saved_fd)
