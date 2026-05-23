@@ -2,7 +2,7 @@
 Comprehensive tests for hybrid search functionality.
 
 This module tests the hybrid search feature that combines vector search
-with BM25 keyword search using the gemma parameter.
+with BM25 keyword search using the vector_weight parameter.
 """
 
 import os
@@ -60,11 +60,11 @@ class TestHybridSearch:
             searcher.cleanup()
 
     def test_pure_vector_search(self, sample_index):
-        """Test pure vector search (gemma=1.0, default)."""
+        """Test pure vector search (vector_weight=1.0, default)."""
         searcher, texts = sample_index
 
-        # Search with gemma=1.0 (pure vector search)
-        results = searcher.search("canine animal", top_k=3, gemma=1.0)
+        # Search with vector_weight=1.0 (pure vector search)
+        results = searcher.search("canine animal", top_k=3, vector_weight=1.0)
 
         assert len(results) > 0
         assert len(results) <= 3
@@ -75,11 +75,11 @@ class TestHybridSearch:
         )
 
     def test_pure_keyword_search(self, sample_index):
-        """Test pure keyword search (gemma=0.0)."""
+        """Test pure keyword search (vector_weight=0.0)."""
         searcher, texts = sample_index
 
-        # Search with gemma=0.0 (pure BM25 keyword search)
-        results = searcher.search("database SQL", top_k=3, gemma=0.0)
+        # Search with vector_weight=0.0 (pure BM25 keyword search)
+        results = searcher.search("database SQL", top_k=3, vector_weight=0.0)
 
         assert len(results) > 0
         assert len(results) <= 3
@@ -89,11 +89,11 @@ class TestHybridSearch:
         assert "database" in top_result_text or "sql" in top_result_text
 
     def test_hybrid_search_balanced(self, sample_index):
-        """Test balanced hybrid search (gemma=0.5)."""
+        """Test balanced hybrid search (vector_weight=0.5)."""
         searcher, texts = sample_index
 
-        # Search with gemma=0.5 (balanced hybrid)
-        results = searcher.search("programming Python code", top_k=5, gemma=0.5)
+        # Search with vector_weight=0.5 (balanced hybrid)
+        results = searcher.search("programming Python code", top_k=5, vector_weight=0.5)
 
         assert len(results) > 0
         assert len(results) <= 5
@@ -102,11 +102,11 @@ class TestHybridSearch:
         assert any("python" in r.text.lower() or "programming" in r.text.lower() for r in results)
 
     def test_hybrid_search_vector_heavy(self, sample_index):
-        """Test vector-heavy hybrid search (gemma=0.8)."""
+        """Test vector-heavy hybrid search (vector_weight=0.8)."""
         searcher, texts = sample_index
 
-        # Search with gemma=0.8 (mostly vector, some keyword)
-        results = searcher.search("sunny weather conditions", top_k=3, gemma=0.8)
+        # Search with vector_weight=0.8 (mostly vector, some keyword)
+        results = searcher.search("sunny weather conditions", top_k=3, vector_weight=0.8)
 
         assert len(results) > 0
         # Should prioritize semantic similarity but consider keywords
@@ -117,11 +117,11 @@ class TestHybridSearch:
         )
 
     def test_hybrid_search_keyword_heavy(self, sample_index):
-        """Test keyword-heavy hybrid search (gemma=0.2)."""
+        """Test keyword-heavy hybrid search (vector_weight=0.2)."""
         searcher, texts = sample_index
 
-        # Search with gemma=0.2 (mostly keyword, some vector)
-        results = searcher.search("bread flour baking", top_k=3, gemma=0.2)
+        # Search with vector_weight=0.2 (mostly keyword, some vector)
+        results = searcher.search("bread flour baking", top_k=3, vector_weight=0.2)
 
         assert len(results) > 0
         # Should prioritize keyword matches
@@ -137,10 +137,10 @@ class TestHybridSearch:
         """Test that hybrid search properly combines scores."""
         searcher, texts = sample_index
 
-        # Get results with different gemma values
-        pure_vector = searcher.search("machine learning AI", top_k=5, gemma=1.0)
-        pure_keyword = searcher.search("machine learning AI", top_k=5, gemma=0.0)
-        hybrid = searcher.search("machine learning AI", top_k=5, gemma=0.5)
+        # Get results with different vector_weight values
+        pure_vector = searcher.search("machine learning AI", top_k=5, vector_weight=1.0)
+        pure_keyword = searcher.search("machine learning AI", top_k=5, vector_weight=0.0)
+        hybrid = searcher.search("machine learning AI", top_k=5, vector_weight=0.5)
 
         # All should return results
         assert len(pure_vector) > 0
@@ -157,7 +157,7 @@ class TestHybridSearch:
 
         # Search with hybrid and metadata filter
         results = searcher.search(
-            "data information", top_k=5, gemma=0.6, metadata_filters={"doc_num": {"<": 8}}
+            "data information", top_k=5, vector_weight=0.6, metadata_filters={"doc_num": {"<": 8}}
         )
 
         assert len(results) > 0
