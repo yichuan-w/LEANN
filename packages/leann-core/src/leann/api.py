@@ -315,95 +315,69 @@ class BM25Scorer(BM25Index):
         self.corpus_size = None
         self.idlist = set()  # List of all document IDs for easier searching
 
-    Today's only implementation is `Fts5BM25Index` (SQLite FTS5, built at
-    `leann build` time, queried memory-bounded). The historical in-memory
-    `BM25Scorer` was removed once the FTS5 path was stable.
-    """
+    def _tokenize(self, text: str) -> list[str]:
+        return re.sub(r"[^\w\s]", "", text).lower().split()
 
-    @abstractmethod
-    def fit(self, documents: list[dict[str, Any]]) -> None:
-        """Build the index from a corpus.
-
-        `documents` is a list of `{"id": str, "text": str, ...}` entries. Extra
-        fields are ignored by BM25 implementations but preserved by the caller
-        for use elsewhere.
+    def fit(self, documents: list[dict[str, Any]]):
         """
-
-    @abstractmethod
-    def search(self, query: str, top_k: int = 5) -> list["SearchResult"]:
-        """Return up to `top_k` SearchResult entries ranked by descending score.
-
-        Returned SearchResults have `id` and `score` populated; `text` and
-        `metadata` are filled in by `LeannSearcher` from the passage store.
+        Build BM25 statistics from a document corpus.
+        Must be called before scoring.
         """
+        self.corpus_size = len(documents)
+        self.doc_lengths = {}
+        self.word_counts = {}
+        self.idlist = set()
+        doc_freqs = defaultdict(int)
 
+        for doc_data in documents:
+            doc_id = doc_data["id"]
+            words = self._tokenize(doc_data["text"])
+            doc_length = len(words)
+            self.doc_lengths[doc_id] = doc_length
 
-class Fts5BM25Index(BM25Index):
-    """BM25 over a SQLite FTS5 virtual table, persisted on disk.
+            unique_words = set(words)
+            for word in unique_words:
+                doc_freqs[word] += 1
+            self.word_counts[doc_id] = dict(Counter(words))
+            self.idlist.add(doc_id)
 
-    Built once at `leann build` time, queried memory-bounded at search time.
-    SQLite owns the on-disk term/posting data; queries hit `bm25()` directly.
-    """
+        self.doc_freqs = dict(doc_freqs)
+        self.avg_doc_length = sum(self.doc_lengths.values()) / len(self.doc_lengths)
 
-    # SQLite's FTS5 bm25() returns lower-is-better. We negate so the rest of
-    # LeannSearcher (and the hybrid fusion math) can keep higher-is-better.
-    _SCHEMA = (
-        "CREATE VIRTUAL TABLE bm25_passages USING fts5("
-        "id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2'"
-        ")"
-    )
+    def score(self, query_words: list[str], document_id: str) -> float:
+        if (
+            self.doc_freqs is None
+            or self.doc_lengths == {}
+            or self.word_counts == {}
+            or self.avg_doc_length is None
+            or self.corpus_size is None
+        ):
+            raise ValueError("BM25 model not fitted. Call fit() before scoring.")
 
-    def __init__(self, db_path: str):
-        self._db_path = db_path
-        self._conn: Optional[Any] = None
-
-    def _connect(self):
-        import sqlite3
-
-        if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
-        return self._conn
-
-    def fit(self, documents: list[dict[str, Any]]) -> None:
-        import sqlite3
-
-        # Fresh DB every fit — fit() is a one-shot bulk-load.
-        if os.path.exists(self._db_path):
-            os.unlink(self._db_path)
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.execute(self._SCHEMA)
-            conn.executemany(
-                "INSERT INTO bm25_passages(id, text) VALUES (?, ?)",
-                ((d["id"], d.get("text", "")) for d in documents),
+        passage_words = self.word_counts[document_id]
+        passage_length = sum(passage_words.values())
+        score = 0.0
+        for word in query_words:
+            if word not in self.doc_freqs:
+                continue
+            word_freq = passage_words[word] if word in passage_words else 0
+            idf = np.log(
+                (self.corpus_size - self.doc_freqs[word] + 0.5) / (self.doc_freqs[word] + 0.5) + 1
             )
-            conn.commit()
-        finally:
-            conn.close()
+            tf = (word_freq * (self.k1 + 1)) / (
+                word_freq + self.k1 * (1 - self.b + self.b * (passage_length / self.avg_doc_length))
+            )
+            score += idf * tf
+        return score
 
-    def search(self, query: str, top_k: int = 5) -> list["SearchResult"]:
-        # Strip punctuation, lowercase, OR the terms together. Avoids FTS5
-        # query syntax surprises (`:`, `*`, etc.) for natural-language queries.
-        terms = re.sub(r"[^\w\s]", "", query).lower().split()
-        if not terms:
-            return []
-        fts5_query = " OR ".join(terms)
-        conn = self._connect()
-        rows = conn.execute(
-            "SELECT id, -bm25(bm25_passages) AS score "
-            "FROM bm25_passages WHERE bm25_passages MATCH ? "
-            "ORDER BY score DESC LIMIT ?",
-            (fts5_query, top_k),
-        ).fetchall()
+    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        query_words = self._tokenize(query)
+        scores = {doc_id: self.score(query_words, doc_id) for doc_id in self.idlist}
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return [
-            SearchResult(id=doc_id, score=float(score), text="", metadata={})
-            for doc_id, score in rows
+            SearchResult(id=doc_id, score=score, text="", metadata={})
+            for doc_id, score in sorted_scores[:top_k]
         ]
-
-    def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
 
 
 class Fts5BM25Index(BM25Index):
