@@ -1,6 +1,6 @@
 """
 Email RAG example using the unified interface.
-Supports Apple Mail on macOS.
+Supports Apple Mail (.emlx) and standard .eml files.
 """
 
 import sys
@@ -13,11 +13,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from base_rag_example import BaseRAGExample
 from chunking import create_text_chunks
 
-from .email_data.LEANN_email_reader import EmlxReader
+from email_data.LEANN_email_reader import EmlxReader, EmlReader
 
 
 class EmailRAG(BaseRAGExample):
-    """RAG example for Apple Mail processing."""
+    """RAG example for email processing (Apple Mail .emlx and standard .eml)."""
 
     def __init__(self):
         # Set default values BEFORE calling super().__init__
@@ -28,13 +28,15 @@ class EmailRAG(BaseRAGExample):
 
         super().__init__(
             name="Email",
-            description="Process and query Apple Mail emails with LEANN",
+            description="Process and query emails (Apple Mail .emlx or standard .eml) with LEANN",
             default_index_name="mail_index",
         )
 
     def _add_specific_arguments(self, parser):
         """Add email-specific arguments."""
         email_group = parser.add_argument_group("Email Parameters")
+
+        # .emlx (Apple Mail) options
         email_group.add_argument(
             "--mail-path",
             type=str,
@@ -44,6 +46,15 @@ class EmailRAG(BaseRAGExample):
         email_group.add_argument(
             "--include-html", action="store_true", help="Include HTML content in email processing"
         )
+
+        # .eml options
+        email_group.add_argument(
+            "--eml-path",
+            type=str,
+            default=None,
+            help="Directory containing standard .eml files to index",
+        )
+
         email_group.add_argument(
             "--chunk-size", type=int, default=256, help="Text chunk size (default: 256)"
         )
@@ -67,6 +78,35 @@ class EmailRAG(BaseRAGExample):
 
     async def load_data(self, args) -> list[dict[str, Any]]:
         """Load emails and convert to text chunks."""
+
+        # ── .eml mode ─────────────────────────────────────
+        if args.eml_path:
+            eml_dir = Path(args.eml_path)
+            if not eml_dir.is_dir():
+                print(f"Error: --eml-path {args.eml_path} is not a directory")
+                return []
+
+            print(f"Reading .eml files from: {eml_dir}")
+            reader = EmlReader(include_html=args.include_html)
+
+            documents = reader.load_data(
+                input_dir=str(eml_dir),
+                max_count=args.max_items,
+            )
+
+            if not documents:
+                print("No .eml files found to process!")
+                return []
+
+            print(f"\nTotal emails processed: {len(documents)}")
+            print("now starting to split into text chunks ... take some time")
+
+            all_texts = create_text_chunks(
+                documents, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
+            )
+            return all_texts
+
+        # ── .emlx (Apple Mail) mode ──────────────────────
         # Determine mail directories
         if args.mail_path:
             messages_dirs = [Path(args.mail_path)]
@@ -76,7 +116,7 @@ class EmailRAG(BaseRAGExample):
 
         if not messages_dirs:
             print("No Apple Mail directories found!")
-            print("Please specify --mail-path manually")
+            print("Please specify --mail-path or --eml-path")
             return []
 
         print(f"Found {len(messages_dirs)} mail directories")
@@ -105,7 +145,7 @@ class EmailRAG(BaseRAGExample):
                     max_per_dir = remaining
                 # If args.max_items == -1, max_per_dir stays -1 (process all)
 
-                # Load emails - fix the parameter passing
+                # Load emails
                 documents = reader.load_data(
                     input_dir=str(messages_dir),
                     max_count=max_per_dir,
@@ -141,18 +181,21 @@ if __name__ == "__main__":
 
     # Check platform
     if sys.platform != "darwin":
-        print("\n⚠️  Warning: This example is designed for macOS (Apple Mail)")
-        print("   Windows/Linux support coming soon!\n")
+        print("\n\u26a0\ufe0f  Note: Apple Mail auto-detect requires macOS")
+        print("   Use --eml-path on Linux/Windows to index standard .eml files\n")
 
     # Example queries for email RAG
-    print("\n📧 Email RAG Example")
+    print("\n\U0001f4e7 Email RAG Example")
     print("=" * 50)
     print("\nExample queries you can try:")
     print("- 'What did my boss say about deadlines?'")
     print("- 'Find emails about travel expenses'")
     print("- 'Show me emails from last month about the project'")
     print("- 'What food did I order from DoorDash?'")
-    print("\nNote: You may need to grant Full Disk Access to your terminal\n")
+    print("\nUsage:")
+    print("  python email_rag.py --eml-path ~/mail-dir")
+    print("  python email_rag.py --mail-path ~/Library/Mail/V10/...")
+    print("  python email_rag.py --mail-path /path --include-html\n")
 
     rag = EmailRAG()
     asyncio.run(rag.run())

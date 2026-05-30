@@ -15,7 +15,8 @@ def main():
     parser.add_argument(
         "--embedding_model",
         type=str,
-        default="sentence-transformers/all-mpnet-base-v2",
+        #        default="sentence-transformers/all-mpnet-base-v2",
+        default="sentence-transformers/all-MiniLM-L6-v2",
         help="The embedding model to use, e.g., 'sentence-transformers/all-mpnet-base-v2' or 'text-embedding-ada-002'.",
     )
     args = parser.parse_args()
