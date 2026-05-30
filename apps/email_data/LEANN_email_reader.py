@@ -22,7 +22,7 @@ _bs4 = None
 _PyPDF2 = None
 _docx = None
 try:
-    from bs4 import BeautifulSoup as _bs4  # type: ignore
+    from bs4 import BeautifulSoup as _bs4  # type: ignore  # noqa: N813
 except ImportError:
     pass
 try:
@@ -40,13 +40,12 @@ except ImportError:
 
 # ── Helpers ──────────────────────────────────────────────
 
+
 def find_all_messages_directories(root: str | None = None) -> list[Path]:
     """Recursively find all 'Messages' directories under the given root."""
     if root is None:
         root = os.path.join(os.path.expanduser("~"), "Library", "Mail")
-    return [
-        Path(dp) for dp, _, _ in os.walk(root) if os.path.basename(dp) == "Messages"
-    ]
+    return [Path(dp) for dp, _, _ in os.walk(root) if os.path.basename(dp) == "Messages"]
 
 
 def _payload_to_text(payload: object) -> str:
@@ -146,11 +145,12 @@ def _split_quoted_thread(body: str) -> tuple[str, str]:
 
 # ── Attachment text extraction ──────────────────────────
 
+
 def _extract_rtf_text(data: bytes) -> str:
     """Extract text from RTF data.
 
     Strips RTF control words, braces, and MS Exchange/Outlook-specific
-    markers (\htmlrtf, \htmltag, \bkmkstart, etc.) to get readable text.
+    markers (\\htmlrtf, \\htmltag, \\bkmkstart, etc.) to get readable text.
     """
     try:
         text = data.decode("utf-8", errors="replace")
@@ -186,17 +186,15 @@ def _extract_rtf_text(data: bytes) -> str:
         if len(result) > 50:
             return result
 
-    # Method 3: Strip all RTF markup generically
-    groups = re.sub(r"\{[^}]*\}", " ", text)
-    cleaned = re.sub(r"\\(?:[a-z]+|[*]|'[0-9a-f]{2})-?\d*\b", " ", groups)
-    cleaned = re.sub(r"[{}]", " ", cleaned)
+    # Method 3: Strip all RTF markup generically — keep text, remove braces and control words
+    cleaned = re.sub(r"[{}]", " ", text)
+    cleaned = re.sub(r"\\(?:[a-z]+|[*]|'[0-9a-f]{2})-?\d*\b", " ", cleaned)
     cleaned = re.sub(r"<[^>]+>", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
-def _extract_attachment_text(
-    filename: str, data: bytes | None
-) -> str:
+
+def _extract_attachment_text(filename: str, data: bytes | None, content_type: str = "") -> str:
     """Extract text content from a supported attachment type. Returns '' on failure."""
     if not data:
         return ""
@@ -214,6 +212,10 @@ def _extract_attachment_text(
     if ext == ".rtf":
         return _extract_rtf_text(data)
 
+    # Fallback: no extension or unknown extension — try to guess from content type
+    if ext == "" and content_type and "rtf" in content_type.lower():
+        return _extract_rtf_text(data)
+
     # PDF
     if ext == ".pdf":
         if _PyPDF2 is not None:
@@ -221,9 +223,7 @@ def _extract_attachment_text(
                 import io
 
                 reader = _PyPDF2.PdfReader(io.BytesIO(data))
-                return "\n".join(
-                    page.extract_text() or "" for page in reader.pages
-                )
+                return "\n".join(page.extract_text() or "" for page in reader.pages)
             except Exception:
                 return ""
         return ""
@@ -269,19 +269,23 @@ def _collect_attachments(msg: Any) -> list[dict]:
             continue
 
         raw = part.get_payload(decode=True)
-        text = _extract_attachment_text(filename, raw)
+        text = _extract_attachment_text(filename, raw, ctype)
 
-        attachments.append({
-            "filename": filename,
-            "size": len(raw) if raw else 0,
-            "content_type": ctype,
-            "extracted_text": text,
-        })
+        attachments.append(
+            {
+                "filename": filename,
+                "size": len(raw) if raw else 0,
+                "content_type": ctype,
+                "extracted_text": text,
+                "raw": raw,
+            }
+        )
 
     return attachments
 
 
 # ── Document builder ─────────────────────────────────────
+
 
 def _build_email_document(
     filename: str,
@@ -344,9 +348,12 @@ def _build_email_document(
     if not body.strip():
         all_attachments = _collect_attachments(msg)
         for a in all_attachments:
-            if a["filename"].lower().startswith("rtf-body") and a["extracted_text"]:
-                body = a["extracted_text"]
-                break
+            if a["filename"].lower().startswith("rtf-body"):
+                # Direct RTF extraction for PST export attachments
+                extracted = a["extracted_text"] or _extract_rtf_text(a["raw"] or b"")
+                if extracted:
+                    body = extracted
+                    break
         if not body.strip():
             attachments = all_attachments
     else:
@@ -377,15 +384,13 @@ def _build_email_document(
         doc_text += "\n[Attachment Contents]:\n"
         for a in attachments:
             if a["extracted_text"]:
-                doc_text += (
-                    f"--- {a['filename']} ---\n"
-                    f"{a['extracted_text'][:5000]}\n\n"
-                )
+                doc_text += f"--- {a['filename']} ---\n{a['extracted_text'][:5000]}\n\n"
 
     return Document(text=doc_text, metadata={})
 
 
 # ── Readers ──────────────────────────────────────────────
+
 
 class EmlxReader(BaseReader):
     """Apple Mail .emlx file reader.
@@ -435,7 +440,13 @@ class EmlxReader(BaseReader):
                         count += 1
                         successful_files += 1
                         if successful_files <= 3:
-                            subj = re.sub(r"\s+", " ", doc.text.split("\n[Subject]: ", 1)[-1].split("\n")[0] if "[Subject]:" in doc.text else "?")[:50]
+                            subj = re.sub(
+                                r"\s+",
+                                " ",
+                                doc.text.split("\n[Subject]: ", 1)[-1].split("\n")[0]
+                                if "[Subject]:" in doc.text
+                                else "?",
+                            )[:50]
                             print(f"Loaded: {filename} - Subject: {subj}...")
 
                 except Exception as e:
@@ -492,7 +503,13 @@ class EmlReader(BaseReader):
                         count += 1
                         successful_files += 1
                         if successful_files <= 3:
-                            subj = re.sub(r"\s+", " ", doc.text.split("\n[Subject]: ", 1)[-1].split("\n")[0] if "[Subject]:" in doc.text else "?")[:50]
+                            subj = re.sub(
+                                r"\s+",
+                                " ",
+                                doc.text.split("\n[Subject]: ", 1)[-1].split("\n")[0]
+                                if "[Subject]:" in doc.text
+                                else "?",
+                            )[:50]
                             print(f"Loaded: {filename} - Subject: {subj}...")
 
                 except Exception as e:
