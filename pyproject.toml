@@ -66,6 +66,11 @@ diskann = [
     "leann-backend-diskann",
 ]
 
+# GPU-accelerated FlashLib (IVFFlat on Triton/CuteDSL) backend. Requires a CUDA GPU.
+flashlib = [
+    "leann-backend-flashlib",
+]
+
 # Add a new optional dependency group for document processing
 documents = [
     "beautifulsoup4>=4.13.0",  # For HTML parsing
@@ -88,6 +93,7 @@ wechat-exporter = "wechat_exporter.main:main"
 leann-core = { path = "packages/leann-core", editable = true }
 leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = true }
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
+leann-backend-flashlib = { path = "packages/leann-backend-flashlib", editable = true }
 astchunk = { path = "packages/astchunk-leann", editable = true }
 
 [dependency-groups]

@@ -220,8 +220,8 @@ class BaseRAGExample(ABC):
             "--backend-name",
             type=str,
             default="hnsw",
-            choices=["hnsw", "diskann"],
-            help="Backend to use for index (default: hnsw)",
+            choices=["hnsw", "diskann", "ivf", "flashlib"],
+            help="Backend to use for index (default: hnsw). 'flashlib' requires a CUDA GPU.",
         )
         index_group.add_argument(
             "--graph-degree",
