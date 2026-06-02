@@ -1,0 +1,20 @@
+[project]
+name = "leann-backend-flashlib-ivf"
+version = "0.3.6"
+description = "GPU-accelerated FlashLib IVF-Flat (Triton/CuteDSL) approximate-NN backend for LEANN."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "leann-core>=0.3.6",
+    "numpy>=1.20.0",
+    "flashlib",
+    "torch",
+]
+
+[project.optional-dependencies]
+# Optional: use the HNSW embedding server for query embedding (same as other backends).
+query-server = ["leann-backend-hnsw>=0.3.6", "pyzmq>=23.0.0", "msgpack>=1.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["leann_backend_flashlib_ivf*"]
