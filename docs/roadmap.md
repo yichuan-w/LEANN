@@ -57,7 +57,7 @@ The primary near-term goal: make LEANN the go-to MCP server for code-aware AI as
 
 - [ ] Agent + Deep research (#104)
 - [ ] Local Cursor — local model + local retrieval for code assistance (#47)
-- [ ] LlamaIndex integration (#217)
+- [x] LlamaIndex integration (#217)
 - [ ] Obsidian support (#96)
 
 ---
