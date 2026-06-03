@@ -33,7 +33,7 @@ filters:
 - `obsidian_tags`: tags from frontmatter and inline `#tags`, without the leading `#`.
 - `obsidian_links`: wiki-link targets from `[[Target]]` and `[[Target|Alias]]`.
 - `obsidian_embeds`: embedded wiki targets from `![[Attachment]]`.
-- `obsidian_frontmatter`: parsed frontmatter values.
+- `obsidian_frontmatter`: best-effort parsed frontmatter values for common scalar and list shapes.
 
 ## Current Scope
 
