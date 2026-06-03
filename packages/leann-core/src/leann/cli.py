@@ -38,6 +38,45 @@ def _normalize_path(path: str) -> str:
     return str(Path(path).resolve())
 
 
+def _cleanup_path(path: Path) -> None:
+    if path.is_dir():
+        import shutil
+
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
+def _existing_index_artifacts(index_dir: Path) -> bool:
+    return (
+        (index_dir / "documents.leann.meta.json").exists()
+        and (index_dir / "documents.leann.passages.jsonl").exists()
+        and (index_dir / "documents.leann.passages.idx").exists()
+    )
+
+
+def _publish_rebuilt_index(staging_dir: Path, index_dir: Path) -> None:
+    """Publish a staged full rebuild, restoring the previous directory if publish fails."""
+    backup_dir = index_dir.with_name(f".{index_dir.name}.backup-{uuid.uuid4().hex}")
+    live_moved = False
+    published = False
+    try:
+        if index_dir.exists():
+            os.replace(index_dir, backup_dir)
+            live_moved = True
+        os.replace(staging_dir, index_dir)
+        published = True
+    except Exception:
+        if published:
+            _cleanup_path(index_dir)
+        if live_moved and backup_dir.exists():
+            os.replace(backup_dir, index_dir)
+        raise
+    else:
+        if backup_dir.exists():
+            _cleanup_path(backup_dir)
+
+
 @contextlib.contextmanager
 def suppress_cpp_output(suppress: bool = True):
     """Context manager to suppress C++ stdout/stderr output from FAISS/HNSW
@@ -2379,6 +2418,12 @@ Examples:
             return
 
         print(f"Building index '{index_name}' with {args.backend_name} backend...")
+        publish_from_staging = _existing_index_artifacts(index_dir)
+        target_index_dir = index_dir
+        target_index_path = index_path
+        if publish_from_staging:
+            target_index_dir = index_dir.with_name(f".{index_dir.name}.rebuild-{uuid.uuid4().hex}")
+            target_index_path = str(target_index_dir / "documents.leann")
 
         builder = LeannBuilder(
             backend_name=args.backend_name,
@@ -2395,15 +2440,34 @@ Examples:
         for chunk in all_texts:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
 
-        builder.build_index(index_path)
-        for fs in synchronizers:
-            fs.create_snapshot()
-        self._write_sync_config(
-            index_dir,
-            self._resolve_sync_roots(docs_paths),
-            self._parse_file_types(args.file_types),
-            self._sync_ignore_patterns(args.include_hidden),
-        )
+        try:
+            builder.build_index(target_index_path)
+            target_synchronizers = (
+                self._build_synchronizers(
+                    docs_paths,
+                    target_index_dir,
+                    file_types=args.file_types,
+                    include_hidden=args.include_hidden,
+                )
+                if publish_from_staging
+                else synchronizers
+            )
+            for fs in target_synchronizers:
+                fs.create_snapshot()
+            self._write_sync_config(
+                target_index_dir,
+                self._resolve_sync_roots(docs_paths),
+                self._parse_file_types(args.file_types),
+                self._sync_ignore_patterns(args.include_hidden),
+            )
+            if publish_from_staging:
+                _publish_rebuilt_index(target_index_dir, index_dir)
+        except Exception:
+            if publish_from_staging and target_index_dir.exists():
+                import shutil
+
+                shutil.rmtree(target_index_dir)
+            raise
         print(f"Index built at {index_path}")
         self.register_project_dir()
 
