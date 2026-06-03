@@ -58,6 +58,10 @@ server = [
     "pydantic>=2.0.0",
     "uvicorn[standard]>=0.34.0",
 ]
+ocr = [
+    "pillow>=10.0.0",
+    "pytesseract>=0.3.10",
+]
 
 [project.scripts]
 leann = "leann.cli:main"

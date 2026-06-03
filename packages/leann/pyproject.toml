@@ -36,6 +36,9 @@ dependencies = [
 cpu = [
     "leann-core[cpu]>=0.1.0",
 ]
+ocr = [
+    "leann-core[ocr]>=0.1.0",
+]
 
 [project.urls]
 Repository = "https://github.com/yichuan-w/LEANN"

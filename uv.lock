@@ -2056,6 +2056,12 @@ dependencies = [
     { name = "transformers" },
 ]
 
+[package.optional-dependencies]
+ocr = [
+    { name = "pillow" },
+    { name = "pytesseract" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=0.20.0" },
@@ -2073,10 +2079,12 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.20.0,<3" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "pdfplumber", specifier = ">=0.10.0" },
+    { name = "pillow", marker = "extra == 'ocr'", specifier = ">=10.0.0" },
     { name = "psutil", specifier = ">=5.8.0" },
     { name = "pydantic", marker = "extra == 'server'", specifier = ">=2.0.0" },
     { name = "pymupdf", specifier = ">=1.23.0" },
     { name = "pypdf2", specifier = ">=3.0.0" },
+    { name = "pytesseract", marker = "extra == 'ocr'", specifier = ">=0.3.10" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyzmq", specifier = ">=23.0.0" },
     { name = "requests", specifier = ">=2.25.0" },
@@ -2091,7 +2099,7 @@ requires-dist = [
     { name = "transformers", marker = "python_full_version < '3.10' and extra == 'colab'", specifier = ">=4.30.0,<4.46" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.34.0" },
 ]
-provides-extras = ["cpu", "colab", "server"]
+provides-extras = ["cpu", "colab", "server", "ocr"]
 
 [[package]]
 name = "leann-workspace"
@@ -2158,6 +2166,9 @@ documents = [
 flashlib = [
     { name = "leann-backend-flashlib" },
 ]
+ocr = [
+    { name = "leann-core", extra = ["ocr"] },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -2192,6 +2203,7 @@ requires-dist = [
     { name = "leann-backend-flashlib", marker = "extra == 'flashlib'", editable = "packages/leann-backend-flashlib" },
     { name = "leann-backend-hnsw", editable = "packages/leann-backend-hnsw" },
     { name = "leann-core", editable = "packages/leann-core" },
+    { name = "leann-core", extras = ["ocr"], marker = "extra == 'ocr'", editable = "packages/leann-core" },
     { name = "llama-index", specifier = ">=0.12.44" },
     { name = "llama-index-embeddings-huggingface", specifier = ">=0.5.5" },
     { name = "llama-index-readers-file", specifier = ">=0.4.0" },
@@ -2230,7 +2242,7 @@ requires-dist = [
     { name = "tree-sitter-typescript", specifier = ">=0.20.0" },
     { name = "typer", specifier = ">=0.12.3" },
 ]
-provides-extras = ["diskann", "flashlib", "documents"]
+provides-extras = ["diskann", "flashlib", "documents", "ocr"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4244,6 +4256,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/13/e6a22f40f5800af116c02c28e29f15c06aa41cb2036f6a64ab124647f28b/pyrsistent-0.20.0-cp312-cp312-win32.whl", hash = "sha256:e78d0c7c1e99a4a45c99143900ea0546025e41bb59ebc10182e947cf1ece9174", size = 60865, upload-time = "2023-10-25T21:06:32.742Z" },
     { url = "https://files.pythonhosted.org/packages/75/ef/2fa3b55023ec07c22682c957808f9a41836da4cd006b5f55ec76bf0fbfa6/pyrsistent-0.20.0-cp312-cp312-win_amd64.whl", hash = "sha256:4021a7f963d88ccd15b523787d18ed5e5269ce57aa4037146a2377ff607ae87d", size = 63239, upload-time = "2023-10-25T21:06:34.035Z" },
     { url = "https://files.pythonhosted.org/packages/23/88/0acd180010aaed4987c85700b7cc17f9505f3edb4e5873e4dc67f613e338/pyrsistent-0.20.0-py3-none-any.whl", hash = "sha256:c55acc4733aad6560a7f5f818466631f07efc001fd023f34a6c203f8b6df0f0b", size = 58106, upload-time = "2023-10-25T21:06:54.387Z" },
+]
+
+[[package]]
+name = "pytesseract"
+version = "0.3.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pillow" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/a6/7d679b83c285974a7cb94d739b461fa7e7a9b17a3abfd7bf6cbc5c2394b0/pytesseract-0.3.13.tar.gz", hash = "sha256:4bf5f880c99406f52a3cfc2633e42d9dc67615e69d8a509d74867d3baddb5db9", size = 17689, upload-time = "2024-08-16T02:33:56.762Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/33/8312d7ce74670c9d39a532b2c246a853861120486be9443eebf048043637/pytesseract-0.3.13-py3-none-any.whl", hash = "sha256:7a99c6c2ac598360693d83a416e36e0b33a67638bb9d77fdcac094a3589d4b34", size = 14705, upload-time = "2024-08-16T02:36:10.09Z" },
 ]
 
 [[package]]

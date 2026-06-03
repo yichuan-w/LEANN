@@ -18,3 +18,15 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-06-03: OCR PDF indexing
+
+- Add opt-in OCR for scanned and image-heavy PDFs via `leann build --enable-ocr`.
+  LEANN still extracts embedded PDF text first with PyMuPDF; OCR only runs on pages
+  that have no embedded text, which keeps normal PDF indexing unchanged.
+- Add the `leann-core[ocr]` and `leann[ocr]` extras for `pytesseract` and Pillow,
+  while keeping OCR dependencies out of the default install. Users must also have
+  the local Tesseract binary available on `PATH`.
+- Add `apps/ocr_rag.py` plus `docs/ocr.md` for an end-to-end scanned-PDF RAG example,
+  including source metadata fields and deterministic failure behavior when OCR
+  dependencies or the Tesseract runtime are missing.

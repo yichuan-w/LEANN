@@ -14,6 +14,15 @@ LEANN provides `index-*` CLI commands for indexing common personal data sources.
 | `leann index-chatgpt --export-path <path>` | ChatGPT export | Any |
 | `leann index-claude --export-path <path>` | Claude export | Any |
 
+Document indexing uses the general `leann build --docs` command. For scanned or
+image-heavy PDFs, enable OCR explicitly:
+
+```bash
+leann build scanned-docs --docs ~/Documents/scans --file-types .pdf --enable-ocr
+```
+
+See [OCR PDF Indexing](ocr.md) for optional dependency and failure-mode details.
+
 ## Common Options
 
 All `index-*` commands accept these options:

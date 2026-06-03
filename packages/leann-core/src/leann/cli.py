@@ -102,20 +102,45 @@ def suppress_cpp_output(suppress: bool = True):
         os.close(saved_stderr_fd)
 
 
-def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
-    """Extract text from PDF using PyMuPDF for better quality."""
+def _extract_pdf_page_ocr_text(page: Any, page_number: int, file_path: str) -> str:
+    """Render a PDF page and extract text with optional OCR dependencies."""
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError(
+            "OCR requires optional dependencies. Install them with "
+            "`pip install 'leann-core[ocr]'` and make sure the Tesseract binary is available."
+        ) from exc
+
+    pixmap = page.get_pixmap(dpi=200, alpha=False)
+    image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+    try:
+        return pytesseract.image_to_string(image) or ""
+    except Exception as exc:
+        raise RuntimeError(f"OCR failed for page {page_number} of {file_path}: {exc}") from exc
+
+
+def extract_pdf_text_with_pymupdf(file_path: str, use_ocr: bool = False) -> str | None:
+    """Extract text from PDF using PyMuPDF, optionally OCRing image-only pages."""
     try:
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        doc.close()
-        return text
     except ImportError:
         # Fallback to default reader
         return None
+
+    try:
+        text_parts = []
+        for page_number, page in enumerate(doc, start=1):
+            page_text = page.get_text() or ""
+            if use_ocr and not page_text.strip():
+                page_text = _extract_pdf_page_ocr_text(page, page_number, file_path)
+            text_parts.append(page_text)
+        return "".join(text_parts)
+    finally:
+        doc.close()
 
 
 def extract_pdf_text_with_pdfplumber(file_path: str) -> str | None:
@@ -293,6 +318,14 @@ Examples:
             "--file-types",
             type=str,
             help="Comma-separated list of file extensions to include (e.g., '.txt,.pdf,.pptx'). If not specified, uses default supported types.",
+        )
+        build_parser.add_argument(
+            "--enable-ocr",
+            action="store_true",
+            help=(
+                "OCR image-only pages in PDFs during document indexing. Requires "
+                "`leann-core[ocr]` and the Tesseract binary."
+            ),
         )
         build_parser.add_argument(
             "--include-hidden",
@@ -1539,7 +1572,9 @@ Examples:
                     print(f"Processing PDF: {file_path}")
 
                     # Try PyMuPDF first (best quality)
-                    text = extract_pdf_text_with_pymupdf(str(file_path))
+                    text = extract_pdf_text_with_pymupdf(
+                        str(file_path), use_ocr=getattr(args, "enable_ocr", False)
+                    )
                     if text is None:
                         # Try pdfplumber
                         text = extract_pdf_text_with_pdfplumber(str(file_path))
