@@ -16,7 +16,7 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from tqdm import tqdm
 
-from .api import LeannBuilder, LeannChat, LeannSearcher
+from .api import PASSAGE_ID_SCHEME_SEQUENTIAL, LeannBuilder, LeannChat, LeannSearcher
 from .embedding_server_manager import EmbeddingServerManager
 from .index_lock import index_write_lock
 from .interactive_utils import create_cli_session
@@ -2013,16 +2013,15 @@ Examples:
     def _existing_index_id_scheme(self, index_path: str) -> Optional[str]:
         """Return the passage_id_scheme recorded in an existing index's meta.json.
 
-        Returns None when the index doesn't exist yet or the field isn't
-        recorded (older indexes pre-#330). Callers should treat None as
-        "fall back to whatever the args say or the default".
+        Returns None when the index doesn't exist yet. Older indexes pre-#330
+        have no field and are sequential by definition.
         """
         meta_path = Path(index_path).with_suffix(".leann.meta.json")
         if not meta_path.exists():
             return None
         try:
             with open(meta_path, encoding="utf-8") as f:
-                return json.load(f).get("passage_id_scheme")
+                return json.load(f).get("passage_id_scheme", PASSAGE_ID_SCHEME_SEQUENTIAL)
         except Exception:
             return None
 

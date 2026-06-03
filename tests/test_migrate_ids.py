@@ -60,6 +60,15 @@ def _build_fts5_db(db_path: Path, passages: list[dict]) -> None:
         conn.close()
 
 
+def test_legacy_missing_id_scheme_is_sequential(tmp_path):
+    meta_path = tmp_path / "documents.leann.meta.json"
+    meta_path.write_text(json.dumps({"version": "1.0"}), encoding="utf-8")
+
+    cli = LeannCLI()
+
+    assert cli._existing_index_id_scheme(str(tmp_path / "documents.leann")) == "sequential"
+
+
 def test_migrate_ids_rewrites_live_offsets_idmaps_meta_and_fts5(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     index_dir = tmp_path / ".leann" / "indexes" / "sample"
