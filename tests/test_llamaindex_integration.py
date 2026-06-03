@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any, cast
 
 import pytest
 from leann.api import SearchResult
@@ -7,7 +8,11 @@ from leann.integrations.llamaindex import (
     LeannRetriever,
     _results_to_nodes,
 )
-from llama_index.core.schema import NodeWithScore, QueryBundle
+from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
+
+
+def _text_node(node: NodeWithScore) -> TextNode:
+    return cast(TextNode, node.node)
 
 
 def test_results_to_nodes_preserves_text_id_score_and_dict_metadata():
@@ -21,7 +26,7 @@ def test_results_to_nodes_preserves_text_id_score_and_dict_metadata():
     assert len(nodes) == 2
     assert isinstance(nodes[0], NodeWithScore)
     assert nodes[0].node.id_ == "p1"
-    assert nodes[0].node.text == "alpha text"
+    assert _text_node(nodes[0]).text == "alpha text"
     assert nodes[0].node.metadata == {"source": "doc.md"}
     assert nodes[0].score == 0.9
     assert nodes[1].node.id_ == "p2"
@@ -29,7 +34,7 @@ def test_results_to_nodes_preserves_text_id_score_and_dict_metadata():
 
 
 def test_results_to_nodes_normalizes_non_dict_metadata():
-    result = SearchResult(id="p1", score=1.0, text="text", metadata="not metadata")
+    result = SearchResult(id="p1", score=1.0, text="text", metadata=cast(Any, "not metadata"))
 
     nodes = _results_to_nodes([result])
 
@@ -85,7 +90,7 @@ def test_leann_retriever_calls_search_with_vector_weight(monkeypatch):
             "metadata_filters": {"source": {"==": "doc"}},
         },
     )
-    assert nodes[0].node.text == "result"
+    assert _text_node(nodes[0]).text == "result"
 
 
 def test_leann_hybrid_retriever_maps_bm25_weight_to_vector_weight(monkeypatch):
@@ -163,7 +168,7 @@ def test_leann_retriever_async_path_runs_sync_retrieve(monkeypatch):
 
     nodes = asyncio.run(retriever._aretrieve(QueryBundle("q")))
 
-    assert nodes[0].node.text == "result"
+    assert _text_node(nodes[0]).text == "result"
 
 
 @pytest.mark.parametrize("bm25_weight", [-0.1, 1.1, "heavy"])
