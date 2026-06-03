@@ -3,6 +3,7 @@ import json
 import pickle
 import sys
 from types import ModuleType
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -17,8 +18,8 @@ def _content_id(text: str) -> str:
 @pytest.fixture(autouse=True)
 def _register_minimal_backends(monkeypatch):
     registry = dict(BACKEND_REGISTRY)
-    registry.setdefault("hnsw", object())
-    registry.setdefault("ivf", object())
+    registry["hnsw"] = cast(Any, object())
+    registry["ivf"] = cast(Any, object())
     monkeypatch.setattr("leann.api.BACKEND_REGISTRY", registry)
 
 
@@ -53,12 +54,11 @@ def _write_minimal_ivf_index(tmp_path, index_name: str, passages: list[dict]) ->
 
 
 def _install_fake_ivf_backend(monkeypatch, captured_passage_ids: list[list[str]]) -> None:
-    fake_ivf = ModuleType("leann_backend_ivf")
+    class FakeIvfModule(ModuleType):
+        def add_vectors(self, _index_path, _embeddings, passage_ids):
+            captured_passage_ids.append(list(passage_ids))
 
-    def add_vectors(_index_path, _embeddings, passage_ids):
-        captured_passage_ids.append(list(passage_ids))
-
-    fake_ivf.add_vectors = add_vectors
+    fake_ivf = FakeIvfModule("leann_backend_ivf")
     monkeypatch.setitem(sys.modules, "leann_backend_ivf", fake_ivf)
 
 
