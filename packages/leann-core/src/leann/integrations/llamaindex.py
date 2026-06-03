@@ -52,6 +52,16 @@ def _validate_weight(name: str, value: float) -> float:
     return weight
 
 
+def _normalize_search_kwargs(search_kwargs: dict[str, Any] | None) -> dict[str, Any]:
+    normalized = dict(search_kwargs or {})
+    if "vector_weight" in normalized:
+        raise ValueError(
+            "vector_weight is controlled by the retriever; use LeannHybridRetriever "
+            "bm25_weight to configure dense-vector versus keyword weighting"
+        )
+    return normalized
+
+
 class LeannRetriever(BaseRetriever):
     """LlamaIndex retriever for pure dense-vector LEANN search."""
 
@@ -76,7 +86,7 @@ class LeannRetriever(BaseRetriever):
         )
         self._top_k = top_k
         self._complexity = complexity
-        self._search_kwargs = dict(search_kwargs or {})
+        self._search_kwargs = _normalize_search_kwargs(search_kwargs)
         if recompute_embeddings is not None:
             searcher_kwargs["recompute_embeddings"] = recompute_embeddings
         self._searcher = LeannSearcher(index_path, **searcher_kwargs)
@@ -141,7 +151,7 @@ class LeannHybridRetriever(BaseRetriever):
         self._complexity = complexity
         self._bm25_weight = _validate_weight("bm25_weight", bm25_weight)
         self._vector_weight = 1.0 - self._bm25_weight
-        self._search_kwargs = dict(search_kwargs or {})
+        self._search_kwargs = _normalize_search_kwargs(search_kwargs)
         if recompute_embeddings is not None:
             searcher_kwargs["recompute_embeddings"] = recompute_embeddings
         self._searcher = LeannSearcher(index_path, **searcher_kwargs)

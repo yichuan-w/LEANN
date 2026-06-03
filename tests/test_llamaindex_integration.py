@@ -120,6 +120,18 @@ def test_leann_hybrid_retriever_maps_bm25_weight_to_vector_weight(monkeypatch):
     ]
 
 
+@pytest.mark.parametrize("retriever_cls", [LeannRetriever, LeannHybridRetriever])
+def test_retrievers_reject_vector_weight_search_kwarg(monkeypatch, retriever_cls):
+    class DummySearcher:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("leann.integrations.llamaindex.LeannSearcher", DummySearcher)
+
+    with pytest.raises(ValueError, match="vector_weight is controlled"):
+        retriever_cls("idx.leann", search_kwargs={"vector_weight": 0.2})
+
+
 def test_leann_retriever_rejects_query_bundle_embeddings(monkeypatch):
     class DummySearcher:
         def __init__(self, *args, **kwargs):
