@@ -27,6 +27,7 @@ The primary near-term goal: make LEANN the go-to MCP server for code-aware AI as
 - [x] Merkle tree file-change detection — `leann watch` for automatic re-indexing on file changes (#41)
 - [ ] Cold start optimization — faster first-build experience for new users (#166, #177)
 - [ ] Live index updates — push index changes as files are saved, not just on rebuild
+- [x] Code-context foundation — AST chunks expose Python module, symbol, import, call, and reference metadata
 - [ ] Smarter code context — cross-file symbol resolution, call graph awareness, import tracking
 
 ### Search Quality

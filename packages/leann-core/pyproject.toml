@@ -26,6 +26,7 @@ dependencies = [
     "llama-index-core>=0.12.0",
     "llama-index-readers-file>=0.4.0",  # Essential for document reading
     "llama-index-embeddings-huggingface>=0.5.5",  # For embeddings
+    "astchunk>=0.1.0",  # AST-aware code chunking for code-context metadata
     "python-dotenv>=1.0.0",
     "openai>=1.0.0",
     "huggingface-hub>=0.20.0",

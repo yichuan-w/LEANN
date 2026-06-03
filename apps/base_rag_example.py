@@ -359,6 +359,7 @@ class BaseRAGExample(ABC):
                 query,
                 top_k=args.top_k,
                 complexity=args.search_complexity,
+                recompute_embeddings=not args.no_recompute,
                 llm_kwargs=llm_kwargs,
             )
             print(f"\nAssistant: {response}\n")
@@ -381,7 +382,11 @@ class BaseRAGExample(ABC):
             llm_kwargs["thinking_budget"] = args.thinking_budget
 
         response = chat.ask(
-            query, top_k=args.top_k, complexity=args.search_complexity, llm_kwargs=llm_kwargs
+            query,
+            top_k=args.top_k,
+            complexity=args.search_complexity,
+            recompute_embeddings=not args.no_recompute,
+            llm_kwargs=llm_kwargs,
         )
         print(f"\n[Response]: \033[36m{response}\033[0m")
 

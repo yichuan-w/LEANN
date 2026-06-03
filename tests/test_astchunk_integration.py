@@ -305,6 +305,7 @@ class MathUtils:
                 "facebook/contriever",
                 "--embedding-mode",
                 "sentence-transformers",
+                "--no-recompute",
                 "--index-dir",
                 index_dir,
                 "--data-dir",
@@ -351,6 +352,7 @@ class MathUtils:
                 "simulated",
                 "--embedding-model",
                 "facebook/contriever",
+                "--no-recompute",
                 "--index-dir",
                 index_dir,
                 "--repo-dir",
@@ -677,9 +679,11 @@ class DataProcessor:
                 "metadata": {
                     "filepath": "/project/src/utils.py",
                     "line_count": 2,
-                    "start_line_no": 1,
-                    "end_line_no": 2,
+                    "start_line_no": 0,
+                    "end_line_no": 1,
+                    "line_index_base": 0,
                     "node_count": 1,
+                    "ancestors": ["def calculate_sum(numbers):"],
                 },
             },
             {
@@ -687,9 +691,11 @@ class DataProcessor:
                 "metadata": {
                     "filepath": "/project/src/utils.py",
                     "line_count": 3,
-                    "start_line_no": 5,
-                    "end_line_no": 7,
+                    "start_line_no": 4,
+                    "end_line_no": 6,
+                    "line_index_base": 0,
                     "node_count": 2,
+                    "ancestors": ["class DataProcessor:"],
                 },
             },
         ]
@@ -717,6 +723,8 @@ class DataProcessor:
             assert metadata["file_path"] == "/project/src/utils.py", (
                 f"Chunk {i} file_path incorrect"
             )
+            assert metadata["source"] == "/project/src/utils.py", f"Chunk {i} source incorrect"
+            assert metadata["filepath"] == "/project/src/utils.py", f"Chunk {i} filepath incorrect"
 
             assert "file_name" in metadata, f"Chunk {i} should preserve file_name"
             assert metadata["file_name"] == "utils.py", f"Chunk {i} file_name incorrect"
@@ -735,6 +743,12 @@ class DataProcessor:
         assert chunks[0]["metadata"]["file_path"] == chunks[1]["metadata"]["file_path"], (
             "All chunks from same document should have same file_path"
         )
+        assert chunks[0]["metadata"]["start_line"] == 1
+        assert chunks[0]["metadata"]["end_line"] == 2
+        assert chunks[0]["metadata"]["ancestors"] == ["def calculate_sum(numbers):"]
+        assert chunks[1]["metadata"]["start_line"] == 5
+        assert chunks[1]["metadata"]["end_line"] == 7
+        assert chunks[1]["metadata"]["ancestors"] == ["class DataProcessor:"]
 
         # Verify text content is present and not stringified
         assert "def calculate_sum" in chunks[0]["text"]
@@ -777,9 +791,11 @@ def function_two():
                 "metadata": {
                     "filepath": "/test/code.py",
                     "line_count": 4,
-                    "start_line_no": 1,
-                    "end_line_no": 4,
+                    "start_line_no": 0,
+                    "end_line_no": 3,
+                    "line_index_base": 0,
                     "node_count": 5,  # function, assignments, return
+                    "ancestors": ["def function_one():"],
                 },
             },
             {
@@ -787,9 +803,11 @@ def function_two():
                 "metadata": {
                     "filepath": "/test/code.py",
                     "line_count": 2,
-                    "start_line_no": 7,
-                    "end_line_no": 8,
+                    "start_line_no": 6,
+                    "end_line_no": 7,
+                    "line_index_base": 0,
                     "node_count": 2,  # function, return
+                    "ancestors": ["def function_two():"],
                 },
             },
         ]
@@ -816,22 +834,28 @@ def function_two():
         assert metadata1["line_count"] == 4, "line_count should be 4"
 
         assert "start_line_no" in metadata1, "Should include astchunk start_line_no"
-        assert metadata1["start_line_no"] == 1, "start_line_no should be 1"
+        assert metadata1["start_line_no"] == 0, "start_line_no should be 0"
+        assert metadata1["start_line"] == 1, "start_line should be 1"
 
         assert "end_line_no" in metadata1, "Should include astchunk end_line_no"
-        assert metadata1["end_line_no"] == 4, "end_line_no should be 4"
+        assert metadata1["end_line_no"] == 3, "end_line_no should be 3"
+        assert metadata1["end_line"] == 4, "end_line should be 4"
 
         assert "node_count" in metadata1, "Should include astchunk node_count"
         assert metadata1["node_count"] == 5, "node_count should be 5"
+        assert metadata1["ancestors"] == ["def function_one():"]
 
         # Second chunk - function_two
         chunk2 = chunks[1]
         metadata2 = chunk2["metadata"]
 
         assert metadata2["line_count"] == 2, "line_count should be 2"
-        assert metadata2["start_line_no"] == 7, "start_line_no should be 7"
-        assert metadata2["end_line_no"] == 8, "end_line_no should be 8"
+        assert metadata2["start_line_no"] == 6, "start_line_no should be 6"
+        assert metadata2["start_line"] == 7, "start_line should be 7"
+        assert metadata2["end_line_no"] == 7, "end_line_no should be 7"
+        assert metadata2["end_line"] == 8, "end_line should be 8"
         assert metadata2["node_count"] == 2, "node_count should be 2"
+        assert metadata2["ancestors"] == ["def function_two():"]
 
         # Verify document metadata is ALSO present (merged, not replaced)
         assert metadata1["file_path"] == "/test/code.py"
@@ -842,6 +866,104 @@ def function_two():
         # Verify text content is correct
         assert "def function_one" in chunk1["text"]
         assert "def function_two" in chunk2["text"]
+
+    def test_ast_chunks_add_python_code_context_metadata(self):
+        python_code = """\
+import os
+from collections import defaultdict as dd
+
+
+class processor:
+    def run(self, items):
+        bucket = dd(list)
+        return os.path.join("root", str(bucket))
+"""
+        doc = MockDocument(
+            python_code,
+            file_path="/repo/src/pkg/mod.py",
+            metadata={
+                "language": "python",
+                "file_path": "/repo/src/pkg/mod.py",
+                "file_name": "mod.py",
+            },
+        )
+
+        mock_builder = Mock()
+        mock_builder.chunkify.return_value = [
+            {
+                "content": (
+                    "    def run(self, items):\n"
+                    "        bucket = dd(list)\n"
+                    '        return os.path.join("root", str(bucket))'
+                ),
+                "metadata": {
+                    "filepath": "/repo/src/pkg/mod.py",
+                    "start_line_no": 5,
+                    "end_line_no": 7,
+                    "line_index_base": 0,
+                    "ancestors": ["class processor:", "def run(self, items):"],
+                },
+            }
+        ]
+        mock_astchunk = Mock()
+        mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
+
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
+            chunks = create_ast_chunks([doc])
+
+        metadata = chunks[0]["metadata"]
+        assert metadata["code_context_version"] == 1
+        assert metadata["module_path"].endswith("repo.src.pkg.mod")
+        assert metadata["qualified_name"].endswith("processor.run")
+        assert metadata["symbol"] == "run"
+        assert metadata["symbol_kind"] == "method"
+        assert any(symbol.endswith("processor.run") for symbol in metadata["defined_symbols"])
+        assert {edge["local_name"] for edge in metadata["imports"]} == {"os", "dd"}
+        assert {edge["callee"] for edge in metadata["calls"]} == {
+            "dd",
+            "os.path.join",
+            "str",
+        }
+        assert "bucket" in metadata["referenced_symbols"]
+
+    def test_ast_chunk_line_prefix_uses_normalized_one_based_lines(self):
+        python_code = """\
+class processor:
+    def run(self, items):
+        return items
+"""
+        doc = MockDocument(
+            python_code,
+            file_path="/repo/src/pkg/mod.py",
+            metadata={
+                "language": "python",
+                "file_path": "/repo/src/pkg/mod.py",
+                "file_name": "mod.py",
+            },
+        )
+
+        mock_builder = Mock()
+        mock_builder.chunkify.return_value = [
+            {
+                "content": "    def run(self, items):\n        return items",
+                "metadata": {
+                    "filepath": "/repo/src/pkg/mod.py",
+                    "start_line_no": 1,
+                    "end_line_no": 2,
+                    "line_index_base": 0,
+                    "ancestors": ["class processor:", "def run(self, items):"],
+                },
+            }
+        ]
+        mock_astchunk = Mock()
+        mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
+
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
+            chunks = create_text_chunks([doc], use_ast_chunking=True)
+
+        assert chunks[0]["metadata"]["start_line"] == 2
+        assert chunks[0]["metadata"]["end_line"] == 3
+        assert chunks[0]["text"].startswith("2|")
 
     def test_traditional_chunks_as_dicts_helper(self):
         """Test the helper function that wraps traditional chunks as dicts.

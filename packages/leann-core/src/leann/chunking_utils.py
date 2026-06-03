@@ -9,6 +9,8 @@ from typing import Any, Optional
 
 from llama_index.core.node_parser import SentenceSplitter
 
+from .code_context import extract_context_for_file, metadata_for_line_range
+
 logger = logging.getLogger(__name__)
 
 # Flag to ensure AST token warning only shown once per session
@@ -225,6 +227,7 @@ def create_ast_chunks(
 
             repo_metadata = {
                 "file_path": doc.metadata.get("file_path", ""),
+                "filepath": doc.metadata.get("file_path", "") or doc.metadata.get("filepath", ""),
                 "file_name": doc.metadata.get("file_name", ""),
                 "source": doc.metadata.get("source", ""),
                 "creation_date": doc.metadata.get("creation_date", ""),
@@ -237,6 +240,11 @@ def create_ast_chunks(
             if not code_content or not code_content.strip():
                 logger.warning("Empty code content, skipping")
                 continue
+            code_graph = extract_context_for_file(
+                code_content,
+                repo_metadata["file_path"] or repo_metadata["source"] or repo_metadata["file_name"],
+                language=language,
+            )
 
             chunks = chunk_builder.chunkify(code_content)
             for chunk in chunks:
@@ -273,6 +281,14 @@ def create_ast_chunks(
 
                     # Merge document metadata + astchunk metadata
                     combined_metadata = {**doc_metadata, **astchunk_metadata}
+                    combined_metadata = _normalize_code_chunk_metadata(combined_metadata)
+                    combined_metadata.update(
+                        metadata_for_line_range(
+                            code_graph,
+                            start_line=combined_metadata.get("start_line"),
+                            end_line=combined_metadata.get("end_line"),
+                        )
+                    )
 
                     all_chunks.append({"text": chunk_text.strip(), "metadata": combined_metadata})
 
@@ -285,6 +301,47 @@ def create_ast_chunks(
             all_chunks.extend(_traditional_chunks_as_dicts([doc], max_chunk_size, chunk_overlap))
 
     return all_chunks
+
+
+def _normalize_code_chunk_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(metadata)
+    file_path = (
+        normalized.get("file_path") or normalized.get("filepath") or normalized.get("source")
+    )
+    if file_path:
+        normalized["file_path"] = file_path
+        if not normalized.get("filepath"):
+            normalized["filepath"] = file_path
+        if not normalized.get("source"):
+            normalized["source"] = file_path
+
+    line_index_base = normalized.get("line_index_base")
+    start_line_no = normalized.get("start_line_no")
+    end_line_no = normalized.get("end_line_no")
+
+    def public_line(value: Any) -> int | None:
+        if value is None or value == "":
+            return None
+        try:
+            line = int(value)
+        except (TypeError, ValueError):
+            return None
+        return line + 1 if line_index_base == 0 else line
+
+    start_line = public_line(start_line_no)
+    end_line = public_line(end_line_no)
+    if start_line is not None:
+        normalized.setdefault("start_line", start_line)
+    if end_line is not None:
+        normalized.setdefault("end_line", end_line)
+
+    ancestors = normalized.get("ancestors")
+    if isinstance(ancestors, str):
+        normalized["ancestors"] = [line for line in ancestors.splitlines() if line.strip()]
+    elif ancestors is None:
+        normalized["ancestors"] = []
+
+    return normalized
 
 
 def create_traditional_chunks(
@@ -388,7 +445,7 @@ def create_text_chunks(
                 )
                 # Prepend line numbers to code chunks for navigation
                 for chunk in ast_chunks:
-                    start_line = chunk.get("metadata", {}).get("start_line_no")
+                    start_line = chunk.get("metadata", {}).get("start_line")
                     if start_line is not None:
                         lines = chunk["text"].split("\n")
                         end_line = start_line + len(lines) - 1

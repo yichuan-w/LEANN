@@ -1614,7 +1614,7 @@ class LeannChat:
         complexity: int = 64,
         beam_width: int = 1,
         prune_ratio: float = 0.0,
-        recompute_embeddings: bool = True,
+        recompute_embeddings: Optional[bool] = None,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         llm_kwargs: Optional[dict[str, Any]] = None,
         expected_zmq_port: int = 5557,

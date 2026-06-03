@@ -2031,6 +2031,7 @@ version = "0.3.7"
 source = { editable = "packages/leann-core" }
 dependencies = [
     { name = "accelerate" },
+    { name = "astchunk" },
     { name = "gitignore-parser" },
     { name = "huggingface-hub" },
     { name = "llama-index-core" },
@@ -2060,6 +2061,7 @@ dependencies = [
 requires-dist = [
     { name = "accelerate", specifier = ">=0.20.0" },
     { name = "accelerate", marker = "extra == 'colab'", specifier = ">=0.20.0,<1.0.0" },
+    { name = "astchunk", specifier = ">=0.1.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115.0" },
     { name = "gitignore-parser", specifier = ">=0.1.12" },
     { name = "huggingface-hub", specifier = ">=0.20.0" },
