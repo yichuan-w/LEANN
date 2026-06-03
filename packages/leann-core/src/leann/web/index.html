@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LEANN</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar" aria-label="Workspace">
+        <div>
+          <h1>LEANN</h1>
+          <p id="statusText">Connecting...</p>
+        </div>
+        <button id="refreshButton" type="button">Refresh</button>
+      </section>
+
+      <section class="workspace" aria-label="Search workspace">
+        <aside class="sidebar" aria-label="Indexes">
+          <div class="section-title">
+            <h2>Indexes</h2>
+            <span id="indexCount">0</span>
+          </div>
+          <div id="indexList" class="index-list" role="list"></div>
+        </aside>
+
+        <section class="search-panel" aria-label="Search">
+          <form id="searchForm" class="search-form">
+            <label for="queryInput">Query</label>
+            <div class="query-row">
+              <input
+                id="queryInput"
+                name="query"
+                type="search"
+                autocomplete="off"
+                placeholder="Search the selected index"
+                required
+              />
+              <button id="searchButton" type="submit">Search</button>
+            </div>
+
+            <div class="controls">
+              <label>
+                Results
+                <input id="topKInput" name="topK" type="number" min="1" max="50" value="5" />
+              </label>
+              <label>
+                Complexity
+                <input
+                  id="complexityInput"
+                  name="complexity"
+                  type="number"
+                  min="1"
+                  max="512"
+                  value="64"
+                />
+              </label>
+              <label class="toggle">
+                <input id="grepInput" name="useGrep" type="checkbox" />
+                Keyword assist
+              </label>
+            </div>
+          </form>
+
+          <div id="resultMeta" class="result-meta"></div>
+          <div id="results" class="results" aria-live="polite"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/ui/app.js" defer></script>
+  </body>
+</html>

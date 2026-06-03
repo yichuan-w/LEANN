@@ -22,7 +22,22 @@ from typing import Any
 from pydantic import BaseModel as _BaseModel
 
 from .api import LeannSearcher
-from .cli import LeannCLI
+
+
+def _ui_dir() -> Path:
+    return Path(__file__).resolve().parent / "web"
+
+
+def _ui_asset_path(asset_name: str) -> Path:
+    ui_root = _ui_dir().resolve()
+    candidate = (ui_root / asset_name).resolve()
+    try:
+        candidate.relative_to(ui_root)
+    except ValueError as e:
+        raise FileNotFoundError(asset_name) from e
+    if not candidate.is_file():
+        raise FileNotFoundError(asset_name)
+    return candidate
 
 
 class SearchRequest(_BaseModel):
@@ -47,7 +62,7 @@ def _ensure_fastapi():
     """Lazy import FastAPI and Pydantic, with a clear error if missing."""
     try:
         from fastapi import FastAPI, HTTPException
-        from pydantic import BaseModel
+        from fastapi.responses import FileResponse, RedirectResponse
     except ImportError as e:  # pragma: no cover - dependency error path
         raise RuntimeError(
             "FastAPI and pydantic are required for the LEANN HTTP server.\n"
@@ -55,7 +70,7 @@ def _ensure_fastapi():
             "  uv pip install 'fastapi>=0.115' 'pydantic>=2' 'uvicorn[standard]'\n"
         ) from e
 
-    return FastAPI, HTTPException, BaseModel
+    return FastAPI, HTTPException, FileResponse, RedirectResponse
 
 
 def _resolve_index_path(index_name: str) -> str:
@@ -67,6 +82,8 @@ def _resolve_index_path(index_name: str) -> str:
 
     This keeps behavior predictable when running `leann serve` from a project root.
     """
+    from .cli import LeannCLI
+
     cli = LeannCLI()
     index_path = cli.get_index_path(index_name)
     if not cli.index_exists(index_name):
@@ -84,6 +101,8 @@ def _list_current_project_indexes() -> list[dict[str, Any]]:
     This mirrors `LeannCLI.list_indexes()` but only for the current project
     and without printing to stdout.
     """
+    from .cli import LeannCLI
+
     cli = LeannCLI()
     current_path = Path.cwd()
     indexes: list[dict[str, Any]] = []
@@ -109,11 +128,13 @@ def create_app():
 
     Endpoints:
     - GET  /health                     -> basic health check
+    - GET  /                           -> web UI
+    - GET  /ui/{asset}                 -> web UI assets
     - GET  /indexes                    -> list indexes in current project
     - POST /indexes/{name}/search      -> semantic search
     """
 
-    FastAPI, HTTPException, BaseModel = _ensure_fastapi()
+    FastAPI, HTTPException, FileResponse, RedirectResponse = _ensure_fastapi()
 
     app = FastAPI(
         title="LEANN Vector DB Server",
@@ -124,6 +145,21 @@ def create_app():
         ),
         version="0.1.0",
     )
+
+    @app.get("/", include_in_schema=False)
+    async def web_ui():
+        return FileResponse(_ui_asset_path("index.html"))
+
+    @app.get("/ui", include_in_schema=False)
+    async def web_ui_redirect():
+        return RedirectResponse(url="/")
+
+    @app.get("/ui/{asset_name:path}", include_in_schema=False)
+    async def web_ui_asset(asset_name: str):
+        try:
+            return FileResponse(_ui_asset_path(asset_name))
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail="UI asset not found") from e
 
     @app.get("/health")
     async def health() -> dict[str, str]:

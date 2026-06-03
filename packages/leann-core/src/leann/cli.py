@@ -727,7 +727,7 @@ Examples:
 
         # Serve command (HTTP API server)
         serve_parser = subparsers.add_parser(
-            "serve", help="Start HTTP API server for LEANN vector DB"
+            "serve", help="Start HTTP API server and Web UI for LEANN vector DB"
         )
         serve_parser.add_argument(
             "--host", type=str, default=None, help="Host to bind to (default: 127.0.0.1)"

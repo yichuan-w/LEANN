@@ -18,3 +18,11 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-06-03: Local Web UI for `leann serve`
+
+- Serve a lightweight static Web UI from the existing FastAPI server at `/`, with packaged
+  HTML/CSS/JavaScript assets under `leann.web`.
+- Add index listing, index selection, search controls, result rendering, empty states, and error
+  states using the existing `/indexes` and `/indexes/{index}/search` API endpoints.
+- Document local usage in `docs/web_ui.md`.
