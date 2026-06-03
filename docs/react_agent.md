@@ -230,6 +230,6 @@ This is the first implementation (1/N) of Deep-Research integration. Future enha
 
 ## Related Documentation
 
-- [Basic Usage Guide](../README.md)
+- [Basic Usage Guide](https://github.com/yichuan-w/LEANN/blob/main/README.md)
 - [CLI Reference](configuration-guide.md)
 - [Embedding Models](normalized_embeddings.md)

@@ -1,0 +1,27 @@
+site_name: LEANN
+site_description: Local-first low-storage vector search and RAG.
+repo_url: https://github.com/yichuan-w/LEANN
+docs_dir: docs
+
+nav:
+  - Home: index.md
+  - Features: features.md
+  - Configuration: configuration-guide.md
+  - Benchmarks:
+      - Overview: benchmarks.md
+  - Metadata Filtering: metadata_filtering.md
+  - Grep Search: grep_search.md
+  - AST Chunking: ast_chunking_guide.md
+  - Normalized Embeddings: normalized_embeddings.md
+  - ColQwen Guide: COLQWEN_GUIDE.md
+  - FlashLib Backend: flashlib_backend_guide.md
+  - MCP Setup: openclaw-setup.md
+  - ReAct Agent: react_agent.md
+  - Slack Setup: slack-setup-guide.md
+  - User Scripts: user-scripts.md
+  - Thinking Budget: THINKING_BUDGET_FEATURE.md
+  - FAQ: faq.md
+  - Roadmap: roadmap.md
+  - Ultimate Goal: ultimate_goal.md
+  - Contributing: CONTRIBUTING.md
+  - Release Process: RELEASE.md

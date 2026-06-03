@@ -1110,7 +1110,10 @@ leann ask my-docs "Where are prompts configured?"
 # Detect file changes since last build/watch checkpoint
 leann watch my-docs
 
-# List all your indexes
+# Keep an index current as files are saved
+leann watch my-docs --live
+
+# List discoverable indexes
 leann list
 
 # Remove an index
@@ -1152,23 +1155,27 @@ leann search INDEX_NAME QUERY [OPTIONS]
 Options:
   --top-k N                     Number of results (default: 5)
   --complexity N                Search complexity (default: 64)
+  --max-depth N                 Maximum app-index discovery depth (default: 4)
   --recompute / --no-recompute  Enable/disable embedding recomputation (default: enabled). Should not do a `no-recompute` search in a `recompute` build.
   --pruning-strategy {global,local,proportional}
 ```
 
 **Watch Command:**
 ```bash
-leann watch INDEX_NAME
+leann watch INDEX_NAME [OPTIONS]
 
 # Compares the current file system state against the last checkpoint (Merkle tree snapshot)
-# and reports which files have been added, removed, or modified, along with their chunk IDs.
+# and updates the index when files have been added, removed, or modified.
 #
-# - Automatically saves a new checkpoint after detecting changes
+# - Use --once --dry-run to report changes without updating the index
+# - Use --live to wake updates from filesystem events instead of the polling interval
+# - --debounce-ms controls live event batching (default: 500)
+# - Automatically saves a new checkpoint after successful index updates
 # - Each subsequent run compares against the most recent checkpoint
 # - File change detection uses SHA-256 content hashing via a Merkle tree
 #
 # Example output:
-#   === Changes since last checkpoint ===
+#   === Changes detected ===
 #   modified (1):
 #     - /path/to/file.py
 #       chunks: 42, 43, 44
@@ -1187,13 +1194,22 @@ Options:
 
 **List Command:**
 ```bash
-leann list
+leann list [OPTIONS]
 
-# Lists all indexes across all projects with status indicators:
+Options:
+  --max-depth N                 Maximum app-index discovery depth (default: 4)
+
+# Lists discoverable indexes from the current project and registered project roots:
 # ✅ - Index is complete and ready to use
 # ❌ - Index is incomplete or corrupted
 # 📁 - CLI-created index (in .leann/indexes/)
 # 📄 - App-created index (*.leann.meta.json files)
+#
+# App-created index discovery is bounded and skips heavyweight directories
+# such as .git, node_modules, virtualenvs, build/cache folders, and directory symlinks.
+#
+# Commands that resolve app-created indexes by name also accept --max-depth,
+# including search, watch, rebuild, migrate-ids, warmup, daemon, and react.
 ```
 
 **Remove Command:**
@@ -1201,10 +1217,11 @@ leann list
 leann remove INDEX_NAME [OPTIONS]
 
 Options:
-  --force, -f    Force removal without confirmation
+  --force, -f                    Force removal without confirmation
+  --max-depth N                  Maximum app-index discovery depth (default: 4)
 
 # Smart removal: automatically finds and safely removes indexes
-# - Shows all matching indexes across projects
+# - Shows all bounded matching indexes across registered projects
 # - Requires confirmation for cross-project removal
 # - Interactive selection when multiple matches found
 # - Supports both CLI and app-created indexes
@@ -1271,6 +1288,9 @@ results = searcher.search("banana‑crocodile", use_grep=True, top_k=1)
 - **DiskANN**: Advanced option with superior search performance, using PQ-based graph traversal with real-time reranking for the best speed-accuracy trade-off
 
 ## Benchmarks
+
+For the current benchmark inventory and reporting template, see the
+[Benchmark Guide](docs/benchmarks.md).
 
 **[DiskANN vs HNSW Performance Comparison →](benchmarks/diskann_vs_hnsw_speed_comparison.py)** - Compare search performance between both backends
 

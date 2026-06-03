@@ -72,4 +72,6 @@ Using the wrong distance metric with normalized embeddings can lead to:
 - **Incorrect ranking** of search results
 - **Suboptimal performance** compared to using the correct metric
 
-For more details on why this happens, see our analysis in the [embedding detection code](../packages/leann-core/src/leann/api.py) which automatically handles normalized embeddings and MIPS distance metric issues.
+For more details on why this happens, see our analysis in the
+[embedding detection code](https://github.com/yichuan-w/LEANN/blob/main/packages/leann-core/src/leann/api.py),
+which automatically handles normalized embeddings and MIPS distance metric issues.

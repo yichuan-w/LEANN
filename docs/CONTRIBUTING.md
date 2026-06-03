@@ -209,6 +209,30 @@ When adding new features or making significant changes:
 3. Update README.md if needed
 4. Include usage examples
 
+### Documentation Build
+
+The hosted documentation is built from `mkdocs.yml` with the dependencies in
+`docs/requirements.txt`. Before changing docs navigation, ReadTheDocs configuration, or benchmark
+documentation, run the same strict build used by CI:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r docs/requirements.txt
+python -m mkdocs build --strict --config-file mkdocs.yml
+```
+
+For local preview:
+
+```bash
+python -m mkdocs serve --config-file mkdocs.yml
+```
+
+The build writes a local `site/` directory. Treat it as generated output and do not commit it. If
+you add a new documentation page, add it to the `nav` section in `mkdocs.yml`. If you add a MkDocs
+plugin, theme, or extension, add the dependency to `docs/requirements.txt` so local builds,
+ReadTheDocs, and CI use the same docs dependency set.
+
 ## 🤔 Getting Help
 
 - **Discord**: Join our community for discussions
