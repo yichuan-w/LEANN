@@ -50,6 +50,7 @@ data/*
 !data/.gitattributes
 *.qdstrm
 benchmark_results/
+benchmark-results/
 results/
 frac_*.png
 final_in_*.png

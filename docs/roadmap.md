@@ -36,7 +36,7 @@ The primary near-term goal: make LEANN the go-to MCP server for code-aware AI as
 ### Documentation
 
 - [ ] ReadTheDocs — hosted documentation site (#234)
-- [ ] Benchmarks — recall@k, latency, and storage comparisons across backends
+- [ ] Benchmarks — artifact writers and benchmark inventory added; reproducible recall@k, latency, and storage comparisons across real datasets/backends remain
 
 ---
 
