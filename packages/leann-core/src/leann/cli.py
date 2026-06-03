@@ -456,11 +456,11 @@ Examples:
         build_parser.add_argument(
             "--id-scheme",
             choices=["sequential", "content-hash"],
-            default="sequential",
             help=(
-                "How passage IDs are assigned. 'sequential' (default) keys by insertion "
-                "order; 'content-hash' uses sha256(text)[:16], stable across file moves "
-                "and reorderings. See #329."
+                "How passage IDs are assigned. By default, HNSW/IVF use "
+                "'content-hash' (sha256(text)[:16], stable across file moves and "
+                "reorderings), while DiskANN uses 'sequential' until it has a persisted "
+                "passage ID map. 'sequential' keys by insertion order. See #329."
             ),
         )
 
@@ -2035,8 +2035,9 @@ Examples:
         # For incremental updates, the existing index's scheme wins. Otherwise
         # IDs would mix schemes within one index, which breaks lookups.
         existing_scheme = self._existing_index_id_scheme(self.get_index_path(args.index_name))
-        scheme = existing_scheme or getattr(args, "id_scheme", "sequential")
-        if existing_scheme and getattr(args, "id_scheme", existing_scheme) != existing_scheme:
+        requested_scheme = getattr(args, "id_scheme", None)
+        scheme = existing_scheme or requested_scheme
+        if existing_scheme and requested_scheme is not None and requested_scheme != existing_scheme:
             print(
                 f"Note: --id-scheme={args.id_scheme} ignored — index '{args.index_name}' "
                 f"was built with passage_id_scheme={existing_scheme!r}, keeping that."
@@ -2554,7 +2555,7 @@ Examples:
             is_compact=args.compact,
             is_recompute=args.recompute,
             num_threads=args.num_threads,
-            passage_id_scheme=getattr(args, "id_scheme", "sequential"),
+            passage_id_scheme=getattr(args, "id_scheme", None),
         )
 
         for chunk in all_texts:

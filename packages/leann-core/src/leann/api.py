@@ -31,9 +31,9 @@ from .registry import BACKEND_REGISTRY
 logger = logging.getLogger(__name__)
 
 # Passage ID schemes recorded in <index>.meta.json["passage_id_scheme"].
-# - "sequential": today's default; IDs are str(insertion_index) (api.py:add_text).
-# - "content-hash": planned in #329; IDs are sha256(text)[:16], stable across
-#   file moves and reorderings.
+# - "content-hash": default for new HNSW/IVF indexes; IDs are
+#   sha256(text)[:16], stable across file moves and reorderings.
+# - "sequential": legacy opt-in; IDs are str(insertion_index) (api.py:add_text).
 # Older indexes have no passage_id_scheme field — readers must default to
 # "sequential" when the key is absent. See #329 for the rollout plan.
 PASSAGE_ID_SCHEME_SEQUENTIAL = "sequential"
@@ -385,7 +385,7 @@ class LeannBuilder:
         embedding_options: Optional[dict[str, Any]] = None,
         prebuild_bm25: bool = False,
         bm25_backend: str = "fts5",
-        passage_id_scheme: str = PASSAGE_ID_SCHEME_SEQUENTIAL,
+        passage_id_scheme: Optional[str] = None,
         **backend_kwargs,
     ):
         if bm25_backend != "fts5":
@@ -393,6 +393,12 @@ class LeannBuilder:
             bm25_backend = "fts5"
         self.bm25_backend = bm25_backend
         self.prebuild_bm25 = prebuild_bm25 or bm25_backend == "fts5"
+        if passage_id_scheme is None:
+            passage_id_scheme = (
+                PASSAGE_ID_SCHEME_SEQUENTIAL
+                if backend_name == "diskann"
+                else PASSAGE_ID_SCHEME_CONTENT_HASH
+            )
         if passage_id_scheme not in (
             PASSAGE_ID_SCHEME_SEQUENTIAL,
             PASSAGE_ID_SCHEME_CONTENT_HASH,
@@ -509,10 +515,10 @@ class LeannBuilder:
     def _generate_passage_id(self, text: str, reserved_ids: Optional[set[str]] = None) -> str:
         """Generate a passage ID per the configured scheme.
 
-        sequential: str(insertion index) — fast, position-dependent, current default.
         content-hash: sha256(text)[:16] — content-stable across file moves and
         reorderings when text is unique. Duplicate text receives a numeric suffix
         so the passage store, ID maps, and vector labels stay one-to-one.
+        sequential: str(insertion index) — fast, position-dependent, legacy opt-in.
         """
         if self.passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
             import hashlib

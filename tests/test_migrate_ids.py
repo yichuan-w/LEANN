@@ -6,7 +6,13 @@ import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
+import leann.api as leann_api
 import pytest
+from leann.api import (
+    PASSAGE_ID_SCHEME_CONTENT_HASH,
+    PASSAGE_ID_SCHEME_SEQUENTIAL,
+    LeannBuilder,
+)
 from leann.cli import LeannCLI
 
 
@@ -67,6 +73,21 @@ def test_legacy_missing_id_scheme_is_sequential(tmp_path):
     cli = LeannCLI()
 
     assert cli._existing_index_id_scheme(str(tmp_path / "documents.leann")) == "sequential"
+
+
+def test_new_builds_use_backend_aware_default_id_scheme(monkeypatch):
+    assert LeannBuilder(backend_name="hnsw").passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH
+    monkeypatch.setitem(leann_api.BACKEND_REGISTRY, "diskann", SimpleNamespace())
+    assert LeannBuilder(backend_name="diskann").passage_id_scheme == PASSAGE_ID_SCHEME_SEQUENTIAL
+
+    args = LeannCLI().create_parser().parse_args(["build", "sample", "--docs", "docs"])
+    assert args.id_scheme is None
+    explicit_args = (
+        LeannCLI()
+        .create_parser()
+        .parse_args(["build", "sample", "--docs", "docs", "--id-scheme", "content-hash"])
+    )
+    assert explicit_args.id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH
 
 
 def test_migrate_ids_rewrites_live_offsets_idmaps_meta_and_fts5(tmp_path, monkeypatch):
