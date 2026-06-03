@@ -930,14 +930,28 @@ class LeannBuilder:
         )
 
         valid_chunks: list[dict[str, Any]] = []
+        reserved_ids = set(existing_ids)
+        next_sequential_id = len(offset_map)
         for chunk in self.chunks:
             text = chunk.get("text", "")
             if not isinstance(text, str) or not text.strip():
                 continue
             metadata = chunk.setdefault("metadata", {})
-            passage_id = chunk.get("id") or metadata.get("id")
-            if passage_id and passage_id in existing_ids:
+            if "id" in metadata and metadata["id"] is not None:
+                passage_id = str(metadata["id"])
+            elif self.passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
+                passage_id = self._generate_passage_id(text, reserved_ids)
+            else:
+                while str(next_sequential_id) in reserved_ids:
+                    next_sequential_id += 1
+                passage_id = str(next_sequential_id)
+                next_sequential_id += 1
+
+            if passage_id in reserved_ids:
                 raise ValueError(f"Passage ID '{passage_id}' already exists in the index.")
+            chunk["id"] = passage_id
+            metadata["id"] = passage_id
+            reserved_ids.add(passage_id)
             valid_chunks.append(chunk)
 
         if not valid_chunks:
@@ -973,12 +987,6 @@ class LeannBuilder:
 
         # IVF: add_vectors then append passages/offset (no ZMQ/server)
         if backend_name == "ivf":
-            for i, chunk in enumerate(valid_chunks):
-                pid = chunk.get("id") or chunk.get("metadata", {}).get("id")
-                if not pid:
-                    pid = str(len(offset_map) + i)
-                chunk.setdefault("metadata", {})["id"] = pid
-                chunk["id"] = pid
             passage_ids = [c["id"] for c in valid_chunks]
             try:
                 from leann_backend_ivf import add_vectors as ivf_add_vectors
@@ -1061,17 +1069,16 @@ class LeannBuilder:
         passage_meta_mode = meta.get("embedding_mode", self.embedding_mode)
         passage_provider_options = meta.get("embedding_options", self.embedding_options)
 
-        base_id = index.ntotal
-        for offset, chunk in enumerate(valid_chunks):
-            new_id = str(base_id + offset)
-            chunk.setdefault("metadata", {})["id"] = new_id
-            chunk["id"] = new_id
-
         # Append passages/offsets before we attempt index.add so the ZMQ server
         # can resolve newly assigned IDs during recompute. Keep rollback hooks
         # so we can restore files if the update fails mid-way.
         rollback_passages_size = passages_file.stat().st_size if passages_file.exists() else 0
         offset_map_backup = offset_map.copy()
+        idmap_file = (
+            path.parent
+            / f"{path.name[: -len('.leann')] if path.name.endswith('.leann') else path.name}.ids.txt"
+        )
+        rollback_idmap_size = idmap_file.stat().st_size if idmap_file.exists() else None
 
         try:
             with open(passages_file, "a", encoding="utf-8") as f:
@@ -1091,6 +1098,9 @@ class LeannBuilder:
 
             with open(offset_file, "wb") as f:
                 pickle.dump(offset_map, f)
+            with open(idmap_file, "a", encoding="utf-8") as f:
+                for chunk in valid_chunks:
+                    f.write(str(chunk["id"]) + "\n")
 
             server_manager: Optional[EmbeddingServerManager] = None
             server_started = False
@@ -1146,6 +1156,11 @@ class LeannBuilder:
             offset_map = offset_map_backup
             with open(offset_file, "wb") as f:
                 pickle.dump(offset_map, f)
+            if rollback_idmap_size is None:
+                idmap_file.unlink(missing_ok=True)
+            elif idmap_file.exists():
+                with open(idmap_file, "rb+") as f:
+                    f.truncate(rollback_idmap_size)
             raise
 
         meta["total_passages"] = len(offset_map)

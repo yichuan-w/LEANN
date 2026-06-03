@@ -16,7 +16,13 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from tqdm import tqdm
 
-from .api import PASSAGE_ID_SCHEME_SEQUENTIAL, LeannBuilder, LeannChat, LeannSearcher
+from .api import (
+    PASSAGE_ID_SCHEME_CONTENT_HASH,
+    PASSAGE_ID_SCHEME_SEQUENTIAL,
+    LeannBuilder,
+    LeannChat,
+    LeannSearcher,
+)
 from .embedding_server_manager import EmbeddingServerManager
 from .index_lock import index_write_lock
 from .interactive_utils import create_cli_session
@@ -2059,8 +2065,9 @@ Examples:
         new_chunks = self._chunks_for_paths(all_texts, new_paths)
         if not new_chunks:
             return False
-        self._assign_chunk_ids(new_chunks)
         builder = self._make_incremental_builder(args)
+        if builder.passage_id_scheme != PASSAGE_ID_SCHEME_CONTENT_HASH:
+            self._assign_chunk_ids(new_chunks)
         for chunk in new_chunks:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
         print(
@@ -2153,13 +2160,15 @@ Examples:
         for p in changed_paths:
             path_set.update(self._path_lookup_keys(p, sync_roots))
         new_chunks = self._chunks_for_paths(all_texts, path_set)
-        # Use unique IDs: passages can have mixed path formats so we may miss some ids_to_remove
-        self._assign_unique_chunk_ids(new_chunks)
+        # Use unique IDs for sequential indexes: passages can have mixed path formats so we may
+        # miss some ids_to_remove. Content-hash indexes let LeannBuilder derive IDs from text.
+        builder = self._make_incremental_builder(args)
+        if builder.passage_id_scheme != PASSAGE_ID_SCHEME_CONTENT_HASH:
+            self._assign_unique_chunk_ids(new_chunks)
 
         if not ids_to_remove and not new_chunks:
             return False
 
-        builder = self._make_incremental_builder(args)
         for chunk in new_chunks:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
 
