@@ -404,6 +404,11 @@ class LeannBuilder:
             )
         self.passage_id_scheme = passage_id_scheme
         self.backend_name = backend_name
+        if backend_name == "diskann" and passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
+            raise ValueError(
+                "passage_id_scheme='content-hash' is not supported by the DiskANN backend yet "
+                "because DiskANN search returns numeric labels without a persisted passage ID map."
+            )
         # Normalize incompatible combinations early (for consistent metadata)
         if backend_name == "hnsw":
             is_recompute = backend_kwargs.get("is_recompute", True)
@@ -497,23 +502,37 @@ class LeannBuilder:
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
-    def _generate_passage_id(self, text: str) -> str:
+    @staticmethod
+    def _make_unique_passage_id(base_id: str, reserved_ids: set[str]) -> str:
+        if base_id not in reserved_ids:
+            return base_id
+        suffix = 1
+        while f"{base_id}-{suffix}" in reserved_ids:
+            suffix += 1
+        return f"{base_id}-{suffix}"
+
+    def _generate_passage_id(self, text: str, reserved_ids: Optional[set[str]] = None) -> str:
         """Generate a passage ID per the configured scheme.
 
         sequential: str(insertion index) — fast, position-dependent, current default.
-        content-hash: sha256(text)[:16] — content-stable, dedup-friendly across
-        file moves and reorderings. See #329 for the design.
+        content-hash: sha256(text)[:16] — content-stable across file moves and
+        reorderings when text is unique. Duplicate text receives a numeric suffix
+        so the passage store, ID maps, and vector labels stay one-to-one.
         """
         if self.passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
             import hashlib
 
-            return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            base_id = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            return self._make_unique_passage_id(base_id, reserved_ids or set())
         return str(len(self.chunks))
 
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
-        passage_id = metadata.get("id") or self._generate_passage_id(text)
+        if "id" in metadata and metadata["id"] is not None:
+            passage_id = str(metadata["id"])
+        else:
+            passage_id = self._generate_passage_id(text, {chunk["id"] for chunk in self.chunks})
         chunk_data = {"id": passage_id, "text": text, "metadata": metadata}
         self.chunks.append(chunk_data)
 
@@ -645,8 +664,7 @@ class LeannBuilder:
         """Build a SQLite FTS5 BM25 index alongside the vector index.
 
         Queries via SQLite's bm25() function — memory-bounded at search time
-        (the term/posting data lives on disk, not in RAM). Replaces
-        BM25Scorer's full-corpus-in-memory model for paper-scale corpora.
+        because the term/posting data lives on disk, not in RAM.
         """
         db_path = index_dir / f"{index_name}.bm25.sqlite"
         index = Fts5BM25Index(str(db_path))
@@ -866,6 +884,7 @@ class LeannBuilder:
         with open(offset_file, "rb") as f:
             offset_map: dict[str, int] = pickle.load(f)
         existing_ids = set(offset_map.keys())
+        index_passage_id_scheme = meta.get("passage_id_scheme", PASSAGE_ID_SCHEME_SEQUENTIAL)
 
         # IVF: optional delete (for reindex / file-change: remove then re-insert)
         if remove_passage_ids and backend_name == "ivf":
@@ -916,14 +935,30 @@ class LeannBuilder:
         )
 
         valid_chunks: list[dict[str, Any]] = []
+        reserved_ids = set(existing_ids)
         for chunk in self.chunks:
             text = chunk.get("text", "")
             if not isinstance(text, str) or not text.strip():
                 continue
             metadata = chunk.setdefault("metadata", {})
-            passage_id = chunk.get("id") or metadata.get("id")
-            if passage_id and passage_id in existing_ids:
+            explicit_id = (
+                str(metadata["id"]) if "id" in metadata and metadata["id"] is not None else None
+            )
+            if explicit_id is not None:
+                passage_id = explicit_id
+            elif index_passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
+                import hashlib
+
+                base_id = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+                passage_id = self._make_unique_passage_id(base_id, reserved_ids)
+            else:
+                passage_id = None
+
+            if passage_id is not None and passage_id in reserved_ids:
                 raise ValueError(f"Passage ID '{passage_id}' already exists in the index.")
+            if passage_id is not None:
+                chunk["id"] = passage_id
+                reserved_ids.add(passage_id)
             valid_chunks.append(chunk)
 
         if not valid_chunks:
@@ -960,9 +995,14 @@ class LeannBuilder:
         # IVF: add_vectors then append passages/offset (no ZMQ/server)
         if backend_name == "ivf":
             for i, chunk in enumerate(valid_chunks):
-                pid = chunk.get("id") or chunk.get("metadata", {}).get("id")
-                if not pid:
-                    pid = str(len(offset_map) + i)
+                if index_passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
+                    pid = str(chunk["id"]) if "id" in chunk else None
+                else:
+                    explicit_metadata_id = chunk.get("metadata", {}).get("id")
+                    pid = str(explicit_metadata_id) if explicit_metadata_id is not None else None
+                if pid is None:
+                    pid = self._make_unique_passage_id(str(len(offset_map) + i), reserved_ids)
+                    reserved_ids.add(pid)
                 chunk.setdefault("metadata", {})["id"] = pid
                 chunk["id"] = pid
             passage_ids = [c["id"] for c in valid_chunks]
@@ -1047,11 +1087,12 @@ class LeannBuilder:
         passage_meta_mode = meta.get("embedding_mode", self.embedding_mode)
         passage_provider_options = meta.get("embedding_options", self.embedding_options)
 
-        base_id = index.ntotal
-        for offset, chunk in enumerate(valid_chunks):
-            new_id = str(base_id + offset)
-            chunk.setdefault("metadata", {})["id"] = new_id
-            chunk["id"] = new_id
+        if index_passage_id_scheme != PASSAGE_ID_SCHEME_CONTENT_HASH:
+            base_id = index.ntotal
+            for offset, chunk in enumerate(valid_chunks):
+                new_id = str(base_id + offset)
+                chunk.setdefault("metadata", {})["id"] = new_id
+                chunk["id"] = new_id
 
         # Append passages/offsets before we attempt index.add so the ZMQ server
         # can resolve newly assigned IDs during recompute. Keep rollback hooks
