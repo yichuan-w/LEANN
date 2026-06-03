@@ -43,9 +43,9 @@ def benchmark_command(script_path: str | Path, argv: list[str] | None) -> str:
 def _repo_relative_path(path: str | Path) -> str:
     raw_path = Path(path)
     try:
-        return str(raw_path.resolve().relative_to(Path(__file__).resolve().parents[1]))
+        return raw_path.resolve().relative_to(Path(__file__).resolve().parents[1]).as_posix()
     except (OSError, ValueError):
-        return str(raw_path)
+        return raw_path.as_posix()
 
 
 def _git_commit_sha() -> str | None:
