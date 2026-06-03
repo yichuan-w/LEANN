@@ -38,6 +38,83 @@ def _normalize_path(path: str) -> str:
     return str(Path(path).resolve())
 
 
+def _replace_files_with_rollback(replacements: list[tuple[Path, Path]]) -> None:
+    """Replace target files with staged files, restoring originals on failure."""
+    token = uuid.uuid4().hex
+    backups: list[tuple[Path, Optional[Path]]] = []
+    placed_targets: list[Path] = []
+    try:
+        for staged_path, target_path in replacements:
+            backup_path: Optional[Path] = None
+            if target_path.exists():
+                backup_path = target_path.with_name(f".{target_path.name}.backup-{token}")
+                os.replace(target_path, backup_path)
+            backups.append((target_path, backup_path))
+            try:
+                os.replace(staged_path, target_path)
+            except Exception:
+                if backup_path is not None and backup_path.exists():
+                    os.replace(backup_path, target_path)
+                    backups.pop()
+                raise
+            placed_targets.append(target_path)
+    except Exception:
+        for target_path in reversed(placed_targets):
+            if target_path.exists():
+                target_path.unlink()
+        for target_path, backup_path in reversed(backups):
+            if backup_path is not None and backup_path.exists():
+                os.replace(backup_path, target_path)
+        raise
+    else:
+        for _target_path, backup_path in backups:
+            if backup_path is not None and backup_path.exists():
+                backup_path.unlink()
+    finally:
+        for staged_path, _target_path in replacements:
+            if staged_path.exists():
+                staged_path.unlink()
+
+
+def _cleanup_path(path: Path) -> None:
+    if path.is_dir():
+        import shutil
+
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
+def _existing_index_artifacts(index_dir: Path) -> bool:
+    return (
+        (index_dir / "documents.leann.meta.json").exists()
+        and (index_dir / "documents.leann.passages.jsonl").exists()
+        and (index_dir / "documents.leann.passages.idx").exists()
+    )
+
+
+def _publish_rebuilt_index(staging_dir: Path, index_dir: Path) -> None:
+    """Publish a staged full rebuild, restoring the previous directory if publish fails."""
+    backup_dir = index_dir.with_name(f".{index_dir.name}.backup-{uuid.uuid4().hex}")
+    live_moved = False
+    published = False
+    try:
+        if index_dir.exists():
+            os.replace(index_dir, backup_dir)
+            live_moved = True
+        os.replace(staging_dir, index_dir)
+        published = True
+    except Exception:
+        if published:
+            _cleanup_path(index_dir)
+        if live_moved and backup_dir.exists():
+            os.replace(backup_dir, index_dir)
+        raise
+    else:
+        if backup_dir.exists():
+            _cleanup_path(backup_dir)
+
+
 @contextlib.contextmanager
 def suppress_cpp_output(suppress: bool = True):
     """Context manager to suppress C++ stdout/stderr output from FAISS/HNSW
@@ -2429,6 +2506,12 @@ Examples:
             return
 
         print(f"Building index '{index_name}' with {args.backend_name} backend...")
+        publish_from_staging = _existing_index_artifacts(index_dir)
+        target_index_dir = index_dir
+        target_index_path = index_path
+        if publish_from_staging:
+            target_index_dir = index_dir.with_name(f".{index_dir.name}.rebuild-{uuid.uuid4().hex}")
+            target_index_path = str(target_index_dir / "documents.leann")
 
         builder = LeannBuilder(
             backend_name=args.backend_name,
@@ -2446,15 +2529,34 @@ Examples:
         for chunk in all_texts:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
 
-        builder.build_index(index_path)
-        for fs in synchronizers:
-            fs.create_snapshot()
-        self._write_sync_config(
-            index_dir,
-            self._resolve_sync_roots(docs_paths),
-            self._parse_file_types(args.file_types),
-            self._sync_ignore_patterns(args.include_hidden),
-        )
+        try:
+            builder.build_index(target_index_path)
+            target_synchronizers = (
+                self._build_synchronizers(
+                    docs_paths,
+                    target_index_dir,
+                    file_types=args.file_types,
+                    include_hidden=args.include_hidden,
+                )
+                if publish_from_staging
+                else synchronizers
+            )
+            for fs in target_synchronizers:
+                fs.create_snapshot()
+            self._write_sync_config(
+                target_index_dir,
+                self._resolve_sync_roots(docs_paths),
+                self._parse_file_types(args.file_types),
+                self._sync_ignore_patterns(args.include_hidden),
+            )
+            if publish_from_staging:
+                _publish_rebuilt_index(target_index_dir, index_dir)
+        except Exception:
+            if publish_from_staging and target_index_dir.exists():
+                import shutil
+
+                shutil.rmtree(target_index_dir)
+            raise
         print(f"Index built at {index_path}")
         self.register_project_dir()
 
@@ -2578,7 +2680,6 @@ Examples:
         Irreversible. Prompts for confirmation unless --yes is passed.
         """
         import hashlib
-        import shutil
 
         index_name = args.index_name
         index_path = self._resolve_index_path(index_name, purpose="migrate")
@@ -2663,20 +2764,24 @@ Examples:
         with open(new_idx, "wb") as f:
             pickle.dump(new_offsets, f)
 
+        replacements = [
+            (new_passages, passages_file),
+            (new_idx, offset_file),
+        ]
         if idmap_file.exists():
             new_idmap = idmap_file.with_suffix(idmap_file.suffix + ".migrate")
             with open(new_idmap, "w", encoding="utf-8") as f:
                 for nid in new_ids:
                     f.write(nid + "\n")
-            shutil.move(str(new_idmap), str(idmap_file))
-
-        shutil.move(str(new_passages), str(passages_file))
-        shutil.move(str(new_idx), str(offset_file))
+            replacements.append((new_idmap, idmap_file))
 
         meta["passage_id_scheme"] = "content-hash"
         meta["version"] = "1.1"
-        with open(meta_path, "w", encoding="utf-8") as f:
+        new_meta = meta_path.with_suffix(meta_path.suffix + ".migrate")
+        with open(new_meta, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
+        replacements.append((new_meta, meta_path))
+        _replace_files_with_rollback(replacements)
 
         print(
             f"✓ Migrated '{index_name}' to content-hash IDs. {collisions} collisions were deduped."
