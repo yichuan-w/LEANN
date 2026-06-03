@@ -19,5 +19,6 @@
 ## 🎨 Developer Experience
 
 - **Simple Python API** - Get started in minutes
+- **Local Cursor Proxy** - Run a loopback-only OpenAI-compatible proxy that injects LEANN code retrieval into local coding assistants. See [Local Cursor Proxy](local_cursor.md).
 - **Extensible backend system** - Easy to add new algorithms
 - **Comprehensive examples** - From basic usage to production deployment

@@ -580,6 +580,72 @@ Examples:
             ),
         )
 
+        # Cursor command (local OpenAI-compatible code proxy)
+        cursor_parser = subparsers.add_parser(
+            "cursor",
+            help="Start a local OpenAI-compatible proxy with LEANN code retrieval",
+        )
+        cursor_parser.add_argument(
+            "--index",
+            type=str,
+            default=None,
+            help="LEANN code index name/path for retrieval (omit to proxy without retrieval)",
+        )
+        cursor_parser.add_argument(
+            "--model",
+            type=str,
+            default="qwen3-coder",
+            help="Local LLM model name (default: qwen3-coder)",
+        )
+        cursor_parser.add_argument(
+            "--port",
+            type=int,
+            default=8765,
+            help="Port for the proxy server (default: 8765)",
+        )
+        cursor_parser.add_argument(
+            "--bind-host",
+            type=str,
+            default="127.0.0.1",
+            help="Host interface for the proxy server (default: 127.0.0.1)",
+        )
+        cursor_parser.add_argument(
+            "--llm-base-url",
+            type=str,
+            default=None,
+            help="OpenAI-compatible local LLM base URL (defaults to LEANN_OLLAMA_HOST/OLLAMA_HOST)",
+        )
+        cursor_parser.add_argument(
+            "--top-k",
+            type=int,
+            default=10,
+            help="Number of code snippets to retrieve per query (default: 10)",
+        )
+        cursor_parser.add_argument(
+            "--complexity",
+            type=int,
+            default=32,
+            help="LEANN search complexity for retrieval (default: 32)",
+        )
+        cursor_parser.add_argument(
+            "--max-context",
+            type=int,
+            default=8000,
+            help="Maximum chars of retrieved context to inject (default: 8000)",
+        )
+        cursor_parser.add_argument(
+            "--recompute-embeddings",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable/disable embedding recomputation during retrieval (default: enabled)",
+        )
+        cursor_parser.add_argument(
+            "--allow-origin",
+            action="append",
+            default=None,
+            help="Allowed browser Origin for CORS; repeat to allow multiple origins",
+        )
+
         # React command (multiturn retrieval agent)
         react_parser = subparsers.add_parser(
             "react", help="Use ReAct agent for multiturn retrieval and reasoning"
@@ -3205,6 +3271,33 @@ Examples:
             print(f"❌ Error starting server: {e}")
             raise SystemExit(1) from e
 
+    def handle_cursor(self, args):
+        """Start the local OpenAI-compatible Cursor proxy."""
+        from .local_cursor import DEFAULT_ALLOWED_ORIGINS, start_cursor_server
+
+        index_path = None
+        if args.index:
+            index_path = self._resolve_index_path(
+                args.index,
+                non_interactive=True,
+                purpose="serve through local cursor",
+            )
+            if index_path is None:
+                raise SystemExit(2)
+
+        start_cursor_server(
+            index_path=index_path,
+            model=args.model,
+            port=args.port,
+            bind_host=args.bind_host,
+            llm_base_url=args.llm_base_url,
+            top_k=args.top_k,
+            complexity=args.complexity,
+            max_context_chars=args.max_context,
+            recompute_embeddings=args.recompute_embeddings,
+            allowed_origins=tuple(args.allow_origin or DEFAULT_ALLOWED_ORIGINS),
+        )
+
     async def run(self, args=None):
         parser = self.create_parser()
 
@@ -3239,6 +3332,9 @@ Examples:
         elif args.command == "ask":
             with suppress_cpp_output(suppress):
                 await self.ask_questions(args)
+        elif args.command == "cursor":
+            with suppress_cpp_output(suppress):
+                self.handle_cursor(args)
         elif args.command == "react":
             with suppress_cpp_output(suppress):
                 await self.react_agent(args)

@@ -18,3 +18,14 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-06-03: Local Cursor proxy
+
+- Add `leann cursor`, a loopback-only OpenAI-compatible chat-completions proxy that
+  injects LEANN code-search snippets into local coding-assistant requests before
+  forwarding them to a local model server such as Ollama or LM Studio.
+- Support non-streaming JSON responses and streaming server-sent event responses,
+  explicit CORS origin allowlists, configurable retrieval depth, and an opt-out for
+  embedding recomputation.
+- Add focused unit tests for prompt augmentation, request validation, CORS handling,
+  streaming passthrough, CLI parsing, and CLI server startup wiring.
