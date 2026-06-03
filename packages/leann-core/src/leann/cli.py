@@ -9,8 +9,9 @@ import pickle
 import sys
 import time
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, cast
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
@@ -133,7 +134,7 @@ def extract_pdf_text_with_pymupdf(file_path: str, use_ocr: bool = False) -> str 
 
     try:
         text_parts = []
-        for page_number, page in enumerate(doc, start=1):
+        for page_number, page in enumerate(cast(Iterable[Any], doc), start=1):
             page_text = page.get_text() or ""
             if use_ocr and not page_text.strip():
                 page_text = _extract_pdf_page_ocr_text(page, page_number, file_path)
