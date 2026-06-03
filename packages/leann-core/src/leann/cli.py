@@ -1824,6 +1824,54 @@ Examples:
             opts["prompt_template"] = args.embedding_prompt_template
         return opts
 
+    def _build_config_from_args(
+        self,
+        args,
+        docs_paths: list[str],
+        *,
+        doc_chunk_size: Optional[int] = None,
+        doc_chunk_overlap: Optional[int] = None,
+        code_chunk_size: Optional[int] = None,
+        code_chunk_overlap: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Capture the CLI build settings needed to replay `leann build`."""
+        embedding_options = self._build_embedding_options(args)
+        config: dict[str, Any] = {
+            "docs": [str(Path(path).resolve()) for path in docs_paths],
+            "file_types": args.file_types,
+            "include_hidden": bool(args.include_hidden),
+            "doc_chunk_size": doc_chunk_size
+            if doc_chunk_size is not None
+            else int(args.doc_chunk_size),
+            "doc_chunk_overlap": doc_chunk_overlap
+            if doc_chunk_overlap is not None
+            else int(args.doc_chunk_overlap),
+            "code_chunk_size": code_chunk_size
+            if code_chunk_size is not None
+            else int(args.code_chunk_size),
+            "code_chunk_overlap": code_chunk_overlap
+            if code_chunk_overlap is not None
+            else int(args.code_chunk_overlap),
+            "use_ast_chunking": bool(args.use_ast_chunking),
+            "ast_chunk_size": int(args.ast_chunk_size),
+            "ast_chunk_overlap": int(args.ast_chunk_overlap),
+            "ast_fallback_traditional": bool(args.ast_fallback_traditional),
+            "graph_degree": int(args.graph_degree),
+            "complexity": int(args.complexity),
+            "num_threads": int(args.num_threads),
+            "compact": bool(args.compact),
+            "recompute": bool(args.recompute),
+        }
+        if "host" in embedding_options:
+            config["embedding_host"] = embedding_options["host"]
+        if "base_url" in embedding_options:
+            config["embedding_api_base"] = embedding_options["base_url"]
+        if args.embedding_prompt_template:
+            config["embedding_prompt_template"] = args.embedding_prompt_template
+        if args.query_prompt_template:
+            config["query_prompt_template"] = args.query_prompt_template
+        return config
+
     def _resolve_sync_roots(self, docs_paths: list[str]) -> list[str]:
         roots: set[str] = set()
         for path in docs_paths:
@@ -2121,6 +2169,7 @@ Examples:
         roots: list[str],
         include_extensions: Optional[list[str]],
         ignore_patterns: Optional[list[str]],
+        build_config: Optional[dict[str, Any]] = None,
     ) -> None:
         sync_config_path = index_dir / "sync_roots.json"
         config = {
@@ -2128,6 +2177,8 @@ Examples:
             "include_extensions": include_extensions,
             "ignore_patterns": ignore_patterns,
         }
+        if build_config is not None:
+            config["build_config"] = build_config
         with open(sync_config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
@@ -2269,6 +2320,14 @@ Examples:
             separator="\n",
             paragraph_separator="\n\n",
         )
+        build_config = self._build_config_from_args(
+            args,
+            docs_paths,
+            doc_chunk_size=doc_chunk_size,
+            doc_chunk_overlap=doc_chunk_overlap,
+            code_chunk_size=code_chunk_size,
+            code_chunk_overlap=code_chunk_overlap,
+        )
 
         # Detect changes first so we can skip load_documents for remove-only
         index_dir.mkdir(parents=True, exist_ok=True)
@@ -2331,6 +2390,7 @@ Examples:
                             self._resolve_sync_roots(docs_paths),
                             self._parse_file_types(args.file_types),
                             self._sync_ignore_patterns(args.include_hidden),
+                            build_config,
                         )
                         self.register_project_dir()
                         return
@@ -2381,6 +2441,7 @@ Examples:
                             self._resolve_sync_roots(docs_paths),
                             self._parse_file_types(args.file_types),
                             self._sync_ignore_patterns(args.include_hidden),
+                            build_config,
                         )
                         self.register_project_dir()
                         return
@@ -2399,6 +2460,7 @@ Examples:
                             self._resolve_sync_roots(docs_paths),
                             self._parse_file_types(args.file_types),
                             self._sync_ignore_patterns(args.include_hidden),
+                            build_config,
                         )
                         self.register_project_dir()
                         return
@@ -2459,6 +2521,7 @@ Examples:
                 self._resolve_sync_roots(docs_paths),
                 self._parse_file_types(args.file_types),
                 self._sync_ignore_patterns(args.include_hidden),
+                build_config,
             )
             if publish_from_staging:
                 _publish_rebuilt_index(target_index_dir, index_dir)
@@ -2572,11 +2635,13 @@ Examples:
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
 
+        build_config = config.get("build_config") or meta.get("build_config") or {}
+        docs = build_config.get("docs") or roots
         build_args_list = [
             "build",
             index_name,
             "--docs",
-            *roots,
+            *[str(doc) for doc in docs],
             "--backend-name",
             meta.get("backend_name", "hnsw"),
             "--embedding-model",
@@ -2585,10 +2650,79 @@ Examples:
             meta.get("embedding_mode", "sentence-transformers"),
         ]
         bkw = meta.get("backend_kwargs", {})
-        if not bkw.get("is_compact", False):
-            build_args_list.append("--no-compact")
-        if bkw.get("is_recompute", True):
-            build_args_list.append("--recompute")
+
+        def add_option(flag: str, value: Any) -> None:
+            if value is not None:
+                build_args_list.extend([flag, str(value)])
+
+        def add_bool(true_flag: str, false_flag: str, value: Any) -> None:
+            if value is None:
+                return
+            build_args_list.append(true_flag if bool(value) else false_flag)
+
+        def config_or_backend(config_key: str, backend_key: str) -> Any:
+            if config_key in build_config:
+                return build_config[config_key]
+            return bkw.get(backend_key)
+
+        add_option("--graph-degree", config_or_backend("graph_degree", "graph_degree"))
+        add_option("--complexity", config_or_backend("complexity", "complexity"))
+        add_option("--num-threads", config_or_backend("num_threads", "num_threads"))
+
+        compact = (
+            build_config["compact"]
+            if "compact" in build_config
+            else meta.get("is_compact", bkw.get("is_compact"))
+        )
+        recompute = (
+            build_config["recompute"]
+            if "recompute" in build_config
+            else meta.get("is_recompute", bkw.get("is_recompute"))
+        )
+        add_bool("--compact", "--no-compact", compact)
+        add_bool("--recompute", "--no-recompute", recompute)
+
+        file_types = build_config.get("file_types")
+        if file_types is None:
+            include_extensions = config.get("include_extensions")
+            if include_extensions:
+                file_types = ",".join(include_extensions)
+        add_option("--file-types", file_types)
+
+        include_hidden = build_config.get("include_hidden")
+        if include_hidden is None:
+            include_hidden = config.get("ignore_patterns") is None
+        if include_hidden:
+            build_args_list.append("--include-hidden")
+
+        add_option("--doc-chunk-size", build_config.get("doc_chunk_size"))
+        add_option("--doc-chunk-overlap", build_config.get("doc_chunk_overlap"))
+        add_option("--code-chunk-size", build_config.get("code_chunk_size"))
+        add_option("--code-chunk-overlap", build_config.get("code_chunk_overlap"))
+        if build_config.get("use_ast_chunking"):
+            build_args_list.append("--use-ast-chunking")
+        add_option("--ast-chunk-size", build_config.get("ast_chunk_size"))
+        add_option("--ast-chunk-overlap", build_config.get("ast_chunk_overlap"))
+        if build_config.get("ast_fallback_traditional"):
+            build_args_list.append("--ast-fallback-traditional")
+
+        embedding_options = meta.get("embedding_options") or {}
+        embedding_host = build_config.get("embedding_host", embedding_options.get("host"))
+        embedding_api_base = build_config.get(
+            "embedding_api_base", embedding_options.get("base_url")
+        )
+        embedding_prompt_template = build_config.get("embedding_prompt_template")
+        if embedding_prompt_template is None:
+            embedding_prompt_template = embedding_options.get(
+                "build_prompt_template", embedding_options.get("prompt_template")
+            )
+        query_prompt_template = build_config.get(
+            "query_prompt_template", embedding_options.get("query_prompt_template")
+        )
+        add_option("--embedding-host", embedding_host)
+        add_option("--embedding-api-base", embedding_api_base)
+        add_option("--embedding-prompt-template", embedding_prompt_template)
+        add_option("--query-prompt-template", query_prompt_template)
         if force:
             build_args_list.append("--force")
         return build_args_list
