@@ -14,13 +14,15 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, Literal
 
 from .api import LeannSearcher, SearchResult
 from .chat import LLMInterface, get_llm
 from .web_search import WebSearcher
 
 logger = logging.getLogger(__name__)
+
+SearchSourcePolicy = Literal["local", "web", "both"]
 
 
 class ReActAgent:
@@ -44,7 +46,10 @@ class ReActAgent:
         max_iterations: int = 5,
         serper_api_key: str | None = None,
         jina_api_key: str | None = None,
+        source_policy: SearchSourcePolicy = "both",
     ):
+        if source_policy not in ("local", "web", "both"):
+            raise ValueError("source_policy must be one of: local, web, both")
         self.searcher = searcher
         if llm is None:
             self.llm = get_llm(llm_config)
@@ -52,8 +57,12 @@ class ReActAgent:
             self.llm = llm
         self.max_iterations = max_iterations
         self.search_history: list[dict[str, Any]] = []
+        self.source_policy = source_policy
         self.web_searcher = WebSearcher(api_key=serper_api_key, jina_api_key=jina_api_key)
-        self.web_search_available = bool(self.web_searcher.api_key)
+        self.local_search_available = source_policy in ("local", "both")
+        self.web_search_available = source_policy in ("web", "both") and bool(
+            self.web_searcher.api_key
+        )
 
     def _format_search_results(self, results: list[SearchResult]) -> str:
         """Format search results as a string for the LLM."""
@@ -70,7 +79,7 @@ class ReActAgent:
         self, question: str, iteration: int, previous_observations: list[str]
     ) -> str:
         """Create the ReAct prompt, dynamically adapted to available tools."""
-        if self.web_search_available:
+        if self.source_policy == "both" and self.web_search_available:
             tools_block = (
                 "You have access to these tools:\n"
                 '1. leann_search("query"): Search the local private knowledge base (code, docs, history).\n'
@@ -89,13 +98,35 @@ class ReActAgent:
                 "Thought: [your reasoning]\n"
                 "Action: Final Answer: [your answer]"
             )
+        elif self.source_policy == "web":
+            tools_block = (
+                "You have access to these tools:\n"
+                '1. web_search("query"): Search the public internet for up-to-date information.\n'
+                '2. visit_page("url"): Read the full content of a specific URL.\n'
+                "\nLocal LEANN search is disabled by source policy for this run.\n"
+            )
+            if not self.web_search_available:
+                tools_block += (
+                    "\nWarning: Web search is not available because no SERPER_API_KEY was "
+                    "configured. Explain the configuration issue or provide a final answer "
+                    "without tool calls."
+                )
+            action_examples = (
+                'Action: web_search("your query")\n\nOR\n\n'
+                "Thought: [your reasoning]\n"
+                'Action: visit_page("https://example.com")\n\nOR\n\n'
+                "Thought: [your reasoning]\n"
+                "Action: Final Answer: [your answer]"
+            )
         else:
             tools_block = (
                 "You have access to this tool:\n"
                 '1. leann_search("query"): Search the local private knowledge base (code, docs, history).\n'
-                "\nNote: Web search is not available (no API key configured). "
+                "\nNote: Web search is not available for this run. "
                 "Answer using only the local knowledge base."
             )
+            if self.source_policy == "both":
+                tools_block += " No SERPER_API_KEY was configured."
             action_examples = (
                 'Action: leann_search("your query")\n\nOR\n\n'
                 "Thought: [your reasoning]\n"
@@ -106,8 +137,10 @@ class ReActAgent:
             "You are a helpful assistant that answers questions by searching through "
             "a knowledge base"
         )
-        if self.web_search_available:
+        if self.source_policy == "both" and self.web_search_available:
             prompt += " AND the internet"
+        elif self.source_policy == "web":
+            prompt = "You are a helpful assistant that answers questions by researching the web"
         prompt += f".\n\nQuestion: {question}\n\n{tools_block}\n\nPrevious observations:\n"
 
         if previous_observations:
@@ -175,6 +208,9 @@ class ReActAgent:
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Perform a local search and return results."""
+        if not self.local_search_available:
+            logger.info("Local search skipped by source policy: %s", self.source_policy)
+            return []
         logger.info(f"Searching: {query}")
         results = self.searcher.search(query, top_k=top_k)
         return results
@@ -221,11 +257,23 @@ class ReActAgent:
             if action.startswith("web_search:"):
                 query_str = action.split(":", 1)[1]
 
-                if not self.web_search_available:
+                if self.source_policy == "local":
                     observation = (
-                        "Web search is not available (no SERPER_API_KEY configured). "
+                        "Web search is disabled by source policy for this run. "
                         "Use leann_search to search the local knowledge base instead."
                     )
+                    results_count = 0
+                elif not self.web_search_available:
+                    if self.source_policy == "web":
+                        observation = (
+                            "Web search is not available because no SERPER_API_KEY is configured. "
+                            "Set SERPER_API_KEY or provide a final answer without tool calls."
+                        )
+                    else:
+                        observation = (
+                            "Web search is not available because no SERPER_API_KEY is configured. "
+                            "Use leann_search to search the local knowledge base instead."
+                        )
                     results_count = 0
                 else:
                     web_results = self.web_searcher.search(query_str, top_k=top_k)
@@ -233,9 +281,10 @@ class ReActAgent:
                     is_error = len(web_results) == 1 and web_results[0].get("title") == "Error"
                     if is_error:
                         observation = (
-                            f"Web search failed: {web_results[0].get('snippet', 'Unknown error')}. "
-                            "Try leann_search for local results instead."
+                            f"Web search failed: {web_results[0].get('snippet', 'Unknown error')}."
                         )
+                        if self.local_search_available:
+                            observation += " Try leann_search for local results instead."
                         results_count = 0
                     elif not web_results:
                         observation = "No web results found."
@@ -252,18 +301,33 @@ class ReActAgent:
 
             elif action.startswith("visit_page:"):
                 url = action.split(":", 1)[1]
-                try:
-                    content = self.web_searcher.get_page_content(url)
-                except Exception as e:
-                    content = f"Error fetching page: {e!s}"
+                if self.source_policy == "local":
+                    content = "Error fetching content: page visits are disabled by source policy."
+                elif not self.web_search_available:
+                    content = (
+                        "Error fetching content: page visits require web search to be enabled "
+                        "with SERPER_API_KEY."
+                    )
+                else:
+                    try:
+                        content = self.web_searcher.get_page_content(url)
+                    except Exception as e:
+                        content = f"Error fetching page: {e!s}"
                 results_count = 1 if not content.startswith("Error") else 0
                 observation = f"Content of {url}:\n{content[:15000]}"
 
             else:
                 query_str = action.split(":", 1)[1] if ":" in action else action
-                results = self.search(query_str, top_k=top_k)
-                results_count = len(results)
-                observation = self._format_search_results(results)
+                if not self.local_search_available:
+                    results_count = 0
+                    observation = (
+                        "Local LEANN search is disabled by source policy for this run. "
+                        "Use web_search or visit_page instead."
+                    )
+                else:
+                    results = self.search(query_str, top_k=top_k)
+                    results_count = len(results)
+                    observation = self._format_search_results(results)
 
             previous_observations.append(observation)
             all_context.append(f"Action: {action}\n{observation}")
@@ -317,6 +381,7 @@ def create_react_agent(
     max_iterations: int = 5,
     serper_api_key: str | None = None,
     jina_api_key: str | None = None,
+    source_policy: SearchSourcePolicy = "both",
     **searcher_kwargs,
 ) -> ReActAgent:
     """Convenience function to create a ReActAgent."""
@@ -327,4 +392,5 @@ def create_react_agent(
         max_iterations=max_iterations,
         serper_api_key=serper_api_key,
         jina_api_key=jina_api_key,
+        source_policy=source_policy,
     )

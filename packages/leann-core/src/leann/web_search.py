@@ -1,7 +1,7 @@
-import json
 import logging
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -11,9 +11,15 @@ logger = logging.getLogger(__name__)
 class WebSearcher:
     """Helper class for performing web searches via Serper API."""
 
-    def __init__(self, api_key: str | None = None, jina_api_key: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        jina_api_key: str | None = None,
+        timeout_seconds: float = 10.0,
+    ):
         self.api_key = api_key or os.getenv("SERPER_API_KEY")
         self.jina_api_key = jina_api_key or os.getenv("JINA_API_KEY")
+        self.timeout_seconds = timeout_seconds
         if not self.api_key:
             logger.warning("No SERPER_API_KEY found. Web search will not be available.")
 
@@ -22,11 +28,15 @@ class WebSearcher:
             return [{"title": "Error", "link": "", "snippet": "Missing SERPER_API_KEY env var"}]
 
         url = "https://google.serper.dev/search"
-        payload = json.dumps({"q": query, "num": top_k})
         headers = {"X-API-KEY": self.api_key, "Content-Type": "application/json"}
 
         try:
-            response = requests.request("POST", url, headers=headers, data=payload)
+            response = requests.post(
+                url,
+                headers=headers,
+                json={"q": query, "num": top_k},
+                timeout=self.timeout_seconds,
+            )
             response.raise_for_status()
             data = response.json()
 
@@ -49,6 +59,10 @@ class WebSearcher:
 
     def get_page_content(self, url: str) -> str:
         """Fetch page content using Jina AI Reader (https://jina.ai/reader)."""
+        parsed_url = urlparse(url)
+        if parsed_url.scheme not in {"http", "https"}:
+            return "Error fetching content: only http and https URLs can be fetched."
+
         jina_url = f"https://r.jina.ai/{url}"
 
         headers = {"X-Return-Format": "markdown"}
@@ -57,7 +71,7 @@ class WebSearcher:
 
         try:
             logger.info(f"Fetching content from: {url}")
-            response = requests.get(jina_url, headers=headers)
+            response = requests.get(jina_url, headers=headers, timeout=self.timeout_seconds)
             response.raise_for_status()
             return response.text
         except Exception as e:

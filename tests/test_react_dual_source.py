@@ -55,6 +55,42 @@ def test_prompt_excludes_web_tools_when_no_key():
     assert agent.web_search_available is False
 
 
+def test_local_source_policy_hides_web_tools_even_with_key():
+    """Local source policy should expose only LEANN search."""
+    searcher = _make_searcher()
+    agent = ReActAgent(
+        searcher=searcher,
+        llm=MagicMock(),
+        serper_api_key="test-key",
+        source_policy="local",
+    )
+    prompt = agent._create_react_prompt("test question", 1, [])
+
+    assert "leann_search" in prompt
+    assert "web_search" not in prompt
+    assert "visit_page" not in prompt
+    assert agent.local_search_available is True
+    assert agent.web_search_available is False
+
+
+def test_web_source_policy_hides_local_tool():
+    """Web source policy should expose web tools and disable LEANN search."""
+    searcher = _make_searcher()
+    agent = ReActAgent(
+        searcher=searcher,
+        llm=MagicMock(),
+        serper_api_key="test-key",
+        source_policy="web",
+    )
+    prompt = agent._create_react_prompt("test question", 1, [])
+
+    assert "web_search" in prompt
+    assert "visit_page" in prompt
+    assert "leann_search" not in prompt
+    assert agent.local_search_available is False
+    assert agent.web_search_available is True
+
+
 # ── 2. Routing behavior ─────────────────────────────────────────────
 
 
@@ -215,6 +251,80 @@ def test_web_search_no_api_key_graceful():
     assert agent.search_history[0]["source"] == "web"
     # Agent should not crash and should produce an answer
     assert answer is not None and len(answer) > 0
+
+
+def test_local_source_policy_blocks_web_search_without_network_call():
+    """Local policy should refuse LLM-requested web_search calls before the network layer."""
+    searcher = _make_searcher()
+    mock_llm = MagicMock()
+    mock_llm.ask.side_effect = [
+        'Thought: Try web.\nAction: web_search("Python 3.13")',
+        "Thought: Done.\nAction: Final Answer: I stayed local.",
+    ]
+
+    with patch.object(WebSearcher, "search") as mock_web:
+        agent = ReActAgent(
+            searcher=searcher,
+            llm=mock_llm,
+            max_iterations=3,
+            serper_api_key="test-key",
+            source_policy="local",
+        )
+        answer = agent.run("test", top_k=2)
+
+    mock_web.assert_not_called()
+    assert agent.search_history[0]["results_count"] == 0
+    assert agent.search_history[0]["source"] == "web"
+    assert "stayed local" in answer
+
+
+def test_web_source_policy_blocks_local_search_call():
+    """Web policy should refuse LLM-requested leann_search calls before the searcher."""
+    searcher = _make_searcher()
+    mock_llm = MagicMock()
+    mock_llm.ask.side_effect = [
+        'Thought: Try local.\nAction: leann_search("private docs")',
+        "Thought: Done.\nAction: Final Answer: I used no local search.",
+    ]
+
+    agent = ReActAgent(
+        searcher=searcher,
+        llm=mock_llm,
+        max_iterations=3,
+        serper_api_key="test-key",
+        source_policy="web",
+    )
+    answer = agent.run("test", top_k=2)
+
+    searcher.search.assert_not_called()
+    assert agent.search_history[0]["results_count"] == 0
+    assert agent.search_history[0]["source"] == "local"
+    assert "no local search" in answer
+
+
+def test_local_source_policy_blocks_visit_page_without_network_call():
+    """Local policy should refuse visit_page before fetching remote content."""
+    searcher = _make_searcher()
+    mock_llm = MagicMock()
+    mock_llm.ask.side_effect = [
+        'Thought: Read docs.\nAction: visit_page("https://example.com")',
+        "Thought: Done.\nAction: Final Answer: I did not fetch the page.",
+    ]
+
+    with patch.object(WebSearcher, "get_page_content") as mock_fetch:
+        agent = ReActAgent(
+            searcher=searcher,
+            llm=mock_llm,
+            max_iterations=3,
+            serper_api_key="test-key",
+            source_policy="local",
+        )
+        answer = agent.run("read docs", top_k=2)
+
+    mock_fetch.assert_not_called()
+    assert agent.search_history[0]["results_count"] == 0
+    assert agent.search_history[0]["source"] == "web"
+    assert "did not fetch" in answer
 
 
 def test_web_search_invalid_key_graceful():

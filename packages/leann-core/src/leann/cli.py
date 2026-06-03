@@ -635,6 +635,12 @@ Examples:
             default=None,
             help="Jina API key for page content fetching (or set JINA_API_KEY env var)",
         )
+        react_parser.add_argument(
+            "--source-policy",
+            choices=["local", "web", "both"],
+            default="both",
+            help="Restrict ReAct tools to local LEANN search, web search, or both (default: both)",
+        )
 
         # ── index-* commands: data source indexing ──────────────────────
 
@@ -3156,12 +3162,19 @@ Examples:
             max_iterations=args.max_iterations,
             serper_api_key=getattr(args, "serper_api_key", None),
             jina_api_key=getattr(args, "jina_api_key", None),
+            source_policy=args.source_policy,
         )
 
-        if agent.web_search_available:
-            print("🌐 Web search enabled (Serper API key detected)")
+        if args.source_policy == "local":
+            print("📚 Source policy: local search only")
+        elif args.source_policy == "web":
+            print("🌐 Source policy: web search only")
+            if not agent.web_search_available:
+                print("⚠️  Web search requested but no Serper API key was detected")
+        elif agent.web_search_available:
+            print("🌐 Source policy: local + web search")
         else:
-            print("📚 Local search only (no Serper API key)")
+            print("📚 Source policy: local search only (no Serper API key)")
 
         print(f"\n🔍 Question: {query}\n")
         answer = agent.run(query, top_k=args.top_k)

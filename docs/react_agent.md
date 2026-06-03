@@ -51,6 +51,9 @@ leann react my-index "What are the main features discussed?" \
 - `--max-iterations`: Maximum number of search iterations (default: `5`)
 - `--api-base`: Base URL for OpenAI-compatible APIs
 - `--api-key`: API key for cloud LLM providers
+- `--source-policy`: Restrict retrieval tools to `local`, `web`, or `both` (default: `both`)
+- `--serper-api-key`: Serper API key for public web search, or set `SERPER_API_KEY`
+- `--jina-api-key`: Jina Reader API key for page fetching, or set `JINA_API_KEY`
 
 ### Python API
 
@@ -68,7 +71,8 @@ agent = create_react_agent(
         "model": "qwen3:8b",
         "host": "http://localhost:11434"  # optional
     },
-    max_iterations=5
+    max_iterations=5,
+    source_policy="both",
 )
 
 # Run the agent
@@ -167,6 +171,26 @@ leann react my-index "question" --top-k 10
 # More iterations for complex questions
 leann react my-index "question" --max-iterations 10
 ```
+
+### Source Policy
+
+`leann react` can search local LEANN indexes, public web results, or both. Use
+`--source-policy` to make that boundary explicit:
+
+```bash
+# Local/private retrieval only. Web tools are hidden and refused if requested.
+leann react my-index "question" --source-policy local
+
+# Public web research only. Local LEANN search is hidden and refused if requested.
+leann react my-index "question" --source-policy web --serper-api-key $SERPER_API_KEY
+
+# Local + web research. This is the default; without a Serper key it behaves as local-only.
+leann react my-index "question" --source-policy both --serper-api-key $SERPER_API_KEY
+```
+
+Web search uses Serper for search results and Jina Reader for page content. Page fetching only
+accepts `http` and `https` URLs, and web requests use bounded timeouts so a slow public endpoint
+does not hang the agent loop indefinitely.
 
 ## Understanding the Output
 

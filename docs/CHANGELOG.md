@@ -18,3 +18,11 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-06-03: ReAct source policy and safer web tools
+
+- Add `leann react --source-policy local|web|both` and the matching Python API option so
+  users can explicitly restrict the agent to local LEANN retrieval, public web research, or both.
+- Refuse out-of-policy tool calls at runtime before local search or web requests are executed,
+  keeping model-selected actions inside the configured retrieval boundary.
+- Add bounded web request timeouts and reject non-HTTP page-fetch URLs for the Serper/Jina web tools.
