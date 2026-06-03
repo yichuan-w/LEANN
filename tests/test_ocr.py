@@ -1,8 +1,33 @@
 import inspect
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
-from leann.cli import LeannCLI, extract_pdf_text_with_pymupdf
+
+class _FakeDocument:
+    def __init__(self, text, metadata=None):
+        self.text = text
+        self.metadata = metadata or {}
+
+
+if "llama_index.core" not in sys.modules:
+    llama_index_module = MagicMock()
+    llama_core_module = MagicMock()
+    llama_node_parser_module = MagicMock()
+    llama_core_module.SimpleDirectoryReader = MagicMock()
+    llama_core_module.Document = _FakeDocument
+    llama_node_parser_module.SentenceSplitter = MagicMock()
+    sys.modules["llama_index"] = llama_index_module
+    sys.modules["llama_index.core"] = llama_core_module
+    sys.modules["llama_index.core.node_parser"] = llama_node_parser_module
+
+if "watchfiles" not in sys.modules:
+    watchfiles_module = MagicMock()
+    watchfiles_module.Change = MagicMock()
+    watchfiles_module.awatch = MagicMock()
+    sys.modules["watchfiles"] = watchfiles_module
+
+from leann.cli import LeannCLI, extract_pdf_text_with_pymupdf  # noqa: E402
 
 
 class _FakePage:
