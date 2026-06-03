@@ -1,4 +1,6 @@
-from leann.api import LeannChat, SearchResult
+from typing import cast
+
+from leann.api import LeannChat, LeannSearcher, SearchResult
 
 
 class RecordingSearcher:
@@ -19,7 +21,11 @@ class RecordingSearcher:
 
 def test_chat_ask_honors_searcher_recompute_default():
     searcher = RecordingSearcher()
-    chat = LeannChat("unused.leann", llm_config={"type": "simulated"}, searcher=searcher)
+    chat = LeannChat(
+        "unused.leann",
+        llm_config={"type": "simulated"},
+        searcher=cast(LeannSearcher, searcher),
+    )
 
     response = chat.ask("question", top_k=2)
 
@@ -46,7 +52,11 @@ def test_chat_ask_honors_searcher_recompute_default():
 
 def test_chat_ask_can_explicitly_override_recompute():
     searcher = RecordingSearcher()
-    chat = LeannChat("unused.leann", llm_config={"type": "simulated"}, searcher=searcher)
+    chat = LeannChat(
+        "unused.leann",
+        llm_config={"type": "simulated"},
+        searcher=cast(LeannSearcher, searcher),
+    )
 
     chat.ask("question", recompute_embeddings=False)
 
