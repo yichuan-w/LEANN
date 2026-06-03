@@ -18,6 +18,7 @@ from tqdm import tqdm
 
 from .api import LeannBuilder, LeannChat, LeannSearcher
 from .embedding_server_manager import EmbeddingServerManager
+from .index_lock import index_write_lock
 from .interactive_utils import create_cli_session
 from .registry import register_project_directory
 from .settings import (
@@ -83,6 +84,28 @@ def _cleanup_path(path: Path) -> None:
         shutil.rmtree(path)
     elif path.exists():
         path.unlink()
+
+
+def _build_fts5_bm25_db(db_path: Path, passages: list[dict[str, Any]]) -> None:
+    """Build the persisted FTS5 BM25 sidecar used by newer LEANN indexes."""
+    import sqlite3
+
+    if db_path.exists():
+        db_path.unlink()
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE bm25_passages USING fts5("
+            "id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2'"
+            ")"
+        )
+        conn.executemany(
+            "INSERT INTO bm25_passages(id, text) VALUES (?, ?)",
+            ((str(passage["id"]), passage.get("text", "")) for passage in passages),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _existing_index_artifacts(index_dir: Path) -> bool:
@@ -2664,6 +2687,14 @@ Examples:
         await self.build_index(build_args)
 
     def migrate_ids(self, args) -> None:
+        index_name = args.index_name
+        index_path = self._resolve_index_path(index_name, purpose="migrate")
+        if not index_path:
+            return
+        with index_write_lock(Path(index_path).parent):
+            self._migrate_ids_unlocked(args, index_path=index_path)
+
+    def _migrate_ids_unlocked(self, args, index_path: str) -> None:
         """Rewrite an existing index's passage IDs to content-hash form.
 
         Migration is purely a Python-side rewrite — the vector graph isn't
@@ -2673,24 +2704,24 @@ Examples:
           - <index>.ids.txt         : new label → ID mapping for FAISS
           - <index>.meta.json       : passage_id_scheme = "content-hash"
 
-        Identical-text chunks collide on the same sha256 prefix; the later
-        occurrence wins in the offset map (dedup). A `--preserve-duplicates`
-        knob to suffix collisions can land separately.
+        Identical-text chunks collide on the same sha256 prefix; later
+        occurrences receive numeric suffixes so all passage IDs remain unique.
 
         Irreversible. Prompts for confirmation unless --yes is passed.
         """
-        import hashlib
-
         index_name = args.index_name
-        index_path = self._resolve_index_path(index_name, purpose="migrate")
-        if not index_path:
-            return
         meta_path = Path(index_path).with_suffix(".leann.meta.json")
         if not meta_path.exists():
             print(f"Cannot migrate '{index_name}': metadata missing at {meta_path}.")
             return
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
+        if meta.get("backend_name") == "diskann":
+            print(
+                f"Cannot migrate '{index_name}': DiskANN does not yet support content-hash "
+                "passage IDs because searches return numeric labels without a persisted ID map."
+            )
+            return
         current_scheme = meta.get("passage_id_scheme", "sequential")
         if current_scheme == "content-hash":
             print(f"Index '{index_name}' already uses content-hash IDs. Nothing to do.")
@@ -2711,23 +2742,41 @@ Examples:
                 print(f"Cannot migrate: required artifact missing at {p}.")
                 return
 
-        # Stream the passages to plan the rewrite and surface collision count
-        # before committing to anything irreversible.
-        old_ids: list[str] = []
-        new_ids: list[str] = []
+        with open(offset_file, "rb") as f:
+            live_offset_map: dict[str, int] = pickle.load(f)
+
+        live_passages: list[dict[str, Any]] = []
         with open(passages_file, encoding="utf-8") as f:
-            for line in f:
+            for old_id, offset in sorted(live_offset_map.items(), key=lambda item: item[1]):
+                f.seek(offset)
+                line = f.readline()
                 if not line.strip():
                     continue
                 data = json.loads(line)
-                old_ids.append(data["id"])
-                new_ids.append(hashlib.sha256(data["text"].encode("utf-8")).hexdigest()[:16])
+                data["id"] = str(old_id)
+                live_passages.append(data)
+
+        # Plan the live-passage rewrite and surface duplicate suffix count
+        # before committing to anything irreversible. Stale append-only JSONL
+        # rows absent from passages.idx stay excluded.
+        old_ids: list[str] = []
+        new_ids: list[str] = []
+        reserved_ids: set[str] = set()
+        duplicate_suffixes = 0
+        for data in live_passages:
+            base_id = hashlib.sha256(data["text"].encode("utf-8")).hexdigest()[:16]
+            new_id = LeannBuilder._make_unique_passage_id(base_id, reserved_ids)
+            if new_id != base_id:
+                duplicate_suffixes += 1
+            reserved_ids.add(new_id)
+            old_ids.append(str(data["id"]))
+            new_ids.append(new_id)
+        old_to_new = dict(zip(old_ids, new_ids))
 
         unique_new = len(set(new_ids))
-        collisions = len(new_ids) - unique_new
         print(
             f"Migrating '{index_name}': {len(new_ids)} passages → {unique_new} unique "
-            f"content-hash IDs ({collisions} collision(s) will dedup)."
+            f"content-hash IDs ({duplicate_suffixes} duplicate-text suffix(es))."
         )
 
         if args.dry_run:
@@ -2744,21 +2793,16 @@ Examples:
         # Stage writes into siblings, then atomically rename.
         new_passages = passages_file.with_suffix(passages_file.suffix + ".migrate")
         new_offsets: dict[str, int] = {}
-        with (
-            open(passages_file, encoding="utf-8") as src,
-            open(new_passages, "w", encoding="utf-8") as dst,
-        ):
-            idx = 0
-            for line in src:
-                if not line.strip():
-                    continue
-                data = json.loads(line)
+        rewritten_passages: list[dict[str, Any]] = []
+        with open(new_passages, "w", encoding="utf-8") as dst:
+            for idx, data in enumerate(live_passages):
+                data = dict(data)
                 data["id"] = new_ids[idx]
                 offset = dst.tell()
                 json.dump(data, dst, ensure_ascii=False)
                 dst.write("\n")
                 new_offsets[new_ids[idx]] = offset
-                idx += 1
+                rewritten_passages.append(data)
 
         new_idx = offset_file.with_suffix(offset_file.suffix + ".migrate")
         with open(new_idx, "wb") as f:
@@ -2775,6 +2819,31 @@ Examples:
                     f.write(nid + "\n")
             replacements.append((new_idmap, idmap_file))
 
+        ivf_map_file = index_dir / f"{base_no_leann}.ivf_id_map.json"
+        if meta.get("backend_name") == "ivf" and ivf_map_file.exists():
+            new_ivf_map = ivf_map_file.with_suffix(ivf_map_file.suffix + ".migrate")
+            with open(ivf_map_file, encoding="utf-8") as f:
+                ivf_map = json.load(f)
+            migrated_id_to_passage = {
+                str(label): old_to_new.get(str(old_pid), str(old_pid))
+                for label, old_pid in (ivf_map.get("id_to_passage") or {}).items()
+            }
+            ivf_map["id_to_passage"] = migrated_id_to_passage
+            ivf_map["passage_to_id"] = {
+                passage_id: int(label) for label, passage_id in migrated_id_to_passage.items()
+            }
+            with open(new_ivf_map, "w", encoding="utf-8") as f:
+                json.dump(ivf_map, f, indent=2)
+            replacements.append((new_ivf_map, ivf_map_file))
+
+        bm25_db_name = meta.get("bm25_db") or f"{index_base}.bm25.sqlite"
+        bm25_file = index_dir / bm25_db_name
+        if meta.get("bm25_backend") == "fts5" and bm25_file.exists():
+            new_bm25 = bm25_file.with_suffix(bm25_file.suffix + ".migrate")
+            _build_fts5_bm25_db(new_bm25, rewritten_passages)
+            replacements.append((new_bm25, bm25_file))
+            meta["bm25_db"] = bm25_db_name
+
         meta["passage_id_scheme"] = "content-hash"
         meta["version"] = "1.1"
         new_meta = meta_path.with_suffix(meta_path.suffix + ".migrate")
@@ -2784,7 +2853,8 @@ Examples:
         _replace_files_with_rollback(replacements)
 
         print(
-            f"✓ Migrated '{index_name}' to content-hash IDs. {collisions} collisions were deduped."
+            f"✓ Migrated '{index_name}' to content-hash IDs. "
+            f"{duplicate_suffixes} duplicate-text suffix(es) were added."
         )
 
     async def watch_index(self, args):

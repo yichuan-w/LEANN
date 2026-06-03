@@ -1,11 +1,201 @@
+import hashlib
 import json
 import os
 import pickle
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from leann.cli import LeannCLI
+
+
+def _content_id(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _write_basic_meta(index_dir: Path, **overrides):
+    meta = {
+        "version": "1.0",
+        "backend_name": "hnsw",
+        "embedding_model": "dummy",
+        "dimensions": 3,
+        "backend_kwargs": {},
+        "embedding_mode": "sentence-transformers",
+        "passage_id_scheme": "sequential",
+    }
+    meta.update(overrides)
+    (index_dir / "documents.leann.meta.json").write_text(
+        json.dumps(meta),
+        encoding="utf-8",
+    )
+
+
+def _write_passages(index_dir: Path, passages: list[dict]) -> dict[str, int]:
+    offsets: dict[str, int] = {}
+    with open(index_dir / "documents.leann.passages.jsonl", "w", encoding="utf-8") as f:
+        for passage in passages:
+            offsets[passage["id"]] = f.tell()
+            json.dump(passage, f)
+            f.write("\n")
+    with open(index_dir / "documents.leann.passages.idx", "wb") as f:
+        pickle.dump(offsets, f)
+    return offsets
+
+
+def _build_fts5_db(db_path: Path, passages: list[dict]) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE bm25_passages USING fts5("
+            "id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2'"
+            ")"
+        )
+        conn.executemany(
+            "INSERT INTO bm25_passages(id, text) VALUES (?, ?)",
+            ((passage["id"], passage["text"]) for passage in passages),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_migrate_ids_rewrites_live_offsets_idmaps_meta_and_fts5(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / ".leann" / "indexes" / "sample"
+    index_dir.mkdir(parents=True)
+
+    passages = [
+        {"id": "0", "text": "alpha beta", "metadata": {"source": "a.txt"}},
+        {"id": "1", "text": "gamma delta", "metadata": {"source": "b.txt"}},
+    ]
+    _write_passages(index_dir, passages)
+    (index_dir / "documents.ids.txt").write_text("0\n1\n", encoding="utf-8")
+    (index_dir / "documents.ivf_id_map.json").write_text(
+        json.dumps(
+            {
+                "id_to_passage": {"0": "0", "1": "1"},
+                "passage_to_id": {"0": 0, "1": 1},
+                "next_id": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+    bm25_db = index_dir / "documents.leann.bm25.sqlite"
+    _build_fts5_db(bm25_db, passages)
+    _write_basic_meta(
+        index_dir,
+        backend_name="ivf",
+        bm25_backend="fts5",
+        bm25_db="documents.leann.bm25.sqlite",
+    )
+
+    LeannCLI().migrate_ids(SimpleNamespace(index_name="sample", dry_run=False, yes=True))
+
+    expected_ids = [_content_id("alpha beta"), _content_id("gamma delta")]
+    with open(index_dir / "documents.leann.passages.jsonl", encoding="utf-8") as f:
+        migrated_passages = [json.loads(line) for line in f if line.strip()]
+    assert [passage["id"] for passage in migrated_passages] == expected_ids
+
+    with open(index_dir / "documents.leann.passages.idx", "rb") as f:
+        assert set(pickle.load(f)) == set(expected_ids)
+    assert (index_dir / "documents.ids.txt").read_text(
+        encoding="utf-8"
+    ).splitlines() == expected_ids
+
+    ivf_map = json.loads((index_dir / "documents.ivf_id_map.json").read_text(encoding="utf-8"))
+    assert ivf_map == {
+        "id_to_passage": {"0": expected_ids[0], "1": expected_ids[1]},
+        "passage_to_id": {expected_ids[0]: 0, expected_ids[1]: 1},
+        "next_id": 2,
+    }
+
+    meta = json.loads((index_dir / "documents.leann.meta.json").read_text(encoding="utf-8"))
+    assert meta["version"] == "1.1"
+    assert meta["passage_id_scheme"] == "content-hash"
+    assert meta["bm25_backend"] == "fts5"
+    assert meta["bm25_db"] == "documents.leann.bm25.sqlite"
+
+    conn = sqlite3.connect(bm25_db)
+    try:
+        rows = conn.execute(
+            "SELECT id FROM bm25_passages WHERE bm25_passages MATCH ?",
+            ("alpha",),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [(expected_ids[0],)]
+
+
+def test_migrate_ids_rejects_diskann_indexes(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / ".leann" / "indexes" / "sample"
+    index_dir.mkdir(parents=True)
+    _write_basic_meta(index_dir, backend_name="diskann")
+
+    LeannCLI().migrate_ids(SimpleNamespace(index_name="sample", dry_run=False, yes=True))
+
+    assert "Cannot migrate" in capsys.readouterr().out
+    meta = json.loads((index_dir / "documents.leann.meta.json").read_text(encoding="utf-8"))
+    assert meta["passage_id_scheme"] == "sequential"
+
+
+def test_migrate_ids_ignores_stale_passages_absent_from_offset_map(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / ".leann" / "indexes" / "sample"
+    index_dir.mkdir(parents=True)
+
+    live = {"id": "0", "text": "live text", "metadata": {"source": "live.txt"}}
+    stale = {"id": "1", "text": "stale text", "metadata": {"source": "stale.txt"}}
+    passages_file = index_dir / "documents.leann.passages.jsonl"
+    with open(passages_file, "w", encoding="utf-8") as f:
+        live_offset = f.tell()
+        json.dump(live, f)
+        f.write("\n")
+        json.dump(stale, f)
+        f.write("\n")
+    with open(index_dir / "documents.leann.passages.idx", "wb") as f:
+        pickle.dump({"0": live_offset}, f)
+    (index_dir / "documents.ids.txt").write_text("0\n1\n", encoding="utf-8")
+    _write_basic_meta(index_dir)
+
+    LeannCLI().migrate_ids(SimpleNamespace(index_name="sample", dry_run=False, yes=True))
+
+    expected_id = _content_id("live text")
+    with open(passages_file, encoding="utf-8") as f:
+        migrated_passages = [json.loads(line) for line in f if line.strip()]
+    assert migrated_passages == [
+        {"id": expected_id, "text": "live text", "metadata": {"source": "live.txt"}}
+    ]
+    with open(index_dir / "documents.leann.passages.idx", "rb") as f:
+        assert set(pickle.load(f)) == {expected_id}
+    assert (index_dir / "documents.ids.txt").read_text(encoding="utf-8").splitlines() == [
+        expected_id
+    ]
+
+
+def test_migrate_ids_suffixes_duplicate_text_ids(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    index_dir = tmp_path / ".leann" / "indexes" / "duplicates"
+    index_dir.mkdir(parents=True)
+
+    passages = [
+        {"id": "0", "text": "repeat me", "metadata": {"source": "a.txt"}},
+        {"id": "1", "text": "repeat me", "metadata": {"source": "b.txt"}},
+    ]
+    _write_passages(index_dir, passages)
+    (index_dir / "documents.ids.txt").write_text("0\n1\n", encoding="utf-8")
+    _write_basic_meta(index_dir)
+
+    LeannCLI().migrate_ids(SimpleNamespace(index_name="duplicates", dry_run=False, yes=True))
+
+    base_id = _content_id("repeat me")
+    with open(index_dir / "documents.leann.passages.jsonl", encoding="utf-8") as f:
+        migrated_ids = [json.loads(line)["id"] for line in f if line.strip()]
+    assert migrated_ids == [base_id, f"{base_id}-1"]
+    assert (index_dir / "documents.ids.txt").read_text(
+        encoding="utf-8"
+    ).splitlines() == migrated_ids
 
 
 def test_migrate_ids_rolls_back_when_publish_fails(tmp_path, monkeypatch):

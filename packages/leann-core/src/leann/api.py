@@ -497,23 +497,37 @@ class LeannBuilder:
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
-    def _generate_passage_id(self, text: str) -> str:
+    @staticmethod
+    def _make_unique_passage_id(base_id: str, reserved_ids: set[str]) -> str:
+        if base_id not in reserved_ids:
+            return base_id
+        suffix = 1
+        while f"{base_id}-{suffix}" in reserved_ids:
+            suffix += 1
+        return f"{base_id}-{suffix}"
+
+    def _generate_passage_id(self, text: str, reserved_ids: Optional[set[str]] = None) -> str:
         """Generate a passage ID per the configured scheme.
 
         sequential: str(insertion index) — fast, position-dependent, current default.
-        content-hash: sha256(text)[:16] — content-stable, dedup-friendly across
-        file moves and reorderings. See #329 for the design.
+        content-hash: sha256(text)[:16] — content-stable across file moves and
+        reorderings when text is unique. Duplicate text receives a numeric suffix
+        so the passage store, ID maps, and vector labels stay one-to-one.
         """
         if self.passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
             import hashlib
 
-            return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            base_id = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            return self._make_unique_passage_id(base_id, reserved_ids or set())
         return str(len(self.chunks))
 
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
-        passage_id = metadata.get("id") or self._generate_passage_id(text)
+        if "id" in metadata and metadata["id"] is not None:
+            passage_id = str(metadata["id"])
+        else:
+            passage_id = self._generate_passage_id(text, {chunk["id"] for chunk in self.chunks})
         chunk_data = {"id": passage_id, "text": text, "metadata": metadata}
         self.chunks.append(chunk_data)
 
