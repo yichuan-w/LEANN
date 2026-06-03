@@ -443,6 +443,18 @@ python -m apps.code_rag --repo-dir "./my_codebase" --query "How does authenticat
 
 </details>
 
+### 🖼️ CLIP Image Search: Find Images with Text
+
+Index screenshots, diagrams, and photos with CLIP image embeddings, then search them with natural
+language.
+
+```bash
+python -m apps.image_rag --image-dir ./screenshots --query "architecture diagram"
+```
+
+Image search stores stable image IDs and metadata such as relative path, dimensions, byte size, and
+embedding model. See [CLIP Image RAG](docs/image_rag.md) for details.
+
 ### 🎨 ColQwen: Multimodal PDF Retrieval with Vision-Language Models
 
 Search through PDFs using both text and visual understanding with ColQwen2/ColPali models. Perfect for research papers, technical documents, and any PDFs with complex layouts, figures, or diagrams.

@@ -18,3 +18,13 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-06-03: Harden CLIP image RAG
+
+- Make `apps.image_rag` deterministic and reviewable with stable image passage IDs, normalized
+  extension discovery, validated batch sizes, user-selected CLIP model wiring, and richer image
+  metadata including relative path, dimensions, size, media type, and embedding model.
+- Build CLIP indexes directly from precomputed arrays so vector IDs match the stored image passage
+  IDs.
+- Add CI-safe image RAG tests with generated tiny images and a fake CLIP encoder, plus
+  `docs/image_rag.md`.
