@@ -659,14 +659,36 @@ jobs:
         run: |
           source .venv/bin/activate || source .venv/Scripts/activate
           python - <<'PY'
+          import numpy as np
           import leann
           import leann_backend_hnsw as h
           import leann_backend_diskann as d
           import leann_backend_ivf as ivf
           from leann import LeannBuilder, LeannSearcher
-          b = LeannBuilder(backend_name="hnsw")
+
+          b = LeannBuilder(
+              backend_name="hnsw",
+              dimensions=2,
+              is_compact=False,
+              is_recompute=False,
+          )
           b.add_text("hello arch")
-          b.build_index("arch_demo.leann")
-          s = LeannSearcher("arch_demo.leann")
-          print("search:", s.search("hello", top_k=1))
+          b.build_index_from_arrays(
+              "arch_demo.leann",
+              ["0"],
+              np.asarray([[1.0, 0.0]], dtype=np.float32),
+          )
+
+          with LeannSearcher(
+              "arch_demo.leann",
+              recompute_embeddings=False,
+              enable_warmup=False,
+          ) as s:
+              s.backend_impl.compute_query_embedding = lambda *args, **kwargs: np.asarray(
+                  [[1.0, 0.0]], dtype=np.float32
+              )
+              result = s.search("hello", top_k=1)
+
+          assert result and result[0].text == "hello arch"
+          print("arch smoke ok")
           PY
