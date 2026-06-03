@@ -51,7 +51,7 @@ def test_legacy_missing_id_scheme_is_sequential(tmp_path):
     assert cli._existing_index_id_scheme(str(tmp_path / "documents.leann")) == "sequential"
 
 
-def test_incremental_content_hash_add_only_does_not_preassign_path_ids(tmp_path):
+def test_incremental_content_hash_add_only_does_not_preassign_path_ids(tmp_path, monkeypatch):
     cli = LeannCLI()
     added_chunks = []
 
@@ -64,7 +64,7 @@ def test_incremental_content_hash_add_only_does_not_preassign_path_ids(tmp_path)
         def update_index(self, index_path):
             assert index_path == str(tmp_path / "documents.leann")
 
-    cli._make_incremental_builder = lambda _args: FakeBuilder()
+    monkeypatch.setattr(cli, "_make_incremental_builder", lambda _args: FakeBuilder())
     all_texts = [
         {
             "text": "stable content",
