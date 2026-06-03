@@ -10,7 +10,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -20,6 +20,27 @@ from leann.api import LeannBuilder, LeannChat, LeannSearcher
 from benchmarks.artifact_formatting import command_markdown_lines
 from benchmarks.metrics import mean, timing_stats
 from benchmarks.provenance import benchmark_command, environment_metadata, file_sha256
+
+
+class PassageManagerLike(Protocol):
+    def get_passage(self, passage_id: str) -> dict[str, Any]: ...
+
+
+class RetrievalSearcherLike(Protocol):
+    backend_name: str
+    embedding_model: str
+    embedding_mode: str
+    passage_id_scheme: str
+    passage_manager: PassageManagerLike
+
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int,
+        complexity: int,
+        batch_size: int,
+    ) -> list[Any]: ...
 
 
 def download_data_if_needed(data_root: Path, download_embeddings: bool = False):
@@ -126,7 +147,10 @@ def download_embeddings_if_needed(data_root: Path, dataset_type: str | None = No
 
 
 # --- Helper Function to get Golden Passages ---
-def get_golden_texts(searcher: LeannSearcher, golden_ids: list[int | str]) -> tuple[set[str], int]:
+def get_golden_texts(
+    searcher: RetrievalSearcherLike,
+    golden_ids: list[int | str],
+) -> tuple[set[str], int]:
     """
     Retrieves the text for golden passage IDs directly from the LeannSearcher's
     passage manager.
@@ -159,7 +183,7 @@ def load_queries(file_path: Path) -> list[str]:
 
 
 def run_retrieval_evaluation(
-    searcher: LeannSearcher,
+    searcher: RetrievalSearcherLike,
     queries: list[str],
     golden_results_data: dict[str, Any],
     *,
@@ -204,7 +228,11 @@ def run_retrieval_evaluation(
     chat = None
     if run_llm:
         llm_config = {"type": llm_type, "model": llm_model}
-        chat = LeannChat(index_path, llm_config=llm_config, searcher=searcher)
+        chat = LeannChat(
+            index_path,
+            llm_config=llm_config,
+            searcher=cast(LeannSearcher, searcher),
+        )
 
     for query_index, query in enumerate(eval_queries):
         started = time.perf_counter()

@@ -172,7 +172,7 @@ def test_run_retrieval_evaluation_leaves_hashes_unset_for_in_memory_inputs(tmp_p
     assert "Ground truth SHA256: `unavailable`" in markdown
 
 
-def test_run_retrieval_evaluation_p95_matches_shared_timing_rule(tmp_path):
+def test_run_retrieval_evaluation_p95_matches_shared_timing_rule(tmp_path, monkeypatch):
     class SequencedSearcher(FakeSearcher):
         def search(self, query, *, top_k, complexity, batch_size):
             return [SimpleNamespace(id=str(query), text=f"doc-{query}")]
@@ -184,25 +184,25 @@ def test_run_retrieval_evaluation_p95_matches_shared_timing_rule(tmp_path):
         {str(index): {"text": f"doc-{index}"} for index in range(100)}
     )
 
-    original_perf_counter = run_evaluation.time.perf_counter
     ticks = iter(timestamp for index in range(100) for timestamp in (0.0, float(index) / 1000.0))
-    run_evaluation.time.perf_counter = lambda: next(ticks)
-    try:
-        summary = run_retrieval_evaluation(
-            searcher,
-            queries,
-            golden_results,
-            index_path=str(tmp_path / "documents.leann"),
-            dataset_type="fixture",
-            queries_file="memory://queries",
-            ground_truth_file="memory://truth",
-            num_queries=100,
-            top_k=1,
-            complexity=16,
-            batch_size=0,
-        )
-    finally:
-        run_evaluation.time.perf_counter = original_perf_counter
+
+    def fake_perf_counter() -> float:
+        return next(ticks)
+
+    monkeypatch.setattr(run_evaluation.time, "perf_counter", fake_perf_counter)
+    summary = run_retrieval_evaluation(
+        searcher,
+        queries,
+        golden_results,
+        index_path=str(tmp_path / "documents.leann"),
+        dataset_type="fixture",
+        queries_file="memory://queries",
+        ground_truth_file="memory://truth",
+        num_queries=100,
+        top_k=1,
+        complexity=16,
+        batch_size=0,
+    )
 
     assert summary["latency_ms"]["p95"] == 94.0
 

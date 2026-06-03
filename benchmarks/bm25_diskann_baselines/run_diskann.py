@@ -9,6 +9,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -65,7 +66,7 @@ def benchmark_report(
     data_source: str | None,
     data_revision: str | None,
     command: str | None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "benchmark": "diskann_baseline_latency",
@@ -111,7 +112,7 @@ def benchmark_report(
     }
 
 
-def write_json_report(path: str | Path, payload: dict[str, object]) -> None:
+def write_json_report(path: str | Path, payload: dict[str, Any]) -> None:
     report_path = Path(path)
     if report_path.exists() and report_path.is_dir():
         raise IsADirectoryError(f"report path is a directory: {report_path}")
