@@ -47,7 +47,7 @@ def test_prompt_includes_web_tools_when_key_present():
 def test_prompt_excludes_web_tools_when_no_key():
     """When no SERPER_API_KEY, prompt should only show leann_search."""
     searcher = _make_searcher()
-    with patch.dict("os.environ", {}, clear=False):
+    with patch.dict("os.environ", {}, clear=True):
         agent = ReActAgent(searcher=searcher, llm=MagicMock(), serper_api_key=None)
     prompt = agent._create_react_prompt("test question", 1, [])
     assert "leann_search" in prompt
@@ -243,7 +243,7 @@ def test_web_search_no_api_key_graceful():
         'Thought: Web failed, try local.\nAction: leann_search("search")',
         "Thought: Done.\nAction: Final Answer: Here's what I found locally.",
     ]
-    with patch.dict("os.environ", {}, clear=False):
+    with patch.dict("os.environ", {}, clear=True):
         agent = ReActAgent(searcher=searcher, llm=mock_llm, max_iterations=5, serper_api_key=None)
     answer = agent.run("test", top_k=2)
 

@@ -181,7 +181,8 @@ leann react my-index "question" --max-iterations 10
 # Local/private retrieval only. Web tools are hidden and refused if requested.
 leann react my-index "question" --source-policy local
 
-# Public web research only. Local LEANN search is hidden and refused if requested.
+# Public web retrieval inside an existing ReAct index session. Local LEANN search is hidden
+# and refused if requested.
 leann react my-index "question" --source-policy web --serper-api-key $SERPER_API_KEY
 
 # Local + web research. This is the default; without a Serper key it behaves as local-only.
