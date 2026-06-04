@@ -2006,6 +2006,30 @@ requires-dist = [
 provides-extras = ["query-server"]
 
 [[package]]
+name = "leann-backend-flashlib-ivf"
+version = "0.3.6"
+source = { editable = "packages/leann-backend-flashlib-ivf" }
+dependencies = [
+    { name = "flashlib" },
+    { name = "leann-core" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+    { name = "torch" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "flashlib" },
+    { name = "leann-backend-hnsw", marker = "extra == 'query-server'", specifier = ">=0.3.6" },
+    { name = "leann-core", specifier = ">=0.3.6" },
+    { name = "msgpack", marker = "extra == 'query-server'", specifier = ">=1.0.0" },
+    { name = "numpy", specifier = ">=1.20.0" },
+    { name = "pyzmq", marker = "extra == 'query-server'", specifier = ">=23.0.0" },
+    { name = "torch" },
+]
+provides-extras = ["query-server"]
+
+[[package]]
 name = "leann-backend-hnsw"
 version = "0.3.7"
 source = { editable = "packages/leann-backend-hnsw" }
@@ -2158,6 +2182,9 @@ documents = [
 flashlib = [
     { name = "leann-backend-flashlib" },
 ]
+flashlib-ivf = [
+    { name = "leann-backend-flashlib-ivf" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -2190,6 +2217,7 @@ requires-dist = [
     { name = "ipykernel", specifier = "==6.29.5" },
     { name = "leann-backend-diskann", marker = "extra == 'diskann'", editable = "packages/leann-backend-diskann" },
     { name = "leann-backend-flashlib", marker = "extra == 'flashlib'", editable = "packages/leann-backend-flashlib" },
+    { name = "leann-backend-flashlib-ivf", marker = "extra == 'flashlib-ivf'", editable = "packages/leann-backend-flashlib-ivf" },
     { name = "leann-backend-hnsw", editable = "packages/leann-backend-hnsw" },
     { name = "leann-core", editable = "packages/leann-core" },
     { name = "llama-index", specifier = ">=0.12.44" },
@@ -2230,7 +2258,7 @@ requires-dist = [
     { name = "tree-sitter-typescript", specifier = ">=0.20.0" },
     { name = "typer", specifier = ">=0.12.3" },
 ]
-provides-extras = ["diskann", "flashlib", "documents"]
+provides-extras = ["diskann", "flashlib", "flashlib-ivf", "documents"]
 
 [package.metadata.requires-dev]
 dev = [
