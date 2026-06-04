@@ -278,7 +278,7 @@ def _query_lmstudio_context_limit(model_name: str, base_url: str) -> Optional[in
                 # Append to existing NODE_PATH if present
                 existing_node_path = env.get("NODE_PATH", "")
                 env["NODE_PATH"] = (
-                    f"{global_modules}:{existing_node_path}"
+                    os.pathsep.join([global_modules, existing_node_path])
                     if existing_node_path
                     else global_modules
                 )
@@ -495,7 +495,8 @@ def compute_embeddings_sentence_transformers(
             # TODO: Haven't tested this yet
             torch.set_num_threads(min(8, os.cpu_count() or 4))
             try:
-                torch.backends.mkldnn.enabled = True
+                mkldnn_backend = cast(Any, torch.backends.mkldnn)
+                mkldnn_backend.enabled = True
             except AttributeError:
                 pass
 

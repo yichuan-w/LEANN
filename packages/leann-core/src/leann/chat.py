@@ -8,6 +8,7 @@ import difflib
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any, Optional, cast
 
 from .settings import (
@@ -25,6 +26,36 @@ from .settings import (
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _run_with_optional_posix_alarm(
+    operation: Callable[[], Any], timeout_seconds: int, timeout_message: str
+) -> Any:
+    """Run an operation with a POSIX alarm where the platform supports it."""
+    try:
+        import signal
+    except ImportError:
+        return operation()
+
+    if not hasattr(signal, "SIGALRM") or not hasattr(signal, "alarm"):
+        return operation()
+
+    def timeout_handler(signum, frame):
+        raise TimeoutError(timeout_message)
+
+    try:
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    except ValueError:
+        # signal.signal only works from the main thread. Loading without an
+        # alarm is preferable to failing before model loading starts.
+        return operation()
+
+    signal.alarm(timeout_seconds)
+    try:
+        return operation()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 
 def check_ollama_models(host: str) -> list[str]:
@@ -606,20 +637,12 @@ class HFChat(LLMInterface):
             self.device = "cpu"
             logger.info("No GPU detected. Using CPU.")
 
-        # Load tokenizer and model with timeout protection
+        # Load tokenizer and model with timeout protection when POSIX alarms are available.
         try:
-            import signal
 
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Model download/loading timed out")
-
-            # Set timeout for model loading (60 seconds)
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(60)
-
-            try:
+            def load_model_assets():
                 logger.info(f"Loading tokenizer for {model_name}...")
-                self.tokenizer = AutoTokenizer.from_pretrained(
+                tokenizer = AutoTokenizer.from_pretrained(
                     model_name, trust_remote_code=self.trust_remote_code
                 )
 
@@ -634,16 +657,20 @@ class HFChat(LLMInterface):
                     # Auto mode: let HuggingFace distribute across available GPUs
                     device_map = "auto"
 
-                self.model = AutoModelForCausalLM.from_pretrained(
+                model = AutoModelForCausalLM.from_pretrained(
                     model_name,
                     torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
                     device_map=device_map,
                     trust_remote_code=self.trust_remote_code,
                 )
                 logger.info(f"Successfully loaded {model_name}")
-            finally:
-                signal.alarm(0)  # Cancel the alarm
-                signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
+                return tokenizer, model
+
+            self.tokenizer, self.model = _run_with_optional_posix_alarm(
+                load_model_assets,
+                timeout_seconds=60,
+                timeout_message="Model download/loading timed out",
+            )
 
         except TimeoutError:
             logger.error(f"Model loading timed out for {model_name}")
