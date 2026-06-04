@@ -66,9 +66,14 @@ diskann = [
     "leann-backend-diskann",
 ]
 
-# GPU-accelerated FlashLib (IVFFlat on Triton/CuteDSL) backend. Requires a CUDA GPU.
+# GPU-accelerated FlashLib (exact k-NN on Triton/CuteDSL) backend. Requires a CUDA GPU.
 flashlib = [
     "leann-backend-flashlib",
+]
+
+# GPU-accelerated FlashLib IVF-Flat (approximate-NN) backend. Requires a CUDA GPU.
+flashlib-ivf = [
+    "leann-backend-flashlib-ivf",
 ]
 
 # Add a new optional dependency group for document processing
@@ -94,6 +99,7 @@ leann-core = { path = "packages/leann-core", editable = true }
 leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = true }
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
 leann-backend-flashlib = { path = "packages/leann-backend-flashlib", editable = true }
+leann-backend-flashlib-ivf = { path = "packages/leann-backend-flashlib-ivf", editable = true }
 astchunk = { path = "packages/astchunk-leann", editable = true }
 
 [dependency-groups]
