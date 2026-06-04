@@ -18,3 +18,14 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-06-03: Video frame retrieval
+
+- Add `apps/video_rag.py`, a CLIP-based video-frame retrieval example that samples local videos,
+  stores one precomputed CLIP embedding per sampled frame, and searches those frame vectors from
+  text queries without recomputing frame embeddings from metadata text.
+- Add stable `video-frame-<hash>` passage IDs plus frame metadata including relative path,
+  timestamp, frame index, frame size, duration, file size, media type, and embedding model.
+- Add `docs/video_rag.md`, a `video` optional dependency group for OpenCV/Pillow, and focused
+  mocked tests covering discovery, metadata, batching, precomputed-array builds, validation, and
+  no-recompute query execution.

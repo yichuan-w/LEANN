@@ -85,6 +85,11 @@ documents = [
     "pandas>=2.2.0",           # For data processing
 ]
 
+video = [
+    "opencv-python-headless>=4.10.0",
+    "pillow>=10.0.0",
+]
+
 [tool.setuptools]
 py-modules = []
 packages = ["wechat_exporter"]
