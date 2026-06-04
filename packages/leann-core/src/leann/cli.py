@@ -2658,8 +2658,11 @@ Examples:
         index_name = args.index_name
         query = args.query
         json_mode = getattr(args, "json", False)
+        use_grep = getattr(args, "grep", False)
+        use_regex = getattr(args, "regex", False)
+        regex_ignore_case = getattr(args, "regex_ignore_case", False)
 
-        if args.grep and args.regex:
+        if use_grep and use_regex:
             print("Error: choose either --grep or --regex, not both.")
             return
 
@@ -2721,9 +2724,9 @@ Examples:
                 pruning_strategy=args.pruning_strategy,
                 provider_options=provider_options if provider_options else None,
                 metadata_filters=metadata_filters,
-                use_grep=args.grep,
-                use_regex=args.regex,
-                regex_case_sensitive=not args.regex_ignore_case,
+                use_grep=use_grep,
+                use_regex=use_regex,
+                regex_case_sensitive=not regex_ignore_case,
             )
         finally:
             if saved_fd is not None:
@@ -2921,9 +2924,12 @@ Examples:
         llm_kwargs: dict[str, Any] = {}
         if args.thinking_budget:
             llm_kwargs["thinking_budget"] = args.thinking_budget
+        use_grep = getattr(args, "grep", False)
+        use_regex = getattr(args, "regex", False)
+        regex_ignore_case = getattr(args, "regex_ignore_case", False)
 
         def _ask_once(prompt: str) -> None:
-            if args.grep and args.regex:
+            if use_grep and use_regex:
                 print("Error: choose either --grep or --regex, not both.")
                 return
 
@@ -2937,9 +2943,9 @@ Examples:
                 recompute_embeddings=args.recompute_embeddings,
                 pruning_strategy=args.pruning_strategy,
                 metadata_filters=metadata_filters,
-                use_grep=args.grep,
-                use_regex=args.regex,
-                regex_case_sensitive=not args.regex_ignore_case,
+                use_grep=use_grep,
+                use_regex=use_regex,
+                regex_case_sensitive=not regex_ignore_case,
                 llm_kwargs=llm_kwargs,
             )
             query_completion_time = time.time() - query_start_time

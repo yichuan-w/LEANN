@@ -48,6 +48,8 @@ def test_search_passes_daemon_flags_to_searcher(monkeypatch):
     assert captured["init"]["use_daemon"] is True
     assert captured["init"]["daemon_ttl_seconds"] == 222
     assert captured["search"]["recompute_embeddings"] is True
+    assert captured["search"]["use_grep"] is False
+    assert captured["search"]["use_regex"] is False
 
 
 def test_warmup_command_calls_searcher_warmup(monkeypatch):
