@@ -34,6 +34,8 @@ class SearchRequest(_BaseModel):
     recompute_embeddings: bool = True
     pruning_strategy: str = "global"
     use_grep: bool = False
+    use_regex: bool = False
+    regex_case_sensitive: bool = True
 
 
 class SearchResultModel(_BaseModel):
@@ -156,6 +158,8 @@ def create_app():
             recompute_embeddings=body.recompute_embeddings,
             pruning_strategy=body.pruning_strategy,  # type: ignore[arg-type]
             use_grep=body.use_grep,
+            use_regex=body.use_regex,
+            regex_case_sensitive=body.regex_case_sensitive,
         )
 
         # Normalize into JSON-serializable structures

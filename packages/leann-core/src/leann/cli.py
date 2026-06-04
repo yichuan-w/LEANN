@@ -412,6 +412,21 @@ Examples:
             help="Display file paths and metadata in search results",
         )
         search_parser.add_argument(
+            "--grep",
+            action="store_true",
+            help="Run case-insensitive literal search with the local trigram index",
+        )
+        search_parser.add_argument(
+            "--regex",
+            action="store_true",
+            help="Run regex search with local trigram candidate filtering",
+        )
+        search_parser.add_argument(
+            "--regex-ignore-case",
+            action="store_true",
+            help="Make --regex matching case-insensitive",
+        )
+        search_parser.add_argument(
             "--embedding-prompt-template",
             type=str,
             default=None,
@@ -578,6 +593,21 @@ Examples:
                 "Operators: ==, !=, <, <=, >, >=, in, not_in, contains, starts_with, ends_with. "
                 'Example: \'{"chapter": {"<=": 5}, "genre": {"==": "fiction"}}\''
             ),
+        )
+        ask_parser.add_argument(
+            "--grep",
+            action="store_true",
+            help="Retrieve context with case-insensitive literal search",
+        )
+        ask_parser.add_argument(
+            "--regex",
+            action="store_true",
+            help="Retrieve context with regex search over indexed candidates",
+        )
+        ask_parser.add_argument(
+            "--regex-ignore-case",
+            action="store_true",
+            help="Make --regex matching case-insensitive",
         )
 
         # React command (multiturn retrieval agent)
@@ -2629,6 +2659,10 @@ Examples:
         query = args.query
         json_mode = getattr(args, "json", False)
 
+        if args.grep and args.regex:
+            print("Error: choose either --grep or --regex, not both.")
+            return
+
         index_path = self._resolve_index_path(
             index_name,
             non_interactive=args.non_interactive,
@@ -2687,6 +2721,9 @@ Examples:
                 pruning_strategy=args.pruning_strategy,
                 provider_options=provider_options if provider_options else None,
                 metadata_filters=metadata_filters,
+                use_grep=args.grep,
+                use_regex=args.regex,
+                regex_case_sensitive=not args.regex_ignore_case,
             )
         finally:
             if saved_fd is not None:
@@ -2886,6 +2923,10 @@ Examples:
             llm_kwargs["thinking_budget"] = args.thinking_budget
 
         def _ask_once(prompt: str) -> None:
+            if args.grep and args.regex:
+                print("Error: choose either --grep or --regex, not both.")
+                return
+
             query_start_time = time.time()
             response = chat.ask(
                 prompt,
@@ -2896,6 +2937,9 @@ Examples:
                 recompute_embeddings=args.recompute_embeddings,
                 pruning_strategy=args.pruning_strategy,
                 metadata_filters=metadata_filters,
+                use_grep=args.grep,
+                use_regex=args.regex,
+                regex_case_sensitive=not args.regex_ignore_case,
                 llm_kwargs=llm_kwargs,
             )
             query_completion_time = time.time() - query_start_time

@@ -18,3 +18,14 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-06-04: Indexed literal and regex search
+
+- Add `<index>.regex.sqlite`, a local SQLite trigram postings sidecar built next
+  to LEANN passage/vector artifacts for exact literal and regex search.
+- Add `LeannSearcher.search(..., use_regex=True)` and keep `use_grep=True` as a
+  case-insensitive literal compatibility mode backed by the same sidecar instead
+  of a platform `grep` subprocess.
+- Add CLI and HTTP server pass-through for indexed regex search, plus docs and
+  backend-free regression tests covering exact matching, metadata filters, invalid
+  regexes, and lazy sidecar creation for older indexes.

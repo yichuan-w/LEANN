@@ -8,10 +8,10 @@ import logging
 import os
 import pickle
 import re
-import subprocess
 import time
 import warnings
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
@@ -223,6 +223,16 @@ class PassageManager:
                 continue
         raise KeyError(f"Passage ID not found: {passage_id}")
 
+    def iter_live_passages(self):
+        """Yield passages referenced by the current offset maps."""
+        for passage_file, offset_map in self.offset_maps.items():
+            with open(passage_file, encoding="utf-8") as f:
+                for _passage_id, offset in sorted(offset_map.items(), key=lambda x: x[1]):
+                    f.seek(offset)
+                    line = f.readline()
+                    if line:
+                        yield json.loads(line)
+
     def filter_search_results(
         self,
         search_results: list[SearchResult],
@@ -359,6 +369,203 @@ class Fts5BM25Index(BM25Index):
             SearchResult(id=doc_id, score=float(score), text="", metadata={})
             for doc_id, score in rows
         ]
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+
+class RegexNgramIndex:
+    """SQLite trigram postings for candidate-filtered literal/regex search."""
+
+    _SCHEMA = (
+        "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        "CREATE TABLE postings (ngram TEXT NOT NULL, passage_id TEXT NOT NULL);",
+        "CREATE INDEX postings_ngram_idx ON postings(ngram);",
+        "CREATE INDEX postings_passage_idx ON postings(passage_id);",
+    )
+
+    _REGEX_ZERO_WIDTH_ESCAPES = {"A", "b", "B", "G", "Z", "z"}
+    _REGEX_CLASS_ESCAPES = {"d", "D", "s", "S", "w", "W"}
+
+    def __init__(self, db_path: str):
+        self._db_path = db_path
+        self._conn: Optional[Any] = None
+
+    def _connect(self):
+        import sqlite3
+
+        if self._conn is None:
+            self._conn = sqlite3.connect(self._db_path)
+        return self._conn
+
+    @staticmethod
+    def _trigrams(text: str) -> set[str]:
+        normalized = text.lower()
+        if len(normalized) < 3:
+            return set()
+        return {normalized[i : i + 3] for i in range(len(normalized) - 2)}
+
+    @classmethod
+    def _required_literals(cls, pattern: str) -> list[str]:
+        """Extract conservative literal runs required by a regex pattern.
+
+        The MVP uses ordinary trigrams from literal runs. If a pattern has no
+        required trigram, callers must fall back to scanning live passages.
+        """
+        literals: list[str] = []
+        current: list[str] = []
+        previous_atom_was_literal = False
+        i = 0
+
+        while i < len(pattern):
+            char = pattern[i]
+            if char == "\\":
+                i += 1
+                if i >= len(pattern):
+                    return []
+                escaped = pattern[i]
+                if escaped in cls._REGEX_ZERO_WIDTH_ESCAPES:
+                    previous_atom_was_literal = False
+                elif escaped in cls._REGEX_CLASS_ESCAPES:
+                    if current:
+                        literals.append("".join(current))
+                        current = []
+                    previous_atom_was_literal = False
+                else:
+                    current.append(escaped)
+                    previous_atom_was_literal = True
+                i += 1
+                continue
+
+            if char in "|()[]{}":
+                return []
+
+            if char in "^$":
+                previous_atom_was_literal = False
+                i += 1
+                continue
+
+            if char == ".":
+                if current:
+                    literals.append("".join(current))
+                    current = []
+                previous_atom_was_literal = False
+                i += 1
+                continue
+
+            if char in "*?":
+                if previous_atom_was_literal and current:
+                    current.pop()
+                previous_atom_was_literal = False
+                i += 1
+                continue
+
+            if char == "+":
+                previous_atom_was_literal = False
+                i += 1
+                continue
+
+            current.append(char)
+            previous_atom_was_literal = True
+            i += 1
+
+        if current:
+            literals.append("".join(current))
+        return literals
+
+    @classmethod
+    def required_ngrams(cls, pattern: str, *, is_regex: bool) -> set[str]:
+        if not is_regex:
+            return cls._trigrams(pattern)
+        required: set[str] = set()
+        for literal in cls._required_literals(pattern):
+            required.update(cls._trigrams(literal))
+        return required
+
+    def fit(self, documents: Iterable[dict[str, Any]]) -> None:
+        import sqlite3
+
+        if self._conn is not None:
+            self.close()
+
+        tmp_db_path = f"{self._db_path}.tmp"
+        if os.path.exists(tmp_db_path):
+            os.unlink(tmp_db_path)
+
+        conn = sqlite3.connect(tmp_db_path)
+        try:
+            for statement in self._SCHEMA:
+                conn.execute(statement)
+            conn.execute("INSERT INTO meta(key, value) VALUES (?, ?)", ("version", "1"))
+            conn.execute("INSERT INTO meta(key, value) VALUES (?, ?)", ("ngram_size", "3"))
+            rows: list[tuple[str, str]] = []
+
+            def flush_rows() -> None:
+                if rows:
+                    conn.executemany("INSERT INTO postings(ngram, passage_id) VALUES (?, ?)", rows)
+                    rows.clear()
+
+            for document in documents:
+                passage_id = str(document["id"])
+                for ngram in self._trigrams(document.get("text", "")):
+                    rows.append((ngram, passage_id))
+                    if len(rows) >= 50_000:
+                        flush_rows()
+            flush_rows()
+            conn.commit()
+        finally:
+            conn.close()
+        os.replace(tmp_db_path, self._db_path)
+
+    def add_documents(self, documents: list[dict[str, Any]]) -> None:
+        if not documents:
+            return
+        conn = self._connect()
+        rows: list[tuple[str, str]] = []
+        for document in documents:
+            passage_id = str(document["id"])
+            for ngram in self._trigrams(document.get("text", "")):
+                rows.append((ngram, passage_id))
+        conn.executemany("INSERT INTO postings(ngram, passage_id) VALUES (?, ?)", rows)
+        conn.commit()
+
+    def remove_ids(self, passage_ids: list[str]) -> None:
+        if not passage_ids:
+            return
+        conn = self._connect()
+        conn.executemany(
+            "DELETE FROM postings WHERE passage_id = ?",
+            ((str(passage_id),) for passage_id in passage_ids),
+        )
+        conn.commit()
+
+    def candidate_ids(
+        self, pattern: str, *, is_regex: bool, fallback_limit: int = 4096
+    ) -> list[str] | None:
+        required = sorted(self.required_ngrams(pattern, is_regex=is_regex))
+        if not required:
+            return None
+
+        conn = self._connect()
+        candidate_ids: set[str] | None = None
+        for ngram in required:
+            rows = conn.execute(
+                "SELECT passage_id FROM postings WHERE ngram = ? LIMIT ?",
+                (ngram, fallback_limit),
+            ).fetchall()
+            ids = {str(row[0]) for row in rows}
+            if len(rows) >= fallback_limit:
+                return None
+            if candidate_ids is None:
+                candidate_ids = ids
+            else:
+                candidate_ids &= ids
+            if not candidate_ids:
+                return []
+
+        return sorted(candidate_ids or [])
 
     def close(self) -> None:
         if self._conn is not None:
@@ -604,6 +811,10 @@ class LeannBuilder:
             meta_data["bm25_backend"] = "fts5"
             meta_data["bm25_db"] = f"{index_name}.bm25.sqlite"
 
+        self._build_regex_ngram_index(index_dir, index_name, self.chunks)
+        meta_data["regex_backend"] = "sqlite_trigram"
+        meta_data["regex_db"] = f"{index_name}.regex.sqlite"
+
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
 
@@ -619,6 +830,36 @@ class LeannBuilder:
         index.fit(self.chunks)
         index.close()
         logger.info(f"Wrote BM25 FTS5 index to {db_path}")
+
+    def _build_regex_ngram_index(
+        self, index_dir: Path, index_name: str, passages: Iterable[dict[str, Any]]
+    ) -> None:
+        """Build a SQLite trigram index alongside the vector index."""
+        db_path = index_dir / f"{index_name}.regex.sqlite"
+        index = RegexNgramIndex(str(db_path))
+        index.fit(passages)
+        index.close()
+        logger.info(f"Wrote regex trigram index to {db_path}")
+
+    def _rebuild_regex_ngram_from_live_passages(
+        self,
+        index_dir: Path,
+        index_name: str,
+        meta: dict[str, Any],
+        passages_file: Path,
+        offset_map: dict[str, int],
+    ) -> None:
+        def live_passages():
+            with open(passages_file, encoding="utf-8") as f:
+                for _pid, offset in sorted(offset_map.items(), key=lambda x: x[1]):
+                    f.seek(offset)
+                    line = f.readline()
+                    if line:
+                        yield json.loads(line)
+
+        self._build_regex_ngram_index(index_dir, index_name, live_passages())
+        meta["regex_backend"] = "sqlite_trigram"
+        meta["regex_db"] = f"{index_name}.regex.sqlite"
 
     def build_index_from_arrays(self, index_path: str, ids: list, embeddings: np.ndarray):
         """Build an index from pre-computed embedding arrays.
@@ -744,6 +985,10 @@ class LeannBuilder:
             meta_data["is_compact"] = is_compact
             meta_data["is_pruned"] = bool(is_recompute)
 
+        self._build_regex_ngram_index(index_dir, index_name, self.chunks)
+        meta_data["regex_backend"] = "sqlite_trigram"
+        meta_data["regex_db"] = f"{index_name}.regex.sqlite"
+
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
 
@@ -857,6 +1102,9 @@ class LeannBuilder:
             self._compact_passages(passages_file, offset_file, offset_map)
 
         if not self.chunks:
+            self._rebuild_regex_ngram_from_live_passages(
+                index_dir, index_name, meta, passages_file, offset_map
+            )
             meta["total_passages"] = len(offset_map)
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2)
@@ -893,6 +1141,9 @@ class LeannBuilder:
 
         if not valid_chunks:
             # Remove-only or file emptied: we may have already removed ids, just update meta
+            self._rebuild_regex_ngram_from_live_passages(
+                index_dir, index_name, meta, passages_file, offset_map
+            )
             meta["total_passages"] = len(offset_map)
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2)
@@ -956,6 +1207,9 @@ class LeannBuilder:
                         offset_map[chunk["id"]] = off
                 with open(offset_file, "wb") as f:
                     pickle.dump(offset_map, f)
+                self._rebuild_regex_ngram_from_live_passages(
+                    index_dir, index_name, meta, passages_file, offset_map
+                )
                 meta["total_passages"] = len(offset_map)
                 with open(meta_path, "w", encoding="utf-8") as f:
                     json.dump(meta, f, indent=2)
@@ -1085,6 +1339,9 @@ class LeannBuilder:
                 else:
                     index.add(embeddings.shape[0], faiss.swig_ptr(embeddings))
                 faiss.write_index(index, str(index_file))
+                self._rebuild_regex_ngram_from_live_passages(
+                    index_dir, index_name, meta, passages_file, offset_map
+                )
             finally:
                 if server_started and server_manager is not None:
                     server_manager.stop_server()
@@ -1204,6 +1461,8 @@ class LeannSearcher:
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
+        use_regex: bool = False,
+        regex_case_sensitive: bool = True,
         vector_weight: float = 1.0,
         provider_options: Optional[dict[str, Any]] = None,
         **kwargs,
@@ -1228,6 +1487,13 @@ class LeannSearcher:
                 - Membership: "in", "not_in"
                 - String: "contains", "starts_with", "ends_with"
                 Example: {"chapter": {"<=": 5}, "tags": {"in": ["fiction", "drama"]}}
+            use_grep: Compatibility exact-text mode. Uses the indexed regex path with
+                a case-insensitive literal query, instead of shelling out to system grep.
+            use_regex: Run exact Python regex verification over candidate passages from
+                the local trigram index. Falls back to live passage scan only when the
+                regex has no required trigram or a trigram is too common to narrow safely.
+            regex_case_sensitive: Whether use_regex verification is case-sensitive.
+                use_grep remains case-insensitive for backward compatibility.
             vector_weight: Weight of vector search in hybrid scoring (0.0-1.0).
                 1.0 = pure vector search (default), 0.0 = pure BM25 keyword search,
                 anything in between linearly fuses the two.
@@ -1248,9 +1514,17 @@ class LeannSearcher:
             )
             vector_weight = kwargs.pop("gemma")
 
-        # Handle grep search
-        if use_grep:
-            return self._grep_search(query, top_k)
+        if use_grep and use_regex:
+            raise ValueError("Choose either use_grep=True or use_regex=True, not both.")
+
+        if use_grep or use_regex:
+            return self._regex_search(
+                query,
+                top_k,
+                is_regex=use_regex,
+                case_sensitive=regex_case_sensitive if use_regex else False,
+                metadata_filters=metadata_filters,
+            )
 
         logger.info("🔍 LeannSearcher.search() called:")
         logger.info(f"  Query: '{query}'")
@@ -1498,65 +1772,106 @@ class LeannSearcher:
             raise RuntimeError("BM25 scorer failed to initialize")
         return scorer.search(query, top_k)
 
-    def _find_jsonl_file(self) -> Optional[str]:
-        """Find the .jsonl file containing raw passages for grep search"""
-        index_path = Path(self.meta_path_str).parent
-        potential_files = [
-            index_path / "documents.leann.passages.jsonl",
-            index_path.parent / "documents.leann.passages.jsonl",
-        ]
+    def _regex_index_path(self) -> Path:
+        meta_path = Path(self.meta_path_str)
+        regex_db = self.meta_data.get("regex_db")
+        if regex_db:
+            path = Path(regex_db)
+            return path if path.is_absolute() else meta_path.parent / path
+        index_name = meta_path.name[: -len(".meta.json")]
+        return meta_path.parent / f"{index_name}.regex.sqlite"
 
-        for file_path in potential_files:
-            if file_path.exists():
-                return str(file_path)
-        return None
+    def _init_regex_index(self) -> RegexNgramIndex | None:
+        """Open the regex index, lazily creating it for older indexes."""
+        import sqlite3
 
-    def _grep_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """Perform grep-based search on raw passages"""
-        jsonl_file = self._find_jsonl_file()
-        if not jsonl_file:
-            raise FileNotFoundError("No .jsonl passages file found for grep search")
+        db_path = self._regex_index_path()
+        if db_path.exists():
+            return RegexNgramIndex(str(db_path))
 
+        index = RegexNgramIndex(str(db_path))
         try:
-            cmd = ["grep", "-i", "-n", query, jsonl_file]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-
-            if result.returncode == 1:
-                return []
-            elif result.returncode != 0:
-                raise RuntimeError(f"Grep failed: {result.stderr}")
-
-            matches = []
-            for line in result.stdout.strip().split("\n"):
-                if not line:
-                    continue
-                parts = line.split(":", 1)
-                if len(parts) != 2:
-                    continue
-
-                try:
-                    data = json.loads(parts[1])
-                    text = data.get("text", "")
-                    score = text.lower().count(query.lower())
-
-                    matches.append(
-                        SearchResult(
-                            id=data.get("id", parts[0]),
-                            text=text,
-                            metadata=data.get("metadata", {}),
-                            score=float(score),
-                        )
-                    )
-                except json.JSONDecodeError:
-                    continue
-
-            matches.sort(key=lambda x: x.score, reverse=True)
-            return matches[:top_k]
-
-        except FileNotFoundError:
-            raise RuntimeError(
-                "grep command not found. Please install grep or use semantic search."
+            index.fit(list(self.passage_manager.iter_live_passages()))
+            self.meta_data["regex_backend"] = "sqlite_trigram"
+            self.meta_data["regex_db"] = db_path.name
+            with open(self.meta_path_str, "w", encoding="utf-8") as f:
+                json.dump(self.meta_data, f, indent=2)
+            logger.info(f"Built regex trigram index on-demand at {db_path}")
+            return index
+        except (OSError, PermissionError, sqlite3.Error) as exc:
+            logger.warning(
+                "Could not build regex trigram index at %s (%s); "
+                "falling back to live passage scan.",
+                db_path,
+                exc,
             )
+            index.close()
+            return None
+
+    def _regex_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        is_regex: bool,
+        case_sensitive: bool,
+        metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
+    ) -> list[SearchResult]:
+        """Run exact literal/regex search after trigram candidate filtering."""
+        import sqlite3
+
+        flags = 0 if case_sensitive else re.IGNORECASE
+        if is_regex:
+            try:
+                pattern = re.compile(query, flags)
+            except re.error as exc:
+                raise ValueError(f"Invalid regex query: {exc}") from exc
+        else:
+            pattern = re.compile(re.escape(query), flags)
+
+        regex_index = self._init_regex_index()
+        try:
+            try:
+                candidate_ids = (
+                    regex_index.candidate_ids(query, is_regex=is_regex)
+                    if regex_index is not None
+                    else None
+                )
+            except (OSError, sqlite3.Error) as exc:
+                logger.warning(
+                    "Could not read regex trigram index (%s); falling back to live passage scan.",
+                    exc,
+                )
+                candidate_ids = None
+
+            if candidate_ids is None:
+                candidate_passages = self.passage_manager.iter_live_passages()
+            else:
+                candidate_passages = (
+                    self.passage_manager.get_passage(passage_id) for passage_id in candidate_ids
+                )
+
+            matches: list[SearchResult] = []
+            for passage in candidate_passages:
+                text = passage.get("text", "")
+                match_count = sum(1 for _match in pattern.finditer(text))
+                if match_count <= 0:
+                    continue
+                matches.append(
+                    SearchResult(
+                        id=str(passage.get("id", "")),
+                        text=text,
+                        metadata=passage.get("metadata", {}),
+                        score=float(match_count),
+                    )
+                )
+
+            matches.sort(key=lambda result: (-result.score, result.id))
+            filtered = self.passage_manager.filter_search_results(matches, metadata_filters)
+            return filtered[:top_k]
+        finally:
+            if regex_index is not None:
+                regex_index.close()
 
     def cleanup(self):
         """Explicitly cleanup embedding server and backend index resources.
@@ -1621,6 +1936,8 @@ class LeannChat:
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
+        use_regex: bool = False,
+        regex_case_sensitive: bool = True,
         vector_weight: float = 1.0,
         **search_kwargs,
     ):
@@ -1646,6 +1963,8 @@ class LeannChat:
             expected_zmq_port=expected_zmq_port,
             metadata_filters=metadata_filters,
             use_grep=use_grep,
+            use_regex=use_regex,
+            regex_case_sensitive=regex_case_sensitive,
             vector_weight=vector_weight,
             batch_size=batch_size,
             **search_kwargs,

@@ -1,149 +1,87 @@
-# LEANN Grep Search Usage Guide
+# Indexed Literal and Regex Search
 
-## Overview
+LEANN supports exact text search over indexed passages without shelling out to
+system `grep`. Each build writes a local SQLite trigram sidecar:
 
-LEANN's grep search functionality provides exact text matching for finding specific code patterns, error messages, function names, or exact phrases in your indexed documents.
+```text
+<index>.regex.sqlite
+```
 
-## Basic Usage
+The sidecar lives next to the normal LEANN artifacts:
 
-### Simple Grep Search
+```text
+<index>.passages.jsonl
+<index>.passages.idx
+<index>.bm25.sqlite
+<index>.index
+```
+
+## Python API
+
+Use `use_grep=True` for the existing case-insensitive literal search behavior:
 
 ```python
 from leann.api import LeannSearcher
 
 searcher = LeannSearcher("your_index_path")
-
-# Exact text search
 results = searcher.search("def authenticate_user", use_grep=True, top_k=5)
-
-for result in results:
-    print(f"Score: {result.score}")
-    print(f"Text: {result.text[:100]}...")
-    print("-" * 40)
 ```
 
-### Comparison: Semantic vs Grep Search
+Use `use_regex=True` for regex search:
 
 ```python
-# Semantic search - finds conceptually similar content
-semantic_results = searcher.search("machine learning algorithms", top_k=3)
-
-# Grep search - finds exact text matches
-grep_results = searcher.search("def train_model", use_grep=True, top_k=3)
+results = searcher.search(r"class .*Retriever", use_regex=True, top_k=5)
 ```
 
-## When to Use Grep Search
-
-### Use Cases
-
-- **Code Search**: Finding specific function definitions, class names, or variable references
-- **Error Debugging**: Locating exact error messages or stack traces
-- **Documentation**: Finding specific API endpoints or exact terminology
-
-### Examples
+Regex search is case-sensitive by default. Pass `regex_case_sensitive=False` to
+make verification case-insensitive:
 
 ```python
-# Find function definitions
-functions = searcher.search("def __init__", use_grep=True)
-
-# Find import statements
-imports = searcher.search("from sklearn import", use_grep=True)
-
-# Find specific error types
-errors = searcher.search("FileNotFoundError", use_grep=True)
-
-# Find TODO comments
-todos = searcher.search("TODO:", use_grep=True)
-
-# Find configuration entries
-configs = searcher.search("server_port=", use_grep=True)
+results = searcher.search(
+    r"class .*retriever",
+    use_regex=True,
+    regex_case_sensitive=False,
+)
 ```
 
-## Technical Details
+## CLI
 
-### How It Works
-
-1. **File Location**: Grep search operates on the raw text stored in `.jsonl` files
-2. **Command Execution**: Uses the system `grep` command with case-insensitive search
-3. **Result Processing**: Parses JSON lines and extracts text and metadata
-4. **Scoring**: Simple frequency-based scoring based on query term occurrences
-
-### Search Process
-
-```
-Query: "def train_model"
-  ↓
-grep -i -n "def train_model" documents.leann.passages.jsonl
-  ↓
-Parse matching JSON lines
-  ↓
-Calculate scores based on term frequency
-  ↓
-Return top_k results
+```bash
+leann search my-index "def authenticate_user" --grep
+leann search my-index "class .*Retriever" --regex
+leann search my-index "class .*retriever" --regex --regex-ignore-case
 ```
 
-### Scoring Algorithm
+`leann ask` accepts the same retrieval flags:
 
-```python
-# Term frequency in document
-score = text.lower().count(query.lower())
+```bash
+leann ask my-index "Where is the retriever implemented?" --regex
 ```
 
-Results are ranked by score (highest first), with higher scores indicating more occurrences of the search term.
+## How It Works
 
-## Error Handling
+During `leann build`, LEANN extracts ordinary lowercase trigrams from each
+passage and stores `trigram -> passage_id` postings in SQLite. At query time:
 
-### Common Issues
+1. Literal queries extract trigrams from the literal text.
+2. Regex queries extract only trigrams that are provably required by the pattern.
+3. LEANN intersects postings to get candidate passage IDs.
+4. LEANN loads only those passages through `PassageManager`.
+5. Python `re` verifies the literal or regex match deterministically.
+6. Results are ranked by match count and can still use metadata filters.
 
-#### Grep Command Not Found
-```
-RuntimeError: grep command not found. Please install grep or use semantic search.
-```
+If a regex contains constructs where required trigrams are not provable, such as
+alternation, groups, or character classes, LEANN falls back to scanning the live
+passage store and still verifies with Python `re`. This preserves correctness:
+the trigram index is only a candidate filter, never the final matcher.
 
-**Solution**: Install grep on your system:
-- **Ubuntu/Debian**: `sudo apt-get install grep`
-- **macOS**: grep is pre-installed
-- **Windows**: Use WSL or install grep via Git Bash/MSYS2
+## Compatibility
 
-#### No Results Found
-```python
-# Check if your query exists in the raw data
-results = searcher.search("your_query", use_grep=True)
-if not results:
-    print("No exact matches found. Try:")
-    print("1. Check spelling and case")
-    print("2. Use partial terms")
-    print("3. Switch to semantic search")
-```
+`use_grep=True` remains supported as a compatibility alias for literal exact
+search. It no longer depends on a platform `grep` binary, so it works the same on
+macOS, Linux, and Windows.
 
-## Complete Example
-
-```python
-#!/usr/bin/env python3
-"""
-Grep Search Example
-Demonstrates grep search for exact text matching.
-"""
-
-from leann.api import LeannSearcher
-
-def demonstrate_grep_search():
-    # Initialize searcher
-    searcher = LeannSearcher("my_index")
-
-    print("=== Function Search ===")
-    functions = searcher.search("def __init__", use_grep=True, top_k=5)
-    for i, result in enumerate(functions, 1):
-        print(f"{i}. Score: {result.score}")
-        print(f"   Preview: {result.text[:60]}...")
-        print()
-
-    print("=== Error Search ===")
-    errors = searcher.search("FileNotFoundError", use_grep=True, top_k=3)
-    for result in errors:
-        print(f"Content: {result.text.strip()}")
-        print("-" * 40)
-
-if __name__ == "__main__":
-    demonstrate_grep_search()
-```
+Older indexes that do not have `<index>.regex.sqlite` are upgraded lazily on the
+first `use_grep=True` or `use_regex=True` search when the index directory is
+writable. If the sidecar cannot be written, LEANN falls back to scanning live
+passages for that query.
