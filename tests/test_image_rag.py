@@ -1,10 +1,14 @@
 import asyncio
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
 import pytest
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from apps import image_rag
 from apps.image_rag import ImageRAG
