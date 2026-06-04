@@ -1177,6 +1177,11 @@ class LeannSearcher:
         )
         self.bm25_scorer: Optional[BM25Index] = None
 
+        # Optional query log path: set via LEANN_QUERY_LOG=<path>. When set, each
+        # search appends a JSON line containing the query, embedding (if computed),
+        # top_k, and result IDs/scores. Useful for offline benchmark replay.
+        self._query_log_path: Optional[str] = os.environ.get("LEANN_QUERY_LOG") or None
+
         # Optional one-shot warmup at construction time to hide cold-start latency.
         if self._warmup:
             self.warmup()
@@ -1269,6 +1274,9 @@ class LeannSearcher:
                 f"  ⚠️  Requested top_k ({original_top_k}) exceeds total documents ({total_docs})"
             )
             logger.warning(f"  ✅ Auto-adjusted top_k to {top_k} to match available documents")
+
+        # Initialize so it's in scope for the query-log path even when only BM25 runs.
+        query_embedding: Optional[np.ndarray] = None
 
         # Handle pure keyword search
         if vector_weight == 0.0:
@@ -1432,7 +1440,37 @@ class LeannSearcher:
         GREEN = "\033[92m"
         RESET = "\033[0m"
         logger.info(f"  {GREEN}✓ Final enriched results: {len(enriched_results)} passages{RESET}")
+
+        if self._query_log_path:
+            self._log_query(query, query_embedding, top_k, enriched_results)
+
         return enriched_results
+
+    def _log_query(
+        self,
+        query: str,
+        query_embedding: Optional[np.ndarray],
+        top_k: int,
+        results: list[SearchResult],
+    ) -> None:
+        """Append a JSONL line to LEANN_QUERY_LOG for later benchmark replay."""
+        path = self._query_log_path
+        if path is None:
+            return
+        entry: dict[str, Any] = {
+            "ts": time.time(),
+            "query": query,
+            "top_k": top_k,
+            "results": [{"id": r.id, "score": r.score} for r in results],
+        }
+        if query_embedding is not None:
+            entry["embedding"] = query_embedding.flatten().tolist()
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                json.dump(entry, f)
+                f.write("\n")
+        except Exception as exc:
+            logger.warning(f"Failed to append to query log {path}: {exc}")
 
     def _init_bm25(self) -> None:
         """Initialize a BM25Index, preferring a build-time artifact when present."""
