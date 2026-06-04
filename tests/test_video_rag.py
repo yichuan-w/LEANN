@@ -1,11 +1,15 @@
 import asyncio
+import sys
 from collections.abc import Iterator
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
 import pytest
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from apps import video_rag
 from apps.video_rag import VideoFrameRecord, VideoRAG
