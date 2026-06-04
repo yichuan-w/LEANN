@@ -265,7 +265,7 @@ class ImageRAG(BaseRAGExample):
             is_recompute=False,
             distance_metric="cosine",
             graph_degree=args.graph_degree,
-            build_complexity=args.build_complexity,
+            complexity=args.build_complexity,
             is_compact=not args.no_compact,
         )
 
