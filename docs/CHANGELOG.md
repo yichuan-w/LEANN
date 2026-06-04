@@ -21,7 +21,7 @@ fixes). Newest entries at the bottom.
 
 ## 2026-06-03: Local Cursor proxy
 
-- Add `leann cursor`, a loopback-only OpenAI-compatible chat-completions proxy that
+- Add `leann cursor`, a loopback-by-default OpenAI-compatible chat-completions proxy that
   injects LEANN code-search snippets into local coding-assistant requests before
   forwarding them to a local model server such as Ollama or LM Studio.
 - Support non-streaming JSON responses and streaming server-sent event responses,
