@@ -1,6 +1,7 @@
 import inspect
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 
@@ -8,6 +9,9 @@ class _FakeDocument:
     def __init__(self, text, metadata=None):
         self.text = text
         self.metadata = metadata or {}
+
+    def get_content(self):
+        return self.text
 
 
 if "llama_index.core" not in sys.modules:
@@ -56,6 +60,22 @@ class _FakeFitz:
 
     def open(self, _file_path):
         return self.doc
+
+
+class _FakeNode:
+    def __init__(self, text: str):
+        self._text = text
+
+    def get_content(self):
+        return self._text
+
+
+class _FakeParser:
+    chunk_size = 256
+    chunk_overlap = 128
+
+    def get_nodes_from_documents(self, documents):
+        return [_FakeNode(document.get_content()) for document in documents]
 
 
 def test_extract_pdf_text_with_pymupdf_ocr_is_opt_in(monkeypatch):
@@ -110,6 +130,46 @@ def test_build_parser_enable_ocr_defaults_false():
     args = parser.parse_args(["build", "test-index", "--docs", "/tmp/docs"])
 
     assert args.enable_ocr is False
+
+
+def test_load_documents_applies_ocr_to_explicit_pdf_file(tmp_path, monkeypatch):
+    from leann import cli as cli_module
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"%PDF placeholder")
+
+    calls = []
+
+    def fake_extract(path, use_ocr=False):
+        calls.append((Path(path).name, use_ocr))
+        return "OCR text"
+
+    def fail_pdfplumber(path):
+        raise AssertionError(f"pdfplumber should not be called for {path}")
+
+    monkeypatch.setattr(cli_module, "extract_pdf_text_with_pymupdf", fake_extract)
+    monkeypatch.setattr(cli_module, "extract_pdf_text_with_pdfplumber", fail_pdfplumber)
+
+    cli = LeannCLI()
+    cli.node_parser = _FakeParser()
+    cli.code_parser = _FakeParser()
+
+    chunks = cli.load_documents(
+        str(pdf_path),
+        args=SimpleNamespace(enable_ocr=True, use_ast_chunking=False),
+    )
+
+    assert calls == [("scan.pdf", True)]
+    assert chunks == [
+        {
+            "text": "OCR text",
+            "metadata": {
+                "file_path": str(pdf_path),
+                "file_name": "scan.pdf",
+                "source": str(pdf_path),
+            },
+        }
+    ]
 
 
 def test_load_ocr_pdf_documents_preserves_metadata(tmp_path, monkeypatch):

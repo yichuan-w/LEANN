@@ -23,6 +23,7 @@ Use `--enable-ocr` with PDF indexing:
 
 ```bash
 leann build scanned-docs --docs ./pdfs --file-types .pdf --enable-ocr
+leann build scanned-doc --docs ./scan.pdf --enable-ocr
 ```
 
 LEANN first reads embedded PDF text with PyMuPDF. When `--enable-ocr` is set, only

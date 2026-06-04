@@ -111,7 +111,7 @@ def _extract_pdf_page_ocr_text(page: Any, page_number: int, file_path: str) -> s
     except ImportError as exc:
         raise RuntimeError(
             "OCR requires optional dependencies. Install them with "
-            "`pip install 'leann-core[ocr]'` and make sure the Tesseract binary is available."
+            "`pip install 'leann[ocr]'` and make sure the Tesseract binary is available."
         ) from exc
 
     pixmap = page.get_pixmap(dpi=200, alpha=False)
@@ -325,7 +325,7 @@ Examples:
             action="store_true",
             help=(
                 "OCR image-only pages in PDFs during document indexing. Requires "
-                "`leann-core[ocr]` and the Tesseract binary."
+                "`leann[ocr]` and the Tesseract binary."
             ),
         )
         build_parser.add_argument(
@@ -1377,7 +1377,7 @@ Examples:
         docs_paths: Union[str, list],
         custom_file_types: Union[str, None] = None,
         include_hidden: bool = False,
-        args: Optional[dict[str, Any]] = None,
+        args: Any = None,
     ):
         # Handle both single path (string) and multiple paths (list) for backward compatibility
         if isinstance(docs_paths, str):
@@ -1424,50 +1424,6 @@ Examples:
         # Helper to detect hidden path components
         def _path_has_hidden_segment(p: Path) -> bool:
             return any(part.startswith(".") and part not in [".", ".."] for part in p.parts)
-
-        # First, process individual files if any
-        if files:
-            print(f"\n🔄 Processing {len(files)} individual file{'s' if len(files) > 1 else ''}...")
-
-            # Load individual files using SimpleDirectoryReader with input_files
-            # Note: We skip gitignore filtering for explicitly specified files
-            try:
-                # Group files by their parent directory for efficient loading
-                from collections import defaultdict
-
-                files_by_dir = defaultdict(list)
-                for file_path in files:
-                    file_path_obj = Path(file_path)
-                    if not include_hidden and _path_has_hidden_segment(file_path_obj):
-                        print(f"  ⚠️  Skipping hidden file: {file_path}")
-                        continue
-                    parent_dir = str(file_path_obj.parent)
-                    files_by_dir[parent_dir].append(str(file_path_obj))
-
-                # Load files from each parent directory
-                for parent_dir, file_list in files_by_dir.items():
-                    print(
-                        f"  Loading {len(file_list)} file{'s' if len(file_list) > 1 else ''} from {parent_dir}"
-                    )
-                    try:
-                        file_docs = SimpleDirectoryReader(
-                            parent_dir,
-                            input_files=file_list,
-                            # exclude_hidden only affects directory scans; input_files are explicit
-                            filename_as_id=True,
-                        ).load_data()
-                        for doc in file_docs:
-                            if not doc.metadata.get("source"):
-                                doc.metadata["source"] = doc.metadata.get("file_path", "")
-                        all_documents.extend(file_docs)
-                        print(
-                            f"    ✅ Loaded {len(file_docs)} document{'s' if len(file_docs) > 1 else ''}"
-                        )
-                    except Exception as e:
-                        print(f"    ❌ Warning: Could not load files from {parent_dir}: {e}")
-
-            except Exception as e:
-                print(f"❌ Error processing individual files: {e}")
 
         # Define file extensions to process
         if custom_file_types:
@@ -1532,6 +1488,93 @@ Examples:
                 ".jl",
             ]
 
+        should_process_pdfs = custom_file_types is None or ".pdf" in {
+            ext.lower() for ext in code_extensions
+        }
+
+        def _load_pdf_documents(file_path: Path, exclude_hidden: bool = True):
+            print(f"Processing PDF: {file_path}")
+            text = extract_pdf_text_with_pymupdf(
+                str(file_path), use_ocr=getattr(args, "enable_ocr", False)
+            )
+            if text is None:
+                text = extract_pdf_text_with_pdfplumber(str(file_path))
+
+            if text:
+                from llama_index.core import Document
+
+                return [
+                    Document(
+                        text=text,
+                        metadata={
+                            "source": str(file_path),
+                            "file_path": str(file_path),
+                            "file_name": file_path.name,
+                        },
+                    )
+                ]
+
+            print(f"Using default reader for {file_path}")
+            try:
+                return SimpleDirectoryReader(
+                    str(file_path.parent),
+                    exclude_hidden=exclude_hidden,
+                    filename_as_id=True,
+                    input_files=[str(file_path)],
+                ).load_data()
+            except Exception as e:
+                print(f"Warning: Could not process {file_path}: {e}")
+                return []
+
+        # First, process individual files if any
+        if files:
+            print(f"\n🔄 Processing {len(files)} individual file{'s' if len(files) > 1 else ''}...")
+
+            # Load individual files using SimpleDirectoryReader with input_files
+            # Note: We skip gitignore filtering for explicitly specified files
+            try:
+                # Group files by their parent directory for efficient loading
+                from collections import defaultdict
+
+                files_by_dir = defaultdict(list)
+                for file_path in files:
+                    file_path_obj = Path(file_path)
+                    if not include_hidden and _path_has_hidden_segment(file_path_obj):
+                        print(f"  ⚠️  Skipping hidden file: {file_path}")
+                        continue
+                    if should_process_pdfs and file_path_obj.suffix.lower() == ".pdf":
+                        all_documents.extend(
+                            _load_pdf_documents(file_path_obj, exclude_hidden=not include_hidden)
+                        )
+                        continue
+                    parent_dir = str(file_path_obj.parent)
+                    files_by_dir[parent_dir].append(str(file_path_obj))
+
+                # Load files from each parent directory
+                for parent_dir, file_list in files_by_dir.items():
+                    print(
+                        f"  Loading {len(file_list)} file{'s' if len(file_list) > 1 else ''} from {parent_dir}"
+                    )
+                    try:
+                        file_docs = SimpleDirectoryReader(
+                            parent_dir,
+                            input_files=file_list,
+                            # exclude_hidden only affects directory scans; input_files are explicit
+                            filename_as_id=True,
+                        ).load_data()
+                        for doc in file_docs:
+                            if not doc.metadata.get("source"):
+                                doc.metadata["source"] = doc.metadata.get("file_path", "")
+                        all_documents.extend(file_docs)
+                        print(
+                            f"    ✅ Loaded {len(file_docs)} document{'s' if len(file_docs) > 1 else ''}"
+                        )
+                    except Exception as e:
+                        print(f"    ❌ Warning: Could not load files from {parent_dir}: {e}")
+
+            except Exception as e:
+                print(f"❌ Error processing individual files: {e}")
+
         # Process each directory
         if directories:
             print(
@@ -1547,9 +1590,6 @@ Examples:
             documents = []
             # Use resolved absolute paths to avoid mismatches (symlinks, relative vs absolute)
             docs_path = Path(docs_dir).resolve()
-
-            # Check if we should process PDFs
-            should_process_pdfs = custom_file_types is None or ".pdf" in custom_file_types
 
             if should_process_pdfs:
                 for file_path in docs_path.rglob("*.pdf"):
@@ -1570,35 +1610,9 @@ Examples:
                         print(f"⚠️  Skipping file outside directory scope: {file_path}")
                         continue
 
-                    print(f"Processing PDF: {file_path}")
-
-                    # Try PyMuPDF first (best quality)
-                    text = extract_pdf_text_with_pymupdf(
-                        str(file_path), use_ocr=getattr(args, "enable_ocr", False)
+                    documents.extend(
+                        _load_pdf_documents(file_path, exclude_hidden=not include_hidden)
                     )
-                    if text is None:
-                        # Try pdfplumber
-                        text = extract_pdf_text_with_pdfplumber(str(file_path))
-
-                    if text:
-                        # Create a simple document structure
-                        from llama_index.core import Document
-
-                        doc = Document(text=text, metadata={"source": str(file_path)})
-                        documents.append(doc)
-                    else:
-                        # Fallback to default reader
-                        print(f"Using default reader for {file_path}")
-                        try:
-                            default_docs = SimpleDirectoryReader(
-                                str(file_path.parent),
-                                exclude_hidden=not include_hidden,
-                                filename_as_id=True,
-                                required_exts=[file_path.suffix],
-                            ).load_data()
-                            documents.extend(default_docs)
-                        except Exception as e:
-                            print(f"Warning: Could not process {file_path}: {e}")
 
             # Load other file types with default reader
             # Exclude PDFs from code_extensions if they were already processed separately
