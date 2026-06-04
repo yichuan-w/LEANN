@@ -14,15 +14,14 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Literal
+from typing import Any
 
 from .api import LeannSearcher, SearchResult
 from .chat import LLMInterface, get_llm
+from .research_tools import SearchSourcePolicy, build_research_tools, format_search_results
 from .web_search import WebSearcher
 
 logger = logging.getLogger(__name__)
-
-SearchSourcePolicy = Literal["local", "web", "both"]
 
 
 class ReActAgent:
@@ -63,17 +62,15 @@ class ReActAgent:
         self.web_search_available = source_policy in ("web", "both") and bool(
             self.web_searcher.api_key
         )
+        self.tools = build_research_tools(
+            searcher=self.searcher,
+            web_searcher=self.web_searcher,
+            source_policy=source_policy,
+        )
 
     def _format_search_results(self, results: list[SearchResult]) -> str:
         """Format search results as a string for the LLM."""
-        if not results:
-            return "No results found."
-        formatted = []
-        for i, result in enumerate(results, 1):
-            formatted.append(f"[Result {i}] (Score: {result.score:.3f})\n{result.text[:500]}...")
-            if result.metadata.get("source"):
-                formatted[-1] += f"\nSource: {result.metadata['source']}"
-        return "\n\n".join(formatted)
+        return format_search_results(results)
 
     def _create_react_prompt(
         self, question: str, iteration: int, previous_observations: list[str]
@@ -253,89 +250,43 @@ class ReActAgent:
             logger.info(f"Action: {action}")
 
             results_count = 0
+            tool_name, tool_input = action.split(":", 1) if ":" in action else (action, action)
 
-            if action.startswith("web_search:"):
-                query_str = action.split(":", 1)[1]
-
-                if self.source_policy == "local":
-                    observation = (
-                        "Web search is disabled by source policy for this run. "
-                        "Use leann_search to search the local knowledge base instead."
-                    )
-                    results_count = 0
-                elif not self.web_search_available:
-                    if self.source_policy == "web":
+            if tool_name in self.tools:
+                result = self.tools[tool_name].run(tool_input, top_k=top_k)
+                observation = result.observation
+                if (
+                    result.results_count == 0
+                    and result.source == "web"
+                    and self.local_search_available
+                ):
+                    observation += " Try leann_search for local results instead."
+                results_count = result.results_count
+                source = result.source
+            else:
+                source = "web" if tool_name in {"web_search", "visit_page"} else "local"
+                if tool_name in {"web_search", "visit_page"}:
+                    if self.source_policy == "local":
                         observation = (
-                            "Web search is not available because no SERPER_API_KEY is configured. "
+                            "Web tools are disabled by source policy for this run. "
+                            "Use leann_search to search the local knowledge base instead."
+                        )
+                    elif not self.web_search_available:
+                        observation = (
+                            "Web tools are not available because no SERPER_API_KEY is configured. "
                             "Set SERPER_API_KEY or provide a final answer without tool calls."
                         )
                     else:
-                        observation = (
-                            "Web search is not available because no SERPER_API_KEY is configured. "
-                            "Use leann_search to search the local knowledge base instead."
-                        )
-                    results_count = 0
+                        observation = f"Unknown research tool: {tool_name}."
                 else:
-                    web_results = self.web_searcher.search(query_str, top_k=top_k)
-
-                    is_error = len(web_results) == 1 and web_results[0].get("title") == "Error"
-                    if is_error:
-                        observation = (
-                            f"Web search failed: {web_results[0].get('snippet', 'Unknown error')}."
-                        )
-                        if self.local_search_available:
-                            observation += " Try leann_search for local results instead."
-                        results_count = 0
-                    elif not web_results:
-                        observation = "No web results found."
-                        results_count = 0
-                    else:
-                        formatted = []
-                        for i, res in enumerate(web_results, 1):
-                            formatted.append(
-                                f"[Web Result {i}]\nTitle: {res['title']}\n"
-                                f"Link: {res['link']}\nSnippet: {res['snippet']}"
-                            )
-                        observation = "\n\n".join(formatted)
-                        results_count = len(web_results)
-
-            elif action.startswith("visit_page:"):
-                url = action.split(":", 1)[1]
-                if self.source_policy == "local":
-                    content = "Error fetching content: page visits are disabled by source policy."
-                elif not self.web_search_available:
-                    content = (
-                        "Error fetching content: page visits require web search to be enabled "
-                        "with SERPER_API_KEY."
-                    )
-                else:
-                    try:
-                        content = self.web_searcher.get_page_content(url)
-                    except Exception as e:
-                        content = f"Error fetching page: {e!s}"
-                results_count = 1 if not content.startswith("Error") else 0
-                observation = f"Content of {url}:\n{content[:15000]}"
-
-            else:
-                query_str = action.split(":", 1)[1] if ":" in action else action
-                if not self.local_search_available:
-                    results_count = 0
                     observation = (
                         "Local LEANN search is disabled by source policy for this run. "
                         "Use web_search or visit_page instead."
                     )
-                else:
-                    results = self.search(query_str, top_k=top_k)
-                    results_count = len(results)
-                    observation = self._format_search_results(results)
+                results_count = 0
 
             previous_observations.append(observation)
             all_context.append(f"Action: {action}\n{observation}")
-
-            if action.startswith("web_search:") or action.startswith("visit_page:"):
-                source = "web"
-            else:
-                source = "local"
 
             self.search_history.append(
                 {
