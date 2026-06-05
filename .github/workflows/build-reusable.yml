@@ -9,6 +9,15 @@ on:
         type: string
         default: ''
 
+env:
+  # Large matrix builds download many Python wheels in parallel. Give transient
+  # PyPI/CDN stalls enough room to recover instead of failing a whole PR run.
+  UV_HTTP_RETRIES: "8"
+  UV_HTTP_TIMEOUT: "120"
+  UV_HTTP_CONNECT_TIMEOUT: "30"
+  UV_CONCURRENT_DOWNLOADS: "8"
+  UV_NO_PROGRESS: "1"
+
 jobs:
   lint:
     name: Lint and Format Check
@@ -23,6 +32,8 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Run pre-commit with only lint group (no project deps)
         run: |
@@ -41,6 +52,8 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install ty
         run: uv tool install ty==0.0.17
@@ -57,7 +70,7 @@ jobs:
       run:
         shell: bash
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           # Note: Python 3.9 dropped - uses PEP 604 union syntax (str | None)
@@ -134,6 +147,8 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install system dependencies (Ubuntu)
         if: runner.os == 'Linux'
@@ -314,9 +329,25 @@ jobs:
 
       - name: Build packages
         run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 10s: $*"
+              sleep 10
+              n=$((n + 1))
+            done
+          }
+
           # Build core (platform independent)
           cd packages/leann-core
-          uv build
+          retry 3 uv build
           cd ../..
 
           # Build HNSW backend
@@ -336,9 +367,9 @@ jobs:
             elif [[ "${{ matrix.os }}" == macos-26* ]]; then
               export MACOSX_DEPLOYMENT_TARGET=26.0
             fi
-            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+            retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
-            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+            retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           fi
           cd ../..
 
@@ -359,20 +390,20 @@ jobs:
             elif [[ "${{ matrix.os }}" == macos-26* ]]; then
               export MACOSX_DEPLOYMENT_TARGET=26.0
             fi
-            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+            retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
-            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+            retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           fi
           cd ../..
 
           # Build IVF backend (pure Python; depends on leann-core + faiss-cpu at install time)
           cd packages/leann-backend-ivf
-          uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+          retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           cd ../..
 
           # Build meta package (platform independent)
           cd packages/leann
-          uv build
+          retry 3 uv build
           cd ../..
 
       - name: Repair wheels (Linux)
@@ -517,14 +548,14 @@ jobs:
           fi
 
           # Install test dependency group only (avoids reinstalling project package)
-          uv pip install --python "$UV_PY" --group test
+          retry 5 uv pip install --python "$UV_PY" --group test
 
           # Install core wheel built in this job
           CORE_WHL=$(find packages/leann-core/dist -maxdepth 1 -name "*.whl" -print -quit)
           if [[ -n "$CORE_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$CORE_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$CORE_WHL"
           else
-            uv pip install --python "$UV_PY" packages/leann-core/dist/*.tar.gz
+            retry 5 uv pip install --python "$UV_PY" packages/leann-core/dist/*.tar.gz
           fi
 
           PY_TAG=$($UV_PY -c "import sys; print(f'cp{sys.version_info[0]}{sys.version_info[1]}')")
@@ -547,9 +578,9 @@ jobs:
             HNSW_WHL=$(find packages/leann-backend-hnsw/dist -maxdepth 1 -name "*-py3-*.whl" -print -quit)
           fi
           if [[ -n "$HNSW_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$HNSW_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$HNSW_WHL"
           else
-            uv pip install --python "$UV_PY" ./packages/leann-backend-hnsw
+            retry 5 uv pip install --python "$UV_PY" ./packages/leann-backend-hnsw
           fi
 
           DISKANN_WHL=$(find packages/leann-backend-diskann/dist -maxdepth 1 -name "*-${PY_TAG}-*.whl" -print -quit)
@@ -557,23 +588,23 @@ jobs:
             DISKANN_WHL=$(find packages/leann-backend-diskann/dist -maxdepth 1 -name "*-py3-*.whl" -print -quit)
           fi
           if [[ -n "$DISKANN_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$DISKANN_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$DISKANN_WHL"
           else
-            uv pip install --python "$UV_PY" ./packages/leann-backend-diskann
+            retry 5 uv pip install --python "$UV_PY" ./packages/leann-backend-diskann
           fi
 
           IVF_WHL=$(find packages/leann-backend-ivf/dist -maxdepth 1 -name "*.whl" -print -quit)
           if [[ -n "$IVF_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$IVF_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$IVF_WHL"
           else
-            uv pip install --python "$UV_PY" ./packages/leann-backend-ivf
+            retry 5 uv pip install --python "$UV_PY" ./packages/leann-backend-ivf
           fi
 
           LEANN_WHL=$(find packages/leann/dist -maxdepth 1 -name "*.whl" -print -quit)
           if [[ -n "$LEANN_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$LEANN_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$LEANN_WHL"
           else
-            uv pip install --python "$UV_PY" packages/leann/dist/*.tar.gz
+            retry 5 uv pip install --python "$UV_PY" packages/leann/dist/*.tar.gz
           fi
 
       - name: Run tests with pytest
@@ -634,8 +665,24 @@ jobs:
 
       - name: Create virtual environment and install wheels
         run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 10s: $*"
+              sleep 10
+              n=$((n + 1))
+            done
+          }
+
           # Use Python 3.13 explicitly (Arch has Python 3.14 which PyO3/tokenizers doesn't support yet)
-          uv python install 3.13
+          retry 5 uv python install 3.13
           uv venv --python 3.13
           source .venv/bin/activate || source .venv/Scripts/activate
           # Flatten artifact subdirectories into a single wheelhouse.
@@ -646,11 +693,11 @@ jobs:
 
           # Prefer wheels produced in this workflow run for our internal packages,
           # but still allow dependencies to be installed from the normal index.
-          uv pip install --find-links wheelhouse leann-core
-          uv pip install --find-links wheelhouse leann-backend-hnsw
-          uv pip install --find-links wheelhouse leann-backend-diskann
-          uv pip install --find-links wheelhouse leann-backend-ivf
-          uv pip install --find-links wheelhouse leann
+          retry 5 uv pip install --find-links wheelhouse leann-core
+          retry 5 uv pip install --find-links wheelhouse leann-backend-hnsw
+          retry 5 uv pip install --find-links wheelhouse leann-backend-diskann
+          retry 5 uv pip install --find-links wheelhouse leann-backend-ivf
+          retry 5 uv pip install --find-links wheelhouse leann
 
       - name: Import & tiny runtime check
         env:
