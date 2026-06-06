@@ -320,6 +320,104 @@ def _query_lmstudio_context_limit(model_name: str, base_url: str) -> Optional[in
 # Global model cache to avoid repeated loading
 _model_cache: dict[str, Any] = {}
 
+_DEFAULT_CUDA_BATCH_SIZE = 256
+_DEFAULT_MPS_BATCH_SIZE = 128
+
+
+def _parse_positive_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using default %d", name, raw, default)
+        return default
+    if value < 1:
+        logger.warning("%s must be >= 1; using default %d", name, default)
+        return default
+    return value
+
+
+def _resolve_cpu_thread_count() -> int:
+    return _parse_positive_int_env("LEANN_CPU_THREADS", min(8, os.cpu_count() or 4))
+
+
+def _resolve_adaptive_batch_size(device: str, model_name: str) -> int:
+    if device == "cuda":
+        return _parse_positive_int_env("LEANN_CUDA_BATCH_SIZE", _DEFAULT_CUDA_BATCH_SIZE)
+    if device == "mps":
+        default = 32 if model_name == "Qwen/Qwen3-Embedding-0.6B" else _DEFAULT_MPS_BATCH_SIZE
+        return _parse_positive_int_env("LEANN_MPS_BATCH_SIZE", default)
+    return 32
+
+
+def _cap_cuda_batch_by_vram(requested: int, max_length: int = 512) -> int:
+    auto = os.getenv("LEANN_CUDA_AUTO_BATCH", "1").lower()
+    if auto in ("0", "false", "no"):
+        return requested
+    import torch
+
+    if not torch.cuda.is_available():
+        return requested
+    try:
+        free_bytes, _total = torch.cuda.mem_get_info()
+    except Exception:
+        return requested
+
+    # Conservative activation estimate for transformer encoders at max_length tokens.
+    bytes_per_seq = max(3_000_000, max_length * 12_288)
+    budget = int(free_bytes * 0.35)
+    max_by_vram = max(1, budget // bytes_per_seq)
+    capped = min(requested, max_by_vram)
+    if capped < requested:
+        logger.info(
+            "Capping CUDA embedding batch size %d -> %d (%.2f GiB free VRAM)",
+            requested,
+            capped,
+            free_bytes / (1024**3),
+        )
+    return capped
+
+
+def _encode_with_oom_retry(
+    model: _SentenceTransformerLike,
+    texts: list[str],
+    batch_size: int,
+    *,
+    is_build: bool,
+    device: str,
+) -> Any:
+    import torch
+
+    current = batch_size
+    while True:
+        try:
+            with torch.inference_mode():
+                return model.encode(
+                    texts,
+                    batch_size=current,
+                    show_progress_bar=is_build,
+                    convert_to_numpy=True,
+                    normalize_embeddings=False,
+                    device=device,
+                )
+        except RuntimeError as exc:
+            oom = "out of memory" in str(exc).lower()
+            if torch.cuda.is_available():
+                oom = oom or isinstance(exc, torch.cuda.OutOfMemoryError)
+            if not oom or current <= 1:
+                raise
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            next_batch = max(1, current // 2)
+            logger.warning(
+                "CUDA OOM at embedding batch_size=%d; retrying with batch_size=%d",
+                current,
+                next_batch,
+            )
+            current = next_batch
+
 
 def compute_embeddings(
     texts: list[str],
@@ -449,14 +547,7 @@ def compute_embeddings_sentence_transformers(
 
     # Apply optimizations based on benchmark results
     if adaptive_optimization:
-        # Use optimal batch_size constants for different devices based on benchmark results
-        if device == "mps":
-            batch_size = 128  # MPS optimal batch size from benchmark
-            if model_name == "Qwen/Qwen3-Embedding-0.6B":
-                batch_size = 32
-        elif device == "cuda":
-            batch_size = 256  # CUDA optimal batch size
-        # Keep original batch_size for CPU
+        batch_size = _resolve_adaptive_batch_size(device, model_name)
 
     # Create cache key
     cache_key = f"sentence_transformers_{model_name}_{device}_{use_fp16}_optimized"
@@ -493,7 +584,7 @@ def compute_embeddings_sentence_transformers(
             pass
         elif device == "cpu":
             # TODO: Haven't tested this yet
-            torch.set_num_threads(min(8, os.cpu_count() or 4))
+            torch.set_num_threads(_resolve_cpu_thread_count())
             try:
                 torch.backends.mkldnn.enabled = True
             except AttributeError:
@@ -617,18 +708,19 @@ def compute_embeddings_sentence_transformers(
         )
         logger.info(f"start sentence transformers {model} takes {end_time - start_time}")
 
+    if device == "cuda":
+        batch_size = _cap_cuda_batch_by_vram(batch_size, max_length=max_length)
+
     start_time = time.time()
     if not manual_tokenize:
         # Use SentenceTransformer's optimized encode path (default)
-        with torch.inference_mode():
-            embeddings = model.encode(
-                texts,
-                batch_size=batch_size,
-                show_progress_bar=is_build,  # Don't show progress bar in server environment
-                convert_to_numpy=True,
-                normalize_embeddings=False,
-                device=device,
-            )
+        embeddings = _encode_with_oom_retry(
+            model,
+            texts,
+            batch_size,
+            is_build=is_build,
+            device=device,
+        )
         # Synchronize if CUDA to measure accurate wall time
         try:
             if torch.cuda.is_available():

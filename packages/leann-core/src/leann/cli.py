@@ -298,6 +298,12 @@ Examples:
             help="Prompt template to prepend to all texts for embedding (e.g., 'query: ' for search)",
         )
         build_parser.add_argument(
+            "--embedding-batch-size",
+            type=int,
+            default=None,
+            help="Embedding batch size for sentence-transformers (overrides device defaults; also set LEANN_CUDA_BATCH_SIZE env)",
+        )
+        build_parser.add_argument(
             "--query-prompt-template",
             type=str,
             default=None,
@@ -715,6 +721,12 @@ Examples:
                 help="OpenAI-compatible embedding base URL",
             )
             p.add_argument("--embedding-api-key", type=str, default=None, help="Embedding API key")
+            p.add_argument(
+                "--embedding-batch-size",
+                type=int,
+                default=None,
+                help="Embedding batch size for sentence-transformers",
+            )
             p.add_argument(
                 "--max-count", type=int, default=1000, help="Max items to index (default: 1000)"
             )
@@ -1828,6 +1840,9 @@ Examples:
             opts["query_prompt_template"] = args.query_prompt_template
         elif args.embedding_prompt_template:
             opts["prompt_template"] = args.embedding_prompt_template
+        batch_size = getattr(args, "embedding_batch_size", None)
+        if batch_size is not None:
+            opts["batch_size"] = batch_size
         return opts
 
     def _build_config_from_args(
