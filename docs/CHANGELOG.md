@@ -18,3 +18,14 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-06-07: Content-hash passage IDs as the default
+
+- Make `content-hash` the default generated passage ID scheme so new indexes use
+  `sha256(text)[:16]` IDs that remain stable across file moves and chunk reorderings.
+- Preserve existing index ID schemes during incremental updates: legacy sequential
+  indexes continue appending sequential IDs, while content-hash indexes append
+  content-derived IDs.
+- Mark precomputed embedding array builds as `external` ID indexes and align passage
+  JSONL, offset maps, backend labels, and metadata to the caller-provided IDs.
+- Serialize full-rebuild publish and ID-migration rewrites with an index write lock.

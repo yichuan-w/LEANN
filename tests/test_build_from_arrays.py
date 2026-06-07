@@ -3,6 +3,7 @@ Tests for LeannBuilder.build_index_from_arrays and its integration with
 build_index_from_embeddings (pickle-based path).
 """
 
+import json
 import os
 import pickle
 import tempfile
@@ -10,6 +11,61 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from leann.api import PASSAGE_ID_SCHEME_EXTERNAL, LeannBuilder
+
+
+def test_build_from_arrays_marks_external_ids_and_aligns_passages():
+    """Precomputed embeddings use caller-provided IDs, not generated content hashes."""
+
+    built_ids = []
+
+    class FakeBackendFactory:
+        def builder(self, **_kwargs):
+            class FakeBackendBuilder:
+                def build(self, _embeddings, ids, _index_path, **_backend_kwargs):
+                    built_ids.extend(ids)
+
+            return FakeBackendBuilder()
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+        index_path = str(Path(temp_dir) / "external_ids.hnsw")
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model="facebook/contriever",
+            embedding_mode="sentence-transformers",
+            dimensions=2,
+        )
+        builder.backend_factory = FakeBackendFactory()
+        builder.add_text("alpha text")
+        builder.add_text("beta text")
+
+        embeddings = np.array([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32)
+        ids = ["doc-a", "doc-b"]
+        builder.build_index_from_arrays(index_path, ids, embeddings)
+
+        passages_file = Path(index_path).parent / f"{Path(index_path).name}.passages.jsonl"
+        passages = [
+            json.loads(line)
+            for line in passages_file.read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+        assert [p["id"] for p in passages] == ids
+        assert [p["metadata"]["id"] for p in passages] == ids
+        assert built_ids == ids
+
+        idmap_file = Path(index_path).parent / "external_ids.hnsw.ids.txt"
+        assert idmap_file.read_text(encoding="utf-8").splitlines() == ids
+
+        with open(Path(index_path).parent / f"{Path(index_path).name}.passages.idx", "rb") as f:
+            offset_map = pickle.load(f)
+        assert set(offset_map) == set(ids)
+
+        meta = json.loads(
+            (Path(index_path).parent / f"{Path(index_path).name}.meta.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert meta["passage_id_scheme"] == PASSAGE_ID_SCHEME_EXTERNAL
 
 
 @pytest.mark.skipif(

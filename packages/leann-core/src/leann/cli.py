@@ -16,7 +16,15 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from tqdm import tqdm
 
-from .api import Fts5BM25Index, LeannBuilder, LeannChat, LeannSearcher
+from .api import (
+    DEFAULT_PASSAGE_ID_SCHEME,
+    PASSAGE_ID_SCHEME_CONTENT_HASH,
+    PASSAGE_ID_SCHEME_SEQUENTIAL,
+    Fts5BM25Index,
+    LeannBuilder,
+    LeannChat,
+    LeannSearcher,
+)
 from .embedding_server_manager import EmbeddingServerManager
 from .interactive_utils import create_cli_session
 from .registry import register_project_directory
@@ -75,6 +83,33 @@ def _publish_rebuilt_index(staging_dir: Path, index_dir: Path) -> None:
     else:
         if backup_dir.exists():
             _cleanup_path(backup_dir)
+
+
+@contextlib.contextmanager
+def index_write_lock(index_dir: Path, timeout_seconds: float = 30.0):
+    """Serialize destructive writes to one index directory."""
+    lock_path = index_dir.with_name(f"{index_dir.name}.write.lock")
+    deadline = time.monotonic() + timeout_seconds
+    fd: Optional[int] = None
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode("utf-8"))
+            break
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for index write lock: {lock_path}")
+            time.sleep(0.1)
+
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 @contextlib.contextmanager
@@ -389,11 +424,11 @@ Examples:
         build_parser.add_argument(
             "--id-scheme",
             choices=["sequential", "content-hash"],
-            default="sequential",
+            default=DEFAULT_PASSAGE_ID_SCHEME,
             help=(
-                "How passage IDs are assigned. 'sequential' (default) keys by insertion "
-                "order; 'content-hash' uses sha256(text)[:16], stable across file moves "
-                "and reorderings. See #329."
+                "How passage IDs are assigned. 'content-hash' (default) uses sha256(text)[:16], "
+                "stable across file moves and reorderings; 'sequential' keys by insertion order. "
+                "See #329."
             ),
         )
 
@@ -1975,29 +2010,6 @@ Examples:
         for fs in synchronizers:
             fs.commit()
 
-    @staticmethod
-    def _assign_chunk_ids(chunks: list[dict]) -> None:
-        """Assign stable IDs to chunks based on their file path and position."""
-        from collections import defaultdict
-
-        by_path: dict[str, list] = defaultdict(list)
-        for c in chunks:
-            p = c.get("metadata", {}).get("file_path") or c.get("metadata", {}).get("source") or ""
-            by_path[_normalize_path(p)].append(c)
-        for path_key, path_chunks in by_path.items():
-            for idx, c in enumerate(path_chunks):
-                sid = hashlib.sha256(f"{path_key}:{idx}".encode()).hexdigest()[:16]
-                c.setdefault("metadata", {})["id"] = sid
-                c["id"] = sid
-
-    @staticmethod
-    def _assign_unique_chunk_ids(chunks: list[dict]) -> None:
-        """Assign unique IDs for incremental (avoids collision when path lookup misses some old ids)."""
-        for c in chunks:
-            sid = uuid.uuid4().hex[:16]
-            c.setdefault("metadata", {})["id"] = sid
-            c["id"] = sid
-
     def _chunks_for_paths(self, all_texts: list[dict], paths: set[str]) -> list[dict]:
         """Filter chunks belonging to the given file paths."""
         return [
@@ -2021,7 +2033,7 @@ Examples:
             return None
         try:
             with open(meta_path, encoding="utf-8") as f:
-                return json.load(f).get("passage_id_scheme", "sequential")
+                return json.load(f).get("passage_id_scheme", PASSAGE_ID_SCHEME_SEQUENTIAL)
         except Exception:
             return None
 
@@ -2029,7 +2041,7 @@ Examples:
         # For incremental updates, the existing index's scheme wins. Otherwise
         # IDs would mix schemes within one index, which breaks lookups.
         existing_scheme = self._existing_index_id_scheme(self.get_index_path(args.index_name))
-        scheme = existing_scheme or getattr(args, "id_scheme", "sequential")
+        scheme = existing_scheme or getattr(args, "id_scheme", DEFAULT_PASSAGE_ID_SCHEME)
         if existing_scheme and getattr(args, "id_scheme", existing_scheme) != existing_scheme:
             print(
                 f"Note: --id-scheme={args.id_scheme} ignored — index '{args.index_name}' "
@@ -2059,7 +2071,6 @@ Examples:
         new_chunks = self._chunks_for_paths(all_texts, new_paths)
         if not new_chunks:
             return False
-        self._assign_chunk_ids(new_chunks)
         builder = self._make_incremental_builder(args)
         for chunk in new_chunks:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
@@ -2153,9 +2164,6 @@ Examples:
         for p in changed_paths:
             path_set.update(self._path_lookup_keys(p, sync_roots))
         new_chunks = self._chunks_for_paths(all_texts, path_set)
-        # Use unique IDs: passages can have mixed path formats so we may miss some ids_to_remove
-        self._assign_unique_chunk_ids(new_chunks)
-
         if not ids_to_remove and not new_chunks:
             return False
 
@@ -2559,7 +2567,7 @@ Examples:
             is_compact=args.compact,
             is_recompute=args.recompute,
             num_threads=args.num_threads,
-            passage_id_scheme=getattr(args, "id_scheme", "sequential"),
+            passage_id_scheme=getattr(args, "id_scheme", DEFAULT_PASSAGE_ID_SCHEME),
         )
 
         for chunk in all_texts:
@@ -2587,7 +2595,8 @@ Examples:
                 build_config,
             )
             if publish_from_staging:
-                _publish_rebuilt_index(target_index_dir, index_dir)
+                with index_write_lock(index_dir):
+                    _publish_rebuilt_index(target_index_dir, index_dir)
         except Exception:
             if publish_from_staging and target_index_dir.exists():
                 import shutil
@@ -2845,8 +2854,8 @@ Examples:
             return
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
-        current_scheme = meta.get("passage_id_scheme", "sequential")
-        if current_scheme == "content-hash":
+        current_scheme = meta.get("passage_id_scheme", PASSAGE_ID_SCHEME_SEQUENTIAL)
+        if current_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
             print(f"Index '{index_name}' already uses content-hash IDs. Nothing to do.")
             return
 
@@ -2867,14 +2876,12 @@ Examples:
 
         # Stream the passages to plan the rewrite and surface collision count
         # before committing to anything irreversible.
-        old_ids: list[str] = []
         new_ids: list[str] = []
         with open(passages_file, encoding="utf-8") as f:
             for line in f:
                 if not line.strip():
                     continue
                 data = json.loads(line)
-                old_ids.append(data["id"])
                 new_ids.append(hashlib.sha256(data["text"].encode("utf-8")).hexdigest()[:16])
 
         unique_new = len(set(new_ids))
@@ -2895,65 +2902,83 @@ Examples:
                 print("Aborted.")
                 return
 
-        # Stage writes into siblings, then atomically rename.
-        new_passages = passages_file.with_suffix(passages_file.suffix + ".migrate")
-        new_offsets: dict[str, int] = {}
-        rewritten_passages: list[dict[str, Any]] = []
-        with (
-            open(passages_file, encoding="utf-8") as src,
-            open(new_passages, "w", encoding="utf-8") as dst,
-        ):
-            idx = 0
-            for line in src:
-                if not line.strip():
-                    continue
-                data = json.loads(line)
-                data["id"] = new_ids[idx]
-                offset = dst.tell()
-                json.dump(data, dst, ensure_ascii=False)
-                dst.write("\n")
-                new_offsets[new_ids[idx]] = offset
-                rewritten_passages.append(data)
-                idx += 1
+        with index_write_lock(index_dir):
+            with open(meta_path, encoding="utf-8") as f:
+                meta = json.load(f)
+            current_scheme = meta.get("passage_id_scheme", PASSAGE_ID_SCHEME_SEQUENTIAL)
+            if current_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
+                print(f"Index '{index_name}' already uses content-hash IDs. Nothing to do.")
+                return
 
-        new_idx = offset_file.with_suffix(offset_file.suffix + ".migrate")
-        with open(new_idx, "wb") as f:
-            pickle.dump(new_offsets, f)
+            new_ids = []
+            with open(passages_file, encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    data = json.loads(line)
+                    new_ids.append(hashlib.sha256(data["text"].encode("utf-8")).hexdigest()[:16])
+            unique_new = len(set(new_ids))
+            collisions = len(new_ids) - unique_new
 
-        new_idmap: Optional[Path] = None
-        if idmap_file.exists():
-            new_idmap = idmap_file.with_suffix(idmap_file.suffix + ".migrate")
-            with open(new_idmap, "w", encoding="utf-8") as f:
-                for nid in new_ids:
-                    f.write(nid + "\n")
+            # Stage writes into siblings, then atomically rename.
+            new_passages = passages_file.with_suffix(passages_file.suffix + ".migrate")
+            new_offsets: dict[str, int] = {}
+            rewritten_passages: list[dict[str, Any]] = []
+            with (
+                open(passages_file, encoding="utf-8") as src,
+                open(new_passages, "w", encoding="utf-8") as dst,
+            ):
+                idx = 0
+                for line in src:
+                    if not line.strip():
+                        continue
+                    data = json.loads(line)
+                    data["id"] = new_ids[idx]
+                    offset = dst.tell()
+                    json.dump(data, dst, ensure_ascii=False)
+                    dst.write("\n")
+                    new_offsets[new_ids[idx]] = offset
+                    rewritten_passages.append(data)
+                    idx += 1
 
-        bm25_db_name = meta.get("bm25_db")
-        should_rebuild_bm25 = meta.get("bm25_backend") == "fts5"
-        if should_rebuild_bm25 and not bm25_db_name:
-            bm25_db_name = f"{index_base}.bm25.sqlite"
-        new_bm25: Optional[Path] = None
-        bm25_file: Optional[Path] = None
-        if should_rebuild_bm25 and bm25_db_name:
-            bm25_file = index_dir / bm25_db_name
-            new_bm25 = bm25_file.with_suffix(bm25_file.suffix + ".migrate")
-            bm25_index = Fts5BM25Index(str(new_bm25))
-            bm25_index.fit(rewritten_passages)
-            bm25_index.close()
+            new_idx = offset_file.with_suffix(offset_file.suffix + ".migrate")
+            with open(new_idx, "wb") as f:
+                pickle.dump(new_offsets, f)
 
-        shutil.move(str(new_passages), str(passages_file))
-        shutil.move(str(new_idx), str(offset_file))
-        if new_idmap is not None:
-            shutil.move(str(new_idmap), str(idmap_file))
-        if new_bm25 is not None and bm25_file is not None:
-            shutil.move(str(new_bm25), str(bm25_file))
+            new_idmap: Optional[Path] = None
+            if idmap_file.exists():
+                new_idmap = idmap_file.with_suffix(idmap_file.suffix + ".migrate")
+                with open(new_idmap, "w", encoding="utf-8") as f:
+                    for nid in new_ids:
+                        f.write(nid + "\n")
 
-        meta["passage_id_scheme"] = "content-hash"
-        meta["version"] = "1.1"
-        if should_rebuild_bm25 and bm25_db_name:
-            meta["bm25_backend"] = "fts5"
-            meta["bm25_db"] = bm25_db_name
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2)
+            bm25_db_name = meta.get("bm25_db")
+            should_rebuild_bm25 = meta.get("bm25_backend") == "fts5"
+            if should_rebuild_bm25 and not bm25_db_name:
+                bm25_db_name = f"{index_base}.bm25.sqlite"
+            new_bm25: Optional[Path] = None
+            bm25_file: Optional[Path] = None
+            if should_rebuild_bm25 and bm25_db_name:
+                bm25_file = index_dir / bm25_db_name
+                new_bm25 = bm25_file.with_suffix(bm25_file.suffix + ".migrate")
+                bm25_index = Fts5BM25Index(str(new_bm25))
+                bm25_index.fit(rewritten_passages)
+                bm25_index.close()
+
+            shutil.move(str(new_passages), str(passages_file))
+            shutil.move(str(new_idx), str(offset_file))
+            if new_idmap is not None:
+                shutil.move(str(new_idmap), str(idmap_file))
+            if new_bm25 is not None and bm25_file is not None:
+                shutil.move(str(new_bm25), str(bm25_file))
+
+            meta["passage_id_scheme"] = PASSAGE_ID_SCHEME_CONTENT_HASH
+            meta["version"] = "1.1"
+            if should_rebuild_bm25 and bm25_db_name:
+                meta["bm25_backend"] = "fts5"
+                meta["bm25_db"] = bm25_db_name
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
 
         print(
             f"✓ Migrated '{index_name}' to content-hash IDs. {collisions} collisions were deduped."
