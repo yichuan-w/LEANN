@@ -365,9 +365,9 @@ def _cap_cuda_batch_by_vram(requested: int, max_length: int = 512) -> int:
     except Exception:
         return requested
 
-    # Conservative activation estimate for transformer encoders at max_length tokens.
-    bytes_per_seq = max(3_000_000, max_length * 12_288)
-    budget = int(free_bytes * 0.35)
+    # Eager-attention peak memory scales ~O(seq^2) per sequence in the batch.
+    bytes_per_seq = max(8_000_000, max_length * max_length * 32)
+    budget = int(free_bytes * 0.2)
     max_by_vram = max(1, budget // bytes_per_seq)
     capped = min(requested, max_by_vram)
     if capped < requested:
@@ -708,7 +708,7 @@ def compute_embeddings_sentence_transformers(
         )
         logger.info(f"start sentence transformers {model} takes {end_time - start_time}")
 
-    if device == "cuda":
+    if device == "cuda" and adaptive_optimization:
         batch_size = _cap_cuda_batch_by_vram(batch_size, max_length=max_length)
 
     start_time = time.time()

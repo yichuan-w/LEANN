@@ -56,3 +56,14 @@ def test_cap_cuda_batch_by_vram_small_gpu(monkeypatch):
             capped = _cap_cuda_batch_by_vram(256, max_length=512)
     assert capped < 256
     assert capped >= 1
+
+
+def test_cap_cuda_batch_by_vram_four_gb_gpu(monkeypatch):
+    """Regression: 4 GiB RTX A1000 reports ~3.2 GiB free; cap should land near 76."""
+    monkeypatch.delenv("LEANN_CUDA_AUTO_BATCH", raising=False)
+    free_vram = int(3.2 * 1024**3)
+    with patch("torch.cuda.is_available", return_value=True):
+        with patch("torch.cuda.mem_get_info", return_value=(free_vram, 4 * 1024**3)):
+            capped = _cap_cuda_batch_by_vram(256, max_length=512)
+    assert capped <= 85
+    assert capped >= 1
