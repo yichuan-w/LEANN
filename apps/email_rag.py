@@ -39,8 +39,6 @@ class EmailRAG(BaseRAGExample):
         )
 
     def _print_header(self):
-        import sys
-
         if sys.platform != "darwin":
             print("\n⚠️  Warning: This example is designed for macOS (Apple Mail)")
             print("   Windows/Linux support coming soon!\n")
