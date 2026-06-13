@@ -104,37 +104,18 @@ class ChatExportRAG(BaseRAGExample):
         concatenate = args.concatenate_conversations and not args.separate_messages
         reader = self._reader_factory(concatenate)
 
-        all_documents = []
-        total_processed = 0
-
-        for i, export_file in enumerate(export_files):
-            print(f"\nProcessing export file {i + 1}/{len(export_files)}: {export_file.name}")
-
-            try:
-                max_per_file = -1
-                if args.max_items > 0:
-                    remaining = args.max_items - total_processed
-                    if remaining <= 0:
-                        break
-                    max_per_file = remaining
-
-                load_kwargs = {
-                    f"{self._export_keyword}_export_path": str(export_file),
-                    "max_count": max_per_file,
+        all_documents, _ = self._foreach_source(
+            export_files,
+            args,
+            load=lambda src, mc: reader.load_data(
+                **{
+                    f"{self._export_keyword}_export_path": str(src),
+                    "max_count": mc,
                     "include_metadata": True,
                 }
-                documents = reader.load_data(**load_kwargs)
-
-                if documents:
-                    all_documents.extend(documents)
-                    total_processed += len(documents)
-                    print(f"Processed {len(documents)} conversations from this file")
-                else:
-                    print(f"No conversations loaded from {export_file}")
-
-            except Exception as e:
-                print(f"Error processing {export_file}: {e}")
-                continue
+            ),
+            source_label="export file",
+        )
 
         if not all_documents:
             print("No conversations found to process!")

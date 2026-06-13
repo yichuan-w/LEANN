@@ -111,35 +111,14 @@ class BrowserRAG(BaseRAGExample):
         reader = ChromeHistoryReader()
 
         # Process each profile
-        all_documents = []
-        total_processed = 0
-
-        for i, profile_dir in enumerate(profile_dirs):
-            print(f"\nProcessing profile {i + 1}/{len(profile_dirs)}: {profile_dir.name}")
-
-            try:
-                # Apply max_items limit per profile
-                max_per_profile = -1
-                if args.max_items > 0:
-                    remaining = args.max_items - total_processed
-                    if remaining <= 0:
-                        break
-                    max_per_profile = remaining
-
-                # Load history
-                documents = reader.load_data(
-                    chrome_profile_path=str(profile_dir),
-                    max_count=max_per_profile,
-                )
-
-                if documents:
-                    all_documents.extend(documents)
-                    total_processed += len(documents)
-                    print(f"Processed {len(documents)} history entries from this profile")
-
-            except Exception as e:
-                print(f"Error processing {profile_dir}: {e}")
-                continue
+        all_documents, _ = self._foreach_source(
+            profile_dirs,
+            args,
+            load=lambda src, mc: reader.load_data(
+                chrome_profile_path=str(src), max_count=mc
+            ),
+            source_label="profile",
+        )
 
         if not all_documents:
             print("No browser history found to process!")

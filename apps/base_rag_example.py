@@ -6,7 +6,7 @@ Provides common parameters and functionality for all RAG examples.
 import argparse
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import dotenv
 from leann.api import LeannBuilder, LeannChat
@@ -281,6 +281,50 @@ class BaseRAGExample(ABC):
             pass
 
         return config
+
+    def _foreach_source(
+        self,
+        sources: list,
+        args,
+        load: Callable[[Any, int], list | None],
+        *,
+        source_label: str = "source",
+        start_total: int = 0,
+    ) -> tuple[list, int]:
+        """Process sources with max_items tracking and error handling.
+
+        Args:
+            sources: List of source paths/identifiers to iterate.
+            args: Parsed argparse namespace (must have ``max_items``).
+            load: Callable ``(source, max_count) -> list | None`` that loads
+                  documents for a single source. Return None/empty to skip.
+            source_label: Label used in progress messages.
+            start_total: Starting count of already-processed documents.
+
+        Returns:
+            ``(all_documents, total_processed)``.
+        """
+        all_docs = []
+        total = start_total
+        for i, source in enumerate(sources):
+            print(f"\nProcessing {source_label} {i + 1}/{len(sources)}: {source}")
+            try:
+                max_count = -1
+                if args.max_items > 0:
+                    remaining = args.max_items - total
+                    if remaining <= 0:
+                        print(f"Reached max_items limit ({args.max_items})")
+                        break
+                    max_count = remaining
+                docs = load(source, max_count)
+                if docs:
+                    all_docs.extend(docs)
+                    total += len(docs)
+                    print(f"Processed {len(docs)} items from this {source_label}")
+            except Exception as e:
+                print(f"Error processing {source}: {e}")
+                continue
+        return all_docs, total
 
     async def build_index(self, args, texts: list[dict[str, Any]]) -> str:
         """Build LEANN index from text chunks (dicts with 'text' and 'metadata' keys)."""

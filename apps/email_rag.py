@@ -85,40 +85,14 @@ class EmailRAG(BaseRAGExample):
         reader = EmlxReader(include_html=args.include_html)
 
         # Process each directory
-        all_documents = []
-        total_processed = 0
-
-        for i, messages_dir in enumerate(messages_dirs):
-            print(f"\nProcessing directory {i + 1}/{len(messages_dirs)}: {messages_dir}")
-
-            try:
-                # Count emlx files
-                emlx_files = list(messages_dir.glob("*.emlx"))
-                print(f"Found {len(emlx_files)} email files")
-
-                # Apply max_items limit per directory
-                max_per_dir = -1  # Default to process all
-                if args.max_items > 0:
-                    remaining = args.max_items - total_processed
-                    if remaining <= 0:
-                        break
-                    max_per_dir = remaining
-                # If args.max_items == -1, max_per_dir stays -1 (process all)
-
-                # Load emails - fix the parameter passing
-                documents = reader.load_data(
-                    input_dir=str(messages_dir),
-                    max_count=max_per_dir,
-                )
-
-                if documents:
-                    all_documents.extend(documents)
-                    total_processed += len(documents)
-                    print(f"Processed {len(documents)} emails from this directory")
-
-            except Exception as e:
-                print(f"Error processing {messages_dir}: {e}")
-                continue
+        all_documents, _ = self._foreach_source(
+            messages_dirs,
+            args,
+            load=lambda src, mc: reader.load_data(
+                input_dir=str(src), max_count=mc
+            ),
+            source_label="directory",
+        )
 
         if not all_documents:
             print("No emails found to process!")

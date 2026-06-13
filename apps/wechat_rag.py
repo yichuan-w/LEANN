@@ -108,37 +108,16 @@ class WeChatRAG(BaseRAGExample):
                 return []
 
         # Load documents from all found export directories
-        all_documents = []
-        total_processed = 0
-
-        for i, export_dir in enumerate(export_dirs):
-            print(f"\nProcessing WeChat export {i + 1}/{len(export_dirs)}: {export_dir}")
-
-            try:
-                # Apply max_items limit per export
-                max_per_export = -1
-                if args.max_items > 0:
-                    remaining = args.max_items - total_processed
-                    if remaining <= 0:
-                        break
-                    max_per_export = remaining
-
-                documents = reader.load_data(
-                    wechat_export_dir=str(export_dir),
-                    max_count=max_per_export,
-                    concatenate_messages=True,  # Enable message concatenation for better context
-                )
-
-                if documents:
-                    print(f"Loaded {len(documents)} chat documents from {export_dir}")
-                    all_documents.extend(documents)
-                    total_processed += len(documents)
-                else:
-                    print(f"No documents loaded from {export_dir}")
-
-            except Exception as e:
-                print(f"Error processing {export_dir}: {e}")
-                continue
+        all_documents, _ = self._foreach_source(
+            export_dirs,
+            args,
+            load=lambda src, mc: reader.load_data(
+                wechat_export_dir=str(src),
+                max_count=mc,
+                concatenate_messages=True,
+            ),
+            source_label="export",
+        )
 
         if not all_documents:
             print("No documents loaded from any source. Exiting.")
