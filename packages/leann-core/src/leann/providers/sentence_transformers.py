@@ -1,8 +1,9 @@
 """Sentence-transformers embedding provider."""
+
 import logging
 import os
 import time
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import numpy as np
 
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_CUDA_BATCH_SIZE = 256
 _DEFAULT_MPS_BATCH_SIZE = 128
+
 
 class _SentenceTransformerLike(Protocol):
     def eval(self) -> Any: ...
@@ -43,7 +45,6 @@ EMBEDDING_MODEL_LIMITS = {
 # Key: (model_name, base_url), Value: token_limit
 # Prevents repeated SDK/API calls for the same model
 _token_limit_cache: dict[tuple[str, str], int] = {}
-
 
 
 def _parse_positive_int_env(name: str, default: int) -> int:
@@ -483,5 +484,3 @@ def compute_embeddings_sentence_transformers(
     )
 
     return embeddings
-
-

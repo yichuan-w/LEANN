@@ -1,15 +1,15 @@
 """Ollama embedding provider."""
-import json
+
 import logging
-import subprocess
-import time
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 import numpy as np
 
+from ..embedding_compute import get_model_token_limit, truncate_to_token_limit
 from ..settings import resolve_ollama_host
 
 logger = logging.getLogger(__name__)
+
 
 def compute_embeddings_ollama(
     texts: list[str],
@@ -332,4 +332,3 @@ def compute_embeddings_ollama(
     logger.info(f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}")
 
     return embeddings
-

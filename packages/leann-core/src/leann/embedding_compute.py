@@ -7,13 +7,9 @@ Preserves all optimization parameters to ensure performance
 import json
 import logging
 import os
-import subprocess
-import time
-from typing import Any, Optional, Protocol, cast
+from typing import Any, Optional, Protocol
 
 import numpy as np
-
-from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
 
 # torch and tiktoken are imported lazily inside the functions that use them, so
 # `import leann` (e.g. for MCP search over an existing index, BM25-only flows,
@@ -198,6 +194,7 @@ def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
 
     return truncated_texts
 
+
 _model_cache: dict[str, Any] = {}
 
 
@@ -281,11 +278,11 @@ def _init_providers() -> None:
     global compute_embeddings_sentence_transformers, compute_embeddings_openai
     global compute_embeddings_mlx, compute_embeddings_ollama, compute_embeddings_gemini
 
-    from .providers.sentence_transformers import         compute_embeddings_sentence_transformers as _st
-    from .providers.openai import compute_embeddings_openai as _oa
+    from .providers.gemini import compute_embeddings_gemini as _gem
     from .providers.mlx import compute_embeddings_mlx as _mlx
     from .providers.ollama import compute_embeddings_ollama as _oll
-    from .providers.gemini import compute_embeddings_gemini as _gem
+    from .providers.openai import compute_embeddings_openai as _oa
+    from .providers.sentence_transformers import compute_embeddings_sentence_transformers as _st
 
     compute_embeddings_sentence_transformers = _st  # type: ignore[assignment]
     compute_embeddings_openai = _oa  # type: ignore[assignment]
@@ -302,9 +299,11 @@ def _init_providers() -> None:
 
 # ── Backward-compat stubs (set at module load, replaced by _init_providers) ──
 
+
 def _sentinel(*args: Any, **kwargs: Any) -> "np.ndarray":
     _init_providers()
     raise RuntimeError("Provider not initialized — this is a bug.")
+
 
 compute_embeddings_sentence_transformers = _sentinel  # type: ignore[assignment]
 compute_embeddings_openai = _sentinel  # type: ignore[assignment]
@@ -314,6 +313,7 @@ compute_embeddings_gemini = _sentinel  # type: ignore[assignment]
 
 
 # ── Public API ─────────────────────────────────────────────────────────
+
 
 def compute_embeddings(
     texts: list[str],
@@ -357,13 +357,13 @@ def compute_embeddings(
     fn = _providers.get(mode)
     if fn is None:
         raise ValueError(
-            f"Unsupported embedding mode: {mode!r}. "
-            f"Available: {sorted(_providers.keys())}"
+            f"Unsupported embedding mode: {mode!r}. Available: {sorted(_providers.keys())}"
         )
 
     if mode == "sentence-transformers":
         return fn(
-            texts, model_name,
+            texts,
+            model_name,
             is_build=is_build,
             batch_size=batch_size,
             adaptive_optimization=adaptive_optimization,
@@ -372,7 +372,8 @@ def compute_embeddings(
         )
     elif mode == "openai":
         return fn(
-            texts, model_name,
+            texts,
+            model_name,
             base_url=provider_options.get("base_url"),
             api_key=provider_options.get("api_key"),
             provider_options=provider_options,
@@ -381,7 +382,8 @@ def compute_embeddings(
         return fn(texts, model_name)
     elif mode == "ollama":
         return fn(
-            texts, model_name,
+            texts,
+            model_name,
             is_build=is_build,
             host=provider_options.get("host"),
             provider_options=provider_options,

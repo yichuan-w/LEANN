@@ -1,6 +1,6 @@
 """OpenAI embedding provider."""
+
 import logging
-import time
 from typing import Any, Optional
 
 import numpy as np
@@ -9,6 +9,7 @@ from ..embedding_compute import get_model_token_limit, truncate_to_token_limit
 from ..settings import resolve_openai_api_key, resolve_openai_base_url
 
 logger = logging.getLogger(__name__)
+
 
 def compute_embeddings_openai(
     texts: list[str],
@@ -133,4 +134,3 @@ def compute_embeddings_openai(
     embeddings = np.array(all_embeddings, dtype=np.float32)
     logger.info(f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}")
     return embeddings
-

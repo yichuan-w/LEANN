@@ -1,11 +1,13 @@
 """MLX embedding provider (Apple Silicon)."""
+
 import logging
-import time
-from typing import Optional
 
 import numpy as np
 
+from ..embedding_compute import _model_cache
+
 logger = logging.getLogger(__name__)
+
 
 def compute_embeddings_mlx(chunks: list[str], model_name: str, batch_size: int = 16) -> np.ndarray:
     # TODO: @yichuan-w add progress bar only in build mode
@@ -79,4 +81,3 @@ def compute_embeddings_mlx(chunks: list[str], model_name: str, batch_size: int =
 
     # Stack numpy arrays
     return np.stack(all_embeddings)
-
