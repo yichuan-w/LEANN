@@ -172,6 +172,27 @@ def get_language_from_extension(file_path: str) -> Optional[str]:
     return CODE_EXTENSIONS.get(ext)
 
 
+def _parse_ast_chunk_output(chunk: Any) -> tuple[str | None, dict[str, Any]]:
+    """Normalize the various chunk output formats from ASTChunkBuilder.
+
+    astchunk can return objects (with a ``.text`` attr), plain strings, or
+    dicts (``{"content": ..., "metadata": ...}``).  This helper returns a
+    uniform ``(text, metadata)`` pair regardless of the input shape.
+    """
+    if hasattr(chunk, "text"):
+        return (str(chunk.text) if chunk.text else None, {})
+    if isinstance(chunk, str):
+        return (chunk, {})
+    if isinstance(chunk, dict):
+        meta = chunk.get("metadata", {})
+        if "content" in chunk:
+            return (chunk["content"], meta)
+        if "text" in chunk:
+            return (chunk["text"], meta)
+        return (str(chunk), {})
+    return (str(chunk), {})
+
+
 def create_ast_chunks(
     documents,
     max_chunk_size: int = 512,
@@ -190,14 +211,14 @@ def create_ast_chunks(
     except ImportError as e:
         logger.error(f"astchunk not available: {e}")
         logger.info("Falling back to traditional chunking for code files")
-        return _traditional_chunks_as_dicts(documents, max_chunk_size, chunk_overlap)
+        return create_traditional_chunks(documents, max_chunk_size, chunk_overlap)
 
     all_chunks = []
     for doc in documents:
         language = doc.metadata.get("language")
         if not language:
             logger.warning("No language detected; falling back to traditional chunking")
-            all_chunks.extend(_traditional_chunks_as_dicts([doc], max_chunk_size, chunk_overlap))
+            all_chunks.extend(create_traditional_chunks([doc], max_chunk_size, chunk_overlap))
             continue
 
         try:
@@ -240,24 +261,7 @@ def create_ast_chunks(
 
             chunks = chunk_builder.chunkify(code_content)
             for chunk in chunks:
-                chunk_text: str | None = None
-                astchunk_metadata: dict[str, Any] = {}
-
-                if hasattr(chunk, "text"):
-                    chunk_text = str(chunk.text) if chunk.text else None
-                elif isinstance(chunk, str):
-                    chunk_text = chunk
-                elif isinstance(chunk, dict):
-                    # Handle astchunk format: {"content": "...", "metadata": {...}}
-                    if "content" in chunk:
-                        chunk_text = chunk["content"]
-                        astchunk_metadata = chunk.get("metadata", {})
-                    elif "text" in chunk:
-                        chunk_text = chunk["text"]
-                    else:
-                        chunk_text = str(chunk)  # Last resort
-                else:
-                    chunk_text = str(chunk)
+                chunk_text, astchunk_metadata = _parse_ast_chunk_output(chunk)
 
                 if chunk_text and chunk_text.strip():
                     # Extract document-level metadata
@@ -282,7 +286,7 @@ def create_ast_chunks(
         except Exception as e:
             logger.warning(f"AST chunking failed for {language} file: {e}")
             logger.info("Falling back to traditional chunking")
-            all_chunks.extend(_traditional_chunks_as_dicts([doc], max_chunk_size, chunk_overlap))
+            all_chunks.extend(create_traditional_chunks([doc], max_chunk_size, chunk_overlap))
 
     return all_chunks
 
@@ -375,17 +379,6 @@ def create_traditional_chunks(
     return result
 
 
-def _traditional_chunks_as_dicts(
-    documents, chunk_size: int = 256, chunk_overlap: int = 128,
-    max_tokens_per_chunk: int | None = None,
-) -> list[dict[str, Any]]:
-    """Helper: Traditional chunking that returns dict format for consistency.
-
-    This is now just an alias for create_traditional_chunks for backwards compatibility.
-    """
-    return create_traditional_chunks(documents, chunk_size, chunk_overlap, max_tokens_per_chunk=max_tokens_per_chunk)
-
-
 def create_text_chunks(
     documents,
     chunk_size: int = 256,
@@ -465,7 +458,7 @@ def create_text_chunks(
                 logger.error(f"AST chunking failed: {e}")
                 if ast_fallback_traditional:
                     all_chunks.extend(
-                        _traditional_chunks_as_dicts(
+                        create_traditional_chunks(
                             code_docs, chunk_size, chunk_overlap,
                             max_tokens_per_chunk=max_tokens_per_chunk,
                         )
@@ -474,13 +467,13 @@ def create_text_chunks(
                     raise
         if text_docs:
             all_chunks.extend(
-                _traditional_chunks_as_dicts(
+                create_traditional_chunks(
                     text_docs, chunk_size, chunk_overlap,
                     max_tokens_per_chunk=max_tokens_per_chunk,
                 )
             )
     else:
-        all_chunks = _traditional_chunks_as_dicts(
+        all_chunks = create_traditional_chunks(
             documents, chunk_size, chunk_overlap,
             max_tokens_per_chunk=max_tokens_per_chunk,
         )
