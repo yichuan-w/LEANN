@@ -40,7 +40,7 @@ def estimate_token_count(text: str) -> int:
 
 def calculate_safe_chunk_size(
     model_token_limit: int,
-    overlap_tokens: int,
+    overlap_size: int,
     chunking_mode: str = "traditional",
     safety_factor: float = 0.9,
 ) -> int:
@@ -49,7 +49,7 @@ def calculate_safe_chunk_size(
 
     Args:
         model_token_limit: Maximum tokens supported by embedding model
-        overlap_tokens: Overlap size (tokens for traditional, chars for AST)
+        overlap_size: Overlap units (tokens for traditional, chars for AST)
         chunking_mode: "traditional" (tokens) or "ast" (characters)
         safety_factor: Safety margin (0.9 = 10% safety margin)
 
@@ -61,11 +61,11 @@ def calculate_safe_chunk_size(
     if chunking_mode == "traditional":
         # Traditional chunking uses tokens
         # Max chunk = chunk_size + overlap, so chunk_size = limit - overlap
-        return max(1, safe_limit - overlap_tokens)
+        return max(1, safe_limit - overlap_size)
     else:  # AST chunking
         # AST uses characters, need to convert
         # Conservative estimate: 1.2 tokens per char for code
-        overlap_chars = int(overlap_tokens * 3)  # ~3 chars per token for code
+        overlap_chars = int(overlap_size * 3)  # ~3 chars per token for code
         safe_chars = int(safe_limit / 1.2)
         return max(1, safe_chars - overlap_chars)
 
