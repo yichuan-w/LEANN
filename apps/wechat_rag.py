@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from base_rag_example import BaseRAGExample
 
 from .history_data.wechat_history import WeChatHistoryReader
+from llama_index.core.node_parser import SentenceSplitter
 
 
 class WeChatRAG(BaseRAGExample):
@@ -39,8 +40,6 @@ class WeChatRAG(BaseRAGExample):
         )
 
     def _print_header(self):
-        import sys
-
         if sys.platform != "darwin":
             print("\n⚠️  Warning: WeChat export is only supported on macOS")
             print("   You can still query existing exports on other platforms\n")
@@ -145,8 +144,6 @@ class WeChatRAG(BaseRAGExample):
         all_texts = []
         for doc in all_documents:
             # Split the document into chunks
-            from llama_index.core.node_parser import SentenceSplitter
-
             text_splitter = SentenceSplitter(
                 chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap
             )
