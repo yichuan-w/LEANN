@@ -325,7 +325,9 @@ def create_traditional_chunks(
         logger.info(
             "Token-aware chunking: model limit=%d tokens → safe chunk_size=%d chars "
             "(overlap=%d, safety=0.9)",
-            max_tokens_per_chunk, chunk_size, chunk_overlap,
+            max_tokens_per_chunk,
+            chunk_size,
+            chunk_overlap,
         )
 
     # Revalidate after scaling
@@ -335,7 +337,10 @@ def create_traditional_chunks(
         logger.warning(
             "Token-aware scaling reduced chunk_size below chunk_overlap "
             "(%d → %d); overlap reduced %d → %d",
-            chunk_size, old_overlap, old_overlap, chunk_overlap,
+            chunk_size,
+            old_overlap,
+            old_overlap,
+            chunk_overlap,
         )
 
     node_parser = SentenceSplitter(
@@ -370,7 +375,9 @@ def create_traditional_chunks(
         if _n > 0:
             logger.warning(
                 "Token-aware chunking: %d/%d chunks truncated to fit %d-token limit",
-                _n, len(result), max_tokens_per_chunk,
+                _n,
+                len(result),
+                max_tokens_per_chunk,
             )
         for i, chunk_dict in enumerate(result):
             if i < len(_validated):
@@ -437,7 +444,9 @@ def create_text_chunks(
                     logger.info(
                         "Token-aware AST chunking: limit=%d → safe ast_chunk_size=%d chars "
                         "(overlap=%d, safety=0.9)",
-                        max_tokens_per_chunk, ast_size, ast_chunk_overlap,
+                        max_tokens_per_chunk,
+                        ast_size,
+                        ast_chunk_overlap,
                     )
 
                 ast_chunks = create_ast_chunks(
@@ -459,7 +468,9 @@ def create_text_chunks(
                 if ast_fallback_traditional:
                     all_chunks.extend(
                         create_traditional_chunks(
-                            code_docs, chunk_size, chunk_overlap,
+                            code_docs,
+                            chunk_size,
+                            chunk_overlap,
                             max_tokens_per_chunk=max_tokens_per_chunk,
                         )
                     )
@@ -468,13 +479,17 @@ def create_text_chunks(
         if text_docs:
             all_chunks.extend(
                 create_traditional_chunks(
-                    text_docs, chunk_size, chunk_overlap,
+                    text_docs,
+                    chunk_size,
+                    chunk_overlap,
                     max_tokens_per_chunk=max_tokens_per_chunk,
                 )
             )
     else:
         all_chunks = create_traditional_chunks(
-            documents, chunk_size, chunk_overlap,
+            documents,
+            chunk_size,
+            chunk_overlap,
             max_tokens_per_chunk=max_tokens_per_chunk,
         )
 

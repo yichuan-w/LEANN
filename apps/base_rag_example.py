@@ -310,6 +310,7 @@ class BaseRAGExample(ABC):
         if limit:
             try:
                 from leann.chunking_utils import validate_chunk_token_limits
+
                 _texts = [t["text"] if isinstance(t, dict) else t for t in texts]
                 validate_chunk_token_limits(_texts, limit)
             except Exception:
