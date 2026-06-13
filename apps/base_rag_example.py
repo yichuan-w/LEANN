@@ -282,12 +282,38 @@ class BaseRAGExample(ABC):
 
         return config
 
+    @staticmethod
+    def _resolve_chunk_token_limit(args) -> int | None:
+        """Resolve the embedding model's token limit for token-aware chunking.
+
+        Returns ``None`` if the limit cannot be determined (e.g. model unknown).
+        Apps can pass the result as ``max_tokens_per_chunk=`` to
+        ``create_text_chunks()``.
+        """
+        try:
+            from leann.embedding_compute import get_model_token_limit
+
+            base_url = getattr(args, "embedding_api_base", None)
+            return get_model_token_limit(args.embedding_model, base_url)
+        except Exception:
+            return None
+
     async def build_index(self, args, texts: list[dict[str, Any]]) -> str:
         """Build LEANN index from text chunks (dicts with 'text' and 'metadata' keys)."""
         index_path = str(Path(args.index_dir) / f"{self.default_index_name}.leann")
 
         print(f"\n[Building Index] Creating {self.name} index...")
         print(f"Total text chunks: {len(texts)}")
+
+        # Warn if any chunks may exceed the embedding model's token limit
+        limit = self._resolve_chunk_token_limit(args)
+        if limit:
+            try:
+                from leann.chunking_utils import validate_chunk_token_limits
+                _texts = [t["text"] if isinstance(t, dict) else t for t in texts]
+                validate_chunk_token_limits(_texts, limit)
+            except Exception:
+                pass
 
         embedding_options: dict[str, Any] = {}
         if args.embedding_mode == "ollama":
