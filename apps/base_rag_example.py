@@ -55,10 +55,12 @@ class BaseRAGExample(ABC):
         name: str,
         description: str,
         default_index_name: str,
+        example_queries: list[str] | None = None,
     ):
         self.name = name
         self.description = description
         self.default_index_name = default_index_name
+        self.example_queries = example_queries or []
         self.parser = self._create_parser()
 
     def _create_parser(self) -> argparse.ArgumentParser:
@@ -455,3 +457,25 @@ class BaseRAGExample(ABC):
             await self.run_single_query(args, index_path, args.query)
         else:
             await self.run_interactive_chat(args, index_path)
+
+    def _print_header(self):
+        """Print a header with name, example queries, and usage hint.
+
+        Override in subclasses to add platform warnings or extra help text.
+        """
+        print(f"\n{self.name} RAG Example")
+        print("=" * 50)
+        if self.example_queries:
+            print("\nExample queries you can try:")
+            for q in self.example_queries:
+                print(f"- '{q}'")
+        print("\nOr run without --query for interactive mode\n")
+
+    @classmethod
+    def main(cls):
+        """Standard __main__ entry point. Prints header, then runs the app."""
+        import asyncio
+
+        app = cls()
+        app._print_header()
+        asyncio.run(app.run())

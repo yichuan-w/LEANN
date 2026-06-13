@@ -34,18 +34,4 @@ class ClaudeRAG(ChatExportRAG):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    print("\n🤖 Claude RAG Example")
-    print("=" * 50)
-    print("\nExample queries you can try:")
-    for q in ClaudeRAG().example_queries:
-        print(f"- '{q}'")
-    print("\nTo get started:")
-    print("1. Export your Claude conversation data")
-    print("2. Place the JSON/ZIP file in ./claude_export/")
-    print("3. Run this script to build your personal Claude knowledge base!")
-    print("\nOr run without --query for interactive mode\n")
-
-    rag = ClaudeRAG()
-    asyncio.run(rag.run())
+    ClaudeRAG.main()

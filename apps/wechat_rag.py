@@ -30,7 +30,22 @@ class WeChatRAG(BaseRAGExample):
             name="WeChat History",
             description="Process and query WeChat chat history with LEANN",
             default_index_name="wechat_history_magic_test_11Debug_new",
+            example_queries=[
+                "Show me conversations about travel plans",
+                "Find group chats about weekend activities",
+                "我想买魔术师约翰逊的球衣,给我一些对应聊天记录?",
+                "What did we discuss about the project last month?",
+            ],
         )
+
+    def _print_header(self):
+        import sys
+
+        if sys.platform != "darwin":
+            print("\n⚠️  Warning: WeChat export is only supported on macOS")
+            print("   You can still query existing exports on other platforms\n")
+        super()._print_header()
+        print("Note: WeChat must be running for export to work\n")
 
     def _add_specific_arguments(self, parser):
         """Add WeChat-specific arguments."""
@@ -148,22 +163,4 @@ class WeChatRAG(BaseRAGExample):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    # Check platform
-    if sys.platform != "darwin":
-        print("\n⚠️  Warning: WeChat export is only supported on macOS")
-        print("   You can still query existing exports on other platforms\n")
-
-    # Example queries for WeChat RAG
-    print("\n💬 WeChat History RAG Example")
-    print("=" * 50)
-    print("\nExample queries you can try:")
-    print("- 'Show me conversations about travel plans'")
-    print("- 'Find group chats about weekend activities'")
-    print("- '我想买魔术师约翰逊的球衣,给我一些对应聊天记录?'")
-    print("- 'What did we discuss about the project last month?'")
-    print("\nNote: WeChat must be running for export to work\n")
-
-    rag = WeChatRAG()
-    asyncio.run(rag.run())
+    WeChatRAG.main()

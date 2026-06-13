@@ -60,10 +60,4 @@ class GeminiRAG(BaseRAGExample):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    print("\n✨ Gemini CLI RAG")
-    print("=" * 50)
-
-    rag = GeminiRAG()
-    asyncio.run(rag.run())
+    GeminiRAG.main()

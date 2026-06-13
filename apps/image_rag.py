@@ -207,13 +207,5 @@ class ImageRAG(BaseRAGExample):
             Path(pkl_path).unlink()
 
 
-def main():
-    """Main entry point for the image RAG application."""
-    import asyncio
-
-    app = ImageRAG()
-    asyncio.run(app.run())
-
-
 if __name__ == "__main__":
-    main()
+    ImageRAG.main()

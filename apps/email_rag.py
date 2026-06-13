@@ -30,7 +30,22 @@ class EmailRAG(BaseRAGExample):
             name="Email",
             description="Process and query Apple Mail emails with LEANN",
             default_index_name="mail_index",
+            example_queries=[
+                "What did my boss say about deadlines?",
+                "Find emails about travel expenses",
+                "Show me emails from last month about the project",
+                "What food did I order from DoorDash?",
+            ],
         )
+
+    def _print_header(self):
+        import sys
+
+        if sys.platform != "darwin":
+            print("\n⚠️  Warning: This example is designed for macOS (Apple Mail)")
+            print("   Windows/Linux support coming soon!\n")
+        super()._print_header()
+        print("Note: You may need to grant Full Disk Access to your terminal\n")
 
     def _add_specific_arguments(self, parser):
         """Add email-specific arguments."""
@@ -111,22 +126,4 @@ class EmailRAG(BaseRAGExample):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    # Check platform
-    if sys.platform != "darwin":
-        print("\n⚠️  Warning: This example is designed for macOS (Apple Mail)")
-        print("   Windows/Linux support coming soon!\n")
-
-    # Example queries for email RAG
-    print("\n📧 Email RAG Example")
-    print("=" * 50)
-    print("\nExample queries you can try:")
-    print("- 'What did my boss say about deadlines?'")
-    print("- 'Find emails about travel expenses'")
-    print("- 'Show me emails from last month about the project'")
-    print("- 'What food did I order from DoorDash?'")
-    print("\nNote: You may need to grant Full Disk Access to your terminal\n")
-
-    rag = EmailRAG()
-    asyncio.run(rag.run())
+    EmailRAG.main()

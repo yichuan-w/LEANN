@@ -23,7 +23,20 @@ class DocumentRAG(BaseRAGExample):
             name="Document",
             description="Process and query documents (PDF, TXT, MD, etc.) with LEANN",
             default_index_name="test_doc_files",
+            example_queries=[
+                "What are the main techniques LEANN uses?",
+                "What is the technique DLPM?",
+                "Who does Elizabeth Bennet marry?",
+                "What challenges did Huawei face while developing the Pangu model?",
+            ],
         )
+
+    def _print_header(self):
+        super()._print_header()
+        print("NEW: Code-aware chunking available!")
+        print("- Use --enable-code-chunking to enable AST-aware chunking for code files")
+        print("- Supports Python, Java, C#, TypeScript files")
+        print("- Better semantic understanding of code structure")
 
     def _add_specific_arguments(self, parser):
         """Add document-specific arguments."""
@@ -106,21 +119,4 @@ class DocumentRAG(BaseRAGExample):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    # Example queries for document RAG
-    print("\nDocument RAG Example")
-    print("=" * 50)
-    print("\nExample queries you can try:")
-    print("- 'What are the main techniques LEANN uses?'")
-    print("- 'What is the technique DLPM?'")
-    print("- 'Who does Elizabeth Bennet marry?'")
-    print("- 'What challenges did Huawei face while developing the Pangu model?'")
-    print("\nNEW: Code-aware chunking available!")
-    print("- Use --enable-code-chunking to enable AST-aware chunking for code files")
-    print("- Supports Python, Java, C#, TypeScript files")
-    print("- Better semantic understanding of code structure")
-    print("\nOr run without --query for interactive mode\n")
-
-    rag = DocumentRAG()
-    asyncio.run(rag.run())
+    DocumentRAG.main()

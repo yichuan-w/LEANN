@@ -33,18 +33,4 @@ class ChatGPTRAG(ChatExportRAG):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    print("\n🤖 ChatGPT RAG Example")
-    print("=" * 50)
-    print("\nExample queries you can try:")
-    for q in ChatGPTRAG().example_queries:
-        print(f"- '{q}'")
-    print("\nTo get started:")
-    print("1. Export your ChatGPT data from Settings → Data Controls → Export")
-    print("2. Place the downloaded zip file or extracted HTML in ./chatgpt_export/")
-    print("3. Run this script to build your personal ChatGPT knowledge base!")
-    print("\nOr run without --query for interactive mode\n")
-
-    rag = ChatGPTRAG()
-    asyncio.run(rag.run())
+    ChatGPTRAG.main()

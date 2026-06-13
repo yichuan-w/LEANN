@@ -34,7 +34,6 @@ class ChatExportRAG(BaseRAGExample):
         self._export_keyword = export_keyword
         self._file_extensions = file_extensions
         self._default_export_dir = default_export_dir
-        self.example_queries = example_queries
         self._export_setup_instructions = export_setup_instructions
 
         self.max_items_default = -1
@@ -44,6 +43,7 @@ class ChatExportRAG(BaseRAGExample):
             name=name,
             description=description,
             default_index_name=default_index_name,
+            example_queries=example_queries,
         )
 
     def _add_specific_arguments(self, parser):

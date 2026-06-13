@@ -116,11 +116,5 @@ class IMessageRAG(BaseRAGExample):
         return all_texts
 
 
-async def main():
-    """Main entry point."""
-    app = IMessageRAG()
-    await app.run()
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    IMessageRAG.main()

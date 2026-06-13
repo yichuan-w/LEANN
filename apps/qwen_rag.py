@@ -60,10 +60,4 @@ class QwenRAG(BaseRAGExample):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    print("\n✨ Qwen Code RAG")
-    print("=" * 50)
-
-    rag = QwenRAG()
-    asyncio.run(rag.run())
+    QwenRAG.main()

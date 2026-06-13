@@ -30,7 +30,17 @@ class BrowserRAG(BaseRAGExample):
             name="Browser History",
             description="Process and query Chrome browser history with LEANN",
             default_index_name="google_history_index",
+            example_queries=[
+                "What websites did I visit about machine learning?",
+                "Find my search history about programming",
+                "What YouTube videos did I watch recently?",
+                "Show me websites about travel planning",
+            ],
         )
+
+    def _print_header(self):
+        super()._print_header()
+        print("Note: Make sure Chrome is closed before running\n")
 
     def _add_specific_arguments(self, parser):
         """Add browser-specific arguments."""
@@ -135,17 +145,4 @@ class BrowserRAG(BaseRAGExample):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    # Example queries for browser history RAG
-    print("\n🌐 Browser History RAG Example")
-    print("=" * 50)
-    print("\nExample queries you can try:")
-    print("- 'What websites did I visit about machine learning?'")
-    print("- 'Find my search history about programming'")
-    print("- 'What YouTube videos did I watch recently?'")
-    print("- 'Show me websites about travel planning'")
-    print("\nNote: Make sure Chrome is closed before running\n")
-
-    rag = BrowserRAG()
-    asyncio.run(rag.run())
+    BrowserRAG.main()

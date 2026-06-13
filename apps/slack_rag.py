@@ -219,11 +219,5 @@ class SlackMCPRAG(BaseRAGExample):
         await super().run()
 
 
-async def main():
-    """Main entry point for the Slack MCP RAG application."""
-    app = SlackMCPRAG()
-    await app.run()
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    SlackMCPRAG.main()

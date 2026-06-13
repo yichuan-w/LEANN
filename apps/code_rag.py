@@ -24,10 +24,29 @@ class CodeRAG(BaseRAGExample):
             name="Code",
             description="Process and query code repositories with AST-aware chunking",
             default_index_name="code_index",
+            example_queries=[
+                "How does the embedding computation work?",
+                "What are the main classes in this codebase?",
+                "Show me the search implementation",
+                "How is error handling implemented?",
+                "What design patterns are used?",
+                "Explain the chunking logic",
+            ],
         )
         # Override defaults for code-specific usage
         self.embedding_model_default = "facebook/contriever"  # Good for code
         self.max_items_default = -1  # Process all code files by default
+
+    def _print_header(self):
+        super()._print_header()
+        print("Features:")
+        print("  - AST-aware chunking preserves code structure")
+        print("  - Automatic language detection")
+        print("  - Smart filtering of large files and common excludes")
+        print("  - Optimized for code understanding")
+        print("\nUsage examples:")
+        print("  python -m apps.code_rag --repo-dir ./my_project")
+        print("  python -m apps.code_rag --include-extensions .py .js --query 'How does authentication work?'")
 
     def _add_specific_arguments(self, parser):
         """Add code-specific arguments."""
@@ -179,29 +198,4 @@ class CodeRAG(BaseRAGExample):
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    # Example queries for code RAG
-    print("\n💻 Code RAG Example")
-    print("=" * 50)
-    print("\nExample queries you can try:")
-    print("- 'How does the embedding computation work?'")
-    print("- 'What are the main classes in this codebase?'")
-    print("- 'Show me the search implementation'")
-    print("- 'How is error handling implemented?'")
-    print("- 'What design patterns are used?'")
-    print("- 'Explain the chunking logic'")
-    print("\n🚀 Features:")
-    print("- ✅ AST-aware chunking preserves code structure")
-    print("- ✅ Automatic language detection")
-    print("- ✅ Smart filtering of large files and common excludes")
-    print("- ✅ Optimized for code understanding")
-    print("\nUsage examples:")
-    print("  python -m apps.code_rag --repo-dir ./my_project")
-    print(
-        "  python -m apps.code_rag --include-extensions .py .js --query 'How does authentication work?'"
-    )
-    print("\nOr run without --query for interactive mode\n")
-
-    rag = CodeRAG()
-    asyncio.run(rag.run())
+    CodeRAG.main()

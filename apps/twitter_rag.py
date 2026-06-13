@@ -187,11 +187,5 @@ class TwitterMCPRAG(BaseRAGExample):
         await super().run()
 
 
-async def main():
-    """Main entry point for the Twitter MCP RAG application."""
-    app = TwitterMCPRAG()
-    await app.run()
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    TwitterMCPRAG.main()
