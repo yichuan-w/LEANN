@@ -28,7 +28,7 @@ from .settings import (
     resolve_openai_api_key,
     resolve_openai_base_url,
 )
-from .sync import FileSynchronizer
+from .sync import DEFAULT_INDEX_EXTENSIONS, FileSynchronizer, parse_include_extensions
 
 
 def _normalize_path(path: str) -> str:
@@ -1535,61 +1535,7 @@ Examples:
             # Ensure extensions start with a dot
             code_extensions = [ext if ext.startswith(".") else f".{ext}" for ext in code_extensions]
         else:
-            # Use default supported file types
-            code_extensions = [
-                # Original document types
-                ".txt",
-                ".md",
-                ".docx",
-                ".pptx",
-                # Code files for Claude Code integration
-                ".py",
-                ".js",
-                ".ts",
-                ".jsx",
-                ".tsx",
-                ".java",
-                ".cpp",
-                ".c",
-                ".h",
-                ".hpp",
-                ".cs",
-                ".go",
-                ".rs",
-                ".rb",
-                ".php",
-                ".swift",
-                ".kt",
-                ".scala",
-                ".r",
-                ".sql",
-                ".sh",
-                ".bash",
-                ".zsh",
-                ".fish",
-                ".ps1",
-                ".bat",
-                # Config and markup files
-                ".json",
-                ".yaml",
-                ".yml",
-                ".xml",
-                ".toml",
-                ".ini",
-                ".cfg",
-                ".conf",
-                ".html",
-                ".css",
-                ".scss",
-                ".less",
-                ".vue",
-                ".svelte",
-                # Data science
-                ".ipynb",
-                ".R",
-                ".py",
-                ".jl",
-            ]
+            code_extensions = list(DEFAULT_INDEX_EXTENSIONS)
 
         # Process each directory
         if directories:
@@ -1843,11 +1789,8 @@ Examples:
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
 
-    def _parse_file_types(self, custom_file_types: Optional[str]) -> Optional[list[str]]:
-        if not custom_file_types:
-            return None
-        extensions = [ext.strip() for ext in custom_file_types.split(",") if ext.strip()]
-        return [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+    def _parse_file_types(self, custom_file_types: Optional[str]) -> list[str]:
+        return parse_include_extensions(custom_file_types)
 
     def _sync_ignore_patterns(self, include_hidden: bool) -> Optional[list[str]]:
         if include_hidden:
@@ -1923,38 +1866,58 @@ Examples:
             config["query_prompt_template"] = args.query_prompt_template
         return config
 
-    def _resolve_sync_roots(self, docs_paths: list[str]) -> list[str]:
-        roots: set[str] = set()
+    def _resolve_sync_scope(self, docs_paths: list[str]) -> tuple[list[str], list[str]]:
+        directories: list[str] = []
+        files: list[str] = []
         for path in docs_paths:
             path_obj = Path(path).resolve()
             if path_obj.is_dir():
-                roots.add(str(path_obj))
+                directories.append(str(path_obj))
             elif path_obj.is_file():
-                roots.add(str(path_obj.parent))
-        return sorted(roots)
+                files.append(str(path_obj))
+        return sorted(directories), sorted(files)
+
+    def _resolve_sync_roots(self, docs_paths: list[str]) -> list[str]:
+        """Directory roots only (legacy). Prefer _resolve_sync_scope."""
+        directories, _files = self._resolve_sync_scope(docs_paths)
+        return directories
 
     def _create_synchronizers(
         self,
         index_dir: Path,
-        roots: list[str],
-        include_extensions: Optional[list[str]] = None,
-        ignore_patterns: Optional[list[str]] = None,
+        directories: list[str],
+        explicit_files: list[str],
+        include_extensions: list[str],
+        include_hidden: bool = False,
     ) -> list[FileSynchronizer]:
         """Create FileSynchronizers with snapshots stored in the index dir. Shared by build and watch."""
         synchronizers: list[FileSynchronizer] = []
-        for root in roots:
+        for root in directories:
             tag = hashlib.sha256(root.encode()).hexdigest()[:12]
             snapshot_path = str(index_dir / f"sync_{tag}.pickle")
             try:
                 fs = FileSynchronizer(
                     root_dir=root,
-                    ignore_patterns=ignore_patterns,
                     include_extensions=include_extensions,
+                    include_hidden=include_hidden,
                     snapshot_path=snapshot_path,
                 )
                 synchronizers.append(fs)
             except Exception as exc:
                 print(f"Warning: Failed to init synchronizer for {root}: {exc}")
+        if explicit_files:
+            tag = hashlib.sha256("|".join(explicit_files).encode()).hexdigest()[:12]
+            snapshot_path = str(index_dir / f"sync_files_{tag}.pickle")
+            try:
+                fs = FileSynchronizer(
+                    explicit_files=explicit_files,
+                    include_extensions=include_extensions,
+                    include_hidden=include_hidden,
+                    snapshot_path=snapshot_path,
+                )
+                synchronizers.append(fs)
+            except Exception as exc:
+                print(f"Warning: Failed to init synchronizer for explicit files: {exc}")
         return synchronizers
 
     def _build_synchronizers(
@@ -1965,10 +1928,11 @@ Examples:
         include_hidden: bool = False,
     ) -> list[FileSynchronizer]:
         """Create FileSynchronizers for build from docs_paths."""
-        roots = self._resolve_sync_roots(docs_paths)
+        directories, files = self._resolve_sync_scope(docs_paths)
         include_extensions = self._parse_file_types(file_types)
-        ignore_patterns = self._sync_ignore_patterns(include_hidden)
-        return self._create_synchronizers(index_dir, roots, include_extensions, ignore_patterns)
+        return self._create_synchronizers(
+            index_dir, directories, files, include_extensions, include_hidden
+        )
 
     def _detect_build_changes(
         self,
@@ -2243,33 +2207,64 @@ Examples:
     def _write_sync_config(
         self,
         index_dir: Path,
-        roots: list[str],
-        include_extensions: Optional[list[str]],
-        ignore_patterns: Optional[list[str]],
+        directories: list[str],
+        explicit_files: list[str],
+        include_extensions: list[str],
+        include_hidden: bool,
         build_config: Optional[dict[str, Any]] = None,
     ) -> None:
         sync_config_path = index_dir / "sync_roots.json"
         config = {
-            "roots": roots,
+            "directories": directories,
+            "files": explicit_files,
+            "roots": directories,
             "include_extensions": include_extensions,
-            "ignore_patterns": ignore_patterns,
+            "ignore_patterns": self._sync_ignore_patterns(include_hidden),
         }
         if build_config is not None:
             config["build_config"] = build_config
         with open(sync_config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
-    def _load_sync_roots(self, index_dir: Path) -> list[str]:
-        """Load sync roots from index dir (for path resolution in incremental updates)."""
+    def _write_sync_config_for_docs(
+        self,
+        index_dir: Path,
+        docs_paths: list[str],
+        args,
+        build_config: Optional[dict[str, Any]] = None,
+    ) -> None:
+        directories, files = self._resolve_sync_scope(docs_paths)
+        self._write_sync_config(
+            index_dir,
+            directories,
+            files,
+            self._parse_file_types(args.file_types),
+            args.include_hidden,
+            build_config,
+        )
+
+    def _load_sync_scope(
+        self, index_dir: Path
+    ) -> tuple[list[str], list[str], list[str], bool]:
+        """Load sync scope from index dir (directories, files, extensions, include_hidden)."""
         sync_config_path = index_dir / "sync_roots.json"
         if not sync_config_path.exists():
-            return []
+            return [], [], list(DEFAULT_INDEX_EXTENSIONS), False
         try:
             with open(sync_config_path, encoding="utf-8") as f:
                 config = json.load(f)
-            return config.get("roots") or []
         except (json.JSONDecodeError, OSError):
-            return []
+            return [], [], list(DEFAULT_INDEX_EXTENSIONS), False
+        directories = config.get("directories") or config.get("roots") or []
+        files = config.get("files") or []
+        include_extensions = config.get("include_extensions") or list(DEFAULT_INDEX_EXTENSIONS)
+        include_hidden = config.get("ignore_patterns") is None
+        return directories, files, include_extensions, include_hidden
+
+    def _load_sync_roots(self, index_dir: Path) -> list[str]:
+        """Load directory + explicit file paths for chunk ID lookup."""
+        directories, files, _, _ = self._load_sync_scope(index_dir)
+        return directories + files
 
     def _resolve_index_for_watch(self, index_name: str) -> Optional[dict[str, Path]]:
         if self.index_exists(index_name):
@@ -2462,19 +2457,13 @@ Examples:
                     )
                     if result:
                         self._commit_synchronizers(synchronizers)
-                        self._write_sync_config(
-                            index_dir,
-                            self._resolve_sync_roots(docs_paths),
-                            self._parse_file_types(args.file_types),
-                            self._sync_ignore_patterns(args.include_hidden),
-                            build_config,
-                        )
+                        self._write_sync_config_for_docs(index_dir, docs_paths, args, build_config)
                         self.register_project_dir()
                         return
 
-                # Load only changed files (no need to load/chunk the entire corpus)
-                # Resolve paths relative to sync roots (sync returns paths relative to each root)
-                roots = self._resolve_sync_roots(docs_paths)
+                # Resolve paths relative to sync scope (directories + explicit files).
+                sync_dirs, sync_files = self._resolve_sync_scope(docs_paths)
+                scope_roots = sync_dirs + sync_files
                 paths_to_load = new_paths | modified_paths
                 resolved_paths: list[str] = []
                 for p in paths_to_load:
@@ -2482,7 +2471,7 @@ Examples:
                     if path_obj.is_absolute() and path_obj.exists():
                         resolved_paths.append(p)
                     else:
-                        for root in roots:
+                        for root in scope_roots:
                             candidate = Path(root) / p
                             if candidate.exists():
                                 resolved_paths.append(str(candidate.resolve()))
@@ -2509,17 +2498,11 @@ Examples:
                         new_paths,
                         removed_paths,
                         modified_paths,
-                        roots,
+                        scope_roots,
                     )
                     if result:
                         self._commit_synchronizers(synchronizers)
-                        self._write_sync_config(
-                            index_dir,
-                            self._resolve_sync_roots(docs_paths),
-                            self._parse_file_types(args.file_types),
-                            self._sync_ignore_patterns(args.include_hidden),
-                            build_config,
-                        )
+                        self._write_sync_config_for_docs(index_dir, docs_paths, args, build_config)
                         self.register_project_dir()
                         return
 
@@ -2532,13 +2515,7 @@ Examples:
                     )
                     if result:
                         self._commit_synchronizers(synchronizers)
-                        self._write_sync_config(
-                            index_dir,
-                            self._resolve_sync_roots(docs_paths),
-                            self._parse_file_types(args.file_types),
-                            self._sync_ignore_patterns(args.include_hidden),
-                            build_config,
-                        )
+                        self._write_sync_config_for_docs(index_dir, docs_paths, args, build_config)
                         self.register_project_dir()
                         return
 
@@ -2594,13 +2571,7 @@ Examples:
             )
             for fs in target_synchronizers:
                 fs.create_snapshot()
-            self._write_sync_config(
-                target_index_dir,
-                self._resolve_sync_roots(docs_paths),
-                self._parse_file_types(args.file_types),
-                self._sync_ignore_patterns(args.include_hidden),
-                build_config,
-            )
+            self._write_sync_config_for_docs(target_index_dir, docs_paths, args, build_config)
             if publish_from_staging:
                 _publish_rebuilt_index(target_index_dir, index_dir)
         except Exception:
@@ -2623,18 +2594,16 @@ Examples:
         if not sync_config_path.exists():
             return set(), set(), set()
 
-        with open(sync_config_path, encoding="utf-8") as f:
-            config = json.load(f)
-
-        roots = config.get("roots") or []
-        if not roots:
+        directories, files, include_extensions, include_hidden = self._load_sync_scope(index_dir)
+        if not directories and not files:
             return set(), set(), set()
 
         synchronizers = self._create_synchronizers(
             index_dir,
-            roots,
-            include_extensions=config.get("include_extensions"),
-            ignore_patterns=config.get("ignore_patterns"),
+            directories,
+            files,
+            include_extensions,
+            include_hidden,
         )
         return self._detect_build_changes(synchronizers)
 

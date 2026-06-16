@@ -3,17 +3,120 @@ import os
 import pickle
 from dataclasses import dataclass, field
 from hashlib import sha256
+from pathlib import Path
 from typing import Optional
 
-from llama_index.core import SimpleDirectoryReader
-
 logger = logging.getLogger(__name__)
+
+# Keep in sync with leann build's default extension allowlist (load_documents).
+DEFAULT_INDEX_EXTENSIONS: list[str] = [
+    ".txt",
+    ".md",
+    ".docx",
+    ".pptx",
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".java",
+    ".cpp",
+    ".c",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",
+    ".swift",
+    ".kt",
+    ".scala",
+    ".r",
+    ".sql",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".fish",
+    ".ps1",
+    ".bat",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".xml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".html",
+    ".css",
+    ".scss",
+    ".less",
+    ".vue",
+    ".svelte",
+    ".ipynb",
+    ".R",
+    ".jl",
+]
 
 
 def hash_data(data: str | bytes):
     if isinstance(data, str):
         data = data.encode()
     return sha256(data).hexdigest()
+
+
+def parse_include_extensions(custom_file_types: Optional[str]) -> list[str]:
+    """Return the extension allowlist used for sync/watch (matches build defaults)."""
+    if not custom_file_types:
+        return list(DEFAULT_INDEX_EXTENSIONS)
+    extensions = [ext.strip() for ext in custom_file_types.split(",") if ext.strip()]
+    return [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+
+
+def _extension_allowed(path: Path, include_extensions: list[str]) -> bool:
+    allowed = {ext.lower() for ext in include_extensions}
+    return path.suffix.lower() in allowed
+
+
+def _path_has_hidden_segment(path: Path) -> bool:
+    return any(part.startswith(".") and part not in (".", "..") for part in path.parts)
+
+
+def _hash_file_bytes(path: Path) -> str:
+    with open(path, "rb") as f:
+        return hash_data(f.read())
+
+
+def _iter_directory_files(
+    root_dir: str,
+    include_extensions: list[str],
+    include_hidden: bool,
+) -> list[str]:
+    root = Path(root_dir).resolve()
+    if not root.is_dir():
+        return []
+
+    paths: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        if not include_hidden:
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        current = Path(dirpath)
+        for name in filenames:
+            if not include_hidden and name.startswith("."):
+                continue
+            file_path = (current / name).resolve()
+            try:
+                rel = file_path.relative_to(root)
+            except ValueError:
+                continue
+            if not include_hidden and _path_has_hidden_segment(rel):
+                continue
+            if not _extension_allowed(file_path, include_extensions):
+                continue
+            if file_path.is_file():
+                paths.append(str(file_path))
+    return paths
 
 
 @dataclass
@@ -74,53 +177,60 @@ class MerkleTree:
 class FileSynchronizer:
     def __init__(
         self,
-        root_dir: str,
+        root_dir: Optional[str] = None,
+        explicit_files: Optional[list[str]] = None,
         ignore_patterns: Optional[list] = None,
-        include_extensions: Optional[list] = None,
+        include_extensions: Optional[list[str]] = None,
+        include_hidden: bool = False,
         auto_load=True,
         snapshot_path: Optional[str] = None,
     ):
-        if not os.path.isdir(root_dir):
+        self.root_dir = str(Path(root_dir).resolve()) if root_dir else None
+        self.explicit_files = (
+            [str(Path(path).resolve()) for path in explicit_files] if explicit_files else []
+        )
+        if self.root_dir is None and not self.explicit_files:
+            raise ValueError("FileSynchronizer requires root_dir and/or explicit_files")
+        if self.root_dir is not None and not os.path.isdir(self.root_dir):
             raise ValueError("This is not a valid directory")
-        self.root_dir = root_dir
+
         self.ignore_patterns = ignore_patterns
-        self.include_extensions = include_extensions
+        self.include_extensions = include_extensions or list(DEFAULT_INDEX_EXTENSIONS)
+        self.include_hidden = include_hidden
         self._custom_snapshot_path = snapshot_path
         self._pending_tree: Optional[MerkleTree] = None
         self.tree: Optional[MerkleTree] = None
         if auto_load:
             self.load_snapshot()
 
-    def generate_file_hashes(self):
-        file_hashes = {}
-        try:
-            reader = SimpleDirectoryReader(
-                self.root_dir,
-                recursive=True,
-                exclude=self.ignore_patterns,
-                required_exts=self.include_extensions,
-                exclude_empty=False,
+    def _collect_paths(self) -> list[str]:
+        paths: list[str] = []
+        if self.root_dir:
+            paths.extend(
+                _iter_directory_files(
+                    self.root_dir,
+                    self.include_extensions,
+                    self.include_hidden,
+                )
             )
-        except ValueError:
-            # Empty directory — no files to hash
-            return file_hashes
+        for file_path in self.explicit_files:
+            path = Path(file_path).resolve()
+            if not path.is_file():
+                continue
+            if not self.include_hidden and _path_has_hidden_segment(path):
+                continue
+            if not _extension_allowed(path, self.include_extensions):
+                continue
+            paths.append(str(path))
+        return sorted(set(paths))
 
-        for file in reader.iter_data():
-            if not file:
-                continue
-            file_path = file[0].metadata.get("file_path", "")
-            if not file_path:
-                continue
+    def generate_file_hashes(self):
+        file_hashes: dict[str, str] = {}
+        for file_path in self._collect_paths():
             try:
-                # Combine text from all documents for this file (e.g. multi-page PDFs).
-                # Previously we skipped len(file) > 1, which dropped every such file from
-                # file_hashes — first build then saw "no changes" with an empty index (#290).
-                combined_text = "".join(doc.text for doc in file)
-                file_hashes[file_path] = hash_data(combined_text)
-            except Exception:
-                logger.error(f"Cannot hash file {file_path}")
-                continue
-
+                file_hashes[file_path] = _hash_file_bytes(Path(file_path))
+            except OSError:
+                logger.warning("Cannot hash file %s", file_path)
         return file_hashes
 
     def build_merkle_tree(self, file_hashes):
@@ -173,7 +283,8 @@ class FileSynchronizer:
     def snapshot_path(self):
         if self._custom_snapshot_path:
             return self._custom_snapshot_path
-        return f"{self.root_dir}.sync_context.pickle"
+        base = self.root_dir or "files"
+        return f"{base}.sync_context.pickle"
 
     def save_snapshot(self):
         assert self.tree is not None
