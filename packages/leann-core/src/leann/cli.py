@@ -2243,9 +2243,7 @@ Examples:
             build_config,
         )
 
-    def _load_sync_scope(
-        self, index_dir: Path
-    ) -> tuple[list[str], list[str], list[str], bool]:
+    def _load_sync_scope(self, index_dir: Path) -> tuple[list[str], list[str], list[str], bool]:
         """Load sync scope from index dir (directories, files, extensions, include_hidden)."""
         sync_config_path = index_dir / "sync_roots.json"
         if not sync_config_path.exists():
