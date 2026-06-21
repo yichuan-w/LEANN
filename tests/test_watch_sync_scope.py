@@ -51,3 +51,33 @@ def test_watch_scope_does_not_scan_sibling_media(tmp_path):
     assert str((src / "main.py").resolve()) in hashed_paths
     assert str(readme.resolve()) in hashed_paths
     assert str((assets / "icon.png").resolve()) not in hashed_paths
+
+
+def test_mixed_txt_and_bin_directory_skips_bin_without_crash(tmp_path):
+    """Same dir with .txt and .bin: hash only text, ignore binary (review #377)."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    txt = docs / "notes.txt"
+    bin_file = docs / "payload.bin"
+    txt.write_text("hello", encoding="utf-8")
+    bin_file.write_bytes(bytes(range(256)))
+
+    fs = FileSynchronizer(
+        root_dir=str(docs),
+        include_extensions=[".txt"],
+        snapshot_path=str(tmp_path / "sync.pickle"),
+        auto_load=False,
+    )
+
+    hashes = fs.generate_file_hashes()
+    assert set(hashes.keys()) == {str(txt.resolve())}
+    assert str(bin_file.resolve()) not in hashes
+
+    fs.create_snapshot()
+    fs2 = FileSynchronizer(
+        root_dir=str(docs),
+        include_extensions=[".txt"],
+        snapshot_path=str(tmp_path / "sync.pickle"),
+    )
+    added, removed, modified = fs2.detect_changes()
+    assert not added and not removed and not modified
