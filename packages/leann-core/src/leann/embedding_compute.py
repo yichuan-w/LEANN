@@ -1006,9 +1006,7 @@ def compute_embeddings_mlx(
 
         batch_range = range(0, len(chunks), batch_size)
         if is_build:
-            batch_iterator = tqdm(
-                batch_range, desc="Computing embeddings", unit="batch"
-            )
+            batch_iterator = tqdm(batch_range, desc="Computing embeddings", unit="batch")
         else:
             batch_iterator = batch_range
     except ImportError:
