@@ -300,3 +300,102 @@ def test_search_history_has_source_field():
 
     assert "source" in agent.search_history[0]
     assert agent.search_history[0]["source"] in ("local", "web")
+
+
+def test_zero_results_on_iteration_two_does_not_abort_early():
+    """A single empty tool result must not force an ungrounded final answer (#381)."""
+    searcher = _make_searcher()
+    searcher.search.side_effect = [
+        [
+            SearchResult(
+                id="1",
+                score=0.9,
+                text="Partial LEANN benchmark mention.",
+                metadata={"source": "docs"},
+            )
+        ],
+        [],
+        [
+            SearchResult(
+                id="2",
+                score=0.95,
+                text="LEANN recall@10 = 0.95 vs FAISS 0.97 per the paper.",
+                metadata={"source": "web"},
+            )
+        ],
+    ]
+
+    mock_llm = MagicMock()
+    mock_llm.ask.side_effect = [
+        'Thought: Start local.\nAction: leann_search("LEANN benchmark")',
+        'Thought: Narrow local query.\nAction: leann_search("LEANN recall numbers vs faiss")',
+        'Thought: Try web.\nAction: web_search("LEANN paper recall comparison FAISS")',
+        "Thought: Found it.\nAction: Final Answer: LEANN achieves recall@10 = 0.95 vs FAISS 0.97.",
+    ]
+
+    with patch.object(WebSearcher, "search") as mock_web:
+        mock_web.return_value = [
+            {
+                "title": "LEANN paper",
+                "link": "https://example.com/paper",
+                "snippet": "recall@10 comparison",
+            }
+        ]
+        agent = ReActAgent(
+            searcher=searcher,
+            llm=mock_llm,
+            max_iterations=5,
+            serper_api_key="test-key",
+        )
+        answer = agent.run("What is LEANN's recall vs FAISS at recall@10?", top_k=2)
+
+    assert len(agent.search_history) == 3
+    assert agent.search_history[1]["results_count"] == 0
+    assert "0.95" in answer
+    assert mock_llm.ask.call_count == 4
+
+
+def test_transient_web_failure_allows_retry_on_next_iteration():
+    """Transient web_search failure should be retried, not terminate the loop (#381)."""
+    searcher = _make_searcher()
+    searcher.search.return_value = [
+        SearchResult(
+            id="1",
+            score=0.8,
+            text="Local setup notes.",
+            metadata={"source": "docs"},
+        )
+    ]
+
+    mock_llm = MagicMock()
+    mock_llm.ask.side_effect = [
+        'Thought: Check local docs.\nAction: leann_search("project setup")',
+        'Thought: Check web.\nAction: web_search("latest setup guide")',
+        'Thought: Retry web.\nAction: web_search("setup guide tutorial")',
+        "Thought: Found it.\nAction: Final Answer: per the latest docs, run `make install`.",
+    ]
+
+    with patch.object(WebSearcher, "search") as mock_web:
+        mock_web.side_effect = [
+            [{"title": "Error", "link": "", "snippet": "Web Search failed:502 Bad Gateway"}],
+            [
+                {
+                    "title": "Setup guide",
+                    "link": "https://example.com/setup",
+                    "snippet": "Run `make install` to set up the project.",
+                }
+            ],
+        ]
+        agent = ReActAgent(
+            searcher=searcher,
+            llm=mock_llm,
+            max_iterations=5,
+            serper_api_key="test-key",
+        )
+        answer = agent.run("How do I set up the project?", top_k=2)
+
+    assert len(agent.search_history) == 3
+    assert agent.search_history[1]["results_count"] == 0
+    assert agent.search_history[2]["results_count"] == 1
+    assert "make install" in answer
+    assert mock_llm.ask.call_count == 4
