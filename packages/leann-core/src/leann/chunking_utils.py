@@ -386,6 +386,21 @@ def create_traditional_chunks(
     return result
 
 
+def _traditional_chunks_as_dicts(
+    documents,
+    chunk_size: int = 256,
+    chunk_overlap: int = 128,
+    max_tokens_per_chunk: int | None = None,
+) -> list[dict[str, Any]]:
+    """Backward-compatible alias for create_traditional_chunks."""
+    return create_traditional_chunks(
+        documents,
+        chunk_size,
+        chunk_overlap,
+        max_tokens_per_chunk=max_tokens_per_chunk,
+    )
+
+
 def create_text_chunks(
     documents,
     chunk_size: int = 256,
