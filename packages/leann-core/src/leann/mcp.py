@@ -362,6 +362,17 @@ def handle_request(request):
         except Exception as e:
             return _make_error(request_id, str(e))
 
+    # Unknown method: a request (with an id) must get a -32601 error response
+    # so strict clients can fall back — e.g. Google Antigravity CLI probes
+    # with a server/discover request before initialize and hangs forever
+    # ("initializing...") if the server stays silent. Notifications (no id)
+    # must get no reply at all (JSON-RPC 2.0).
+    if request_id is not None:
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {"code": -32601, "message": "Method not found"},
+        }
     return None
 
 
