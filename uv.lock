@@ -1965,7 +1965,7 @@ wheels = [
 
 [[package]]
 name = "leann-backend-diskann"
-version = "0.3.7"
+version = "0.3.8"
 source = { editable = "packages/leann-backend-diskann" }
 dependencies = [
     { name = "leann-core" },
@@ -1976,7 +1976,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "leann-core", specifier = "==0.3.7" },
+    { name = "leann-core", specifier = "==0.3.8" },
     { name = "numpy" },
     { name = "protobuf", specifier = ">=3.19.0" },
 ]
@@ -2031,7 +2031,7 @@ provides-extras = ["query-server"]
 
 [[package]]
 name = "leann-backend-hnsw"
-version = "0.3.7"
+version = "0.3.8"
 source = { editable = "packages/leann-backend-hnsw" }
 dependencies = [
     { name = "leann-core" },
@@ -2043,7 +2043,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "leann-core", specifier = "==0.3.7" },
+    { name = "leann-core", specifier = "==0.3.8" },
     { name = "msgpack", specifier = ">=1.0.0" },
     { name = "numpy" },
     { name = "pyzmq", specifier = ">=23.0.0" },
@@ -2051,7 +2051,7 @@ requires-dist = [
 
 [[package]]
 name = "leann-core"
-version = "0.3.7"
+version = "0.3.8"
 source = { editable = "packages/leann-core" }
 dependencies = [
     { name = "accelerate" },
