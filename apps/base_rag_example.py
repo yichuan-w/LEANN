@@ -29,7 +29,13 @@ from leann.registry import register_project_directory
 
 # Optional import: older PyPI builds may not include settings
 try:
-    from leann.settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
+    from leann.settings import (
+        resolve_atlascloud_api_key,
+        resolve_atlascloud_base_url,
+        resolve_ollama_host,
+        resolve_openai_api_key,
+        resolve_openai_base_url,
+    )
 except ImportError:
     # Minimal fallbacks if settings helpers are unavailable
     import os
@@ -42,6 +48,17 @@ except ImportError:
 
     def resolve_openai_base_url(value: str | None) -> str | None:
         return value or os.getenv("OPENAI_BASE_URL")
+
+    def resolve_atlascloud_api_key(value: str | None) -> str | None:
+        return value or os.getenv("ATLASCLOUD_API_KEY") or os.getenv("ATLAS_CLOUD_API_KEY")
+
+    def resolve_atlascloud_base_url(value: str | None) -> str | None:
+        return (
+            value
+            or os.getenv("ATLASCLOUD_BASE_URL")
+            or os.getenv("ATLAS_CLOUD_BASE_URL")
+            or "https://api.atlascloud.ai/v1"
+        )
 
 
 dotenv.load_dotenv()
@@ -135,8 +152,8 @@ class BaseRAGExample(ABC):
             "--llm",
             type=str,
             default="openai",
-            choices=["openai", "ollama", "hf", "simulated"],
-            help="LLM backend: openai, ollama, or hf (default: openai)",
+            choices=["openai", "ollama", "hf", "simulated", "atlascloud", "atlas-cloud", "atlas"],
+            help="LLM backend: openai, ollama, hf, atlascloud, or simulated (default: openai)",
         )
         llm_group.add_argument(
             "--llm-model",
@@ -269,6 +286,13 @@ class BaseRAGExample(ABC):
             config["model"] = args.llm_model or "gpt-4o"
             config["base_url"] = resolve_openai_base_url(args.llm_api_base)
             resolved_key = resolve_openai_api_key(args.llm_api_key)
+            if resolved_key:
+                config["api_key"] = resolved_key
+        elif args.llm in {"atlascloud", "atlas-cloud", "atlas"}:
+            config["type"] = "atlascloud"
+            config["model"] = args.llm_model or "deepseek-ai/deepseek-v4-pro"
+            config["base_url"] = resolve_atlascloud_base_url(args.llm_api_base)
+            resolved_key = resolve_atlascloud_api_key(args.llm_api_key)
             if resolved_key:
                 config["api_key"] = resolved_key
         elif args.llm == "ollama":
