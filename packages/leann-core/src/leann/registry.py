@@ -4,6 +4,8 @@ import importlib
 import importlib.metadata
 import json
 import logging
+import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
 
@@ -14,6 +16,35 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BACKEND_REGISTRY: dict[str, "LeannBackendFactoryInterface"] = {}
+DEFAULT_INDEX_SCAN_DEPTH = 5
+INDEX_SCAN_SKIP_DIRS = frozenset(
+    {".git", ".venv", "venv", "node_modules", "__pycache__", "Library"}
+)
+
+
+def iter_index_meta_files(
+    root: Union[str, Path], max_depth: int = DEFAULT_INDEX_SCAN_DEPTH
+) -> Iterator[Path]:
+    """Yield LEANN metadata files within a bounded directory tree.
+
+    The root directory is depth zero. Known dependency, cache, and system
+    directories are pruned before traversal.
+    """
+    if max_depth < 0:
+        raise ValueError("max_depth must be non-negative")
+
+    root_path = Path(root)
+    for current_dir, dirnames, filenames in os.walk(root_path):
+        current_path = Path(current_dir)
+        depth = len(current_path.relative_to(root_path).parts)
+        if depth >= max_depth:
+            dirnames.clear()
+        else:
+            dirnames[:] = [name for name in dirnames if name not in INDEX_SCAN_SKIP_DIRS]
+
+        for filename in filenames:
+            if filename.endswith(".leann.meta.json"):
+                yield current_path / filename
 
 
 def register_backend(name: str):
@@ -64,9 +95,9 @@ def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
         project_dir = Path(project_dir)
 
     # Only register directories that have some kind of LEANN content.
-    # Check CLI-format first to avoid an expensive rglob on large directories.
+    # Check CLI-format first to avoid even a bounded scan when it is unnecessary.
     has_cli_indexes = (project_dir / ".leann" / "indexes").exists()
-    if not has_cli_indexes and not any(project_dir.rglob("*.leann.meta.json")):
+    if not has_cli_indexes and not any(iter_index_meta_files(project_dir)):
         # Don't register if there are no LEANN indexes
         return
 

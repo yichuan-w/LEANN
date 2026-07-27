@@ -19,7 +19,7 @@ from tqdm import tqdm
 from .api import Fts5BM25Index, LeannBuilder, LeannChat, LeannSearcher
 from .embedding_server_manager import EmbeddingServerManager
 from .interactive_utils import create_cli_session
-from .registry import register_project_directory
+from .registry import DEFAULT_INDEX_SCAN_DEPTH, iter_index_meta_files, register_project_directory
 from .settings import (
     resolve_anthropic_base_url,
     resolve_minimax_api_key,
@@ -29,6 +29,13 @@ from .settings import (
     resolve_openai_base_url,
 )
 from .sync import DEFAULT_INDEX_EXTENSIONS, FileSynchronizer, parse_include_extensions
+
+
+def _non_negative_int(value: str) -> int:
+    parsed_value = int(value)
+    if parsed_value < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed_value
 
 
 def _default_embedding_model() -> str:
@@ -832,7 +839,16 @@ Examples:
         )
 
         # List command
-        subparsers.add_parser("list", help="List all indexes")
+        list_parser = subparsers.add_parser("list", help="List all indexes")
+        list_parser.add_argument(
+            "--max-depth",
+            type=_non_negative_int,
+            default=DEFAULT_INDEX_SCAN_DEPTH,
+            help=(
+                "Maximum directory depth for app index discovery "
+                f"(default: {DEFAULT_INDEX_SCAN_DEPTH})"
+            ),
+        )
 
         # Remove command
         remove_parser = subparsers.add_parser("remove", help="Remove an index")
@@ -923,7 +939,7 @@ Examples:
             # If anything goes wrong, assume it's not a submodule
             return False
 
-    def list_indexes(self):
+    def list_indexes(self, max_depth: int = DEFAULT_INDEX_SCAN_DEPTH):
         # Get all project directories with .leann
         global_registry = Path.home() / ".leann" / "projects.json"
         all_projects = []
@@ -968,7 +984,7 @@ Examples:
         print("   " + "─" * 45)
 
         current_indexes = self._discover_indexes_in_project(
-            current_path, exclude_dirs=other_projects
+            current_path, exclude_dirs=other_projects, max_depth=max_depth
         )
         if current_indexes:
             for idx in current_indexes:
@@ -987,7 +1003,9 @@ Examples:
             print("   " + "─" * 45)
 
             for project_path in other_projects:
-                project_indexes = self._discover_indexes_in_project(project_path)
+                project_indexes = self._discover_indexes_in_project(
+                    project_path, max_depth=max_depth
+                )
                 if not project_indexes:
                     continue
 
@@ -1011,9 +1029,11 @@ Examples:
             projects_count = 0
             for p in valid_projects:
                 if p == current_path:
-                    discovered = self._discover_indexes_in_project(p, exclude_dirs=other_projects)
+                    discovered = self._discover_indexes_in_project(
+                        p, exclude_dirs=other_projects, max_depth=max_depth
+                    )
                 else:
-                    discovered = self._discover_indexes_in_project(p)
+                    discovered = self._discover_indexes_in_project(p, max_depth=max_depth)
                 if len(discovered) > 0:
                     projects_count += 1
             print(f"📊 Total: {total_indexes} indexes across {projects_count} projects")
@@ -1033,13 +1053,17 @@ Examples:
                 print("   leann build my-docs --docs ./documents")
 
     def _discover_indexes_in_project(
-        self, project_path: Path, exclude_dirs: Optional[list[Path]] = None
+        self,
+        project_path: Path,
+        exclude_dirs: Optional[list[Path]] = None,
+        max_depth: int = DEFAULT_INDEX_SCAN_DEPTH,
     ):
         """Discover all indexes in a project directory (both CLI and apps formats)
 
         exclude_dirs: when provided, skip any APP-format index files that are
         located under these directories. This prevents duplicates when the
         current project is a parent directory of other registered projects.
+        max_depth: maximum number of directories to descend for APP-format indexes.
         """
         indexes = []
         exclude_dirs = exclude_dirs or []
@@ -1076,9 +1100,9 @@ Examples:
                         }
                     )
 
-        # 2. Apps format: *.leann.meta.json files anywhere in the project
+        # 2. Apps format: *.leann.meta.json files within the configured scan depth
         cli_indexes_dir = project_path / ".leann" / "indexes"
-        for meta_file in project_path.rglob("*.leann.meta.json"):
+        for meta_file in iter_index_meta_files(project_path, max_depth=max_depth):
             if meta_file.is_file():
                 # Skip CLI-built indexes (which store meta under .leann/indexes/<name>/)
                 try:
@@ -3692,7 +3716,7 @@ Examples:
         suppress = not getattr(args, "verbose", False)
 
         if args.command == "list":
-            self.list_indexes()
+            self.list_indexes(args.max_depth)
         elif args.command == "remove":
             self.remove_index(args.index_name, args.force)
         elif args.command == "build":
