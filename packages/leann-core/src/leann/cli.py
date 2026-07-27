@@ -939,6 +939,14 @@ Examples:
             # If anything goes wrong, assume it's not a submodule
             return False
 
+    @staticmethod
+    def _project_has_discoverable_indexes(project_path: Path, max_depth: int) -> bool:
+        """Return whether a project contains an index within the scan boundary."""
+        cli_indexes_dir = project_path / ".leann" / "indexes"
+        return cli_indexes_dir.exists() or any(
+            iter_index_meta_files(project_path, max_depth=max_depth)
+        )
+
     def list_indexes(self, max_depth: int = DEFAULT_INDEX_SCAN_DEPTH):
         # Get all project directories with .leann
         global_registry = Path.home() / ".leann" / "projects.json"
@@ -953,16 +961,21 @@ Examples:
             except Exception:
                 pass
 
-        # Filter to only existing directories with .leann
+        # Filter to existing projects with a discoverable CLI- or App-format index.
         valid_projects = []
         for project_dir in all_projects:
             project_path = Path(project_dir)
-            if project_path.exists() and (project_path / ".leann" / "indexes").exists():
+            if project_path.exists() and self._project_has_discoverable_indexes(
+                project_path, max_depth
+            ):
                 valid_projects.append(project_path)
 
-        # Add current project if it has .leann but not in registry
+        # Add current project if it has a discoverable index but is not in registry.
         current_path = Path.cwd()
-        if (current_path / ".leann" / "indexes").exists() and current_path not in valid_projects:
+        if (
+            self._project_has_discoverable_indexes(current_path, max_depth)
+            and current_path not in valid_projects
+        ):
             valid_projects.append(current_path)
 
         # Separate current and other projects

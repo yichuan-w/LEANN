@@ -40,3 +40,9 @@ fixes). Newest entries at the bottom.
   at nprobe=32, ~6.5x lower single-query latency / ~75x higher batched throughput at
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
+
+## 2026-07-27: Bounded `leann list` index discovery
+
+- Bound App-format metadata discovery to a configurable directory depth; `leann list` defaults to depth 5 and accepts `--max-depth` for deeper projects.
+- Prune common dependency, virtual-environment, cache, and system directories during discovery.
+- Preserve discovery of registered CLI-format and App-format projects without recursively scanning an entire home directory.

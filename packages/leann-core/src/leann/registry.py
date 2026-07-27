@@ -80,7 +80,10 @@ def autodiscover_backends():
     # print("INFO: Backend auto-discovery finished.")
 
 
-def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
+def register_project_directory(
+    project_dir: Optional[Union[str, Path]] = None,
+    max_depth: int = DEFAULT_INDEX_SCAN_DEPTH,
+):
     """
     Register a project directory in the global LEANN registry.
 
@@ -88,6 +91,7 @@ def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
 
     Args:
         project_dir: Directory to register. If None, uses current working directory.
+        max_depth: Maximum directory depth used when looking for App-format indexes.
     """
     if project_dir is None:
         project_dir = Path.cwd()
@@ -97,7 +101,7 @@ def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
     # Only register directories that have some kind of LEANN content.
     # Check CLI-format first to avoid even a bounded scan when it is unnecessary.
     has_cli_indexes = (project_dir / ".leann" / "indexes").exists()
-    if not has_cli_indexes and not any(iter_index_meta_files(project_dir)):
+    if not has_cli_indexes and not any(iter_index_meta_files(project_dir, max_depth=max_depth)):
         # Don't register if there are no LEANN indexes
         return
 
