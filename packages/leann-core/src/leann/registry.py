@@ -23,21 +23,21 @@ INDEX_SCAN_SKIP_DIRS = frozenset(
 
 
 def iter_index_meta_files(
-    root: Union[str, Path], max_depth: int = DEFAULT_INDEX_SCAN_DEPTH
+    root: Union[str, Path], max_depth: Optional[int] = DEFAULT_INDEX_SCAN_DEPTH
 ) -> Iterator[Path]:
-    """Yield LEANN metadata files within a bounded directory tree.
+    """Yield LEANN metadata files within an optionally bounded directory tree.
 
-    The root directory is depth zero. Known dependency, cache, and system
-    directories are pruned before traversal.
+    The root directory is depth zero. A max_depth of None scans all depths.
+    Known dependency, cache, and system directories are always pruned before traversal.
     """
-    if max_depth < 0:
+    if max_depth is not None and max_depth < 0:
         raise ValueError("max_depth must be non-negative")
 
     root_path = Path(root)
     for current_dir, dirnames, filenames in os.walk(root_path):
         current_path = Path(current_dir)
         depth = len(current_path.relative_to(root_path).parts)
-        if depth >= max_depth:
+        if max_depth is not None and depth >= max_depth:
             dirnames.clear()
         else:
             dirnames[:] = [name for name in dirnames if name not in INDEX_SCAN_SKIP_DIRS]
@@ -82,7 +82,7 @@ def autodiscover_backends():
 
 def register_project_directory(
     project_dir: Optional[Union[str, Path]] = None,
-    max_depth: int = DEFAULT_INDEX_SCAN_DEPTH,
+    max_depth: Optional[int] = None,
 ):
     """
     Register a project directory in the global LEANN registry.
@@ -92,6 +92,7 @@ def register_project_directory(
     Args:
         project_dir: Directory to register. If None, uses current working directory.
         max_depth: Maximum directory depth used when looking for App-format indexes.
+            None preserves full-depth discovery for existing API callers.
     """
     if project_dir is None:
         project_dir = Path.cwd()

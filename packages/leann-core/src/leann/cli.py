@@ -1086,7 +1086,7 @@ Examples:
         self,
         project_path: Path,
         exclude_dirs: Optional[list[Path]] = None,
-        max_depth: int = DEFAULT_INDEX_SCAN_DEPTH,
+        max_depth: Optional[int] = None,
     ):
         """Discover all indexes in a project directory (both CLI and apps formats)
 
@@ -1094,6 +1094,7 @@ Examples:
         located under these directories. This prevents duplicates when the
         current project is a parent directory of other registered projects.
         max_depth: maximum number of directories to descend for APP-format indexes.
+            None preserves full-depth discovery for non-CLI callers.
         """
         indexes = []
         exclude_dirs = exclude_dirs or []

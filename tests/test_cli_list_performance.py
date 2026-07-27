@@ -67,6 +67,18 @@ def test_cli_project_discovery_respects_max_depth(tmp_path):
     assert [index["name"] for index in indexes] == ["shallow"]
 
 
+def test_cli_project_discovery_without_max_depth_finds_deep_app_index(tmp_path):
+    deep_meta = (
+        tmp_path / "one" / "two" / "three" / "four" / "five" / "six" / "index.leann.meta.json"
+    )
+    deep_meta.parent.mkdir(parents=True)
+    deep_meta.touch()
+
+    indexes = LeannCLI()._discover_indexes_in_project(tmp_path)
+
+    assert [index["name"] for index in indexes] == ["six"]
+
+
 def test_list_command_passes_max_depth_to_discovery(monkeypatch):
     cli = LeannCLI()
     received = {}
@@ -82,7 +94,23 @@ def test_list_command_passes_max_depth_to_discovery(monkeypatch):
     assert received == {"max_depth": 7}
 
 
-def test_project_registration_does_not_scan_beyond_default_depth(tmp_path, monkeypatch):
+def test_project_registration_respects_explicit_max_depth(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    project = tmp_path / "project"
+    deep_meta = (
+        project / "one" / "two" / "three" / "four" / "five" / "six" / "index.leann.meta.json"
+    )
+    deep_meta.parent.mkdir(parents=True)
+    deep_meta.touch()
+    monkeypatch.setattr(registry.Path, "home", classmethod(lambda cls: home))
+
+    registry.register_project_directory(project, max_depth=registry.DEFAULT_INDEX_SCAN_DEPTH)
+
+    assert not (home / ".leann" / "projects.json").exists()
+
+
+def test_project_registration_without_max_depth_finds_deep_app_index(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     project = tmp_path / "project"
@@ -95,7 +123,8 @@ def test_project_registration_does_not_scan_beyond_default_depth(tmp_path, monke
 
     registry.register_project_directory(project)
 
-    assert not (home / ".leann" / "projects.json").exists()
+    registry_file = home / ".leann" / "projects.json"
+    assert json.loads(registry_file.read_text()) == [str(project.resolve())]
 
 
 def test_project_registration_accepts_custom_max_depth(tmp_path, monkeypatch):
