@@ -947,6 +947,15 @@ Examples:
             iter_index_meta_files(project_path, max_depth=max_depth)
         )
 
+    @staticmethod
+    def _nested_project_dirs(project_path: Path, projects: list[Path]) -> list[Path]:
+        """Return registered project roots nested below a project."""
+        return [
+            candidate
+            for candidate in projects
+            if candidate != project_path and candidate.is_relative_to(project_path)
+        ]
+
     def list_indexes(self, max_depth: int = DEFAULT_INDEX_SCAN_DEPTH):
         # Get all project directories with .leann
         global_registry = Path.home() / ".leann" / "projects.json"
@@ -987,11 +996,7 @@ Examples:
 
         # Exclude only registered projects nested below the current project.
         # Registered ancestors must not hide indexes owned by the current directory.
-        current_exclude_dirs = [
-            project_path
-            for project_path in other_projects
-            if project_path.is_relative_to(current_path)
-        ]
+        current_exclude_dirs = self._nested_project_dirs(current_path, valid_projects)
 
         print("📚 LEANN Indexes")
         print("=" * 50)
@@ -1024,8 +1029,9 @@ Examples:
             print("   " + "─" * 45)
 
             for project_path in other_projects:
+                nested_projects = self._nested_project_dirs(project_path, valid_projects)
                 project_indexes = self._discover_indexes_in_project(
-                    project_path, max_depth=max_depth
+                    project_path, exclude_dirs=nested_projects, max_depth=max_depth
                 )
                 if not project_indexes:
                     continue
@@ -1054,7 +1060,10 @@ Examples:
                         p, exclude_dirs=current_exclude_dirs, max_depth=max_depth
                     )
                 else:
-                    discovered = self._discover_indexes_in_project(p, max_depth=max_depth)
+                    nested_projects = self._nested_project_dirs(p, valid_projects)
+                    discovered = self._discover_indexes_in_project(
+                        p, exclude_dirs=nested_projects, max_depth=max_depth
+                    )
                 if len(discovered) > 0:
                     projects_count += 1
             print(f"📊 Total: {total_indexes} indexes across {projects_count} projects")

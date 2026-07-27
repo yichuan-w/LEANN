@@ -175,8 +175,10 @@ def test_registered_ancestor_does_not_hide_current_app_index(tmp_path, monkeypat
 
     LeannCLI().list_indexes()
 
-    current_section = capsys.readouterr().out.split("Other Projects", maxsplit=1)[0]
+    output = capsys.readouterr().out
+    current_section = output.split("Other Projects", maxsplit=1)[0]
     assert "current-app" in current_section
+    assert output.count("current-app") == 1
 
 
 def test_cli_format_index_discovery_is_not_limited_by_app_scan_depth(tmp_path):
