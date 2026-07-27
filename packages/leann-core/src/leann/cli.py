@@ -985,6 +985,14 @@ Examples:
             if project_path != current_path:
                 other_projects.append(project_path)
 
+        # Exclude only registered projects nested below the current project.
+        # Registered ancestors must not hide indexes owned by the current directory.
+        current_exclude_dirs = [
+            project_path
+            for project_path in other_projects
+            if project_path.is_relative_to(current_path)
+        ]
+
         print("📚 LEANN Indexes")
         print("=" * 50)
 
@@ -997,7 +1005,7 @@ Examples:
         print("   " + "─" * 45)
 
         current_indexes = self._discover_indexes_in_project(
-            current_path, exclude_dirs=other_projects, max_depth=max_depth
+            current_path, exclude_dirs=current_exclude_dirs, max_depth=max_depth
         )
         if current_indexes:
             for idx in current_indexes:
@@ -1043,7 +1051,7 @@ Examples:
             for p in valid_projects:
                 if p == current_path:
                     discovered = self._discover_indexes_in_project(
-                        p, exclude_dirs=other_projects, max_depth=max_depth
+                        p, exclude_dirs=current_exclude_dirs, max_depth=max_depth
                     )
                 else:
                     discovered = self._discover_indexes_in_project(p, max_depth=max_depth)

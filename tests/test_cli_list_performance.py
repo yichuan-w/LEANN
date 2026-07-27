@@ -159,6 +159,26 @@ def test_registered_app_project_respects_requested_max_depth(tmp_path, monkeypat
     assert "six" in output
 
 
+def test_registered_ancestor_does_not_hide_current_app_index(tmp_path, monkeypatch, capsys):
+    home = tmp_path / "home"
+    home.mkdir()
+    registered_ancestor = tmp_path / "registered-ancestor"
+    current = registered_ancestor / "current-project"
+    meta_file = current / "current-app" / "documents.leann.meta.json"
+    meta_file.parent.mkdir(parents=True)
+    meta_file.touch()
+    registry_file = home / ".leann" / "projects.json"
+    registry_file.parent.mkdir()
+    registry_file.write_text(json.dumps([str(registered_ancestor.resolve())]))
+    monkeypatch.setattr(registry.Path, "home", classmethod(lambda cls: home))
+    monkeypatch.chdir(current)
+
+    LeannCLI().list_indexes()
+
+    current_section = capsys.readouterr().out.split("Other Projects", maxsplit=1)[0]
+    assert "current-app" in current_section
+
+
 def test_cli_format_index_discovery_is_not_limited_by_app_scan_depth(tmp_path):
     index_dir = tmp_path / ".leann" / "indexes" / "sample"
     index_dir.mkdir(parents=True)
