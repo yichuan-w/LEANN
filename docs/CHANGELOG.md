@@ -41,18 +41,8 @@ fixes). Newest entries at the bottom.
   comparable recall (GPU latency stays ~flat while CPU grows linearly with nprobe).
 - Docs: `docs/flashlib_backend_guide.md` gains a `flashlib_ivf` section.
 
-## 2026-07-24: `leann-core` 0.3.8 — HNSW full-rebuild fallback corpus wipe (#386)
+## 2026-07-27: Bounded `leann list` index discovery
 
-- Fixed a bug where, on the HNSW backend, `leann build` / `leann watch` falling
-  back to a full rebuild (any modified or removed file, since HNSW only
-  supports add-only incremental updates) rebuilt the index from only the
-  changed files instead of the full corpus, silently dropping every untouched
-  file. Root cause: the fallback reused `all_texts` from the incremental path
-  (which intentionally loads only the delta) instead of reloading the full
-  corpus via `load_documents(docs_paths, ...)`.
-- This was fixed on `main` in commit `956beb5` (merged via #279) but never
-  reached PyPI — `leann-core` 0.3.7 was still affected. Bumped `leann-core` to
-  0.3.8 to ship the fix.
-- Added `tests/test_hnsw_rebuild_fallback.py`: regression test that builds an
-  HNSW index, modifies one file, and asserts untouched files are still present
-  in the rebuilt corpus.
+- Bound App-format metadata discovery to a configurable directory depth; `leann list` defaults to depth 5 and accepts `--max-depth` for deeper projects.
+- Prune common dependency, virtual-environment, cache, and system directories during discovery.
+- Preserve discovery of registered CLI-format and App-format projects without recursively scanning an entire home directory.
