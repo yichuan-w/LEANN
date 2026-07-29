@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leann-core"
-version = "0.3.7"
+version = "0.3.8"
 description = "Core API and plugin system for LEANN"
 readme = "README.md"
 requires-python = ">=3.10"

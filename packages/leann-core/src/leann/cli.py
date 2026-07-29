@@ -22,6 +22,8 @@ from .interactive_utils import create_cli_session
 from .registry import DEFAULT_INDEX_SCAN_DEPTH, iter_index_meta_files, register_project_directory
 from .settings import (
     resolve_anthropic_base_url,
+    resolve_atlascloud_api_key,
+    resolve_atlascloud_base_url,
     resolve_minimax_api_key,
     resolve_minimax_base_url,
     resolve_ollama_host,
@@ -633,7 +635,18 @@ Examples:
             "--llm",
             type=str,
             default="ollama",
-            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax", "novita"],
+            choices=[
+                "simulated",
+                "ollama",
+                "hf",
+                "openai",
+                "anthropic",
+                "minimax",
+                "novita",
+                "atlascloud",
+                "atlas-cloud",
+                "atlas",
+            ],
             help="LLM provider (default: ollama)",
         )
         ask_parser.add_argument(
@@ -683,7 +696,7 @@ Examples:
             "--api-key",
             type=str,
             default=None,
-            help="API key for cloud LLM providers (OpenAI, Anthropic)",
+            help="API key for cloud LLM providers",
         )
         ask_parser.add_argument(
             "--metadata-filters",
@@ -707,7 +720,18 @@ Examples:
             "--llm",
             type=str,
             default="ollama",
-            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax", "novita"],
+            choices=[
+                "simulated",
+                "ollama",
+                "hf",
+                "openai",
+                "anthropic",
+                "minimax",
+                "novita",
+                "atlascloud",
+                "atlas-cloud",
+                "atlas",
+            ],
             help="LLM provider (default: ollama)",
         )
         react_parser.add_argument(
@@ -738,7 +762,7 @@ Examples:
             "--api-key",
             type=str,
             default=None,
-            help="API key for cloud LLM providers (OpenAI, Anthropic)",
+            help="API key for cloud LLM providers",
         )
         react_parser.add_argument(
             "--serper-api-key",
@@ -3387,6 +3411,14 @@ Examples:
             resolved_api_key = resolve_minimax_api_key(args.api_key)
             if resolved_api_key:
                 llm_config["api_key"] = resolved_api_key
+        elif args.llm in {"atlascloud", "atlas-cloud", "atlas"}:
+            llm_config["type"] = "atlascloud"
+            if args.model == "qwen3:8b":
+                llm_config["model"] = "deepseek-ai/deepseek-v4-pro"
+            llm_config["base_url"] = resolve_atlascloud_base_url(args.api_base)
+            resolved_api_key = resolve_atlascloud_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
 
         # Parse --metadata-filters JSON string (mirrors `leann search`).
         # Run before constructing LeannChat so invalid filters fail fast without
@@ -3672,6 +3704,14 @@ Examples:
         elif args.llm == "minimax":
             llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
             resolved_api_key = resolve_minimax_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
+        elif args.llm in {"atlascloud", "atlas-cloud", "atlas"}:
+            llm_config["type"] = "atlascloud"
+            if args.model == "qwen3:8b":
+                llm_config["model"] = "deepseek-ai/deepseek-v4-pro"
+            llm_config["base_url"] = resolve_atlascloud_base_url(args.api_base)
+            resolved_api_key = resolve_atlascloud_api_key(args.api_key)
             if resolved_api_key:
                 llm_config["api_key"] = resolved_api_key
 
