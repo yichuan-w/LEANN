@@ -46,3 +46,23 @@ fixes). Newest entries at the bottom.
 - Bound App-format metadata discovery to a configurable directory depth; `leann list` defaults to depth 5 and accepts `--max-depth` for deeper projects.
 - Prune common dependency, virtual-environment, cache, and system directories during discovery.
 - Preserve discovery of registered CLI-format and App-format projects without recursively scanning an entire home directory.
+
+## 2026-07-29: CI build matrix — Python 3.14 wheels for macOS/Linux (#385)
+
+- `leann-backend-hnsw` and `leann-backend-diskann` 0.3.7 only shipped a `cp314`
+  wheel for `win_amd64` (the CI build matrix had a `windows-2022` / Python 3.14
+  row but no equivalent for macOS or Linux), and neither package set
+  `requires-python`. Resolvers on Python 3.14 (macOS/Linux) selected the
+  release anyway and then failed with a confusing "only has wheels for
+  `win_amd64`" error instead of a clear incompatibility message.
+- Extended `.github/workflows/build-reusable.yml`'s build matrix with Python
+  3.14 rows for `ubuntu-22.04`, `ubuntu-22.04-arm`, `macos-14`, `macos-15`, and
+  `macos-26`, matching the Windows coverage. `macos-15-intel` (x86_64) is
+  intentionally excluded, consistent with its existing Python 3.13 exclusion —
+  PyTorch (a `leann-core` dependency) publishes no `macosx x86_64` wheel for
+  either version.
+- A `requires-python` upper bound was considered instead but rejected: the
+  bound applies uniformly across platforms, so it would have also blocked the
+  already-working Windows `cp314` installs. Completing the wheel matrix is the
+  correct fix; the next 0.3.8 patch release will carry full `cp314` coverage
+  once CI confirms the new platforms build cleanly.

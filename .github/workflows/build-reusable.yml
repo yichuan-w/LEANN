@@ -83,6 +83,8 @@ jobs:
             python: '3.12'
           - os: ubuntu-22.04
             python: '3.13'
+          - os: ubuntu-22.04
+            python: '3.14'
           # ARM64 Linux builds
           - os: ubuntu-22.04-arm
             python: '3.10'
@@ -92,6 +94,8 @@ jobs:
             python: '3.12'
           - os: ubuntu-22.04-arm
             python: '3.13'
+          - os: ubuntu-22.04-arm
+            python: '3.14'
           - os: macos-14
             python: '3.10'
           - os: macos-14
@@ -100,6 +104,8 @@ jobs:
             python: '3.12'
           - os: macos-14
             python: '3.13'
+          - os: macos-14
+            python: '3.14'
           - os: macos-15
             python: '3.10'
           - os: macos-15
@@ -108,9 +114,12 @@ jobs:
             python: '3.12'
           - os: macos-15
             python: '3.13'
+          - os: macos-15
+            python: '3.14'
           # Intel Mac builds (x86_64) - replaces deprecated macos-13
-          # Note: Python 3.13 excluded - PyTorch has no wheels for macOS x86_64 + Python 3.13
-          # (PyTorch <=2.4.1 lacks cp313, PyTorch >=2.5.0 dropped Intel Mac support)
+          # Note: Python 3.13+ excluded - PyTorch has no wheels for macOS x86_64 + Python >=3.13
+          # (PyTorch <=2.4.1 lacks cp313, PyTorch >=2.5.0 dropped Intel Mac support;
+          # no macosx x86_64 cp314 wheel either as of torch 2.13.0)
           - os: macos-15-intel
             python: '3.10'
           - os: macos-15-intel
@@ -126,6 +135,8 @@ jobs:
             python: '3.12'
           - os: macos-26
             python: '3.13'
+          - os: macos-26
+            python: '3.14'
           # Windows validation (native HNSW + DiskANN build/install path)
           - os: windows-2022
             python: '3.11'
