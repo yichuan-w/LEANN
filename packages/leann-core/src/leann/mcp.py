@@ -21,9 +21,14 @@ def _leann_cmd() -> list[str]:
 def _run_leann(*args, timeout=120):
     """Run a leann CLI command and return (returncode, stdout, stderr)."""
     result = subprocess.run(
-        ["leann", *args],
+        [*_leann_cmd(), *args],
         capture_output=True,
         text=True,
+        # The leann CLI prints UTF-8 (emoji, CJK, ...). Decode explicitly:
+        # text=True alone falls back to the locale encoding (e.g. GBK on
+        # Chinese Windows) and crashes the subprocess reader thread.
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
     )
     return result.returncode, result.stdout, result.stderr
