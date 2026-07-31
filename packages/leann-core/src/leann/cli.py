@@ -175,6 +175,11 @@ def suppress_cpp_output(suppress: bool = True):
 def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
     """Extract text from PDF using PyMuPDF for better quality."""
     try:
+        if os.path.getsize(file_path) == 0:
+            # Empty file: nothing to extract, skip instead of letting
+            # fitz.EmptyFileError abort the whole build.
+            return ""
+
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
@@ -186,11 +191,18 @@ def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
     except ImportError:
         # Fallback to default reader
         return None
+    except Exception:
+        # Skip corrupted PDFs instead of aborting the whole build
+        return ""
 
 
 def extract_pdf_text_with_pdfplumber(file_path: str) -> str | None:
     """Extract text from PDF using pdfplumber for better quality."""
     try:
+        if os.path.getsize(file_path) == 0:
+            # Empty file: nothing to extract, skip instead of aborting the build.
+            return ""
+
         import pdfplumber
 
         text = ""
@@ -201,6 +213,9 @@ def extract_pdf_text_with_pdfplumber(file_path: str) -> str | None:
     except ImportError:
         # Fallback to default reader
         return None
+    except Exception:
+        # Skip corrupted PDFs instead of aborting the whole build
+        return ""
 
 
 class LeannCLI:
