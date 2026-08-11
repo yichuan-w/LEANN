@@ -730,21 +730,24 @@ jobs:
           # Use absolute paths: relative entries in LD_LIBRARY_PATH are ignored
           # by ld.so. PyPI mkl layout varies; discover with find.
           VENV_ABS="$(cd .venv && pwd)"
+          # FAISS/HNSW manylinux wheels NEEDED libmkl_* .so.2; PyPI mkl 2026 ships
+          # .so.3. Create soname-compat symlinks next to the real libs.
+          # Use a plain pipeline (container shell is sh, not bash).
+          find "$VENV_ABS" -type f -name 'libmkl_*.so.3' 2>/dev/null | while read -r so3; do
+            dir="$(dirname "$so3")"
+            base="$(basename "$so3")"
+            so2="${dir}/${base%.so.3}.so.2"
+            so0="${dir}/${base%.so.3}.so"
+            [ -e "$so2" ] || ln -sfn "$(basename "$so3")" "$so2"
+            [ -e "$so0" ] || ln -sfn "$(basename "$so3")" "$so0"
+          done
           MKL_LIB_DIRS="$(find "$VENV_ABS" -type f \( -name 'libmkl*.so*' -o -name 'libiomp5.so*' -o -name 'libiomp5md.so*' \) -printf '%h\n' 2>/dev/null | sort -u | paste -sd: -)"
           AUDIT_LIBS="$(find "$VENV_ABS" -type d \( -name 'leann_backend_hnsw.libs' -o -name 'leann_backend_diskann.libs' -o -name '*.libs' \) -printf '%p\n' 2>/dev/null | sort -u | paste -sd: -)"
           export LD_LIBRARY_PATH="${MKL_LIB_DIRS}${MKL_LIB_DIRS:+:}${AUDIT_LIBS}${AUDIT_LIBS:+:}${LD_LIBRARY_PATH}"
           echo "MKL_LIB_DIRS=$MKL_LIB_DIRS"
-          echo "AUDIT_LIBS=$AUDIT_LIBS"
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-          # Sanity: must resolve the soname FAISS was linked against
-          if ! find "$VENV_ABS" -name 'libmkl_intel_lp64.so*' | head -1 | grep -q .; then
-            echo "WARNING: libmkl_intel_lp64 not found under .venv after installing mkl"
-            find "$VENV_ABS" -iname '*mkl*' | head -50 || true
-          else
-            echo "Found: $(find "$VENV_ABS" -name 'libmkl_intel_lp64.so*' | head -3)"
-            ldconfig -p 2>/dev/null | grep mkl || true
-            ls -la "$(find "$VENV_ABS" -name 'libmkl_intel_lp64.so*' | head -1)" || true
-          fi
+          echo "MKL so.2 links: $(find "$VENV_ABS" -name 'libmkl_intel_lp64.so.2' 2>/dev/null | head -3)"
+          ls -la "$(find "$VENV_ABS" -name 'libmkl_intel_lp64.so*' | head -3)" 2>/dev/null || true
           python - <<'PY'
           import numpy as np
           import leann
