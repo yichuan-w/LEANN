@@ -727,18 +727,23 @@ jobs:
           source .venv/bin/activate || source .venv/Scripts/activate
           # Point the dynamic linker at MKL / OpenMP from the venv (and any
           # auditwheel .libs dirs shipped next to the extension).
-          # PyPI mkl layout varies by version; discover libs with find rather
-          # than hard-coded site-packages subpaths.
-          MKL_LIB_DIRS="$(find .venv -type f \( -name 'libmkl*.so*' -o -name 'libiomp5.so*' -o -name 'libiomp5md.so*' \) -printf '%h\n' 2>/dev/null | sort -u | paste -sd: -)"
-          AUDIT_LIBS="$(find .venv -type d \( -name 'leann_backend_hnsw.libs' -o -name 'leann_backend_diskann.libs' -o -name '*.libs' \) -printf '%p\n' 2>/dev/null | sort -u | paste -sd: -)"
+          # Use absolute paths: relative entries in LD_LIBRARY_PATH are ignored
+          # by ld.so. PyPI mkl layout varies; discover with find.
+          VENV_ABS="$(cd .venv && pwd)"
+          MKL_LIB_DIRS="$(find "$VENV_ABS" -type f \( -name 'libmkl*.so*' -o -name 'libiomp5.so*' -o -name 'libiomp5md.so*' \) -printf '%h\n' 2>/dev/null | sort -u | paste -sd: -)"
+          AUDIT_LIBS="$(find "$VENV_ABS" -type d \( -name 'leann_backend_hnsw.libs' -o -name 'leann_backend_diskann.libs' -o -name '*.libs' \) -printf '%p\n' 2>/dev/null | sort -u | paste -sd: -)"
           export LD_LIBRARY_PATH="${MKL_LIB_DIRS}${MKL_LIB_DIRS:+:}${AUDIT_LIBS}${AUDIT_LIBS:+:}${LD_LIBRARY_PATH}"
           echo "MKL_LIB_DIRS=$MKL_LIB_DIRS"
           echo "AUDIT_LIBS=$AUDIT_LIBS"
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
           # Sanity: must resolve the soname FAISS was linked against
-          if ! find .venv -name 'libmkl_intel_lp64.so*' | head -1 | grep -q .; then
+          if ! find "$VENV_ABS" -name 'libmkl_intel_lp64.so*' | head -1 | grep -q .; then
             echo "WARNING: libmkl_intel_lp64 not found under .venv after installing mkl"
-            find .venv -iname '*mkl*' | head -50 || true
+            find "$VENV_ABS" -iname '*mkl*' | head -50 || true
+          else
+            echo "Found: $(find "$VENV_ABS" -name 'libmkl_intel_lp64.so*' | head -3)"
+            ldconfig -p 2>/dev/null | grep mkl || true
+            ls -la "$(find "$VENV_ABS" -name 'libmkl_intel_lp64.so*' | head -1)" || true
           fi
           python - <<'PY'
           import numpy as np
