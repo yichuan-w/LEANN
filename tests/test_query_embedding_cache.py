@@ -1,7 +1,6 @@
 """Unit tests for QueryEmbeddingCache (no native backends required)."""
 
 import numpy as np
-
 from leann.searcher_base import QueryEmbeddingCache
 
 
