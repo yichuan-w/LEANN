@@ -711,6 +711,10 @@ jobs:
           retry 5 uv pip install --find-links wheelhouse leann-backend-diskann
           retry 5 uv pip install --find-links wheelhouse leann-backend-ivf
           retry 5 uv pip install --find-links wheelhouse leann
+          # HNSW/FAISS manylinux wheels are linked against Intel MKL; auditwheel
+          # does not vendor proprietary MKL, so Arch needs a runtime. PyPI mkl
+          # ships the shared libs (libmkl_intel_lp64.so.2 etc.).
+          retry 5 uv pip install mkl intel-openmp
 
       - name: Import & tiny runtime check
         env:
@@ -718,6 +722,26 @@ jobs:
           MKL_NUM_THREADS: 1
         run: |
           source .venv/bin/activate || source .venv/Scripts/activate
+          # Point the dynamic linker at MKL / OpenMP from the venv (and any
+          # auditwheel .libs dirs shipped next to the extension).
+          export LD_LIBRARY_PATH="$(python -c '
+          import os, site
+          from pathlib import Path
+          paths = []
+          for base in list(site.getsitepackages() or []) + [site.getusersitepackages() or ""]:
+              if not base:
+                  continue
+              root = Path(base)
+              for pattern in ("mkl/lib", "**/libmkl_*.so*", "**/libiomp5.so*", "**/leann_backend_hnsw.libs", "**/leann_backend_diskann.libs"):
+                  for hit in root.glob(pattern):
+                      paths.append(str(hit if hit.is_dir() else hit.parent))
+          seen, out = set(), []
+          for p in paths:
+              if p not in seen and os.path.isdir(p):
+                  seen.add(p); out.append(p)
+          print(":".join(out))
+          ')${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
           python - <<'PY'
           import numpy as np
           import leann
