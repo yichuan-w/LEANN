@@ -27,13 +27,23 @@ class QueryEmbeddingCache:
         return hashlib.sha256(key_str.encode()).hexdigest()
 
     def get(self, query: str, query_template: Optional[str] = None) -> Optional[np.ndarray]:
-        """Get cached embedding if exists."""
+        """Get cached embedding if exists.
+
+        Returns a copy of the stored vector with shape (D,).
+        Callers that need batch shape should reshape.
+        """
         key = self._hash_query(query, query_template)
-        return self.cache.get(key)
+        cached = self.cache.get(key)
+        if cached is None:
+            return None
+        return cached.copy()
 
     def put(self, query: str, embedding: np.ndarray, query_template: Optional[str] = None):
-        """Cache embedding."""
+        """Cache embedding (stores a 1-D vector of shape (D,))."""
         key = self._hash_query(query, query_template)
+
+        # Normalize to 1-D so cache hits always return a consistent shape
+        vec = np.asarray(embedding, dtype=np.float32).reshape(-1)
 
         # Simple LRU: remove oldest if cache is full
         if len(self.cache) >= self.max_size and key not in self.cache:
@@ -41,7 +51,7 @@ class QueryEmbeddingCache:
             first_key = next(iter(self.cache))
             del self.cache[first_key]
 
-        self.cache[key] = embedding.copy()
+        self.cache[key] = vec.copy()
 
     def clear(self):
         """Clear cache."""
@@ -72,7 +82,7 @@ class ReusableZMQConnection:
         self.socket = self.context.socket(zmq.REQ)
         self.socket.setsockopt(zmq.RCVTIMEO, 30000)  # 30 second timeout
         self.socket.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-        self.socket.connect(f"tcp://localhost:{port}")
+        self.socket.connect(f"tcp://127.0.0.1:{port}")
         self.port = port
 
     def send_recv(self, data: list) -> list:
@@ -93,26 +103,31 @@ class ReusableZMQConnection:
         return response
 
     def close(self):
-        """Close ZMQ connection."""
-        if self.socket is not None:
-            try:
-                self.socket.close()
-            except Exception:
-                pass
-            self.socket = None
-
-        if self.context is not None:
-            try:
-                self.context.term()
-            except Exception:
-                pass
-            self.context = None
-
+        """Close ZMQ connection safely (tolerates partial/torn-down state)."""
+        socket = self.socket
+        context = self.context
+        self.socket = None
+        self.context = None
         self.port = None
+
+        if socket is not None:
+            try:
+                socket.close()
+            except Exception:
+                pass
+
+        if context is not None:
+            try:
+                context.term()
+            except Exception:
+                pass
 
     def __del__(self):
         """Cleanup on deletion."""
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 class BaseSearcher(LeannBackendSearcherInterface, ABC):
@@ -213,10 +228,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         if not server_started:
             raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
 
-        # Update ZMQ connection if port changed
-        if self._zmq_port != actual_port:
-            self.zmq_connection.connect(actual_port)
-            self._zmq_port = actual_port
+        # Remember port so the reusable ZMQ client can reconnect only when needed.
+        # Do not connect here — the server may still be warming; connect on first send.
+        self._zmq_port = actual_port
 
         return actual_port
 
@@ -237,15 +251,16 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             query_template: Optional prompt template to prepend to query
 
         Returns:
-            Query embedding as numpy array
+            Query embedding as numpy array with shape (1, D)
         """
         # Store original query for caching (before template is applied)
         original_query = query
 
-        # Check cache first (before applying template)
+        # Check cache first (before applying template). Cache stores (D,);
+        # always return (1, D) to match uncached paths.
         cached = self.query_cache.get(original_query, query_template)
         if cached is not None:
-            return cached
+            return np.asarray(cached, dtype=np.float32).reshape(1, -1)
 
         # Apply query template BEFORE any computation path
         # This ensures template is applied consistently for both server and fallback paths
@@ -296,8 +311,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
     def _compute_embedding_via_server(self, chunks: list, zmq_port: int) -> np.ndarray:
         """Compute embeddings using the ZMQ embedding server with connection reuse."""
-        # Ensure connection is established
+        # Ensure connection is established (lazy — first request only / port change)
         self.zmq_connection.connect(zmq_port)
+        self._zmq_port = zmq_port
 
         try:
             # Send request and get response using reusable connection
@@ -310,6 +326,12 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 raise RuntimeError("Invalid response from embedding server")
 
         except Exception as e:
+            # Drop broken connection so the next call reconnects cleanly
+            try:
+                self.zmq_connection.close()
+            except Exception:
+                pass
+            self._zmq_port = None
             raise RuntimeError(f"Failed to compute embeddings via server: {e}")
 
     @abstractmethod
