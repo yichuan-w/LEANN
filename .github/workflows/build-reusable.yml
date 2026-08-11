@@ -662,8 +662,10 @@ jobs:
           # Initialize pacman keyring to avoid "no secret key available" error
           pacman-key --init
           pacman -Syu --noconfirm
-          # Install build essentials (uv will manage Python version)
-          pacman -S --noconfirm gcc git zlib openssl
+          # Install build essentials (uv will manage Python version).
+          # zeromq: FAISS/HNSW extension is linked against libzmq.so.5; manylinux
+          # wheels may not ship it, so Arch smoke needs the system package.
+          pacman -S --noconfirm gcc git zlib openssl zeromq
 
       - name: Download ALL wheel artifacts from this run
         uses: actions/download-artifact@v5
