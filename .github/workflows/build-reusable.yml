@@ -652,6 +652,9 @@ jobs:
   arch-smoke:
     name: Arch Linux smoke test (install & import)
     needs: build
+    # Run even if some matrix cells flake (e.g. macOS submodule SSL), so long as
+    # the workflow was not cancelled — we only need manylinux wheels to exist.
+    if: ${{ !cancelled() && needs.build.result != 'cancelled' }}
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
