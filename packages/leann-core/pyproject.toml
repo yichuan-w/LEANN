@@ -45,10 +45,10 @@ dependencies = [
 
 [project.optional-dependencies]
 litellm = [
-    # Unified gateway to 100+ LLM providers. Pinned below 2.0 to avoid a
-    # future major-version break; drop_params/reasoning_effort are stable
-    # from 1.60 onward.
-    "litellm>=1.60,<2.0",
+    # Unified gateway to 100+ LLM providers. Floor at 1.85 (recent stable with
+    # supports_reasoning/drop_params); capped below 2.0 to avoid a future
+    # major-version break.
+    "litellm>=1.85.0,<2.0",
 ]
 cpu = [
     "torch==2.2.2; platform_system == 'Linux' and python_version < '3.13'",
