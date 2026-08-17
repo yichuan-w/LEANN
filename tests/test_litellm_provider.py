@@ -11,6 +11,7 @@ imports cleanly even when the optional dependency isn't present.
 import os
 import sys
 import types
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -31,7 +32,7 @@ if "leann" not in sys.modules:
 # Install a fake `litellm` module so `import litellm` succeeds even when the
 # optional dependency isn't installed. Real installs are left untouched.
 if "litellm" not in sys.modules:
-    _fake_litellm = types.ModuleType("litellm")
+    _fake_litellm: Any = types.ModuleType("litellm")
     _fake_litellm.completion = MagicMock(name="litellm.completion")
     _fake_litellm.supports_reasoning = MagicMock(name="litellm.supports_reasoning")
     sys.modules["litellm"] = _fake_litellm
