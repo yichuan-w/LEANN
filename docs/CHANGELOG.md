@@ -66,3 +66,23 @@ fixes). Newest entries at the bottom.
   already-working Windows `cp314` installs. Completing the wheel matrix is the
   correct fix; the next 0.3.8 patch release will carry full `cp314` coverage
   once CI confirms the new platforms build cleanly.
+
+## 2026-08-19: Multi-invocation incremental builds (`--sync-key`, `changes`, `verify`) + review hardening
+
+- `leann build --sync-key <key>`: stable snapshot identity shared across invocations with
+  different `--docs` lists (single keyed Merkle snapshot instead of per-root snapshots).
+  Mismatched keys on a keyed index are rejected unless `--force` rekeys.
+- New `leann changes` subcommand: non-mutating JSON report of pending added/modified/removed
+  files vs the stored snapshot. Errors (exit 1) on a missing index, empty sync scope, wrong
+  sync key, or corrupt snapshot instead of reporting a false clean delta.
+- New `leann verify` subcommand: cross-artifact integrity check (meta.json, passages.jsonl,
+  passages.idx offsets, IVF id map inversion, FAISS vector count).
+- Safely-empty incremental deltas (zero new chunks, nothing modified/removed) now commit the
+  snapshot so re-runs report "up to date" — but only when no document failed to load; a
+  swallowed loader failure aborts the build without committing, so the failed files stay pending.
+- Corrupt sync snapshots and unreadable `sync_roots.json` now fail loud on build (recover
+  with `--force`) instead of silently degrading to full-rediff or unkeyed identity.
+- A transiently unreadable file keeps its previous hash instead of being classified as
+  removed (which deleted its chunks from the index).
+- `LEANN_NO_REGISTER=1` env switch skips project-directory registration (for tests/CI).
+

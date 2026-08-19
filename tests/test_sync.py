@@ -2,8 +2,10 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from unittest.mock import Mock
 
+import leann.sync as sync_module
 from leann.sync import FileSynchronizer, MerkleTree, hash_data
 
 
@@ -153,3 +155,44 @@ class TestFileSynchronizer(unittest.TestCase):
             fs2 = FileSynchronizer(root_dir=str(docs), snapshot_path=snapshot)
             added, removed, modified = fs2.detect_changes()
             assert not added and not removed and not modified
+
+
+class TestUnreadableFileHandling(unittest.TestCase):
+    def test_unreadable_existing_file_keeps_previous_hash(self):
+        # A transiently unreadable file must not be classified as removed
+        # (which would delete its chunks from the index).
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "file.txt"
+            file_path.write_text("hello", encoding="utf-8")
+            fs = FileSynchronizer(root_dir=temp_dir, auto_load=False)
+            fs.tree = fs.build_merkle_tree(fs.generate_file_hashes())
+
+            def broken_hash(path: Path) -> str:
+                raise OSError("permission denied")
+
+            with mock.patch.object(sync_module, "_hash_file_bytes", broken_hash):
+                added, removed, modified = fs.detect_changes()
+
+            assert removed == []
+            assert modified == []
+            assert added == []
+
+
+class TestWalkErrorHandling(unittest.TestCase):
+    def test_unreadable_subtree_raises_instead_of_reporting_removals(self):
+        if os.geteuid() == 0:
+            self.skipTest("permission checks are bypassed as root")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            sub = root / "sub"
+            sub.mkdir()
+            (sub / "file.txt").write_text("hello", encoding="utf-8")
+            fs = FileSynchronizer(root_dir=temp_dir, auto_load=False)
+            fs.tree = fs.build_merkle_tree(fs.generate_file_hashes())
+
+            sub.chmod(0o000)
+            try:
+                with self.assertRaises(OSError):
+                    fs.detect_changes()
+            finally:
+                sub.chmod(0o755)

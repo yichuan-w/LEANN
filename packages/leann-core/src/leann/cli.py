@@ -30,7 +30,13 @@ from .settings import (
     resolve_openai_api_key,
     resolve_openai_base_url,
 )
-from .sync import DEFAULT_INDEX_EXTENSIONS, FileSynchronizer, parse_include_extensions
+from .sync import (
+    DEFAULT_INDEX_EXTENSIONS,
+    FileSynchronizer,
+    SnapshotCorruptError,
+    _iter_directory_files,
+    parse_include_extensions,
+)
 
 
 def _non_negative_int(value: str) -> int:
@@ -222,7 +228,7 @@ class LeannCLI:
     def __init__(self):
         # Always use project-local .leann directory (like .git)
         self.indexes_dir = Path.cwd() / ".leann" / "indexes"
-        self.indexes_dir.mkdir(parents=True, exist_ok=True)
+        self._load_errors = 0
 
         # Default parser for documents
         self.node_parser = SentenceSplitter(
@@ -361,6 +367,12 @@ Examples:
             "-f",
             action="store_true",
             help="Force full rebuild of existing index (without this, build does incremental update: add new files only)",
+        )
+        build_parser.add_argument(
+            "--sync-key",
+            type=str,
+            default=None,
+            help="Stable identity key for change tracking: one global snapshot keyed by this value, independent of the exact --docs invocation",
         )
         build_parser.add_argument(
             "--graph-degree", type=int, default=32, help="Graph degree (default: 32)"
@@ -895,6 +907,33 @@ Examples:
         remove_parser.add_argument(
             "--force", "-f", action="store_true", help="Force removal without confirmation"
         )
+
+        # Changes command (non-mutating diff vs stored snapshot)
+        changes_parser = subparsers.add_parser(
+            "changes", help="Show pending file changes vs the stored index snapshot"
+        )
+        changes_parser.add_argument("index_name", help="Index name")
+        changes_parser.add_argument(
+            "--docs",
+            type=str,
+            nargs="+",
+            default=None,
+            help="Scope to diff (default: stored sync_roots.json scope)",
+        )
+        changes_parser.add_argument(
+            "--sync-key", type=str, default=None, help="Sync key (default: stored key)"
+        )
+        changes_parser.add_argument(
+            "--file-types", type=str, default=None, help="Comma-separated extensions filter"
+        )
+        changes_parser.add_argument(
+            "--include-hidden", action="store_true", help="Include hidden files"
+        )
+
+        verify_parser = subparsers.add_parser(
+            "verify", help="Verify cross-artifact integrity of an index"
+        )
+        verify_parser.add_argument("index_name", help="Index name")
 
         # Serve command (HTTP API server)
         serve_parser = subparsers.add_parser(
@@ -1555,6 +1594,7 @@ Examples:
         include_hidden: bool = False,
         args: Optional[dict[str, Any]] = None,
     ):
+        self._load_errors = 0
         # Handle both single path (string) and multiple paths (list) for backward compatibility
         if isinstance(docs_paths, str):
             docs_paths = [docs_paths]
@@ -1574,6 +1614,7 @@ Examples:
                 directories.append(str(path_obj))
             else:
                 print(f"⚠️  Warning: Path '{path}' does not exist, skipping...")
+                self._load_errors += 1
                 continue
 
         # Print summary of what we're processing
@@ -1641,9 +1682,11 @@ Examples:
                         )
                     except Exception as e:
                         print(f"    ❌ Warning: Could not load files from {parent_dir}: {e}")
+                        self._load_errors += 1
 
             except Exception as e:
                 print(f"❌ Error processing individual files: {e}")
+                self._load_errors += 1
 
         # Define file extensions to process
         if custom_file_types:
@@ -1719,6 +1762,7 @@ Examples:
                             documents.extend(default_docs)
                         except Exception as e:
                             print(f"Warning: Could not process {file_path}: {e}")
+                            self._load_errors += 1
 
             # Load other file types with default reader
             # Exclude PDFs from code_extensions if they were already processed separately
@@ -2006,34 +2050,73 @@ Examples:
         explicit_files: list[str],
         include_extensions: list[str],
         include_hidden: bool = False,
+        sync_key: Optional[str] = None,
+        strict: bool = False,
+        reset_corrupt: bool = False,
     ) -> list[FileSynchronizer]:
         """Create FileSynchronizers with snapshots stored in the index dir. Shared by build and watch."""
+
+        def _init(**kw) -> FileSynchronizer:
+            try:
+                return FileSynchronizer(**kw)
+            except SnapshotCorruptError:
+                if not reset_corrupt:
+                    raise
+                Path(kw["snapshot_path"]).unlink(missing_ok=True)
+                return FileSynchronizer(**kw)
+
+        if sync_key:
+            manifest = list(explicit_files)
+            for root in directories:
+                manifest.extend(_iter_directory_files(root, include_extensions, include_hidden))
+            tag = hashlib.sha256(sync_key.encode()).hexdigest()[:12]
+            # Keyed path fails loud (SnapshotCorruptError propagates) — no warn-and-skip.
+            return [
+                _init(
+                    explicit_files=sorted(set(manifest)),
+                    include_extensions=include_extensions,
+                    include_hidden=include_hidden,
+                    snapshot_path=str(index_dir / f"sync_key_{tag}.pickle"),
+                )
+            ]
         synchronizers: list[FileSynchronizer] = []
         for root in directories:
             tag = hashlib.sha256(root.encode()).hexdigest()[:12]
             snapshot_path = str(index_dir / f"sync_{tag}.pickle")
             try:
-                fs = FileSynchronizer(
+                fs = _init(
                     root_dir=root,
                     include_extensions=include_extensions,
                     include_hidden=include_hidden,
                     snapshot_path=snapshot_path,
                 )
                 synchronizers.append(fs)
+            except SnapshotCorruptError as exc:
+                raise SnapshotCorruptError(
+                    f"{exc}. Re-run with --force to reset the snapshot."
+                ) from exc
             except Exception as exc:
+                if strict:
+                    raise
                 print(f"Warning: Failed to init synchronizer for {root}: {exc}")
         if explicit_files:
             tag = hashlib.sha256("|".join(explicit_files).encode()).hexdigest()[:12]
             snapshot_path = str(index_dir / f"sync_files_{tag}.pickle")
             try:
-                fs = FileSynchronizer(
+                fs = _init(
                     explicit_files=explicit_files,
                     include_extensions=include_extensions,
                     include_hidden=include_hidden,
                     snapshot_path=snapshot_path,
                 )
                 synchronizers.append(fs)
+            except SnapshotCorruptError as exc:
+                raise SnapshotCorruptError(
+                    f"{exc}. Re-run with --force to reset the snapshot."
+                ) from exc
             except Exception as exc:
+                if strict:
+                    raise
                 print(f"Warning: Failed to init synchronizer for explicit files: {exc}")
         return synchronizers
 
@@ -2043,12 +2126,20 @@ Examples:
         index_dir: Path,
         file_types: Optional[str] = None,
         include_hidden: bool = False,
+        sync_key: Optional[str] = None,
+        reset_corrupt: bool = False,
     ) -> list[FileSynchronizer]:
         """Create FileSynchronizers for build from docs_paths."""
         directories, files = self._resolve_sync_scope(docs_paths)
         include_extensions = self._parse_file_types(file_types)
         return self._create_synchronizers(
-            index_dir, directories, files, include_extensions, include_hidden
+            index_dir,
+            directories,
+            files,
+            include_extensions,
+            include_hidden,
+            sync_key=sync_key,
+            reset_corrupt=reset_corrupt,
         )
 
     def _detect_build_changes(
@@ -2329,6 +2420,7 @@ Examples:
         include_extensions: list[str],
         include_hidden: bool,
         build_config: Optional[dict[str, Any]] = None,
+        sync_key: Optional[str] = None,
     ) -> None:
         sync_config_path = index_dir / "sync_roots.json"
         config = {
@@ -2338,10 +2430,14 @@ Examples:
             "include_extensions": include_extensions,
             "ignore_patterns": self._sync_ignore_patterns(include_hidden),
         }
+        if sync_key:
+            config["sync_key"] = sync_key
         if build_config is not None:
             config["build_config"] = build_config
-        with open(sync_config_path, "w", encoding="utf-8") as f:
+        tmp_path = sync_config_path.with_suffix(sync_config_path.suffix + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
+        os.replace(tmp_path, sync_config_path)
 
     def _write_sync_config_for_docs(
         self,
@@ -2358,6 +2454,7 @@ Examples:
             self._parse_file_types(args.file_types),
             args.include_hidden,
             build_config,
+            sync_key=getattr(args, "sync_key", None),
         )
 
     def _load_sync_scope(self, index_dir: Path) -> tuple[list[str], list[str], list[str], bool]:
@@ -2370,11 +2467,28 @@ Examples:
                 config = json.load(f)
         except (json.JSONDecodeError, OSError):
             return [], [], list(DEFAULT_INDEX_EXTENSIONS), False
+        if not isinstance(config, dict):
+            return [], [], list(DEFAULT_INDEX_EXTENSIONS), False
         directories = config.get("directories") or config.get("roots") or []
         files = config.get("files") or []
         include_extensions = config.get("include_extensions") or list(DEFAULT_INDEX_EXTENSIONS)
         include_hidden = config.get("ignore_patterns") is None
         return directories, files, include_extensions, include_hidden
+
+    def _load_stored_sync_key(self, index_dir: Path) -> Optional[str]:
+        sync_config_path = index_dir / "sync_roots.json"
+        if not sync_config_path.exists():
+            return None
+        try:
+            with open(sync_config_path, encoding="utf-8") as f:
+                config = json.load(f)
+            if not isinstance(config, dict):
+                raise json.JSONDecodeError("not a JSON object", "", 0)
+            return config.get("sync_key")
+        except (json.JSONDecodeError, OSError) as exc:
+            # Treating an unreadable config as "unkeyed" would silently bypass the
+            # sync-key mismatch guard and rekey the snapshot identity.
+            raise ValueError(f"sync_roots.json unreadable at {sync_config_path}: {exc}") from exc
 
     def _load_sync_roots(self, index_dir: Path) -> list[str]:
         """Load directory + explicit file paths for chunk ID lookup."""
@@ -2517,11 +2631,31 @@ Examples:
         )
 
         # Detect changes first so we can skip load_documents for remove-only
+        try:
+            stored_key = self._load_stored_sync_key(index_dir)
+        except ValueError:
+            if not args.force:
+                raise
+            stored_key = None  # --force rewrites sync_roots.json anyway
+        requested_key = getattr(args, "sync_key", None)
+        if requested_key is None:
+            args.sync_key = stored_key
+        elif stored_key is not None and requested_key != stored_key and not args.force:
+            raise ValueError(
+                f"Index '{index_name}' is keyed with sync key '{stored_key}'; "
+                f"got '{requested_key}'. Use --force to rekey."
+            )
         index_dir.mkdir(parents=True, exist_ok=True)
         synchronizers = self._build_synchronizers(
-            docs_paths, index_dir, file_types=args.file_types, include_hidden=args.include_hidden
+            docs_paths,
+            index_dir,
+            file_types=args.file_types,
+            include_hidden=args.include_hidden,
+            sync_key=args.sync_key,
+            reset_corrupt=args.force,
         )
 
+        all_texts: list[dict] | None = None
         if index_dir.exists() and not args.force and synchronizers:
             meta_path = index_dir / "documents.leann.meta.json"
             new_paths, removed_paths, modified_paths = self._detect_build_changes(synchronizers)
@@ -2606,9 +2740,19 @@ Examples:
                     include_hidden=args.include_hidden,
                     args=args,
                 )
+                if self._load_errors:
+                    # Proceeding would mutate the index (IVF removes old chunks before
+                    # re-insert) and commit the failed files as indexed.
+                    raise RuntimeError(
+                        f"{self._load_errors} path(s) failed to load; incremental update "
+                        f"aborted before modifying the index. Fix the inputs and re-run."
+                    )
                 # Proceed even when all_texts is empty (e.g. file emptied): we still need to remove old chunks
-                if not all_texts and not (can_ivf_update and (modified_paths or removed_paths)):
+                if not all_texts and not (modified_paths or removed_paths):
                     print("No documents found")
+                    self._commit_synchronizers(synchronizers)
+                    self._write_sync_config_for_docs(index_dir, docs_paths, args, build_config)
+                    self.register_project_dir()
                     return
 
                 if can_ivf_update and (new_paths or modified_paths or removed_paths):
@@ -2650,9 +2794,7 @@ Examples:
                     )
 
         # Full rebuild: load documents if not already loaded (first build or force)
-        try:
-            _ = all_texts
-        except NameError:
+        if all_texts is None:
             all_texts = self.load_documents(
                 docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
             )
@@ -2692,6 +2834,7 @@ Examples:
                     target_index_dir,
                     file_types=args.file_types,
                     include_hidden=args.include_hidden,
+                    sync_key=args.sync_key,
                 )
                 if publish_from_staging
                 else synchronizers
@@ -2725,14 +2868,274 @@ Examples:
         if not directories and not files:
             return set(), set(), set()
 
-        synchronizers = self._create_synchronizers(
-            index_dir,
-            directories,
-            files,
-            include_extensions,
-            include_hidden,
+        # Watch must survive transient failures (corrupt config/snapshot, unreadable
+        # subtree) that build/changes fail loud on: skip the tick, keep watching.
+        try:
+            synchronizers = self._create_synchronizers(
+                index_dir,
+                directories,
+                files,
+                include_extensions,
+                include_hidden,
+                sync_key=self._load_stored_sync_key(index_dir),
+            )
+            return self._detect_build_changes(synchronizers)
+        except (ValueError, SnapshotCorruptError, OSError) as exc:
+            print(f"Warning: watch tick skipped: {exc}")
+            return set(), set(), set()
+
+    def changes_command(self, args) -> int:
+        """Report pending file changes vs the stored snapshot without mutating anything."""
+        index_dir = self.indexes_dir / args.index_name
+        if not index_dir.exists():
+            print(f"Error: index '{args.index_name}' not found at {index_dir}", file=sys.stderr)
+            return 1
+        if args.docs:
+            directories, files = self._resolve_sync_scope(args.docs)
+            include_extensions = self._parse_file_types(args.file_types)
+            include_hidden = args.include_hidden
+        else:
+            directories, files, include_extensions, include_hidden = self._load_sync_scope(
+                index_dir
+            )
+            if not directories and not files:
+                print(
+                    f"Error: no sync scope recorded for index '{args.index_name}' "
+                    f"(missing or unreadable sync_roots.json); pass --docs",
+                    file=sys.stderr,
+                )
+                return 1
+        try:
+            stored_key = self._load_stored_sync_key(index_dir)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        if args.sync_key and args.sync_key != stored_key:
+            # stored_key None included: a key against an unkeyed index would diff
+            # a never-written snapshot and report every file as added.
+            print(
+                f"Error: index '{args.index_name}' is keyed with sync key "
+                f"'{stored_key}'; got '{args.sync_key}'.",
+                file=sys.stderr,
+            )
+            return 1
+        sync_key = args.sync_key or stored_key
+        try:
+            synchronizers = self._create_synchronizers(
+                index_dir,
+                directories,
+                files,
+                include_extensions,
+                include_hidden,
+                sync_key=sync_key,
+                strict=True,
+            )
+            added, removed, modified = self._detect_build_changes(synchronizers)
+        except SnapshotCorruptError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(
+            json.dumps(
+                {
+                    "added": sorted(added),
+                    "modified": sorted(modified),
+                    "removed": sorted(removed),
+                }
+            )
         )
-        return self._detect_build_changes(synchronizers)
+        return 0
+
+    def verify_command(self, args) -> int:
+        """Verify cross-artifact integrity of an index; print findings, return 0 if healthy."""
+        prefix = self.indexes_dir / args.index_name / "documents.leann"
+        findings: list[str] = []
+
+        meta = None
+        try:
+            meta = json.loads(Path(str(prefix) + ".meta.json").read_text(encoding="utf-8"))
+        except Exception as exc:
+            findings.append(f"meta.json unreadable: {exc}")
+
+        jsonl_path = Path(str(prefix) + ".passages.jsonl")
+        jsonl_ids: list[str] = []
+        try:
+            with open(jsonl_path, encoding="utf-8") as f:
+                for lineno, line in enumerate(f, 1):
+                    try:
+                        pid = json.loads(line)["id"]
+                    except Exception as exc:
+                        findings.append(f"passages.jsonl line {lineno} unparseable: {exc}")
+                        continue
+                    jsonl_ids.append(pid)
+        except Exception as exc:
+            findings.append(f"passages.jsonl unreadable: {exc}")
+        if len(set(jsonl_ids)) != len(jsonl_ids):
+            findings.append("passages.jsonl contains duplicate ids")
+
+        offsets: dict[str, int] = {}
+        offsets_ok = False
+        try:
+            with open(str(prefix) + ".passages.idx", "rb") as f:
+                loaded_offsets = pickle.load(f)
+            if isinstance(loaded_offsets, dict):
+                offsets = loaded_offsets
+                offsets_ok = True
+            else:
+                findings.append(f"passages.idx is not a dict (got {type(loaded_offsets).__name__})")
+        except Exception as exc:
+            findings.append(f"passages.idx unreadable: {exc}")
+
+        if offsets_ok and (offsets or jsonl_ids):
+            if len(offsets) != len(jsonl_ids):
+                findings.append(
+                    f"passages.idx has {len(offsets)} entries but "
+                    f"passages.jsonl has {len(jsonl_ids)} lines"
+                )
+            if set(offsets) != set(jsonl_ids):
+                findings.append("passages.idx keys do not match passages.jsonl ids")
+            if jsonl_path.exists():
+                with open(jsonl_path, "rb") as f:
+                    for pid, offset in offsets.items():
+                        try:
+                            f.seek(offset)
+                            record = json.loads(f.readline().decode("utf-8"))
+                            if record["id"] != pid:
+                                findings.append(
+                                    f"offset for id {pid!r} points at id {record['id']!r}"
+                                )
+                        except Exception as exc:
+                            findings.append(f"offset for id {pid!r} invalid: {exc}")
+
+        if meta and meta.get("backend_name") == "ivf":
+            findings.extend(self._verify_ivf(prefix, offsets if offsets_ok else None))
+
+        findings.extend(self._verify_snapshots(prefix.parent))
+
+        for finding in findings:
+            print(finding)
+        return 1 if findings else 0
+
+    def _verify_snapshots(self, index_dir: Path) -> list[str]:
+        """Check the sync snapshots the recorded scope implies exist and unpickle."""
+        findings: list[str] = []
+        if not (index_dir / "sync_roots.json").exists():
+            return findings
+        try:
+            stored_key = self._load_stored_sync_key(index_dir)
+        except ValueError as exc:
+            return [str(exc)]
+
+        snapshot_paths: list[Path] = []
+        if stored_key:
+            tag = hashlib.sha256(stored_key.encode()).hexdigest()[:12]
+            snapshot_paths.append(index_dir / f"sync_key_{tag}.pickle")
+        else:
+            directories, files, _, _ = self._load_sync_scope(index_dir)
+            for root in directories:
+                tag = hashlib.sha256(root.encode()).hexdigest()[:12]
+                snapshot_paths.append(index_dir / f"sync_{tag}.pickle")
+            if files:
+                tag = hashlib.sha256("|".join(files).encode()).hexdigest()[:12]
+                snapshot_paths.append(index_dir / f"sync_files_{tag}.pickle")
+
+        for snapshot_path in snapshot_paths:
+            if not snapshot_path.exists():
+                findings.append(
+                    f"sync snapshot missing: {snapshot_path.name} "
+                    f"(build may have been interrupted before snapshot commit)"
+                )
+                continue
+            try:
+                with open(snapshot_path, "rb") as f:
+                    pickle.load(f)
+            except Exception as exc:
+                findings.append(f"sync snapshot {snapshot_path.name} corrupt: {exc}")
+        return findings
+
+    def _verify_ivf(self, prefix: Path, offsets: Optional[dict[str, int]]) -> list[str]:
+        findings: list[str] = []
+        # The IVF backend writes its artifacts against the stem without ".leann"
+        # (documents.ivf_id_map.json / documents.index), unlike the passage files.
+        stem = prefix.parent / prefix.name.removesuffix(".leann")
+        try:
+            id_map = json.loads(Path(str(stem) + ".ivf_id_map.json").read_text(encoding="utf-8"))
+            id_to_passage = id_map["id_to_passage"]
+            passage_to_id = id_map["passage_to_id"]
+            next_id = id_map["next_id"]
+        except Exception as exc:
+            return [f"ivf_id_map.json unreadable: {exc}"]
+        if not isinstance(id_to_passage, dict) or not isinstance(passage_to_id, dict):
+            return ["ivf_id_map.json: id_to_passage/passage_to_id are not dicts"]
+        if not isinstance(next_id, int):
+            findings.append(f"ivf_id_map.json: next_id is not an integer (got {next_id!r})")
+            next_id = None
+
+        for key in id_to_passage:
+            try:
+                if int(key) < 0:
+                    findings.append(f"id_to_passage key {key!r} is negative")
+            except ValueError:
+                findings.append(f"id_to_passage key {key!r} is not an integer")
+        if len(id_to_passage) != len(passage_to_id):
+            findings.append("id_to_passage and passage_to_id have different sizes")
+        for key, pid in id_to_passage.items():
+            if str(passage_to_id.get(pid)) != key:
+                findings.append(f"id_to_passage[{key!r}]={pid!r} is not inverted in passage_to_id")
+        if offsets is not None and set(id_to_passage.values()) != set(offsets):
+            findings.append("id_to_passage values do not match passages.idx keys")
+        numeric_ids = [
+            int(k) for k in id_to_passage if isinstance(k, str) and k.lstrip("-").isdigit()
+        ]
+        if numeric_ids and next_id is not None:
+            max_id = max(numeric_ids)
+            if next_id <= max_id:
+                findings.append(f"next_id {next_id} is not greater than max id {max_id}")
+
+        index_path = Path(str(stem) + ".index")
+        if not index_path.exists():
+            findings.append("missing .index file for ivf index")
+            return findings
+        try:
+            try:
+                import faiss
+            except ImportError:
+                from leann_backend_hnsw import faiss
+            index = faiss.read_index(str(index_path))
+            if index.ntotal != len(id_to_passage):
+                findings.append(
+                    f".index has {index.ntotal} vectors but id map has {len(id_to_passage)}"
+                )
+            # extract_index_ivf instead of isinstance: the index may have been
+            # written by a different faiss build (SWIG classes don't compare).
+            try:
+                ivf_index = faiss.extract_index_ivf(index)
+            except Exception:
+                ivf_index = None
+            if ivf_index is None:
+                findings.append(f".index is not an IVF index (got {type(index).__name__})")
+            else:
+                # faiss does not persist the direct map, so enumerate the stored
+                # ids from the inverted lists (read-only) and check every mapped
+                # id actually exists in the index.
+                invlists = getattr(faiss.downcast_index(index), "invlists", None)
+                if invlists is not None:
+                    stored_ids: set[int] = set()
+                    for list_no in range(ivf_index.nlist):
+                        list_size = invlists.list_size(list_no)
+                        if list_size:
+                            ids_ptr = invlists.get_ids(list_no)
+                            stored_ids.update(
+                                int(x) for x in faiss.rev_swig_ptr(ids_ptr, list_size)
+                            )
+                            invlists.release_ids(list_no, ids_ptr)
+                    missing = [i for i in numeric_ids if i not in stored_ids]
+                    if missing:
+                        findings.append(
+                            f".index is missing {len(missing)} of {len(numeric_ids)} mapped ids"
+                        )
+        except Exception as exc:
+            findings.append(f".index unreadable: {exc}")
+        return findings
 
     def _watch_report_changes(
         self,
@@ -2793,7 +3196,7 @@ Examples:
             return None
         with open(sync_config_path, encoding="utf-8") as f:
             config = json.load(f)
-        roots = config.get("roots") or []
+        roots = (config.get("roots") or []) + (config.get("files") or [])
         if not roots:
             if verbose:
                 print(f"Cannot rebuild '{index_name}': sync config has no document roots.")
@@ -2868,6 +3271,9 @@ Examples:
             include_hidden = config.get("ignore_patterns") is None
         if include_hidden:
             build_args_list.append("--include-hidden")
+
+        if config.get("sync_key"):
+            build_args_list.extend(["--sync-key", config["sync_key"]])
 
         add_option("--doc-chunk-size", build_config.get("doc_chunk_size"))
         add_option("--doc-chunk-overlap", build_config.get("doc_chunk_overlap"))
@@ -3808,6 +4214,14 @@ Examples:
         elif args.command == "build":
             with suppress_cpp_output(suppress):
                 await self.build_index(args)
+        elif args.command == "changes":
+            rc = self.changes_command(args)
+            if rc:
+                sys.exit(rc)
+        elif args.command == "verify":
+            rc = self.verify_command(args)
+            if rc:
+                sys.exit(rc)
         elif args.command == "watch":
             await self.watch_index(args)
         elif args.command == "migrate-ids":

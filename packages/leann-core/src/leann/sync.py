@@ -60,6 +60,10 @@ DEFAULT_INDEX_EXTENSIONS: list[str] = [
 ]
 
 
+class SnapshotCorruptError(Exception):
+    """Raised when a sync snapshot exists but cannot be unpickled."""
+
+
 def hash_data(data: str | bytes):
     if isinstance(data, str):
         data = data.encode()
@@ -97,8 +101,13 @@ def _iter_directory_files(
     if not root.is_dir():
         return []
 
+    def _walk_error(exc: OSError) -> None:
+        # A silently skipped subtree would make its previously indexed files
+        # look removed, deleting their chunks.
+        raise exc
+
     paths: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root, onerror=_walk_error):
         if not include_hidden:
             dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         current = Path(dirpath)
@@ -189,7 +198,7 @@ class FileSynchronizer:
         self.explicit_files = (
             [str(Path(path).resolve()) for path in explicit_files] if explicit_files else []
         )
-        if self.root_dir is None and not self.explicit_files:
+        if self.root_dir is None and not self.explicit_files and snapshot_path is None:
             raise ValueError("FileSynchronizer requires root_dir and/or explicit_files")
         if self.root_dir is not None and not os.path.isdir(self.root_dir):
             raise ValueError("This is not a valid directory")
@@ -230,7 +239,16 @@ class FileSynchronizer:
             try:
                 file_hashes[file_path] = _hash_file_bytes(Path(file_path))
             except OSError:
-                logger.warning("Cannot hash file %s", file_path)
+                # Carry the old hash forward so a transiently unreadable file is
+                # not classified as removed (which would delete its chunks).
+                prev = (
+                    self.tree.root.children.get(file_path) if self.tree and self.tree.root else None
+                )
+                if prev is not None:
+                    logger.warning("Cannot hash file %s; keeping previous hash", file_path)
+                    file_hashes[file_path] = prev.data
+                else:
+                    logger.warning("Cannot hash new file %s; skipping", file_path)
         return file_hashes
 
     def build_merkle_tree(self, file_hashes):
@@ -289,8 +307,10 @@ class FileSynchronizer:
     def save_snapshot(self):
         assert self.tree is not None
 
-        with open(self.snapshot_path, "wb") as f:
+        tmp_path = f"{self.snapshot_path}.tmp"
+        with open(tmp_path, "wb") as f:
             pickle.dump(self.tree, f)
+        os.replace(tmp_path, self.snapshot_path)
 
     def load_snapshot(self):
         try:
@@ -298,3 +318,5 @@ class FileSynchronizer:
                 self.tree = pickle.load(f)
         except FileNotFoundError:
             self.tree = None
+        except Exception as exc:
+            raise SnapshotCorruptError(f"Corrupt sync snapshot at {self.snapshot_path}") from exc
