@@ -2175,7 +2175,7 @@ Examples:
         for path_key, path_chunks in by_path.items():
             for idx, c in enumerate(path_chunks):
                 sid = hashlib.sha256(f"{path_key}:{idx}".encode()).hexdigest()[:16]
-                c.setdefault("metadata", {})["id"] = sid
+                c["metadata"] = {**c.get("metadata", {}), "id": sid}
                 c["id"] = sid
 
     @staticmethod
@@ -2183,7 +2183,7 @@ Examples:
         """Assign unique IDs for incremental (avoids collision when path lookup misses some old ids)."""
         for c in chunks:
             sid = uuid.uuid4().hex[:16]
-            c.setdefault("metadata", {})["id"] = sid
+            c["metadata"] = {**c.get("metadata", {}), "id": sid}
             c["id"] = sid
 
     def _chunks_for_paths(self, all_texts: list[dict], paths: set[str]) -> list[dict]:
