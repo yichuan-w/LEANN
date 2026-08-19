@@ -2959,19 +2959,29 @@ Examples:
 
         jsonl_path = Path(str(prefix) + ".passages.jsonl")
         jsonl_ids: list[str] = []
+        text_hash_by_id: dict[str, str] = {}
+        conflicting_ids: set[str] = set()
         try:
             with open(jsonl_path, encoding="utf-8") as f:
                 for lineno, line in enumerate(f, 1):
                     try:
-                        pid = json.loads(line)["id"]
+                        record = json.loads(line)
+                        pid = record["id"]
                     except Exception as exc:
                         findings.append(f"passages.jsonl line {lineno} unparseable: {exc}")
                         continue
                     jsonl_ids.append(pid)
+                    text = record.get("text", "")
+                    text_hash = hashlib.sha256(f"{type(text).__name__}:{text}".encode()).hexdigest()
+                    if pid in text_hash_by_id:
+                        if text_hash_by_id[pid] != text_hash:
+                            conflicting_ids.add(pid)
+                    else:
+                        text_hash_by_id[pid] = text_hash
         except Exception as exc:
             findings.append(f"passages.jsonl unreadable: {exc}")
-        if len(set(jsonl_ids)) != len(jsonl_ids):
-            findings.append("passages.jsonl contains duplicate ids")
+        for pid in sorted(conflicting_ids, key=str):
+            findings.append(f"passages.jsonl id {pid!r} appears with different text")
 
         offsets: dict[str, int] = {}
         offsets_ok = False
@@ -2987,10 +2997,11 @@ Examples:
             findings.append(f"passages.idx unreadable: {exc}")
 
         if offsets_ok and (offsets or jsonl_ids):
-            if len(offsets) != len(jsonl_ids):
+            unique_jsonl_ids = set(jsonl_ids)
+            if len(offsets) != len(unique_jsonl_ids):
                 findings.append(
                     f"passages.idx has {len(offsets)} entries but "
-                    f"passages.jsonl has {len(jsonl_ids)} lines"
+                    f"passages.jsonl has {len(unique_jsonl_ids)} unique ids"
                 )
             if set(offsets) != set(jsonl_ids):
                 findings.append("passages.idx keys do not match passages.jsonl ids")
@@ -3077,11 +3088,15 @@ Examples:
                     findings.append(f"id_to_passage key {key!r} is negative")
             except ValueError:
                 findings.append(f"id_to_passage key {key!r} is not an integer")
-        if len(id_to_passage) != len(passage_to_id):
-            findings.append("id_to_passage and passage_to_id have different sizes")
-        for key, pid in id_to_passage.items():
-            if str(passage_to_id.get(pid)) != key:
-                findings.append(f"id_to_passage[{key!r}]={pid!r} is not inverted in passage_to_id")
+        if len(passage_to_id) != len(set(id_to_passage.values())):
+            findings.append("passage_to_id size does not match unique id_to_passage values")
+        for pid, fid in passage_to_id.items():
+            if id_to_passage.get(str(fid)) != pid:
+                findings.append(
+                    f"passage_to_id[{pid!r}]={fid!r} does not map back in id_to_passage"
+                )
+        if set(passage_to_id) != set(id_to_passage.values()):
+            findings.append("passage_to_id keys do not match id_to_passage values")
         if offsets is not None and set(id_to_passage.values()) != set(offsets):
             findings.append("id_to_passage values do not match passages.idx keys")
         numeric_ids = [

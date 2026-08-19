@@ -3,6 +3,7 @@
 import json
 import pickle
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from leann.cli import LeannCLI
@@ -79,6 +80,50 @@ def _make_ivf_index(tmp_path: Path, passage_ids: list[str]) -> Path:
 
     _write_faiss_index(
         Path(str(prefix).removesuffix(".leann") + ".index"), num_vectors=len(passage_ids)
+    )
+    return prefix
+
+
+def _make_ivf_index_with_entries(tmp_path: Path, entries: list[tuple[Any, Any]]) -> Path:
+    # Like _make_ivf_index but accepts explicit (pid, text) pairs so a pid may
+    # repeat (content-hash id scheme). idx and passage_to_id are last-wins.
+    index_dir = tmp_path / ".leann" / "indexes" / "idx"
+    index_dir.mkdir(parents=True)
+    prefix = index_dir / "documents.leann"
+
+    Path(str(prefix) + ".meta.json").write_text(
+        json.dumps(
+            {
+                "backend_name": "ivf",
+                "embedding_model": "m",
+                "embedding_mode": "sentence-transformers",
+                "dimensions": 4,
+                "backend_kwargs": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    offsets: dict[str, int] = {}
+    with open(str(prefix) + ".passages.jsonl", "wb") as f:
+        for pid, text in entries:
+            offsets[pid] = f.tell()
+            line = json.dumps({"id": pid, "text": text, "metadata": {}}) + "\n"
+            f.write(line.encode("utf-8"))
+    with open(str(prefix) + ".passages.idx", "wb") as f:
+        pickle.dump(offsets, f)
+
+    id_map = {
+        "id_to_passage": {str(i): pid for i, (pid, _) in enumerate(entries)},
+        "passage_to_id": {pid: i for i, (pid, _) in enumerate(entries)},
+        "next_id": len(entries),
+    }
+    Path(str(prefix).removesuffix(".leann") + ".ivf_id_map.json").write_text(
+        json.dumps(id_map), encoding="utf-8"
+    )
+
+    _write_faiss_index(
+        Path(str(prefix).removesuffix(".leann") + ".index"), num_vectors=len(entries)
     )
     return prefix
 
@@ -316,3 +361,104 @@ def test_verify_flags_mapped_id_absent_from_index_vectors(tmp_path, monkeypatch,
     # Assert
     assert rc == 1
     assert "missing 1 of 2 mapped ids" in out
+
+
+def test_verify_passes_on_healthy_index_with_duplicate_content_hash_ids(
+    tmp_path, monkeypatch, capsys
+):
+    # Arrange: byte-identical chunks legitimately share one content-hash id
+    _make_ivf_index_with_entries(
+        tmp_path, [("dup", "same text"), ("dup", "same text"), ("p1", "other text")]
+    )
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    rc = _run_verify()
+    out = capsys.readouterr().out
+
+    # Assert
+    assert rc == 0
+    assert "duplicate" not in out
+    assert "do not match" not in out
+
+
+def test_verify_fails_on_duplicate_id_with_different_text(tmp_path, monkeypatch, capsys):
+    # Arrange
+    _make_ivf_index_with_entries(
+        tmp_path, [("dup", "text one"), ("dup", "text two"), ("p1", "other text")]
+    )
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    rc = _run_verify()
+    out = capsys.readouterr().out
+
+    # Assert
+    assert rc == 1
+    assert out.strip()
+
+
+def test_verify_fails_on_duplicate_id_with_type_coerced_text(tmp_path, monkeypatch, capsys):
+    # Arrange: same id, texts 1 (int) vs "1" (str) must count as different text
+    _make_ivf_index_with_entries(tmp_path, [("dup", 1), ("dup", "1")])
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    rc = _run_verify()
+    out = capsys.readouterr().out
+
+    # Assert
+    assert rc == 1
+    assert "different text" in out
+
+
+def test_verify_reports_conflicts_with_heterogeneous_id_types(tmp_path, monkeypatch, capsys):
+    # Arrange: conflicting ids of mixed types (int and str) must not crash sorted()
+    _make_ivf_index_with_entries(
+        tmp_path, [(1, "text a"), (1, "text b"), ("x", "text c"), ("x", "text d")]
+    )
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    rc = _run_verify()
+    out = capsys.readouterr().out
+
+    # Assert
+    assert rc == 1
+    assert "different text" in out
+
+
+def test_verify_fails_when_passage_to_id_label_maps_to_other_pid(tmp_path, monkeypatch):
+    # Arrange: passage_to_id["p1"] points at a faiss label owned by "dup"
+    prefix = _make_ivf_index_with_entries(
+        tmp_path, [("dup", "same text"), ("dup", "same text"), ("p1", "other text")]
+    )
+    id_map_path = prefix.parent / "documents.ivf_id_map.json"
+    id_map = json.loads(id_map_path.read_text(encoding="utf-8"))
+    id_map["passage_to_id"]["p1"] = 0
+    id_map_path.write_text(json.dumps(id_map), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    rc = _run_verify()
+
+    # Assert
+    assert rc != 0
+
+
+def test_verify_fails_when_pid_missing_from_passage_to_id(tmp_path, monkeypatch):
+    # Arrange
+    prefix = _make_ivf_index_with_entries(
+        tmp_path, [("dup", "same text"), ("dup", "same text"), ("p1", "other text")]
+    )
+    id_map_path = prefix.parent / "documents.ivf_id_map.json"
+    id_map = json.loads(id_map_path.read_text(encoding="utf-8"))
+    del id_map["passage_to_id"]["p1"]
+    id_map_path.write_text(json.dumps(id_map), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    rc = _run_verify()
+
+    # Assert
+    assert rc != 0

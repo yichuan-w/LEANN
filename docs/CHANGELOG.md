@@ -85,3 +85,16 @@ fixes). Newest entries at the bottom.
 - A transiently unreadable file keeps its previous hash instead of being classified as
   removed (which deleted its chunks from the index).
 - `LEANN_NO_REGISTER=1` env switch skips project-directory registration (for tests/CI).
+
+## 2026-08-19: verify accepts duplicate content-hash passage ids (issue #5)
+
+- `leann verify` no longer false-positives on healthy indexes built with
+  `--id-scheme=content-hash`, where byte-identical chunks legitimately share one passage id
+  (many-to-one by construction: jsonl keeps one line per chunk, the offset map and IVF
+  `passage_to_id` are last-wins one-entry-per-unique-id).
+- Invariants rewritten to the actual contract: duplicate jsonl ids allowed only with
+  identical text per id; idx cardinality vs unique ids; IVF `passage_to_id` checked as a
+  partial inverse (each passage id maps back to one of its FAISS labels, key set equals
+  the deduped `id_to_passage` value set).
+- Same id with different text, broken inversion, or a missing `passage_to_id` entry still
+  fail verify; tests now include a duplicate-content fixture.
