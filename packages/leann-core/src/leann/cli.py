@@ -6,6 +6,7 @@ import io
 import json
 import os
 import pickle
+import subprocess
 import sys
 import time
 import uuid
@@ -3114,20 +3115,8 @@ Examples:
             if ivf_index is None:
                 findings.append(f".index is not an IVF index (got {type(index).__name__})")
             else:
-                # faiss does not persist the direct map, so enumerate the stored
-                # ids from the inverted lists (read-only) and check every mapped
-                # id actually exists in the index.
-                invlists = getattr(faiss.downcast_index(index), "invlists", None)
-                if invlists is not None:
-                    stored_ids: set[int] = set()
-                    for list_no in range(ivf_index.nlist):
-                        list_size = invlists.list_size(list_no)
-                        if list_size:
-                            ids_ptr = invlists.get_ids(list_no)
-                            stored_ids.update(
-                                int(x) for x in faiss.rev_swig_ptr(ids_ptr, list_size)
-                            )
-                            invlists.release_ids(list_no, ids_ptr)
+                stored_ids = self._ivf_stored_ids(index_path)
+                if stored_ids is not None:
                     missing = [i for i in numeric_ids if i not in stored_ids]
                     if missing:
                         findings.append(
@@ -3136,6 +3125,45 @@ Examples:
         except Exception as exc:
             findings.append(f".index unreadable: {exc}")
         return findings
+
+    @staticmethod
+    def _ivf_stored_ids(index_path: Path) -> Optional[set[int]]:
+        """Enumerate ids stored in an IVF index's inverted lists, or None if unavailable.
+
+        Runs in a subprocess so exactly one faiss SWIG build is loaded: with two
+        builds in one process (e.g. faiss-cpu + leann_backend_hnsw) the type
+        tables clash and downcast_index silently loses invlists access.
+        """
+        script = (
+            "import json, sys\n"
+            "try:\n"
+            "    import faiss\n"
+            "except ImportError:\n"
+            "    from leann_backend_hnsw import faiss\n"
+            "index = faiss.read_index(sys.argv[1])\n"
+            "ivf = faiss.extract_index_ivf(index)\n"
+            "invlists = getattr(faiss.downcast_index(index), 'invlists', None) or ivf.invlists\n"
+            "stored = []\n"
+            "for list_no in range(ivf.nlist):\n"
+            "    size = invlists.list_size(list_no)\n"
+            "    if size:\n"
+            "        ptr = invlists.get_ids(list_no)\n"
+            "        stored.extend(int(x) for x in faiss.rev_swig_ptr(ptr, size))\n"
+            "        invlists.release_ids(list_no, ptr)\n"
+            "print(json.dumps(stored))\n"
+        )
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", script, str(index_path)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0:
+                return None
+            return set(json.loads(result.stdout))
+        except Exception:
+            return None
 
     def _watch_report_changes(
         self,
