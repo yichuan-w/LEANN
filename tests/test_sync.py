@@ -178,6 +178,7 @@ class TestUnreadableFileHandling(unittest.TestCase):
             assert added == []
 
 
+@unittest.skipUnless(os.name == "posix", "relies on Unix permission semantics")
 class TestWalkErrorHandling(unittest.TestCase):
     def test_unreadable_subtree_raises_instead_of_reporting_removals(self):
         if os.geteuid() == 0:
