@@ -85,4 +85,3 @@ fixes). Newest entries at the bottom.
 - A transiently unreadable file keeps its previous hash instead of being classified as
   removed (which deleted its chunks from the index).
 - `LEANN_NO_REGISTER=1` env switch skips project-directory registration (for tests/CI).
-
