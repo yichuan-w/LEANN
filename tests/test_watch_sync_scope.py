@@ -81,3 +81,52 @@ def test_mixed_txt_and_bin_directory_skips_bin_without_crash(tmp_path):
     )
     added, removed, modified = fs2.detect_changes()
     assert not added and not removed and not modified
+
+
+def test_watch_tick_survives_corrupt_sync_roots(tmp_path, monkeypatch, capsys):
+    # Arrange: a registered index whose sync_roots.json is corrupt
+    monkeypatch.chdir(tmp_path)
+    from leann.cli import LeannCLI
+
+    cli = LeannCLI()
+    index_dir = tmp_path / ".leann" / "indexes" / "idx"
+    index_dir.mkdir(parents=True)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (index_dir / "sync_roots.json").write_text(
+        '{"directories": ["' + str(docs) + '"], "files": [], "sync_key": null', encoding="utf-8"
+    )  # truncated JSON
+    monkeypatch.setattr(cli, "_resolve_index_for_watch", lambda name: {"index_dir": index_dir})
+
+    # Act: must not raise — a watch tick skips, it doesn't kill the daemon
+    added, removed, modified = cli._watch_check_changes("idx")
+
+    # Assert
+    assert (added, removed, modified) == (set(), set(), set())
+
+
+def test_watch_tick_survives_corrupt_snapshot(tmp_path, monkeypatch, capsys):
+    # Arrange: valid scope but corrupt snapshot pickle
+    monkeypatch.chdir(tmp_path)
+    import hashlib as _hashlib
+    import json as _json
+
+    from leann.cli import LeannCLI
+
+    cli = LeannCLI()
+    index_dir = tmp_path / ".leann" / "indexes" / "idx"
+    index_dir.mkdir(parents=True)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.txt").write_text("alpha", encoding="utf-8")
+    (index_dir / "sync_roots.json").write_text(
+        _json.dumps({"directories": [str(docs)], "files": []}), encoding="utf-8"
+    )
+    tag = _hashlib.sha256(str(docs).encode()).hexdigest()[:12]
+    (index_dir / f"sync_{tag}.pickle").write_bytes(b"not a pickle")
+    monkeypatch.setattr(cli, "_resolve_index_for_watch", lambda name: {"index_dir": index_dir})
+
+    # Act / Assert
+    added, removed, modified = cli._watch_check_changes("idx")
+    assert (added, removed, modified) == (set(), set(), set())
+    assert "watch tick skipped" in capsys.readouterr().out

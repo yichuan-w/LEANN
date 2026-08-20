@@ -310,7 +310,8 @@ jobs:
           fi
           retry 5 uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            retry 5 uv pip install --python "$BUILD_PY" auditwheel
+            # pip patchelf: ubuntu-22.04's apt patchelf (0.14.3) is below auditwheel's >=0.14.5 floor
+            retry 5 uv pip install --python "$BUILD_PY" auditwheel 'patchelf>=0.14.5'
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             retry 5 uv pip install --python "$BUILD_PY" delocate
           else

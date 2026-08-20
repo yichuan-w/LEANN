@@ -94,6 +94,8 @@ def register_project_directory(
         max_depth: Maximum directory depth used when looking for App-format indexes.
             None preserves full-depth discovery for existing API callers.
     """
+    if os.environ.get("LEANN_NO_REGISTER") == "1":
+        return
     if project_dir is None:
         project_dir = Path.cwd()
     else:

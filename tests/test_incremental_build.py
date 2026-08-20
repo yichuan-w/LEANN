@@ -371,3 +371,37 @@ def test_ivf_multiple_incremental_no_duplicates(tmp_path):
     assert len(stale_ids) == 0, (
         f"passages.jsonl has {len(stale_ids)} stale entries not in offset_map: {stale_ids[:5]}"
     )
+
+
+def test_assign_unique_chunk_ids_with_shared_metadata_dict():
+    from leann.cli import LeannCLI
+
+    # Arrange
+    shared = {"file_path": "a.md"}
+    chunks = [{"text": t, "metadata": shared} for t in ("one", "two", "three")]
+
+    # Act
+    LeannCLI._assign_unique_chunk_ids(chunks)
+
+    # Assert
+    metadata_ids = [c["metadata"]["id"] for c in chunks]
+    assert len(set(metadata_ids)) == len(chunks)
+    for c in chunks:
+        assert c["metadata"]["id"] == c["id"]
+
+
+def test_assign_chunk_ids_with_shared_metadata_dict():
+    from leann.cli import LeannCLI
+
+    # Arrange
+    shared = {"file_path": "a.md"}
+    chunks = [{"text": t, "metadata": shared} for t in ("one", "two", "three")]
+
+    # Act
+    LeannCLI._assign_chunk_ids(chunks)
+
+    # Assert
+    metadata_ids = [c["metadata"]["id"] for c in chunks]
+    assert len(set(metadata_ids)) == len(chunks)
+    for c in chunks:
+        assert c["metadata"]["id"] == c["id"]
