@@ -32,6 +32,8 @@ try:
     from leann.settings import (
         resolve_atlascloud_api_key,
         resolve_atlascloud_base_url,
+        resolve_litellm_api_key,
+        resolve_litellm_base_url,
         resolve_ollama_host,
         resolve_openai_api_key,
         resolve_openai_base_url,
@@ -39,6 +41,12 @@ try:
 except ImportError:
     # Minimal fallbacks if settings helpers are unavailable
     import os
+
+    def resolve_litellm_api_key(value: str | None) -> str | None:
+        return value or os.getenv("LITELLM_API_KEY") or os.getenv("LEANN_LITELLM_API_KEY")
+
+    def resolve_litellm_base_url(value: str | None) -> str | None:
+        return value or os.getenv("LITELLM_BASE_URL") or os.getenv("LITELLM_API_BASE")
 
     def resolve_ollama_host(value: str | None) -> str | None:
         return value or os.getenv("LEANN_OLLAMA_HOST") or os.getenv("OLLAMA_HOST")
@@ -152,8 +160,17 @@ class BaseRAGExample(ABC):
             "--llm",
             type=str,
             default="openai",
-            choices=["openai", "ollama", "hf", "simulated", "atlascloud", "atlas-cloud", "atlas"],
-            help="LLM backend: openai, ollama, hf, atlascloud, or simulated (default: openai)",
+            choices=[
+                "openai",
+                "ollama",
+                "hf",
+                "litellm",
+                "simulated",
+                "atlascloud",
+                "atlas-cloud",
+                "atlas",
+            ],
+            help="LLM backend: openai, ollama, hf, litellm, atlascloud, or simulated (default: openai)",
         )
         llm_group.add_argument(
             "--llm-model",
@@ -286,6 +303,14 @@ class BaseRAGExample(ABC):
             config["model"] = args.llm_model or "gpt-4o"
             config["base_url"] = resolve_openai_base_url(args.llm_api_base)
             resolved_key = resolve_openai_api_key(args.llm_api_key)
+            if resolved_key:
+                config["api_key"] = resolved_key
+        elif args.llm == "litellm":
+            config["model"] = args.llm_model or "gpt-4o"
+            base_url = resolve_litellm_base_url(args.llm_api_base)
+            if base_url:
+                config["base_url"] = base_url
+            resolved_key = resolve_litellm_api_key(args.llm_api_key)
             if resolved_key:
                 config["api_key"] = resolved_key
         elif args.llm in {"atlascloud", "atlas-cloud", "atlas"}:

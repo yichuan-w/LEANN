@@ -94,6 +94,43 @@ def resolve_anthropic_api_key(explicit: str | None = None) -> str | None:
     return os.getenv("ANTHROPIC_API_KEY")
 
 
+def resolve_litellm_base_url(explicit: str | None = None) -> str | None:
+    """Resolve an optional base URL for LiteLLM.
+
+    Unlike the single-provider resolvers there is no default: when unset,
+    LiteLLM talks directly to the provider inferred from the model string
+    (e.g. ``anthropic/claude-...``). Set a base URL only to route through a
+    self-hosted LiteLLM proxy.
+    """
+
+    candidates = (
+        explicit,
+        os.getenv("LEANN_LITELLM_BASE_URL"),
+        os.getenv("LITELLM_BASE_URL"),
+        os.getenv("LITELLM_API_BASE"),
+    )
+
+    for candidate in candidates:
+        if candidate:
+            return _clean_url(candidate)
+
+    return None
+
+
+def resolve_litellm_api_key(explicit: str | None = None) -> str | None:
+    """Resolve an optional API key for LiteLLM.
+
+    When unset, LiteLLM reads the underlying provider's own environment
+    variable (``OPENAI_API_KEY``, ``ANTHROPIC_API_KEY``, ...). Set this only
+    when talking to a LiteLLM proxy that expects a virtual key.
+    """
+
+    if explicit:
+        return explicit
+
+    return os.getenv("LITELLM_API_KEY") or os.getenv("LEANN_LITELLM_API_KEY")
+
+
 def resolve_minimax_base_url(explicit: str | None = None) -> str:
     """Resolve the base URL for MiniMax-compatible services."""
 
