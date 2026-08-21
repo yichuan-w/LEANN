@@ -310,7 +310,11 @@ jobs:
           fi
           retry 5 uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            retry 5 uv pip install --python "$BUILD_PY" auditwheel
+            # auditwheel >= 6.0 requires patchelf >= 0.14.5, but ubuntu-22.04's
+            # apt only ships 0.14.3 — install a newer one from PyPI into the
+            # build venv (its bin dir is prepended to PATH below, so it wins
+            # over /usr/bin/patchelf).
+            retry 5 uv pip install --python "$BUILD_PY" auditwheel "patchelf>=0.14.5"
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             retry 5 uv pip install --python "$BUILD_PY" delocate
           else
