@@ -254,14 +254,21 @@ class TestMetadataFilterEngine:
         assert "doc1" in ids
         assert "doc5" in ids
 
-    def test_list_membership_with_nested_tags(self):
-        """Test membership operations with list metadata."""
-        # Note: This tests the metadata structure, not list field filtering
-        # For list field filtering, we'd need to modify the test data
-        filters = {"character": {"in": ["Alice"]}}
+    def test_in_filter_matches_any_list_item(self):
+        """Test that in matches when any list metadata item is allowed."""
+        filters = {"tags": {"in": ["adventure"]}}
         result = self.engine.apply_filters(self.sample_results, filters)
+
         assert len(result) == 2
-        assert all(r["metadata"]["character"] == "Alice" for r in result)
+        assert [r["id"] for r in result] == ["doc1", "doc4"]
+
+    def test_not_in_filter_rejects_any_matching_list_item(self):
+        """Test that not_in rejects list metadata containing a denied item."""
+        filters = {"tags": {"not_in": ["adventure"]}}
+        result = self.engine.apply_filters(self.sample_results, filters)
+
+        assert len(result) == 2
+        assert [r["id"] for r in result] == ["doc2", "doc3"]
 
     def test_empty_results_list(self):
         """Test filtering on empty results list."""
