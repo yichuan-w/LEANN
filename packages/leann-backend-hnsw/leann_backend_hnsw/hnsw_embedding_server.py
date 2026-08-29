@@ -168,8 +168,11 @@ def create_hnsw_embedding_server(
 
         context = zmq.Context()
         rep_socket = context.socket(zmq.REP)
-        rep_socket.bind(f"tcp://*:{zmq_port}")
-        logger.info(f"HNSW ZMQ REP server listening on port {zmq_port}")
+        zmq_host = os.getenv("LEANN_EMBEDDING_SERVER_HOST", "127.0.0.1")
+        if ":" in zmq_host and not zmq_host.startswith("["):
+            zmq_host = f"[{zmq_host}]"  # literal IPv6 needs brackets in ZMQ endpoints
+        rep_socket.bind(f"tcp://{zmq_host}:{zmq_port}")
+        logger.info(f"HNSW ZMQ REP server listening on {zmq_host}:{zmq_port}")
         rep_socket.setsockopt(zmq.RCVTIMEO, 1000)
         rep_socket.setsockopt(zmq.SNDTIMEO, 1000)
         rep_socket.setsockopt(zmq.LINGER, 0)
