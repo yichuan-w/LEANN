@@ -546,6 +546,12 @@ def compute_embeddings_sentence_transformers(
         else:
             device = "cpu"
 
+    # CPU torch ships no fp16 kernels for several ops (LayerNorm raises
+    # "LayerNormKernelImpl" not implemented for 'Half') - force fp32 on CPU.
+    if device == "cpu" and use_fp16:
+        use_fp16 = False
+        logger.info("CPU device detected: disabling fp16 (no fp16 CPU kernels)")
+
     # Apply optimizations based on benchmark results
     if adaptive_optimization:
         batch_size = _resolve_adaptive_batch_size(device, model_name)
