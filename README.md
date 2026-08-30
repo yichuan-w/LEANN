@@ -75,6 +75,20 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
 
+## Making Your Coding Agent Smarter
+
+We plugged LEANN into Claude Code and compared it with BM25 on 30 SWE-Bench Pro tasks from ContextBench, keeping the model, agent, tools, and 8,192-token retrieval budget fixed.
+
+<p align="center">
+  <img src="assets/contextbench_leann_vs_bm25.png" alt="LEANN vs BM25 on ContextBench relevant-code recall, exploration coverage, and agent token usage" width="100%">
+</p>
+
+With LEANN, the agent achieved **2.1× the initial relevant-code recall** (24.2% vs. 11.4%), reached **12.6 percentage points higher relevant-code coverage after exploration** (38.4% vs. 25.8%), and used **8.4% fewer tokens** (3.22M vs. 3.51M).
+
+LEANN surfaces relevant code earlier, so coding agents can spend more of their context window reasoning about the right files instead of repeatedly scanning the repository. **[Reproduce the benchmark →](benchmarks/contextbench/README.md)**
+
+*Note: Results are macro-averaged annotated gold-line metrics over 30 SWE-Bench Pro tasks. Better context access does not guarantee issue resolution.*
+
 ## Installation
 
 ### 📦 Prerequisites: Install uv
