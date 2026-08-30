@@ -1339,7 +1339,7 @@ This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.ed
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yichuan-w/LEANN&type=Date)](https://www.star-history.com/#yichuan-w/LEANN&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=yichuan-w/LEANN&type=Date)](https://star-history.dera.page/#yichuan-w/LEANN&Date)
 <p align="center">
   <strong>⭐ Star us on GitHub if Leann is useful for your research or applications!</strong>
 </p>
