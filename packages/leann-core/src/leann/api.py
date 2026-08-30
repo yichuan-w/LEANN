@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Literal, Optional, Union
 
 import numpy as np
-from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 
 from leann.interactive_utils import create_api_session
 from leann.interface import LeannBackendSearcherInterface
@@ -1189,6 +1188,8 @@ class LeannBuilder:
         self.chunks.clear()
 
         if needs_recompute:
+            from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
+
             prune_hnsw_embeddings_inplace(str(index_file))
 
 
