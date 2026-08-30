@@ -14,6 +14,7 @@ DEFAULT_INDEX_EXTENSIONS: list[str] = [
     ".md",
     ".docx",
     ".pptx",
+    ".pdf",
     ".py",
     ".js",
     ".ts",

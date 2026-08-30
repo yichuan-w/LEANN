@@ -39,6 +39,30 @@ logger = logging.getLogger(__name__)
 PASSAGE_ID_SCHEME_SEQUENTIAL = "sequential"
 PASSAGE_ID_SCHEME_CONTENT_HASH = "content-hash"
 
+_CJK_CHARACTERS = "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af"
+_CJK_RUN = re.compile(f"[{_CJK_CHARACTERS}]+")
+
+
+def _fts5_cjk_ngrams(match: re.Match[str]) -> str:
+    """Expand a CJK run into unigram and bigram tokens for SQLite FTS5."""
+    text = match.group()
+    return " ".join([*text, *(text[i : i + 2] for i in range(len(text) - 1))])
+
+
+def _fts5_cjk_query(query: str) -> str:
+    """Build a safe FTS5 query that requires every CJK bigram in each term."""
+    tokens = re.findall(rf"[{_CJK_CHARACTERS}]+|\w+", query.lower())
+    terms = []
+    for token in tokens:
+        if _CJK_RUN.fullmatch(token):
+            ngrams = (
+                [token] if len(token) == 1 else [token[i : i + 2] for i in range(len(token) - 1)]
+            )
+            terms.append("(" + " AND ".join(f'"{ngram}"' for ngram in ngrams) + ")")
+        else:
+            terms.append(f'"{token}"')
+    return " OR ".join(terms)
+
 
 def get_registered_backends() -> list[str]:
     """Get list of registered backend names."""
@@ -322,15 +346,18 @@ class Fts5BM25Index(BM25Index):
         ")"
     )
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, cjk_ngrams: Optional[bool] = None):
         self._db_path = db_path
         self._conn: Optional[Any] = None
+        self._cjk_ngrams = cjk_ngrams
 
     def _connect(self):
         import sqlite3
 
         if self._conn is None:
             self._conn = sqlite3.connect(self._db_path)
+            if self._cjk_ngrams is None:
+                self._cjk_ngrams = bool(self._conn.execute("PRAGMA user_version").fetchone()[0])
         return self._conn
 
     def fit(self, documents: list[dict[str, Any]]) -> None:
@@ -339,25 +366,39 @@ class Fts5BM25Index(BM25Index):
         # Fresh DB every fit — fit() is a one-shot bulk-load.
         if os.path.exists(self._db_path):
             os.unlink(self._db_path)
+        if self._cjk_ngrams is None:
+            self._cjk_ngrams = True
         conn = sqlite3.connect(self._db_path)
         try:
             conn.execute(self._SCHEMA)
+            conn.execute(f"PRAGMA user_version = {int(self._cjk_ngrams)}")
             conn.executemany(
                 "INSERT INTO bm25_passages(id, text) VALUES (?, ?)",
-                ((d["id"], d.get("text", "")) for d in documents),
+                (
+                    (
+                        d["id"],
+                        _CJK_RUN.sub(_fts5_cjk_ngrams, d.get("text", ""))
+                        if self._cjk_ngrams
+                        else d.get("text", ""),
+                    )
+                    for d in documents
+                ),
             )
             conn.commit()
         finally:
             conn.close()
 
     def search(self, query: str, top_k: int = 5) -> list["SearchResult"]:
-        # Strip punctuation, lowercase, OR the terms together. Avoids FTS5
-        # query syntax surprises (`:`, `*`, etc.) for natural-language queries.
-        terms = re.sub(r"[^\w\s]", "", query).lower().split()
-        if not terms:
-            return []
-        fts5_query = " OR ".join(terms)
+        # Expand CJK terms to the same n-grams used at index time. Older
+        # databases retain their legacy query behaviour via PRAGMA user_version.
         conn = self._connect()
+        if self._cjk_ngrams:
+            fts5_query = _fts5_cjk_query(query)
+        else:
+            terms = re.sub(r"[^\w\s]", "", query).lower().split()
+            fts5_query = " OR ".join(terms)
+        if not fts5_query:
+            return []
         rows = conn.execute(
             "SELECT id, -bm25(bm25_passages) AS score "
             "FROM bm25_passages WHERE bm25_passages MATCH ? "

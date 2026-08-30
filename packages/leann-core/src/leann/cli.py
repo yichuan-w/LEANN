@@ -24,6 +24,8 @@ from .settings import (
     resolve_anthropic_base_url,
     resolve_atlascloud_api_key,
     resolve_atlascloud_base_url,
+    resolve_litellm_api_key,
+    resolve_litellm_base_url,
     resolve_minimax_api_key,
     resolve_minimax_base_url,
     resolve_ollama_host,
@@ -656,6 +658,7 @@ Examples:
                 "hf",
                 "openai",
                 "anthropic",
+                "litellm",
                 "minimax",
                 "novita",
                 "atlascloud",
@@ -741,6 +744,7 @@ Examples:
                 "hf",
                 "openai",
                 "anthropic",
+                "litellm",
                 "minimax",
                 "novita",
                 "atlascloud",
@@ -3421,6 +3425,15 @@ Examples:
                 llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
             if args.api_key:
                 llm_config["api_key"] = args.api_key
+        elif args.llm == "litellm":
+            # LiteLLM infers the provider from the model prefix and reads that
+            # provider's own env var; base_url/api_key are only for a proxy.
+            base_url = resolve_litellm_base_url(args.api_base)
+            if base_url:
+                llm_config["base_url"] = base_url
+            resolved_api_key = resolve_litellm_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
         elif args.llm == "minimax":
             llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
             resolved_api_key = resolve_minimax_api_key(args.api_key)
@@ -3716,6 +3729,15 @@ Examples:
                 llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
             if args.api_key:
                 llm_config["api_key"] = args.api_key
+        elif args.llm == "litellm":
+            # LiteLLM infers the provider from the model prefix and reads that
+            # provider's own env var; base_url/api_key are only for a proxy.
+            base_url = resolve_litellm_base_url(args.api_base)
+            if base_url:
+                llm_config["base_url"] = base_url
+            resolved_api_key = resolve_litellm_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
         elif args.llm == "minimax":
             llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
             resolved_api_key = resolve_minimax_api_key(args.api_key)
