@@ -73,7 +73,7 @@ class InteractiveSession:
         try:
             rl.read_history_file(str(history_file))
             rl.set_history_length(1000)
-        except FileNotFoundError:
+        except (FileNotFoundError, FileExistsError, OSError):
             pass
 
         # Save history on exit

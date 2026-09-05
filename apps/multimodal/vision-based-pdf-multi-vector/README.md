@@ -15,7 +15,7 @@ which pdfinfo && pdfinfo -v
 ```
 
 ### 2) Python environment
-Use uv (recommended) or pip. Python 3.9+.
+Use uv (recommended) or pip. Python 3.10+.
 
 Using uv:
 ```bash

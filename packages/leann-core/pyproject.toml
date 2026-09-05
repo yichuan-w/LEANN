@@ -1,18 +1,22 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+# setuptools>=77: SPDX `license` string (avoids deprecated license table warning).
+requires = ["setuptools>=77.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "leann-core"
-version = "0.3.7"
+version = "0.3.8"
 description = "Core API and plugin system for LEANN"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 
 # All required dependencies included
 dependencies = [
-    "numpy>=1.20.0,<2",
+    # NumPy wheel availability varies by platform/Python version.
+    # Keep the constraint wide enough that the Arch smoke test can always
+    # resolve a binary distribution (numpy>=2 isn't available in that env).
+    "numpy>=1.20.0,<3",
     "tqdm>=4.60.0",
     "psutil>=5.8.0",
     "pyzmq>=23.0.0",
@@ -40,6 +44,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+litellm = [
+    # Unified gateway to 100+ LLM providers. Floor at 1.85 (recent stable with
+    # supports_reasoning/drop_params); capped below 2.0 to avoid a future
+    # major-version break.
+    "litellm>=1.85.0,<2.0",
+]
 cpu = [
     "torch==2.2.2; platform_system == 'Linux' and python_version < '3.13'",
 ]

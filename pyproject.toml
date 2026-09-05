@@ -66,6 +66,16 @@ diskann = [
     "leann-backend-diskann",
 ]
 
+# GPU-accelerated FlashLib (exact k-NN on Triton/CuteDSL) backend. Requires a CUDA GPU.
+flashlib = [
+    "leann-backend-flashlib",
+]
+
+# GPU-accelerated FlashLib IVF-Flat (approximate-NN) backend. Requires a CUDA GPU.
+flashlib-ivf = [
+    "leann-backend-flashlib-ivf",
+]
+
 # Add a new optional dependency group for document processing
 documents = [
     "beautifulsoup4>=4.13.0",  # For HTML parsing
@@ -88,6 +98,8 @@ wechat-exporter = "wechat_exporter.main:main"
 leann-core = { path = "packages/leann-core", editable = true }
 leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = true }
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
+leann-backend-flashlib = { path = "packages/leann-backend-flashlib", editable = true }
+leann-backend-flashlib-ivf = { path = "packages/leann-backend-flashlib-ivf", editable = true }
 astchunk = { path = "packages/astchunk-leann", editable = true }
 
 [dependency-groups]
@@ -99,7 +111,7 @@ lint = [
 
 # Test toolchain (no heavy project runtime deps)
 test = [
-    "pytest>=7.0",
+    "pytest>=9.0",
     "pytest-cov>=4.0",
     "pytest-xdist>=3.0",
     "pytest-timeout>=2.0",

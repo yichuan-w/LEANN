@@ -33,7 +33,7 @@ class TestPromptTemplateMetadataPersistence:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture
@@ -145,7 +145,7 @@ class TestPromptTemplateAutoLoadOnSearch:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture
@@ -201,7 +201,7 @@ class TestQueryPromptTemplateAutoLoad:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture
@@ -422,7 +422,7 @@ class TestPromptTemplateReuseInChat:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.fixture
@@ -466,7 +466,7 @@ class TestPromptTemplateIntegrationWithEmbeddingModes:
     @pytest.fixture
     def temp_index_dir(self):
         """Create temporary directory for test indexes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             yield Path(tmpdir)
 
     @pytest.mark.parametrize(
@@ -543,7 +543,7 @@ class TestQueryTemplateApplicationInComputeEmbedding:
     @pytest.fixture
     def temp_index_with_template(self):
         """Create a temporary index with query template in metadata"""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             index_dir = Path(tmpdir)
             index_file = index_dir / "test.leann"
             meta_file = index_dir / "test.leann.meta.json"
@@ -607,6 +607,9 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         searcher.embedding_model = searcher.meta["embedding_model"]
         searcher.embedding_mode = searcher.meta.get("embedding_mode", "sentence-transformers")
         searcher.embedding_options = searcher.meta.get("embedding_options", {})
+        searcher.enable_warmup = False
+        searcher.use_daemon = False
+        searcher.daemon_ttl_seconds = 0
 
         # Mock compute_embeddings to capture the query text
         captured_queries = []
@@ -662,11 +665,14 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         searcher.embedding_model = searcher.meta["embedding_model"]
         searcher.embedding_mode = searcher.meta.get("embedding_mode", "sentence-transformers")
         searcher.embedding_options = searcher.meta.get("embedding_options", {})
+        searcher.enable_warmup = False
+        searcher.use_daemon = False
+        searcher.daemon_ttl_seconds = 0
 
         # Mock the server methods to capture the query text
         captured_queries = []
 
-        def mock_ensure_server_running(passages_file, port):
+        def mock_ensure_server_running(passages_file, port, **kwargs):
             return port
 
         def mock_compute_embedding_via_server(chunks, port):
@@ -718,6 +724,9 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         searcher.embedding_model = searcher.meta["embedding_model"]
         searcher.embedding_mode = searcher.meta.get("embedding_mode", "sentence-transformers")
         searcher.embedding_options = searcher.meta.get("embedding_options", {})
+        searcher.enable_warmup = False
+        searcher.use_daemon = False
+        searcher.daemon_ttl_seconds = 0
 
         captured_queries = []
 
@@ -768,6 +777,9 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         searcher.embedding_model = searcher.meta["embedding_model"]
         searcher.embedding_mode = searcher.meta.get("embedding_mode", "sentence-transformers")
         searcher.embedding_options = searcher.meta.get("embedding_options", {})
+        searcher.enable_warmup = False
+        searcher.use_daemon = False
+        searcher.daemon_ttl_seconds = 0
 
         query_template = "task: search result | query: "
         original_query = "vector database"
@@ -791,7 +803,7 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         # Capture queries from server path
         server_queries = []
 
-        def mock_ensure_server_running(passages_file, port):
+        def mock_ensure_server_running(passages_file, port, **kwargs):
             return port
 
         def mock_compute_embedding_via_server(chunks, port):
@@ -843,6 +855,9 @@ class TestQueryTemplateApplicationInComputeEmbedding:
         searcher.embedding_model = searcher.meta["embedding_model"]
         searcher.embedding_mode = searcher.meta.get("embedding_mode", "sentence-transformers")
         searcher.embedding_options = searcher.meta.get("embedding_options", {})
+        searcher.enable_warmup = False
+        searcher.use_daemon = False
+        searcher.daemon_ttl_seconds = 0
 
         captured_queries = []
 

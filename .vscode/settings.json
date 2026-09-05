@@ -18,5 +18,10 @@
     "**/*.egg-info/**": true,
     "**/build/**": true,
     "**/dist/**": true
-  }
+  },
+  "accessibility.signals.terminalBell": {
+    "sound": "on",
+    "announcement": "auto"
+  },
+  "cmake.sourceDirectory": "/Users/yichuan/Desktop/code/LEANN/leann/packages/leann-backend-hnsw"
 }

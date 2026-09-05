@@ -10,11 +10,17 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Optional, cast
 
-import torch
-
 from .settings import (
     resolve_anthropic_api_key,
     resolve_anthropic_base_url,
+    resolve_atlascloud_api_key,
+    resolve_atlascloud_base_url,
+    resolve_litellm_api_key,
+    resolve_litellm_base_url,
+    resolve_minimax_api_key,
+    resolve_minimax_base_url,
+    resolve_novita_api_key,
+    resolve_novita_base_url,
     resolve_ollama_host,
     resolve_openai_api_key,
     resolve_openai_base_url,
@@ -716,6 +722,8 @@ class HFChat(LLMInterface):
         logger.info(f"Generating with HuggingFace model, config: {generation_config}")
 
         # Generate
+        import torch
+
         with torch.no_grad():
             outputs = self.model.generate(**inputs, **generation_config)
 
@@ -940,6 +948,308 @@ class AnthropicChat(LLMInterface):
             return f"Error: Could not get a response from Anthropic. Details: {e}"
 
 
+class MiniMaxChat(LLMInterface):
+    """LLM interface for MiniMax models via the OpenAI-compatible API.
+
+    Supported models:
+        - MiniMax-M2.5 (default): Peak Performance. Ultimate Value.
+        - MiniMax-M2.5-highspeed: Same performance, faster and more agile.
+
+    Both models support a 204,800-token context window.
+    """
+
+    def __init__(
+        self,
+        model: str = "MiniMax-M2.5",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.model = model
+        self.base_url = resolve_minimax_base_url(base_url)
+        self.api_key = resolve_minimax_api_key(api_key)
+
+        if not self.api_key:
+            raise ValueError(
+                "MiniMax API key is required. Set MINIMAX_API_KEY environment variable or pass api_key parameter."
+            )
+
+        logger.info(
+            "Initializing MiniMax Chat with model='%s' and base_url='%s'",
+            model,
+            self.base_url,
+        )
+
+        try:
+            import openai
+
+            self.client = openai.OpenAI(api_key=self.api_key, base_url=self.base_url)
+        except ImportError:
+            raise ImportError(
+                "The 'openai' library is required for MiniMax models. Please install it with 'pip install openai'."
+            )
+
+    def ask(self, prompt: str, **kwargs) -> str:
+        # Default parameters for MiniMax (OpenAI-compatible)
+        params = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 1000),
+        }
+
+        # Add optional parameters
+        if "top_p" in kwargs:
+            params["top_p"] = kwargs["top_p"]
+
+        logger.info(f"Sending request to MiniMax with model {self.model}")
+
+        try:
+            response = cast(Any, self.client.chat.completions).create(**params)
+            print(
+                f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}"
+            )
+            if response.choices[0].finish_reason == "length":
+                print("The query is exceeding the maximum allowed number of tokens")
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Error communicating with MiniMax: {e}")
+            return f"Error: Could not get a response from MiniMax. Details: {e}"
+
+
+class NovitaChat(LLMInterface):
+    """LLM interface for Novita AI models via the OpenAI-compatible API.
+
+    Supported models include:
+        - moonshotai/kimi-k2.5 (default): 262K context, MoE with function calling,
+          structured output, reasoning, and vision support.
+        - zai-org/glm-5: 202K context, MoE with function calling, structured output,
+          reasoning support.
+        - minimax/minimax-m2.5: 204K context, MoE with function calling, structured
+          output, reasoning support.
+
+    See CLAUDE.md for the full model catalog with pricing and features.
+    """
+
+    def __init__(
+        self,
+        model: str = "moonshotai/kimi-k2.5",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.model = model
+        self.base_url = resolve_novita_base_url(base_url)
+        self.api_key = resolve_novita_api_key(api_key)
+
+        if not self.api_key:
+            raise ValueError(
+                "Novita API key is required. Set NOVITA_API_KEY environment variable or pass api_key parameter."
+            )
+
+        logger.info(
+            "Initializing Novita Chat with model='%s' and base_url='%s'",
+            model,
+            self.base_url,
+        )
+
+        try:
+            import openai
+
+            self.client = openai.OpenAI(api_key=self.api_key, base_url=self.base_url)
+        except ImportError:
+            raise ImportError(
+                "The 'openai' library is required for Novita models. Please install it with 'pip install openai'."
+            )
+
+    def ask(self, prompt: str, **kwargs) -> str:
+        params = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 1000),
+        }
+
+        if "top_p" in kwargs:
+            params["top_p"] = kwargs["top_p"]
+
+        logger.info(f"Sending request to Novita with model {self.model}")
+
+        try:
+            response = cast(Any, self.client.chat.completions).create(**params)
+            logger.info(
+                f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}"
+            )
+            if response.choices[0].finish_reason == "length":
+                logger.warning("The query is exceeding the maximum allowed number of tokens")
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Error communicating with Novita: {e}")
+            return f"Error: Could not get a response from Novita. Details: {e}"
+
+
+class AtlasCloudChat(LLMInterface):
+    """LLM interface for Atlas Cloud models via the OpenAI-compatible API."""
+
+    def __init__(
+        self,
+        model: str = "deepseek-ai/deepseek-v4-pro",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.model = model
+        self.base_url = resolve_atlascloud_base_url(base_url)
+        self.api_key = resolve_atlascloud_api_key(api_key)
+
+        if not self.api_key:
+            raise ValueError(
+                "Atlas Cloud API key is required. Set ATLASCLOUD_API_KEY or ATLAS_CLOUD_API_KEY environment variable or pass api_key parameter."
+            )
+
+        logger.info(
+            "Initializing Atlas Cloud Chat with model='%s' and base_url='%s'",
+            model,
+            self.base_url,
+        )
+
+        try:
+            import openai
+
+            self.client = openai.OpenAI(api_key=self.api_key, base_url=self.base_url)
+        except ImportError:
+            raise ImportError(
+                "The 'openai' library is required for Atlas Cloud models. Please install it with 'pip install openai'."
+            )
+
+    def ask(self, prompt: str, **kwargs) -> str:
+        params = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 1000),
+        }
+
+        if "top_p" in kwargs:
+            params["top_p"] = kwargs["top_p"]
+
+        logger.info(f"Sending request to Atlas Cloud with model {self.model}")
+
+        try:
+            response = cast(Any, self.client.chat.completions).create(**params)
+            logger.info(
+                f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}"
+            )
+            if response.choices[0].finish_reason == "length":
+                logger.warning("The query is exceeding the maximum allowed number of tokens")
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Error communicating with Atlas Cloud: {e}")
+            return f"Error: Could not get a response from Atlas Cloud. Details: {e}"
+
+
+class LiteLLMChat(LLMInterface):
+    """LLM interface for 100+ providers through LiteLLM's unified gateway.
+
+    LiteLLM routes to the right provider based on the model string's prefix,
+    so a single interface covers OpenAI, Anthropic, Gemini, Bedrock, Vertex,
+    Azure, Groq, OpenRouter, and many more:
+        - ``gpt-4o`` -> OpenAI
+        - ``anthropic/claude-haiku-4-5`` -> Anthropic
+        - ``gemini/gemini-2.5-flash`` -> Google Gemini
+        - ``openrouter/meta-llama/llama-3.1-70b-instruct`` -> OpenRouter
+        - ``bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0`` -> AWS Bedrock
+
+    Credentials are read from each provider's own environment variable
+    (``OPENAI_API_KEY``, ``ANTHROPIC_API_KEY``, ...) automatically. Set
+    ``base_url`` + ``api_key`` only to route through a self-hosted LiteLLM
+    proxy instead of calling providers directly.
+    """
+
+    def __init__(
+        self,
+        model: str = "gpt-4o",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.model = model
+        self.api_key = resolve_litellm_api_key(api_key)
+        self.base_url = resolve_litellm_base_url(base_url)
+
+        logger.info(
+            "Initializing LiteLLM Chat with model='%s' and base_url='%s'",
+            model,
+            self.base_url,
+        )
+
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                "The 'litellm' library is required for LiteLLM models. "
+                "Install it with 'pip install litellm' or 'pip install leann-core[litellm]'."
+            )
+
+    def ask(self, prompt: str, **kwargs) -> str:
+        import litellm
+
+        params: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 1000),
+            # Silently drop kwargs a given provider doesn't accept so the same
+            # config works across OpenAI, Anthropic, Gemini, Bedrock, etc.
+            "drop_params": True,
+        }
+
+        # Only forward credentials/endpoint when explicitly set; otherwise let
+        # LiteLLM fall back to the provider's own environment variables.
+        if self.api_key:
+            params["api_key"] = self.api_key
+        if self.base_url:
+            params["api_base"] = self.base_url
+
+        # Map the repo's thinking budget onto LiteLLM's unified reasoning_effort
+        # param, but only for models that actually reason. Attaching it blindly
+        # errors on non-reasoning models when routed through a LiteLLM proxy
+        # (client-side drop_params isn't honored server-side).
+        thinking_budget = kwargs.get("thinking_budget")
+        if thinking_budget in ("low", "medium", "high"):
+            try:
+                supports_reasoning = litellm.supports_reasoning(self.model)
+            except Exception:
+                supports_reasoning = False
+            if supports_reasoning:
+                params["reasoning_effort"] = thinking_budget
+            else:
+                logger.warning(
+                    "Thinking budget '%s' requested but model '%s' does not support "
+                    "reasoning; ignoring it.",
+                    thinking_budget,
+                    self.model,
+                )
+
+        if "top_p" in kwargs:
+            params["top_p"] = kwargs["top_p"]
+
+        # Forward any remaining explicit kwargs (already-handled keys excluded).
+        for k, v in kwargs.items():
+            if k not in {"temperature", "max_tokens", "top_p", "thinking_budget"}:
+                params[k] = v
+
+        logger.info(f"Sending request to LiteLLM with model {self.model}")
+
+        try:
+            response = cast(Any, litellm.completion(**params))
+            print(
+                f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}"
+            )
+            if response.choices[0].finish_reason == "length":
+                print("The query is exceeding the maximum allowed number of tokens")
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Error communicating with LiteLLM: {e}")
+            return f"Error: Could not get a response from LiteLLM. Details: {e}"
+
+
 class SimulatedChat(LLMInterface):
     """A simple simulated chat for testing and development."""
 
@@ -995,6 +1305,30 @@ def get_llm(llm_config: Optional[dict[str, Any]] = None) -> LLMInterface:
     elif llm_type == "anthropic":
         return AnthropicChat(
             model=model or "claude-3-5-sonnet-20241022",
+            api_key=llm_config.get("api_key"),
+            base_url=llm_config.get("base_url"),
+        )
+    elif llm_type == "minimax":
+        return MiniMaxChat(
+            model=model or "MiniMax-M2.5",
+            api_key=llm_config.get("api_key"),
+            base_url=llm_config.get("base_url"),
+        )
+    elif llm_type == "novita":
+        return NovitaChat(
+            model=model or "moonshotai/kimi-k2.5",
+            api_key=llm_config.get("api_key"),
+            base_url=llm_config.get("base_url"),
+        )
+    elif llm_type in {"atlascloud", "atlas-cloud", "atlas"}:
+        return AtlasCloudChat(
+            model=model or "deepseek-ai/deepseek-v4-pro",
+            api_key=llm_config.get("api_key"),
+            base_url=llm_config.get("base_url"),
+        )
+    elif llm_type == "litellm":
+        return LiteLLMChat(
+            model=model or "gpt-4o",
             api_key=llm_config.get("api_key"),
             base_url=llm_config.get("base_url"),
         )

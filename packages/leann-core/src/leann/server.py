@@ -7,19 +7,40 @@ This exposes LEANN indexes over HTTP so clients can:
 
 The design intentionally keeps dependencies optional:
 - FastAPI + pydantic are imported lazily inside `create_app()`
-- uvicorn is imported lazily inside `main()`
+- uvicorn is imported lazily inside `serve_async()` (and `main()` calls that)
 
 This way, core LEANN usage is unaffected unless you actually run the server.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel as _BaseModel
+
 from .api import LeannSearcher
 from .cli import LeannCLI
+
+
+class SearchRequest(_BaseModel):
+    query: str
+    top_k: int = 5
+    complexity: int = 64
+    beam_width: int = 1
+    prune_ratio: float = 0.0
+    recompute_embeddings: bool = True
+    pruning_strategy: str = "global"
+    use_grep: bool = False
+
+
+class SearchResultModel(_BaseModel):
+    id: str
+    score: float
+    text: str
+    metadata: dict[str, Any]
 
 
 def _ensure_fastapi():
@@ -94,22 +115,6 @@ def create_app():
 
     FastAPI, HTTPException, BaseModel = _ensure_fastapi()
 
-    class SearchRequest(BaseModel):
-        query: str
-        top_k: int = 5
-        complexity: int = 64
-        beam_width: int = 1
-        prune_ratio: float = 0.0
-        recompute_embeddings: bool = True
-        pruning_strategy: str = "global"
-        use_grep: bool = False
-
-    class SearchResultModel(BaseModel):
-        id: str
-        score: float
-        text: str
-        metadata: dict[str, Any]
-
     app = FastAPI(
         title="LEANN Vector DB Server",
         description=(
@@ -167,14 +172,13 @@ def create_app():
     return app
 
 
-def main() -> None:
+async def serve_async() -> None:
     """
-    Entrypoint to run the HTTP server with uvicorn.
+    Run the HTTP server on the current asyncio event loop.
 
-    Example:
-        uv run python -m leann.server
-        # or, after wiring a CLI command:
-        leann serve
+    Use this from async contexts (e.g. ``leann serve``, which runs under
+    ``asyncio.run()``). Do not use ``uvicorn.run()`` there: it starts its own
+    loop and raises "Cannot run the event loop while another loop is running".
     """
     try:
         import uvicorn
@@ -186,10 +190,23 @@ def main() -> None:
         ) from e
 
     app = create_app()
-    host = os.getenv("LEANN_SERVER_HOST", "0.0.0.0")
+    host = os.getenv("LEANN_SERVER_HOST", "127.0.0.1")
     port = int(os.getenv("LEANN_SERVER_PORT", "8000"))
+    config = uvicorn.Config(app, host=host, port=port)
+    server = uvicorn.Server(config)
+    await server.serve()
 
-    uvicorn.run(app, host=host, port=port)
+
+def main() -> None:
+    """
+    Entrypoint to run the HTTP server with uvicorn.
+
+    Example:
+        uv run python -m leann.server
+        # or:
+        leann serve
+    """
+    asyncio.run(serve_async())
 
 
 if __name__ == "__main__":  # pragma: no cover

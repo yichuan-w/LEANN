@@ -9,6 +9,15 @@ on:
         type: string
         default: ''
 
+env:
+  # Large matrix builds download many Python wheels in parallel. Give transient
+  # PyPI/CDN stalls enough room to recover instead of failing a whole PR run.
+  UV_HTTP_RETRIES: "8"
+  UV_HTTP_TIMEOUT: "120"
+  UV_HTTP_CONNECT_TIMEOUT: "30"
+  UV_CONCURRENT_DOWNLOADS: "8"
+  UV_NO_PROGRESS: "1"
+
 jobs:
   lint:
     name: Lint and Format Check
@@ -23,10 +32,12 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Run pre-commit with only lint group (no project deps)
         run: |
-          uv run --only-group lint pre-commit run --all-files --show-diff-on-failure
+          uv run --frozen --only-group lint pre-commit run --all-files --show-diff-on-failure
 
   type-check:
     name: Type Check with ty
@@ -41,6 +52,8 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.11'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install ty
         run: uv tool install ty==0.0.17
@@ -53,7 +66,11 @@ jobs:
   build:
     needs: [lint, type-check]
     name: Build ${{ matrix.os }} Python ${{ matrix.python }}
+    defaults:
+      run:
+        shell: bash
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Note: Python 3.9 dropped - uses PEP 604 union syntax (str | None)
@@ -66,6 +83,8 @@ jobs:
             python: '3.12'
           - os: ubuntu-22.04
             python: '3.13'
+          - os: ubuntu-22.04
+            python: '3.14'
           # ARM64 Linux builds
           - os: ubuntu-22.04-arm
             python: '3.10'
@@ -75,6 +94,8 @@ jobs:
             python: '3.12'
           - os: ubuntu-22.04-arm
             python: '3.13'
+          - os: ubuntu-22.04-arm
+            python: '3.14'
           - os: macos-14
             python: '3.10'
           - os: macos-14
@@ -83,6 +104,8 @@ jobs:
             python: '3.12'
           - os: macos-14
             python: '3.13'
+          - os: macos-14
+            python: '3.14'
           - os: macos-15
             python: '3.10'
           - os: macos-15
@@ -91,9 +114,12 @@ jobs:
             python: '3.12'
           - os: macos-15
             python: '3.13'
+          - os: macos-15
+            python: '3.14'
           # Intel Mac builds (x86_64) - replaces deprecated macos-13
-          # Note: Python 3.13 excluded - PyTorch has no wheels for macOS x86_64 + Python 3.13
-          # (PyTorch <=2.4.1 lacks cp313, PyTorch >=2.5.0 dropped Intel Mac support)
+          # Note: Python 3.13+ excluded - PyTorch has no wheels for macOS x86_64 + Python >=3.13
+          # (PyTorch <=2.4.1 lacks cp313, PyTorch >=2.5.0 dropped Intel Mac support;
+          # no macosx x86_64 cp314 wheel either as of torch 2.13.0)
           - os: macos-15-intel
             python: '3.10'
           - os: macos-15-intel
@@ -109,6 +135,17 @@ jobs:
             python: '3.12'
           - os: macos-26
             python: '3.13'
+          - os: macos-26
+            python: '3.14'
+          # Windows validation (native HNSW + DiskANN build/install path)
+          - os: windows-2022
+            python: '3.11'
+          - os: windows-2022
+            python: '3.12'
+          - os: windows-2022
+            python: '3.13'
+          - os: windows-2022
+            python: '3.14'
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -121,12 +158,14 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install system dependencies (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev \
+          sudo apt-get install -y cmake libomp-dev libboost-all-dev protobuf-compiler libzmq3-dev \
             pkg-config libabsl-dev libaio-dev libprotobuf-dev \
             patchelf
 
@@ -175,22 +214,107 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           # Don't install LLVM, use system clang for better compatibility
-          brew install libomp boost protobuf zeromq
+          # CMake is required for scikit-build (HNSW + DiskANN); install via brew so
+          # we do not depend on fetching the PyPI cmake package during uv build.
+          brew install cmake libomp boost protobuf zeromq
+
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 10s: $*"
+              sleep 10
+              n=$((n + 1))
+            done
+          }
+
+          retry 5 choco install swig -y --no-progress
+          retry 5 choco install nuget.commandline -y --no-progress
+          # pkgconfiglite via Chocolatey is flaky (exits 0 even on failure);
+          # verify the binary exists and fall back to direct download.
+          retry 3 choco install pkgconfiglite -y --no-progress || true
+          PKG_CONFIG_DIR="C:/ProgramData/chocolatey/bin"
+          if [[ ! -f "${PKG_CONFIG_DIR}/pkg-config.exe" ]]; then
+            echo "pkg-config.exe not found after choco, downloading directly..."
+            PKG_CONFIG_DIR="${RUNNER_TEMP}/pkg-config"
+            mkdir -p "${PKG_CONFIG_DIR}"
+            curl -fsSL -o "${RUNNER_TEMP}/pkgconfiglite.zip" \
+              "https://sourceforge.net/projects/pkgconfiglite/files/0.28-1/pkg-config-lite-0.28-1_bin-win32.zip/download"
+            unzip -q "${RUNNER_TEMP}/pkgconfiglite.zip" -d "${RUNNER_TEMP}/pkgconfiglite"
+            cp "${RUNNER_TEMP}/pkgconfiglite/pkg-config-lite-0.28-1/bin/"* "${PKG_CONFIG_DIR}/"
+          fi
+          echo "${PKG_CONFIG_DIR}" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_EXECUTABLE=${PKG_CONFIG_DIR}/pkg-config.exe" >> "$GITHUB_ENV"
+          if [[ -z "${VCPKG_INSTALLATION_ROOT:-}" ]]; then
+            echo "VCPKG_INSTALLATION_ROOT is not set on this runner"
+            exit 1
+          fi
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install zeromq:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install openblas:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install lapack:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install boost-program-options:x64-windows
+          retry 5 "${VCPKG_INSTALLATION_ROOT}/vcpkg" install protobuf:x64-windows
+
+          # DiskANN links against Intel OpenMP (libiomp5md) via NuGet during its
+          # CMake build.  The NuGet packages end up in a temp build dir that is
+          # cleaned up by `uv build`, so delvewheel can't find the DLL later.
+          # Download it here to a persistent, known location.
+          NUGET_PKG_DIR="${RUNNER_TEMP}/nuget_pkgs"
+          retry 5 nuget install intelopenmp.redist.win -Version 2022.0.3.3747 \
+            -ExcludeVersion -OutputDirectory "${NUGET_PKG_DIR}"
+          echo "INTEL_OMP_BIN_DIR=${NUGET_PKG_DIR}/intelopenmp.redist.win/runtimes/win-x64/native" >> "$GITHUB_ENV"
+
+          echo "PKG_CONFIG_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows" >> "$GITHUB_ENV"
+          echo "OPENBLAS_LIB=${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib/openblas.lib" >> "$GITHUB_ENV"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/bin" >> "$GITHUB_PATH"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/debug/bin" >> "$GITHUB_PATH"
+          echo "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/tools/protobuf" >> "$GITHUB_PATH"
+          pkg-config --version || true
+          where pkg-config || true
+          pkg-config --modversion libzmq || true
 
       - name: Install build dependencies
         run: |
-          uv python install ${{ matrix.python }}
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 5s: $*"
+              sleep 5
+              n=$((n + 1))
+            done
+          }
+
+          retry 5 uv python install ${{ matrix.python }}
           uv venv --python ${{ matrix.python }} .uv-build
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             BUILD_PY=".uv-build\\Scripts\\python.exe"
           else
             BUILD_PY=".uv-build/bin/python"
           fi
-          uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
+          retry 5 uv pip install --python "$BUILD_PY" scikit-build-core numpy swig Cython pybind11
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            uv pip install --python "$BUILD_PY" auditwheel
+            retry 5 uv pip install --python "$BUILD_PY" auditwheel "patchelf>=0.14.5"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            retry 5 uv pip install --python "$BUILD_PY" delocate
           else
-            uv pip install --python "$BUILD_PY" delocate
+            retry 5 uv pip install --python "$BUILD_PY" delvewheel
           fi
 
           if [[ "$RUNNER_OS" == "Windows" ]]; then
@@ -216,9 +340,25 @@ jobs:
 
       - name: Build packages
         run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 10s: $*"
+              sleep 10
+              n=$((n + 1))
+            done
+          }
+
           # Build core (platform independent)
           cd packages/leann-core
-          uv build
+          retry 3 uv build
           cd ../..
 
           # Build HNSW backend
@@ -238,9 +378,9 @@ jobs:
             elif [[ "${{ matrix.os }}" == macos-26* ]]; then
               export MACOSX_DEPLOYMENT_TARGET=26.0
             fi
-            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+            retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
-            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+            retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           fi
           cd ../..
 
@@ -261,15 +401,20 @@ jobs:
             elif [[ "${{ matrix.os }}" == macos-26* ]]; then
               export MACOSX_DEPLOYMENT_TARGET=26.0
             fi
-            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+            retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           else
-            uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
+            retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           fi
+          cd ../..
+
+          # Build IVF backend (pure Python; depends on leann-core + faiss-cpu at install time)
+          cd packages/leann-backend-ivf
+          retry 3 uv build --wheel --python ${{ matrix.python }} --find-links ${GITHUB_WORKSPACE}/packages/leann-core/dist
           cd ../..
 
           # Build meta package (platform independent)
           cd packages/leann
-          uv build
+          retry 3 uv build
           cd ../..
 
       - name: Repair wheels (Linux)
@@ -332,6 +477,52 @@ jobs:
           fi
           cd ../..
 
+      - name: Repair wheels (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Repair HNSW wheel
+          cd packages/leann-backend-hnsw
+          if [ -d dist ]; then
+            delvewheel repair dist/*.whl -w dist_repaired --add-path "${VCPKG_INSTALLATION_ROOT}/installed/x64-windows/bin"
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+
+          # Repair DiskANN wheel.
+          # DiskANN's CMake install bundles diskann.dll and libiomp5md.dll inside
+          # the wheel, but delvewheel doesn't search inside the wheel for deps.
+          # Extract the wheel so delvewheel can discover them via --add-path.
+          cd packages/leann-backend-diskann
+          if [ -d dist ]; then
+            # Extract the wheel and build --add-path with native Windows paths.
+            # mktemp returns Git Bash paths (/tmp/...) that delvewheel.exe can't
+            # resolve, so use Python for the entire extract-and-repair flow.
+            python -c "
+          import zipfile, sys, glob, tempfile, subprocess, os, shutil
+          whl = glob.glob('dist/*.whl')[0]
+          tmpdir = tempfile.mkdtemp(prefix='diskann_whl_')
+          zipfile.ZipFile(whl).extractall(tmpdir)
+
+          add_paths = [os.environ.get('VCPKG_INSTALLATION_ROOT','') + '/installed/x64-windows/bin',
+                       os.environ.get('INTEL_OMP_BIN_DIR','')]
+          for entry in os.listdir(tmpdir):
+              full = os.path.join(tmpdir, entry)
+              if os.path.isdir(full):
+                  add_paths.append(full)
+          add_path_str = ';'.join(p for p in add_paths if p)
+
+          print(f'add-path: {add_path_str}')
+          rc = subprocess.call([sys.executable, '-m', 'delvewheel', 'repair', whl,
+                                '-w', 'dist_repaired', '--add-path', add_path_str])
+          shutil.rmtree(tmpdir, ignore_errors=True)
+          sys.exit(rc)
+          "
+            rm -rf dist
+            mv dist_repaired dist
+          fi
+          cd ../..
+
       - name: List built packages
         run: |
           echo "📦 Built packages:"
@@ -340,8 +531,24 @@ jobs:
 
       - name: Install built packages for testing
         run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 5s: $*"
+              sleep 5
+              n=$((n + 1))
+            done
+          }
+
           # Create uv-managed virtual environment with the requested interpreter
-          uv python install ${{ matrix.python }}
+          retry 5 uv python install ${{ matrix.python }}
           uv venv --python ${{ matrix.python }}
           source .venv/bin/activate || source .venv/Scripts/activate
 
@@ -352,14 +559,14 @@ jobs:
           fi
 
           # Install test dependency group only (avoids reinstalling project package)
-          uv pip install --python "$UV_PY" --group test
+          retry 5 uv pip install --python "$UV_PY" --group test
 
           # Install core wheel built in this job
           CORE_WHL=$(find packages/leann-core/dist -maxdepth 1 -name "*.whl" -print -quit)
           if [[ -n "$CORE_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$CORE_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$CORE_WHL"
           else
-            uv pip install --python "$UV_PY" packages/leann-core/dist/*.tar.gz
+            retry 5 uv pip install --python "$UV_PY" packages/leann-core/dist/*.tar.gz
           fi
 
           PY_TAG=$($UV_PY -c "import sys; print(f'cp{sys.version_info[0]}{sys.version_info[1]}')")
@@ -382,9 +589,9 @@ jobs:
             HNSW_WHL=$(find packages/leann-backend-hnsw/dist -maxdepth 1 -name "*-py3-*.whl" -print -quit)
           fi
           if [[ -n "$HNSW_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$HNSW_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$HNSW_WHL"
           else
-            uv pip install --python "$UV_PY" ./packages/leann-backend-hnsw
+            retry 5 uv pip install --python "$UV_PY" ./packages/leann-backend-hnsw
           fi
 
           DISKANN_WHL=$(find packages/leann-backend-diskann/dist -maxdepth 1 -name "*-${PY_TAG}-*.whl" -print -quit)
@@ -392,16 +599,23 @@ jobs:
             DISKANN_WHL=$(find packages/leann-backend-diskann/dist -maxdepth 1 -name "*-py3-*.whl" -print -quit)
           fi
           if [[ -n "$DISKANN_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$DISKANN_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$DISKANN_WHL"
           else
-            uv pip install --python "$UV_PY" ./packages/leann-backend-diskann
+            retry 5 uv pip install --python "$UV_PY" ./packages/leann-backend-diskann
+          fi
+
+          IVF_WHL=$(find packages/leann-backend-ivf/dist -maxdepth 1 -name "*.whl" -print -quit)
+          if [[ -n "$IVF_WHL" ]]; then
+            retry 5 uv pip install --python "$UV_PY" "$IVF_WHL"
+          else
+            retry 5 uv pip install --python "$UV_PY" ./packages/leann-backend-ivf
           fi
 
           LEANN_WHL=$(find packages/leann/dist -maxdepth 1 -name "*.whl" -print -quit)
           if [[ -n "$LEANN_WHL" ]]; then
-            uv pip install --python "$UV_PY" "$LEANN_WHL"
+            retry 5 uv pip install --python "$UV_PY" "$LEANN_WHL"
           else
-            uv pip install --python "$UV_PY" packages/leann/dist/*.tar.gz
+            retry 5 uv pip install --python "$UV_PY" packages/leann/dist/*.tar.gz
           fi
 
       - name: Run tests with pytest
@@ -462,14 +676,39 @@ jobs:
 
       - name: Create virtual environment and install wheels
         run: |
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && break
+              if [[ $n -ge $attempts ]]; then
+                echo "Command failed after $n attempts: $*"
+                return 1
+              fi
+              echo "Command failed (attempt $n/$attempts). Retrying in 10s: $*"
+              sleep 10
+              n=$((n + 1))
+            done
+          }
+
           # Use Python 3.13 explicitly (Arch has Python 3.14 which PyO3/tokenizers doesn't support yet)
-          uv python install 3.13
+          retry 5 uv python install 3.13
           uv venv --python 3.13
           source .venv/bin/activate || source .venv/Scripts/activate
-          uv pip install --find-links wheels leann-core
-          uv pip install --find-links wheels leann-backend-hnsw
-          uv pip install --find-links wheels leann-backend-diskann
-          uv pip install --find-links wheels leann
+          # Flatten artifact subdirectories into a single wheelhouse.
+          # actions/download-artifact stores each artifact in its own folder and
+          # pip/uv --find-links does not recurse into nested directories.
+          mkdir -p wheelhouse
+          find wheels -name "*.whl" -exec cp {} wheelhouse/ \;
+
+          # Prefer wheels produced in this workflow run for our internal packages,
+          # but still allow dependencies to be installed from the normal index.
+          retry 5 uv pip install --find-links wheelhouse leann-core
+          retry 5 uv pip install --find-links wheelhouse leann-backend-hnsw
+          retry 5 uv pip install --find-links wheelhouse leann-backend-diskann
+          retry 5 uv pip install --find-links wheelhouse leann-backend-ivf
+          retry 5 uv pip install --find-links wheelhouse leann
 
       - name: Import & tiny runtime check
         env:
@@ -478,13 +717,36 @@ jobs:
         run: |
           source .venv/bin/activate || source .venv/Scripts/activate
           python - <<'PY'
+          import numpy as np
           import leann
           import leann_backend_hnsw as h
           import leann_backend_diskann as d
+          import leann_backend_ivf as ivf
           from leann import LeannBuilder, LeannSearcher
-          b = LeannBuilder(backend_name="hnsw")
+
+          b = LeannBuilder(
+              backend_name="hnsw",
+              dimensions=2,
+              is_compact=False,
+              is_recompute=False,
+          )
           b.add_text("hello arch")
-          b.build_index("arch_demo.leann")
-          s = LeannSearcher("arch_demo.leann")
-          print("search:", s.search("hello", top_k=1))
+          b.build_index_from_arrays(
+              "arch_demo.leann",
+              ["0"],
+              np.asarray([[1.0, 0.0]], dtype=np.float32),
+          )
+
+          with LeannSearcher(
+              "arch_demo.leann",
+              recompute_embeddings=False,
+              enable_warmup=False,
+          ) as s:
+              s.backend_impl.compute_query_embedding = lambda *args, **kwargs: np.asarray(
+                  [[1.0, 0.0]], dtype=np.float32
+              )
+              result = s.search("hello", top_k=1)
+
+          assert result and result[0].text == "hello arch"
+          print("arch smoke ok")
           PY
