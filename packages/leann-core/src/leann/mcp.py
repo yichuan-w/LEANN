@@ -340,6 +340,18 @@ def handle_request(request):
     if method == "notifications/initialized":
         return None
 
+    if method == "ping":
+        # MCP requires a ping request to be answered with an empty result.
+        # Without this it falls through to the -32601 branch below, which tells
+        # a client its liveness probe is unsupported — a different wrong answer
+        # from the silence #384 fixed, but still one that breaks keepalives
+        # (issue #403).
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {},
+        }
+
     if method == "tools/list":
         return {
             "jsonrpc": "2.0",
