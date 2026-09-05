@@ -299,3 +299,13 @@ class FileSynchronizer:
                 self.tree = pickle.load(f)
         except FileNotFoundError:
             self.tree = None
+        except (
+            OSError,
+            EOFError,
+            pickle.UnpicklingError,
+            AttributeError,
+            ImportError,
+            IndexError,
+        ) as exc:
+            logger.warning("Cannot load sync snapshot %s: %s", self.snapshot_path, exc)
+            self.tree = None
