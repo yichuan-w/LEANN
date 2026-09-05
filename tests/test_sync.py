@@ -56,6 +56,24 @@ class TestMerkleTreeCompare(unittest.TestCase):
 
 
 class TestFileSynchronizer(unittest.TestCase):
+    def test_corrupt_snapshot_is_rebuilt(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            document = root / "file.txt"
+            document.write_text("hello world", encoding="utf-8")
+            snapshot = root / "sync.pickle"
+            snapshot.write_bytes(b"truncated pickle")
+
+            synchronizer = FileSynchronizer(
+                root_dir=temp_dir,
+                snapshot_path=str(snapshot),
+            )
+
+            added, removed, modified = synchronizer.detect_changes()
+            assert added == [str(document.resolve())]
+            assert removed == []
+            assert modified == []
+
     def test_generate_file_hashes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             file_path = Path(temp_dir) / "file.txt"
