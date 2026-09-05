@@ -102,6 +102,30 @@ export LEANN_OLLAMA_HOST="http://localhost:11434"   # falls back to OLLAMA_HOST 
 
 LEANN also recognises `LEANN_LOCAL_LLM_HOST` (highest priority), `LEANN_OPENAI_BASE_URL`, and `LOCAL_OPENAI_BASE_URL`, so existing scripts continue to work.
 
+### Embedding Server Bind Address
+
+The backend embedding servers (HNSW and DiskANN) listen on `127.0.0.1` by
+default, so an index build or search does not expose an embedding endpoint to
+the rest of the network. Override the bind address only when something outside
+the machine genuinely needs to reach it — a container sidecar, or a searcher on
+another host:
+
+```bash
+# Listen on every interface (containers, cross-host setups)
+export LEANN_EMBEDDING_SERVER_HOST="0.0.0.0"
+
+# Or bind one specific interface
+export LEANN_EMBEDDING_SERVER_HOST="10.0.0.5"
+
+# IPv6 works too; brackets are added automatically
+export LEANN_EMBEDDING_SERVER_HOST="::1"
+```
+
+The server speaks an unauthenticated ZMQ REP protocol, so anything that can
+reach the port can request embeddings. Prefer the loopback default, and if you
+must widen it, restrict access at the firewall or container network rather than
+exposing the port publicly.
+
 ### Passing Hosts Per Command
 
 ```bash
