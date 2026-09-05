@@ -56,6 +56,24 @@ class TestMerkleTreeCompare(unittest.TestCase):
 
 
 class TestFileSynchronizer(unittest.TestCase):
+    def test_corrupt_snapshot_is_rebuilt(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            document = root / "file.txt"
+            document.write_text("hello world", encoding="utf-8")
+            snapshot = root / "sync.pickle"
+            snapshot.write_bytes(b"truncated pickle")
+
+            synchronizer = FileSynchronizer(
+                root_dir=temp_dir,
+                snapshot_path=str(snapshot),
+            )
+
+            added, removed, modified = synchronizer.detect_changes()
+            assert added == [str(document.resolve())]
+            assert removed == []
+            assert modified == []
+
     def test_generate_file_hashes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             file_path = Path(temp_dir) / "file.txt"
@@ -77,6 +95,34 @@ class TestFileSynchronizer(unittest.TestCase):
             result = fs.generate_file_hashes()
             assert len(result) == 1
             assert str((root / "code.py").resolve()) in result
+
+    def test_generate_file_hashes_includes_pdf_by_default(self):
+        # Regression test: PDFs are indexed by `leann build` by default, so they
+        # must also be covered by the default sync allowlist. Without this, a
+        # PDF-only directory yields zero hashes, detect_changes() reports no new
+        # files, and the first build exits early with "Index up to date."
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pdf = root / "doc.pdf"
+            pdf.write_bytes(b"%PDF-1.4 fake")
+            fs = FileSynchronizer(root_dir=temp_dir, auto_load=False)
+            result = fs.generate_file_hashes()
+            assert str(pdf.resolve()) in result
+
+    def test_detect_changes_reports_pdf_as_added_on_first_build(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            snapshot = root / "sync.pickle"
+            docs = root / "docs"
+            docs.mkdir()
+            pdf = docs / "manual.pdf"
+            pdf.write_bytes(b"%PDF-1.4 fake")
+
+            fs = FileSynchronizer(root_dir=str(docs), snapshot_path=str(snapshot))
+            added, removed, modified = fs.detect_changes()
+            assert [str(pdf.resolve())] == added
+            assert removed == []
+            assert modified == []
 
     def test_generate_file_hashes_explicit_files_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:
