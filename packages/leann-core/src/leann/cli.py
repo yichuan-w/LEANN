@@ -289,6 +289,40 @@ Examples:
 
         subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+        def add_embedding_args(target_parser: argparse.ArgumentParser) -> None:
+            """Add common embedding arguments to a parser."""
+            target_parser.add_argument(
+                "--embedding-model",
+                type=str,
+                default="facebook/contriever",
+                help="Embedding model (default: facebook/contriever)",
+            )
+            target_parser.add_argument(
+                "--embedding-mode",
+                type=str,
+                default="sentence-transformers",
+                choices=["sentence-transformers", "openai", "mlx", "ollama"],
+                help="Embedding backend mode (default: sentence-transformers)",
+            )
+            target_parser.add_argument(
+                "--embedding-host",
+                type=str,
+                default=None,
+                help="Override Ollama-compatible embedding host",
+            )
+            target_parser.add_argument(
+                "--embedding-api-base",
+                type=str,
+                default=None,
+                help="Base URL for OpenAI-compatible embedding services",
+            )
+            target_parser.add_argument(
+                "--embedding-api-key",
+                type=str,
+                default=None,
+                help="API key for embedding service (defaults to OPENAI_API_KEY)",
+            )
+
         # Build command
         build_parser = subparsers.add_parser("build", help="Build document index")
         build_parser.add_argument(
@@ -451,6 +485,132 @@ Examples:
                 "and reorderings. See #329."
             ),
         )
+
+        # Browser Index Command
+        browser_parser = subparsers.add_parser("index-browser", help="Index browser history")
+        browser_parser.add_argument(
+            "browser_type", choices=["chrome", "brave"], help="Type of browser"
+        )
+        browser_parser.add_argument(
+            "--profile", type=str, default="Default", help="Profile name (default: Default)"
+        )
+        browser_parser.add_argument(
+            "--index-name", type=str, default=None, help="Custom index name"
+        )
+        browser_parser.add_argument(
+            "--max-items", type=int, default=1000, help="Max history items to index"
+        )
+        add_embedding_args(browser_parser)
+
+        # Email indexing command
+        email_parser = subparsers.add_parser("index-email", help="Index Apple Mail emails")
+        email_parser.add_argument(
+            "index_name", nargs="?", default="apple-mail", help="Index name (default: apple-mail)"
+        )
+        email_parser.add_argument(
+            "--max-items", type=int, default=2000, help="Max emails to index (default: 2000)"
+        )
+        add_embedding_args(email_parser)
+
+        # Calendar indexing command
+        calendar_parser = subparsers.add_parser(
+            "index-calendar", help="Index Apple Calendar events"
+        )
+        calendar_parser.add_argument(
+            "index_name",
+            nargs="?",
+            default="apple-calendar",
+            help="Index name (default: apple-calendar)",
+        )
+        calendar_parser.add_argument(
+            "--max-items", type=int, default=1000, help="Max events to index (default: 1000)"
+        )
+        add_embedding_args(calendar_parser)
+
+        # WeChat indexing command
+        wechat_parser = subparsers.add_parser("index-wechat", help="Index WeChat chat history")
+        wechat_parser.add_argument(
+            "index_name", nargs="?", default="wechat", help="Index name (default: wechat)"
+        )
+        wechat_parser.add_argument(
+            "--export-dir",
+            type=str,
+            default="./wechat_export",
+            help="Directory containing exported WeChat data (default: ./wechat_export)",
+        )
+        wechat_parser.add_argument(
+            "--max-items", type=int, default=1000, help="Max messages to index (default: 1000)"
+        )
+        add_embedding_args(wechat_parser)
+
+        # iMessage indexing command
+        imessage_parser = subparsers.add_parser("index-imessage", help="Index iMessage history")
+        imessage_parser.add_argument(
+            "index_name", nargs="?", default="imessage", help="Index name (default: imessage)"
+        )
+        imessage_parser.add_argument(
+            "--db-path",
+            type=str,
+            default=None,
+            help="Path to chat.db (default: ~/Library/Messages/chat.db)",
+        )
+        imessage_parser.add_argument(
+            "--max-items", type=int, default=1000, help="Max messages to index (default: 1000)"
+        )
+        add_embedding_args(imessage_parser)
+
+        # Slack indexing command
+        slack_parser = subparsers.add_parser("index-slack", help="Index Slack workspace via MCP")
+        slack_parser.add_argument(
+            "index_name", nargs="?", default="slack", help="Index name (default: slack)"
+        )
+        slack_parser.add_argument(
+            "--mcp-server",
+            type=str,
+            required=True,
+            help="MCP server command (e.g., 'slack-mcp-server')",
+        )
+        slack_parser.add_argument("--workspace-name", type=str, help="Slack workspace name")
+        slack_parser.add_argument(
+            "--channels",
+            type=str,
+            nargs="+",
+            default=[],
+            help="Specific channels to index (optional)",
+        )
+        add_embedding_args(slack_parser)
+
+        # ChatGPT indexing command
+        chatgpt_parser = subparsers.add_parser("index-chatgpt", help="Index ChatGPT export")
+        chatgpt_parser.add_argument(
+            "index_name", nargs="?", default="chatgpt", help="Index name (default: chatgpt)"
+        )
+        chatgpt_parser.add_argument(
+            "--export-path",
+            type=str,
+            required=True,
+            help="Path to ChatGPT export file (.html/.zip) or directory",
+        )
+        chatgpt_parser.add_argument(
+            "--max-items", type=int, default=1000, help="Max items to index (default: 1000)"
+        )
+        add_embedding_args(chatgpt_parser)
+
+        # Claude indexing command
+        claude_parser = subparsers.add_parser("index-claude", help="Index Claude export")
+        claude_parser.add_argument(
+            "index_name", nargs="?", default="claude", help="Index name (default: claude)"
+        )
+        claude_parser.add_argument(
+            "--export-path",
+            type=str,
+            required=True,
+            help="Path to Claude export file (.json/.zip) or directory",
+        )
+        claude_parser.add_argument(
+            "--max-items", type=int, default=1000, help="Max items to index (default: 1000)"
+        )
+        add_embedding_args(claude_parser)
 
         # Watch command
         watch_parser = subparsers.add_parser(
@@ -2455,6 +2615,343 @@ Examples:
                     chunk_ids_by_file.setdefault(file_path, []).append(str(chunk_id))
         return chunk_ids_by_file
 
+    async def index_browser(self, args):
+        """Build an index from browser history."""
+        from .readers import ChromeHistoryReader
+
+        browser_type = args.browser_type
+        profile = args.profile
+        index_name = args.index_name or f"{browser_type}-history"
+
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print(f"🌐 Indexing {browser_type.capitalize()} history (profile: {profile})...")
+
+        paths = ChromeHistoryReader.find_browser_paths()
+        if browser_type not in paths:
+            print(f"❌ Could not find {browser_type} profile directory automatically.")
+            return
+
+        profile_path = paths[browser_type] / profile
+
+        reader = ChromeHistoryReader()
+        documents = reader.load_data(
+            chrome_profile_path=str(profile_path), max_count=args.max_items
+        )
+
+        if not documents:
+            print("❌ No history entries found to index.")
+            return
+
+        print(f"📚 Loaded {len(documents)} entries. Building index...")
+
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ Browser history index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
+    async def index_email(self, args):
+        """Build an index from Apple Mail emails."""
+        from .readers import AppleMailReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("📧 Indexing Apple Mail emails...")
+
+        reader = AppleMailReader()
+        documents = reader.load_data(max_count=args.max_items)
+
+        if not documents:
+            print("❌ No emails found to index. Make sure Full Disk Access is granted.")
+            return
+
+        print(f"📚 Loaded {len(documents)} emails. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ Email index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
+    async def index_calendar(self, args):
+        """Build an index from Apple Calendar events."""
+        from .readers import AppleCalendarReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("📅 Indexing Apple Calendar events...")
+
+        reader = AppleCalendarReader()
+        documents = reader.load_data(max_count=args.max_items)
+
+        if not documents:
+            print("❌ No calendar events found to index. Make sure Full Disk Access is granted.")
+            return
+
+        print(f"📚 Loaded {len(documents)} events. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ Calendar index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
+    async def index_wechat(self, args):
+        """Build an index from WeChat chat history."""
+        from .readers import WeChatHistoryReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("💬 Indexing WeChat chat history...")
+
+        reader = WeChatHistoryReader()
+        export_dir = getattr(args, "export_dir", "./wechat_export")
+        documents = reader.load_data(wechat_export_dir=export_dir, max_count=args.max_items)
+
+        if not documents:
+            print("❌ No WeChat data found. Make sure WeChat is exported first.")
+            return
+
+        print(f"📚 Loaded {len(documents)} messages. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ WeChat index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
+    async def index_imessage(self, args):
+        """Build an index from iMessage history."""
+        from .readers import IMessageReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("💬 Indexing iMessage history...")
+
+        reader = IMessageReader()
+        documents = reader.load_data(max_count=args.max_items)
+
+        if not documents:
+            print("❌ No iMessage data found. Make sure Full Disk Access is granted.")
+            return
+
+        print(f"📚 Loaded {len(documents)} messages. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ iMessage index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
+    async def index_slack(self, args):
+        """Build an index from Slack workspace via MCP."""
+        from .readers import SlackMCPReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("📱 Indexing Slack workspace...")
+
+        reader = SlackMCPReader(
+            mcp_server_command=args.mcp_server,
+            workspace_name=args.workspace_name,
+        )
+        documents = await reader.load_data(channels=args.channels)
+
+        if not documents:
+            print("❌ No Slack data found. Make sure MCP server is running.")
+            return
+
+        print(f"📚 Loaded {len(documents)} messages. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ Slack index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
+    async def index_chatgpt(self, args):
+        """Build an index from ChatGPT export."""
+        from .readers import ChatGPTReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("🤖 Indexing ChatGPT export...")
+
+        reader = ChatGPTReader()
+        documents = reader.load_data(export_path=args.export_path)
+
+        if not documents:
+            print("❌ No ChatGPT data found. Make sure export file is valid.")
+            return
+
+        print(f"📚 Loaded {len(documents)} items. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ ChatGPT index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
+    async def index_claude(self, args):
+        """Build an index from Claude export."""
+        from .readers import ClaudeReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("🤖 Indexing Claude export...")
+
+        reader = ClaudeReader()
+        documents = reader.load_data(export_path=args.export_path)
+
+        if not documents:
+            print("❌ No Claude data found. Make sure export file is valid.")
+            return
+
+        print(f"📚 Loaded {len(documents)} items. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ Claude index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
     async def build_index(self, args):
         docs_paths = args.docs
         # Use current directory name if index_name not provided
@@ -3853,26 +4350,30 @@ Examples:
                 await self.react_agent(args)
         elif args.command == "serve":
             await self.serve_api(args)
-        elif args.command in (
-            "index-browser",
-            "index-email",
-            "index-calendar",
-            "index-imessage",
-            "index-wechat",
-            "index-chatgpt",
-            "index-claude",
-        ):
-            handler = {
-                "index-browser": self.index_browser,
-                "index-email": self.index_email,
-                "index-calendar": self.index_calendar,
-                "index-imessage": self.index_imessage,
-                "index-wechat": self.index_wechat,
-                "index-chatgpt": self.index_chatgpt,
-                "index-claude": self.index_claude,
-            }[args.command]
+        elif args.command == "index-browser":
             with suppress_cpp_output(suppress):
-                await handler(args)
+                await self.index_browser(args)
+        elif args.command == "index-email":
+            with suppress_cpp_output(suppress):
+                await self.index_email(args)
+        elif args.command == "index-calendar":
+            with suppress_cpp_output(suppress):
+                await self.index_calendar(args)
+        elif args.command == "index-wechat":
+            with suppress_cpp_output(suppress):
+                await self.index_wechat(args)
+        elif args.command == "index-imessage":
+            with suppress_cpp_output(suppress):
+                await self.index_imessage(args)
+        elif args.command == "index-slack":
+            with suppress_cpp_output(suppress):
+                await self.index_slack(args)
+        elif args.command == "index-chatgpt":
+            with suppress_cpp_output(suppress):
+                await self.index_chatgpt(args)
+        elif args.command == "index-claude":
+            with suppress_cpp_output(suppress):
+                await self.index_claude(args)
         else:
             parser.print_help()
 
