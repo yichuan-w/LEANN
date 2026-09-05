@@ -102,7 +102,7 @@ pytest tests/ -k diskann
 
 Tests are automatically run in GitHub Actions:
 1. After building wheel packages
-2. On multiple Python versions (3.9 - 3.13)
+2. On multiple Python versions (3.10 - 3.14; platform-specific coverage varies)
 3. On both Ubuntu and macOS
 4. Using pytest with appropriate markers and flags
 
