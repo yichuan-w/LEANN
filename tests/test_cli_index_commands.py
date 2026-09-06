@@ -66,6 +66,7 @@ def test_index_command_dispatch(cli, source, empty, no_recompute, tmp_path, monk
     reader_class = Mock()
     reader_class.return_value.load_data.return_value = documents
     if module_name:
+        assert reader_name is not None
         parts = module_name.split(".")
         for end in range(1, len(parts) + 1):
             name = ".".join(parts[:end])
@@ -75,7 +76,12 @@ def test_index_command_dispatch(cli, source, empty, no_recompute, tmp_path, monk
         module = sys.modules[module_name]
         setattr(module, reader_name, reader_class)
         if source == "email":
-            module.find_all_messages_directories = Mock(return_value=[tmp_path / "mail"])
+            monkeypatch.setattr(
+                module,
+                "find_all_messages_directories",
+                Mock(return_value=[tmp_path / "mail"]),
+                raising=False,
+            )
     else:
         # The legacy calendar handler embeds its reader. Exercise its actual SQL
         # against a synthetic database, redirecting its fixed scratch path.
