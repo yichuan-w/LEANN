@@ -66,3 +66,8 @@ fixes). Newest entries at the bottom.
   already-working Windows `cp314` installs. Completing the wheel matrix is the
   correct fix; the next 0.3.8 patch release will carry full `cp314` coverage
   once CI confirms the new platforms build cleanly.
+
+## 2026-09-06: Preserve mixed-script words in BM25 search
+
+- Keep Latin words and numbers separate from adjacent Chinese, Japanese, and Korean n-grams when building SQLite FTS5 indexes and parsing keyword queries. For example, `Python数据库SQL` can be retrieved by `Python`, `SQL`, or a mixed-script query.
+- Existing BM25 artifacts remain readable. Rebuild indexes containing mixed-script text to regenerate tokens that were previously joined at script boundaries.
