@@ -1,15 +1,19 @@
 """Exercise the real MCP reader/transport against an HTTP protocol fixture."""
 
 import asyncio
+import importlib
 import json
 import sys
 from types import SimpleNamespace
 
-import httpx
 import pytest
 
-from apps.parallel_data import __main__ as export
-from apps.parallel_data import parallel_mcp_reader as reader
+# The opt-in reader has its own installation; do not add SDK requirements to
+# collection of LEANN's ordinary test suite.
+httpx = pytest.importorskip("httpx")
+pytest.importorskip("mcp")
+reader = importlib.import_module("apps.parallel_data.parallel_mcp_reader")
+export = importlib.import_module("apps.parallel_data.__main__")
 
 
 def install_server(monkeypatch, search, extraction=None, tool_error=False, tools=None):
