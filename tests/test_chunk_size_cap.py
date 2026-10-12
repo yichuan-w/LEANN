@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from leann import embedding_compute
+from leann import chunking_utils, embedding_compute
 from leann.chunking_utils import cap_chunk_size, create_text_chunks
 from llama_index.core import Document
 
@@ -23,20 +23,31 @@ def test_cap_chunk_size_only_shrinks(chunk_size, limit, expected):
     assert cap_chunk_size(chunk_size, limit) == expected
 
 
-def test_large_model_limit_does_not_grow_chunks():
-    docs = [Document(text="LEANN recomputes embeddings on demand. " * 400)]
-    plain = create_text_chunks(docs, chunk_size=256, chunk_overlap=64)
-    with_limit = create_text_chunks(
-        docs, chunk_size=256, chunk_overlap=64, max_tokens_per_chunk=2048
+@pytest.mark.parametrize(
+    "chunk_size,overlap,limit,expected",
+    [
+        (256, 64, None, (256, 64)),
+        (256, 64, 2048, (256, 64)),  # large limit never grows the chunk
+        (512, 50, 256, (179, 50)),
+        (256, 128, 256, (179, 89)),  # overlap capped to half the new size
+    ],
+)
+def test_create_text_chunks_caps_splitter_size(monkeypatch, chunk_size, overlap, limit, expected):
+    used = []
+
+    class RecordingSplitter:
+        def __init__(self, chunk_size, chunk_overlap, **kwargs):
+            used.append((chunk_size, chunk_overlap))
+
+        def get_nodes_from_documents(self, docs):
+            return []
+
+    monkeypatch.setattr(chunking_utils, "SentenceSplitter", RecordingSplitter)
+    docs = [Document(text="LEANN recomputes embeddings on demand.")]
+    create_text_chunks(
+        docs, chunk_size=chunk_size, chunk_overlap=overlap, max_tokens_per_chunk=limit
     )
-    assert len(with_limit) == len(plain)
-
-
-def test_small_model_limit_shrinks_chunks():
-    docs = [Document(text="LEANN recomputes embeddings on demand. " * 400)]
-    plain = create_text_chunks(docs, chunk_size=512, chunk_overlap=50)
-    capped = create_text_chunks(docs, chunk_size=512, chunk_overlap=50, max_tokens_per_chunk=256)
-    assert len(capped) > len(plain)
+    assert used == [expected]
 
 
 def test_huggingface_seq_limit_discovery(monkeypatch, tmp_path):
