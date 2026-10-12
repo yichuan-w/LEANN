@@ -4,10 +4,20 @@ import argparse
 import asyncio
 import hashlib
 import logging
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from .parallel_mcp_reader import ParallelMCPReader
+
+
+def document_filename(url: str) -> str:
+    """Name a file after its URL: readable host/path slug plus a short hash for uniqueness."""
+    parts = urlsplit(url)
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", f"{parts.netloc}{parts.path}").strip("-").lower()
+    digest = hashlib.sha256(url.encode()).hexdigest()[:10]
+    return f"{slug[:80].rstrip('-') or 'page'}-{digest}.md"
 
 
 def write_documents(documents: list[dict[str, Any]], output_dir: Path) -> list[Path]:
@@ -16,8 +26,7 @@ def write_documents(documents: list[dict[str, Any]], output_dir: Path) -> list[P
     paths = []
     for document in documents:
         metadata = document["metadata"]
-        name = hashlib.sha256(metadata["url"].encode()).hexdigest() + ".md"
-        path = output_dir / name
+        path = output_dir / document_filename(metadata["url"])
         lines = [f"# {metadata['title']}", "", f"Source: {metadata['url']}"]
         if metadata.get("publish_date"):
             lines.append(f"Published: {metadata['publish_date']}")

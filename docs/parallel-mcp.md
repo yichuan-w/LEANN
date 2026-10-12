@@ -31,9 +31,27 @@ It exports excerpts, not guaranteed full pages. `--max-results` limits local
 selection and fetching, not the server's search result count. `--timeout` bounds
 the entire operation (90 seconds by default).
 
-Each file contains its title, source URL, publication date when available, and
-excerpts. Repeating a search refreshes files for matching URLs; other files remain.
+Each file is named after its URL (for example
+`arxiv-org-abs-2506-08276-<hash>.md`) and contains its title, source URL,
+publication date when available, and excerpts. Repeating a search refreshes files for matching URLs; other files remain.
 Use a fresh directory for a separate collection.
+
+## Search, index, and ask in one command
+
+Inside your LEANN environment, install the reader requirements and run the RAG
+app. It searches, chunks the excerpts, builds a LEANN index, and answers with the
+configured LLM (`--llm`, see the other `apps/*_rag.py` examples):
+
+```bash
+uv pip install -r apps/parallel_data/requirements.txt
+python -m apps.parallel_rag \
+  --objective "Find how LEANN reduces vector index storage" \
+  --search-query "LEANN low storage vector index" \
+  --fetch --query "How does LEANN save storage?"
+```
+
+Each chunk keeps the page title and source URL so answers can cite them. The
+index is reused on later runs; pass `--force-rebuild` after changing the search.
 
 ## Use the exported documents
 

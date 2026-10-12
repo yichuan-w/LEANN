@@ -178,9 +178,45 @@ def test_export_command_preserves_sources(monkeypatch, tmp_path, capsys):
     export.main()
     paths = list(tmp_path.glob("*.md"))
     assert len(paths) == 1
-    assert len(paths[0].stem) == 64
+    assert paths[0].parent == tmp_path
+    assert paths[0].name.startswith("example-com-source-")
     text = paths[0].read_text()
     assert "Source: https://example.com/../../source" in text
     assert "Published: 2026-10-01" in text
     assert "Useful café excerpt" in text
     assert "Exported 1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "url,prefix",
+    [
+        ("https://arxiv.org/abs/2506.08276", "arxiv-org-abs-2506-08276-"),
+        ("https://yichuan-w.github.io/", "yichuan-w-github-io-"),
+        ("https://example.com/" + "a" * 200, "example-com-" + "a" * 68 + "-"),
+    ],
+)
+def test_document_filename_is_readable_and_unique(url, prefix):
+    name = export.document_filename(url)
+    assert name.startswith(prefix) and name.endswith(".md")
+    assert export.document_filename(url) == name
+    assert export.document_filename(url + "?v=2") != name
+
+
+def test_rag_app_chunks_web_documents_with_sources(monkeypatch):
+    pytest.importorskip("leann")
+    pytest.importorskip("llama_index.core")
+    rag = importlib.import_module("apps.parallel_rag")
+
+    async def read_data(self, objective, queries, limit, fetch):
+        assert (objective, queries, limit, fetch) == ("Research", ["web sources"], 5, True)
+        return [{"text": "LEANN recomputes embeddings. " * 40, "metadata": item("https://a.io/x")}]
+
+    monkeypatch.setattr(reader.ParallelMCPReader, "read_web_data", read_data)
+    app = rag.ParallelWebRAG()
+    args = app.parser.parse_args(
+        ["--objective", "Research", "--search-query", "web sources", "--fetch"]
+    )
+    texts = asyncio.run(app.load_data(args))
+    assert len(texts) > 1
+    assert texts[0]["text"].startswith("A source\nSource: https://a.io/x")
+    assert all(text["metadata"]["url"] == "https://a.io/x" for text in texts)
