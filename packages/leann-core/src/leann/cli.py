@@ -432,7 +432,7 @@ Examples:
             "--doc-chunk-size",
             type=int,
             default=256,
-            help="Document chunk size in TOKENS (default: 256). Final chunks may be larger due to overlap. For 512 token models: recommended 350 tokens (350 + 128 overlap = 478 max)",
+            help="Document chunk size in TOKENS (default: 256), including overlap. Capped to 70%% of the embedding model's sequence limit so chunks are fully embedded (e.g. 179 for all-MiniLM-L6-v2)",
         )
         build_parser.add_argument(
             "--doc-chunk-overlap",
@@ -444,7 +444,7 @@ Examples:
             "--code-chunk-size",
             type=int,
             default=512,
-            help="Code chunk size in TOKENS (default: 512). Final chunks may be larger due to overlap. For 512 token models: recommended 400 tokens (400 + 50 overlap = 450 max)",
+            help="Code chunk size in TOKENS (default: 512), including overlap. Capped to 70%% of the embedding model's sequence limit so chunks are fully embedded (e.g. 179 for all-MiniLM-L6-v2)",
         )
         build_parser.add_argument(
             "--code-chunk-overlap",
@@ -2586,14 +2586,36 @@ Examples:
         # Guard against invalid configurations
         doc_chunk_size = max(1, int(args.doc_chunk_size))
         doc_chunk_overlap = max(0, int(args.doc_chunk_overlap))
+        code_chunk_size = max(1, int(args.code_chunk_size))
+        code_chunk_overlap = max(0, int(args.code_chunk_overlap))
+
+        # Text beyond the embedding model's sequence limit is never embedded, so cap
+        # chunk sizes to fit it (e.g. all-MiniLM-L6-v2 reads only 256 tokens).
+        from .chunking_utils import cap_chunk_size
+        from .embedding_compute import get_model_token_limit
+
+        embedding_options = self._build_embedding_options(args)
+        token_limit = get_model_token_limit(
+            args.embedding_model,
+            base_url=embedding_options.get("host") or embedding_options.get("base_url"),
+        )
+        capped_doc = cap_chunk_size(doc_chunk_size, token_limit)
+        capped_code = cap_chunk_size(code_chunk_size, token_limit)
+        if capped_doc < doc_chunk_size or capped_code < code_chunk_size:
+            print(
+                f"📏 {args.embedding_model} reads {token_limit} tokens: chunk size "
+                f"doc {doc_chunk_size} → {capped_doc}, code {code_chunk_size} → {capped_code}"
+            )
+            doc_chunk_overlap = min(doc_chunk_overlap, capped_doc // 2)
+            code_chunk_overlap = min(code_chunk_overlap, capped_code // 2)
+            doc_chunk_size, code_chunk_size = capped_doc, capped_code
+
         if doc_chunk_overlap >= doc_chunk_size:
             print(
                 f"⚠️  Adjusting doc chunk overlap from {doc_chunk_overlap} to {doc_chunk_size - 1} (must be < chunk size)"
             )
             doc_chunk_overlap = doc_chunk_size - 1
 
-        code_chunk_size = max(1, int(args.code_chunk_size))
-        code_chunk_overlap = max(0, int(args.code_chunk_overlap))
         if code_chunk_overlap >= code_chunk_size:
             print(
                 f"⚠️  Adjusting code chunk overlap from {code_chunk_overlap} to {code_chunk_size - 1} (must be < chunk size)"
