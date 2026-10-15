@@ -66,3 +66,25 @@ fixes). Newest entries at the bottom.
   already-working Windows `cp314` installs. Completing the wheel matrix is the
   correct fix; the next 0.3.8 patch release will carry full `cp314` coverage
   once CI confirms the new platforms build cleanly.
+
+## 2026-09-06: Restore CLI parsing after duplicate index command registration
+
+- Remove the seven duplicate index command parsers and handlers introduced by #269 after #285 had already supplied them. This fixes `argparse.ArgumentError: conflicting subparser: index-browser`, which prevented every CLI command, including help, from running.
+- Retain the #285 command interface (`--max-count`, `--index-name`, `--no-recompute`), application readers, and shared builder; native indexing and standalone wheel reader packaging are unchanged.
+
+## 2026-09-06: Preserve mixed-script words in BM25 search
+
+- Keep Latin words and numbers separate from adjacent Chinese, Japanese, and Korean n-grams when building SQLite FTS5 indexes and parsing keyword queries. For example, `Python数据库SQL` can be retrieved by `Python`, `SQL`, or a mixed-script query.
+- Existing BM25 artifacts remain readable. Rebuild indexes containing mixed-script text to regenerate tokens that were previously joined at script boundaries.
+
+## 2026-10-12: Parallel Search MCP web reader (#433)
+
+- Added `apps/parallel_data`: anonymous Parallel Search MCP search/fetch (no API key) exported as Markdown named `<url-slug>-<hash>.md` for `leann build`.
+- Added `apps/parallel_rag.py`: one-command web search → chunk → index → ask, keeping each chunk's title and source URL.
+
+## 2026-10-12: Fit chunk sizes to the embedding model's sequence limit
+
+- `leann build` now caps `--doc-chunk-size` / `--code-chunk-size` at 70% of the embedding model's sequence limit. Previously the macOS default model `all-MiniLM-L6-v2` (reads 256 tokens) got 512-token code chunks, so ~43% of indexed code text was never embedded. On `leann-core` sources, code retrieval MRR@10 rose from 0.30 to 0.54 (18 queries, real `leann build` indexes).
+- `get_model_token_limit()` reads `max_seq_length` from Hugging Face sentence-transformers repos instead of assuming 2048 tokens for them.
+- `create_text_chunks(max_tokens_per_chunk=...)` now only shrinks `chunk_size`; it previously replaced it, growing 256-token chunks to ~1700 for unknown models.
+- Existing indexes are unchanged; rebuild with `--force` to re-chunk with the new sizes.

@@ -15,6 +15,8 @@ from .settings import (
     resolve_anthropic_base_url,
     resolve_atlascloud_api_key,
     resolve_atlascloud_base_url,
+    resolve_litellm_api_key,
+    resolve_litellm_base_url,
     resolve_minimax_api_key,
     resolve_minimax_base_url,
     resolve_novita_api_key,
@@ -1143,6 +1145,111 @@ class AtlasCloudChat(LLMInterface):
             return f"Error: Could not get a response from Atlas Cloud. Details: {e}"
 
 
+class LiteLLMChat(LLMInterface):
+    """LLM interface for 100+ providers through LiteLLM's unified gateway.
+
+    LiteLLM routes to the right provider based on the model string's prefix,
+    so a single interface covers OpenAI, Anthropic, Gemini, Bedrock, Vertex,
+    Azure, Groq, OpenRouter, and many more:
+        - ``gpt-4o`` -> OpenAI
+        - ``anthropic/claude-haiku-4-5`` -> Anthropic
+        - ``gemini/gemini-2.5-flash`` -> Google Gemini
+        - ``openrouter/meta-llama/llama-3.1-70b-instruct`` -> OpenRouter
+        - ``bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0`` -> AWS Bedrock
+
+    Credentials are read from each provider's own environment variable
+    (``OPENAI_API_KEY``, ``ANTHROPIC_API_KEY``, ...) automatically. Set
+    ``base_url`` + ``api_key`` only to route through a self-hosted LiteLLM
+    proxy instead of calling providers directly.
+    """
+
+    def __init__(
+        self,
+        model: str = "gpt-4o",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.model = model
+        self.api_key = resolve_litellm_api_key(api_key)
+        self.base_url = resolve_litellm_base_url(base_url)
+
+        logger.info(
+            "Initializing LiteLLM Chat with model='%s' and base_url='%s'",
+            model,
+            self.base_url,
+        )
+
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                "The 'litellm' library is required for LiteLLM models. "
+                "Install it with 'pip install litellm' or 'pip install leann-core[litellm]'."
+            )
+
+    def ask(self, prompt: str, **kwargs) -> str:
+        import litellm
+
+        params: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 1000),
+            # Silently drop kwargs a given provider doesn't accept so the same
+            # config works across OpenAI, Anthropic, Gemini, Bedrock, etc.
+            "drop_params": True,
+        }
+
+        # Only forward credentials/endpoint when explicitly set; otherwise let
+        # LiteLLM fall back to the provider's own environment variables.
+        if self.api_key:
+            params["api_key"] = self.api_key
+        if self.base_url:
+            params["api_base"] = self.base_url
+
+        # Map the repo's thinking budget onto LiteLLM's unified reasoning_effort
+        # param, but only for models that actually reason. Attaching it blindly
+        # errors on non-reasoning models when routed through a LiteLLM proxy
+        # (client-side drop_params isn't honored server-side).
+        thinking_budget = kwargs.get("thinking_budget")
+        if thinking_budget in ("low", "medium", "high"):
+            try:
+                supports_reasoning = litellm.supports_reasoning(self.model)
+            except Exception:
+                supports_reasoning = False
+            if supports_reasoning:
+                params["reasoning_effort"] = thinking_budget
+            else:
+                logger.warning(
+                    "Thinking budget '%s' requested but model '%s' does not support "
+                    "reasoning; ignoring it.",
+                    thinking_budget,
+                    self.model,
+                )
+
+        if "top_p" in kwargs:
+            params["top_p"] = kwargs["top_p"]
+
+        # Forward any remaining explicit kwargs (already-handled keys excluded).
+        for k, v in kwargs.items():
+            if k not in {"temperature", "max_tokens", "top_p", "thinking_budget"}:
+                params[k] = v
+
+        logger.info(f"Sending request to LiteLLM with model {self.model}")
+
+        try:
+            response = cast(Any, litellm.completion(**params))
+            print(
+                f"Total tokens = {response.usage.total_tokens}, prompt tokens = {response.usage.prompt_tokens}, completion tokens = {response.usage.completion_tokens}"
+            )
+            if response.choices[0].finish_reason == "length":
+                print("The query is exceeding the maximum allowed number of tokens")
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"Error communicating with LiteLLM: {e}")
+            return f"Error: Could not get a response from LiteLLM. Details: {e}"
+
+
 class SimulatedChat(LLMInterface):
     """A simple simulated chat for testing and development."""
 
@@ -1216,6 +1323,12 @@ def get_llm(llm_config: Optional[dict[str, Any]] = None) -> LLMInterface:
     elif llm_type in {"atlascloud", "atlas-cloud", "atlas"}:
         return AtlasCloudChat(
             model=model or "deepseek-ai/deepseek-v4-pro",
+            api_key=llm_config.get("api_key"),
+            base_url=llm_config.get("base_url"),
+        )
+    elif llm_type == "litellm":
+        return LiteLLMChat(
+            model=model or "gpt-4o",
             api_key=llm_config.get("api_key"),
             base_url=llm_config.get("base_url"),
         )

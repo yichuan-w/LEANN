@@ -25,6 +25,8 @@ from .settings import (
     resolve_anthropic_base_url,
     resolve_atlascloud_api_key,
     resolve_atlascloud_base_url,
+    resolve_litellm_api_key,
+    resolve_litellm_base_url,
     resolve_minimax_api_key,
     resolve_minimax_base_url,
     resolve_ollama_host,
@@ -288,6 +290,40 @@ Examples:
 
         subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+        def add_embedding_args(target_parser: argparse.ArgumentParser) -> None:
+            """Add common embedding arguments to a parser."""
+            target_parser.add_argument(
+                "--embedding-model",
+                type=str,
+                default="facebook/contriever",
+                help="Embedding model (default: facebook/contriever)",
+            )
+            target_parser.add_argument(
+                "--embedding-mode",
+                type=str,
+                default="sentence-transformers",
+                choices=["sentence-transformers", "openai", "mlx", "ollama"],
+                help="Embedding backend mode (default: sentence-transformers)",
+            )
+            target_parser.add_argument(
+                "--embedding-host",
+                type=str,
+                default=None,
+                help="Override Ollama-compatible embedding host",
+            )
+            target_parser.add_argument(
+                "--embedding-api-base",
+                type=str,
+                default=None,
+                help="Base URL for OpenAI-compatible embedding services",
+            )
+            target_parser.add_argument(
+                "--embedding-api-key",
+                type=str,
+                default=None,
+                help="API key for embedding service (defaults to OPENAI_API_KEY)",
+            )
+
         # Build command
         build_parser = subparsers.add_parser("build", help="Build document index")
         build_parser.add_argument(
@@ -397,7 +433,7 @@ Examples:
             "--doc-chunk-size",
             type=int,
             default=256,
-            help="Document chunk size in TOKENS (default: 256). Final chunks may be larger due to overlap. For 512 token models: recommended 350 tokens (350 + 128 overlap = 478 max)",
+            help="Document chunk size in TOKENS (default: 256), including overlap. Capped to 70%% of the embedding model's sequence limit so chunks are fully embedded (e.g. 179 for all-MiniLM-L6-v2)",
         )
         build_parser.add_argument(
             "--doc-chunk-overlap",
@@ -409,7 +445,7 @@ Examples:
             "--code-chunk-size",
             type=int,
             default=512,
-            help="Code chunk size in TOKENS (default: 512). Final chunks may be larger due to overlap. For 512 token models: recommended 400 tokens (400 + 50 overlap = 450 max)",
+            help="Code chunk size in TOKENS (default: 512), including overlap. Capped to 70%% of the embedding model's sequence limit so chunks are fully embedded (e.g. 179 for all-MiniLM-L6-v2)",
         )
         build_parser.add_argument(
             "--code-chunk-overlap",
@@ -450,6 +486,27 @@ Examples:
                 "and reorderings. See #329."
             ),
         )
+
+        # Slack indexing command
+        slack_parser = subparsers.add_parser("index-slack", help="Index Slack workspace via MCP")
+        slack_parser.add_argument(
+            "index_name", nargs="?", default="slack", help="Index name (default: slack)"
+        )
+        slack_parser.add_argument(
+            "--mcp-server",
+            type=str,
+            required=True,
+            help="MCP server command (e.g., 'slack-mcp-server')",
+        )
+        slack_parser.add_argument("--workspace-name", type=str, help="Slack workspace name")
+        slack_parser.add_argument(
+            "--channels",
+            type=str,
+            nargs="+",
+            default=[],
+            help="Specific channels to index (optional)",
+        )
+        add_embedding_args(slack_parser)
 
         # Watch command
         watch_parser = subparsers.add_parser(
@@ -657,6 +714,7 @@ Examples:
                 "hf",
                 "openai",
                 "anthropic",
+                "litellm",
                 "minimax",
                 "novita",
                 "atlascloud",
@@ -742,6 +800,7 @@ Examples:
                 "hf",
                 "openai",
                 "anthropic",
+                "litellm",
                 "minimax",
                 "novita",
                 "atlascloud",
@@ -1615,7 +1674,10 @@ Examples:
                 files_by_dir = defaultdict(list)
                 for file_path in files:
                     file_path_obj = Path(file_path)
-                    if not include_hidden and _path_has_hidden_segment(file_path_obj):
+                    # Judge an explicitly named file by its own name: testing every
+                    # ancestor made the result depend on whether the user typed a
+                    # relative or an absolute path.
+                    if not include_hidden and file_path_obj.name.startswith("."):
                         print(f"  ⚠️  Skipping hidden file: {file_path}")
                         continue
                     parent_dir = str(file_path_obj.parent)
@@ -2454,6 +2516,49 @@ Examples:
                     chunk_ids_by_file.setdefault(file_path, []).append(str(chunk_id))
         return chunk_ids_by_file
 
+    async def index_slack(self, args):
+        """Build an index from Slack workspace via MCP."""
+        from .readers import SlackMCPReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("📱 Indexing Slack workspace...")
+
+        reader = SlackMCPReader(
+            mcp_server_command=args.mcp_server,
+            workspace_name=args.workspace_name,
+        )
+        documents = await reader.load_data(channels=args.channels)
+
+        if not documents:
+            print("❌ No Slack data found. Make sure MCP server is running.")
+            return
+
+        print(f"📚 Loaded {len(documents)} messages. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ Slack index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
     async def build_index(self, args):
         docs_paths = args.docs
         # Use current directory name if index_name not provided
@@ -2484,14 +2589,36 @@ Examples:
         # Guard against invalid configurations
         doc_chunk_size = max(1, int(args.doc_chunk_size))
         doc_chunk_overlap = max(0, int(args.doc_chunk_overlap))
+        code_chunk_size = max(1, int(args.code_chunk_size))
+        code_chunk_overlap = max(0, int(args.code_chunk_overlap))
+
+        # Text beyond the embedding model's sequence limit is never embedded, so cap
+        # chunk sizes to fit it (e.g. all-MiniLM-L6-v2 reads only 256 tokens).
+        from .chunking_utils import cap_chunk_size
+        from .embedding_compute import get_model_token_limit
+
+        embedding_options = self._build_embedding_options(args)
+        token_limit = get_model_token_limit(
+            args.embedding_model,
+            base_url=embedding_options.get("host") or embedding_options.get("base_url"),
+        )
+        capped_doc = cap_chunk_size(doc_chunk_size, token_limit)
+        capped_code = cap_chunk_size(code_chunk_size, token_limit)
+        if capped_doc < doc_chunk_size or capped_code < code_chunk_size:
+            print(
+                f"📏 {args.embedding_model} reads {token_limit} tokens: chunk size "
+                f"doc {doc_chunk_size} → {capped_doc}, code {code_chunk_size} → {capped_code}"
+            )
+            doc_chunk_overlap = min(doc_chunk_overlap, capped_doc // 2)
+            code_chunk_overlap = min(code_chunk_overlap, capped_code // 2)
+            doc_chunk_size, code_chunk_size = capped_doc, capped_code
+
         if doc_chunk_overlap >= doc_chunk_size:
             print(
                 f"⚠️  Adjusting doc chunk overlap from {doc_chunk_overlap} to {doc_chunk_size - 1} (must be < chunk size)"
             )
             doc_chunk_overlap = doc_chunk_size - 1
 
-        code_chunk_size = max(1, int(args.code_chunk_size))
-        code_chunk_overlap = max(0, int(args.code_chunk_overlap))
         if code_chunk_overlap >= code_chunk_size:
             print(
                 f"⚠️  Adjusting code chunk overlap from {code_chunk_overlap} to {code_chunk_size - 1} (must be < chunk size)"
@@ -3424,6 +3551,15 @@ Examples:
                 llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
             if args.api_key:
                 llm_config["api_key"] = args.api_key
+        elif args.llm == "litellm":
+            # LiteLLM infers the provider from the model prefix and reads that
+            # provider's own env var; base_url/api_key are only for a proxy.
+            base_url = resolve_litellm_base_url(args.api_base)
+            if base_url:
+                llm_config["base_url"] = base_url
+            resolved_api_key = resolve_litellm_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
         elif args.llm == "minimax":
             llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
             resolved_api_key = resolve_minimax_api_key(args.api_key)
@@ -3719,6 +3855,15 @@ Examples:
                 llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
             if args.api_key:
                 llm_config["api_key"] = args.api_key
+        elif args.llm == "litellm":
+            # LiteLLM infers the provider from the model prefix and reads that
+            # provider's own env var; base_url/api_key are only for a proxy.
+            base_url = resolve_litellm_base_url(args.api_base)
+            if base_url:
+                llm_config["base_url"] = base_url
+            resolved_api_key = resolve_litellm_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
         elif args.llm == "minimax":
             llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
             resolved_api_key = resolve_minimax_api_key(args.api_key)
@@ -3834,26 +3979,30 @@ Examples:
                 await self.react_agent(args)
         elif args.command == "serve":
             await self.serve_api(args)
-        elif args.command in (
-            "index-browser",
-            "index-email",
-            "index-calendar",
-            "index-imessage",
-            "index-wechat",
-            "index-chatgpt",
-            "index-claude",
-        ):
-            handler = {
-                "index-browser": self.index_browser,
-                "index-email": self.index_email,
-                "index-calendar": self.index_calendar,
-                "index-imessage": self.index_imessage,
-                "index-wechat": self.index_wechat,
-                "index-chatgpt": self.index_chatgpt,
-                "index-claude": self.index_claude,
-            }[args.command]
+        elif args.command == "index-browser":
             with suppress_cpp_output(suppress):
-                await handler(args)
+                await self.index_browser(args)
+        elif args.command == "index-email":
+            with suppress_cpp_output(suppress):
+                await self.index_email(args)
+        elif args.command == "index-calendar":
+            with suppress_cpp_output(suppress):
+                await self.index_calendar(args)
+        elif args.command == "index-wechat":
+            with suppress_cpp_output(suppress):
+                await self.index_wechat(args)
+        elif args.command == "index-imessage":
+            with suppress_cpp_output(suppress):
+                await self.index_imessage(args)
+        elif args.command == "index-slack":
+            with suppress_cpp_output(suppress):
+                await self.index_slack(args)
+        elif args.command == "index-chatgpt":
+            with suppress_cpp_output(suppress):
+                await self.index_chatgpt(args)
+        elif args.command == "index-claude":
+            with suppress_cpp_output(suppress):
+                await self.index_claude(args)
         else:
             parser.print_help()
 

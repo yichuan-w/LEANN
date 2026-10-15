@@ -121,6 +121,13 @@ def get_model_token_limit(
         _token_limit_cache[cache_key] = limit
         return limit
 
+    # Local Hugging Face models (sentence-transformers) publish their sequence limit
+    if not base_url and "/" in model_name:
+        limit = _query_huggingface_seq_limit(model_name)
+        if limit:
+            _token_limit_cache[cache_key] = limit
+            return limit
+
     # Check partial matches for common patterns
     for known_model, registry_limit in EMBEDDING_MODEL_LIMITS.items():
         if known_model in base_model_name or base_model_name in known_model:
@@ -197,6 +204,31 @@ def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
         )
 
     return truncated_texts
+
+
+def _query_huggingface_seq_limit(model_name: str) -> Optional[int]:
+    """
+    Read ``max_seq_length`` from a Hugging Face sentence-transformers repo.
+
+    Args:
+        model_name: Hugging Face repo id, e.g. ``sentence-transformers/all-MiniLM-L6-v2``
+
+    Returns:
+        Sequence limit in tokens if published, None otherwise
+    """
+    try:
+        from huggingface_hub import hf_hub_download
+
+        config_path = hf_hub_download(model_name, "sentence_bert_config.json")
+        with open(config_path, encoding="utf-8") as f:
+            limit = json.load(f).get("max_seq_length")
+        if isinstance(limit, int) and limit > 0:
+            logger.info(f"Detected {model_name} sequence limit: {limit} tokens")
+            return limit
+    except Exception as e:
+        logger.debug(f"Failed to read Hugging Face sequence limit: {e}")
+
+    return None
 
 
 def _query_ollama_context_limit(model_name: str, base_url: str) -> Optional[int]:
@@ -545,6 +577,12 @@ def compute_embeddings_sentence_transformers(
             device = "mps"
         else:
             device = "cpu"
+
+    # CPU torch ships no fp16 kernels for several ops (LayerNorm raises
+    # "LayerNormKernelImpl" not implemented for 'Half') - force fp32 on CPU.
+    if device == "cpu" and use_fp16:
+        use_fp16 = False
+        logger.info("CPU device detected: disabling fp16 (no fp16 CPU kernels)")
 
     # Apply optimizations based on benchmark results
     if adaptive_optimization:

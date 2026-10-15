@@ -144,7 +144,7 @@ Our CI pipeline runs automatically on all pull requests. It includes:
 
 1. **Linting and Formatting**: Ensures code follows our style guidelines
 2. **Multi-platform builds**: Tests on Ubuntu and macOS
-3. **Python version matrix**: Tests on Python 3.9-3.13
+3. **Python version matrix**: Tests on Python 3.10-3.14 (see the workflow for platform-specific coverage)
 4. **Wheel building**: Ensures packages can be built and distributed
 
 ### CI Commands

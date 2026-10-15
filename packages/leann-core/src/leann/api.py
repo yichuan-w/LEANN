@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Literal, Optional, Union
 
 import numpy as np
-from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 
 from leann.interactive_utils import create_api_session
 from leann.interface import LeannBackendSearcherInterface
@@ -38,6 +37,33 @@ logger = logging.getLogger(__name__)
 # "sequential" when the key is absent. See #329 for the rollout plan.
 PASSAGE_ID_SCHEME_SEQUENTIAL = "sequential"
 PASSAGE_ID_SCHEME_CONTENT_HASH = "content-hash"
+
+_CJK_CHARACTERS = "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af"
+_CJK_RUN = re.compile(f"[{_CJK_CHARACTERS}]+")
+
+
+def _fts5_cjk_ngrams(match: re.Match[str]) -> str:
+    """Expand a CJK run into unigram and bigram tokens for SQLite FTS5."""
+    text = match.group()
+    tokens = " ".join([*text, *(text[i : i + 2] for i in range(len(text) - 1))])
+    # Keep adjacent non-CJK words separate from the first and last n-grams.
+    return f" {tokens} "
+
+
+def _fts5_cjk_query(query: str) -> str:
+    """Build a safe FTS5 query that requires every CJK bigram in each term."""
+    # Unicode \w includes CJK, so exclude it from the non-CJK alternative.
+    tokens = re.findall(rf"[{_CJK_CHARACTERS}]+|[^\W{_CJK_CHARACTERS}]+", query.lower())
+    terms = []
+    for token in tokens:
+        if _CJK_RUN.fullmatch(token):
+            ngrams = (
+                [token] if len(token) == 1 else [token[i : i + 2] for i in range(len(token) - 1)]
+            )
+            terms.append("(" + " AND ".join(f'"{ngram}"' for ngram in ngrams) + ")")
+        else:
+            terms.append(f'"{token}"')
+    return " OR ".join(terms)
 
 
 def get_registered_backends() -> list[str]:
@@ -322,15 +348,18 @@ class Fts5BM25Index(BM25Index):
         ")"
     )
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, cjk_ngrams: Optional[bool] = None):
         self._db_path = db_path
         self._conn: Optional[Any] = None
+        self._cjk_ngrams = cjk_ngrams
 
     def _connect(self):
         import sqlite3
 
         if self._conn is None:
             self._conn = sqlite3.connect(self._db_path)
+            if self._cjk_ngrams is None:
+                self._cjk_ngrams = bool(self._conn.execute("PRAGMA user_version").fetchone()[0])
         return self._conn
 
     def fit(self, documents: list[dict[str, Any]]) -> None:
@@ -339,25 +368,39 @@ class Fts5BM25Index(BM25Index):
         # Fresh DB every fit — fit() is a one-shot bulk-load.
         if os.path.exists(self._db_path):
             os.unlink(self._db_path)
+        if self._cjk_ngrams is None:
+            self._cjk_ngrams = True
         conn = sqlite3.connect(self._db_path)
         try:
             conn.execute(self._SCHEMA)
+            conn.execute(f"PRAGMA user_version = {int(self._cjk_ngrams)}")
             conn.executemany(
                 "INSERT INTO bm25_passages(id, text) VALUES (?, ?)",
-                ((d["id"], d.get("text", "")) for d in documents),
+                (
+                    (
+                        d["id"],
+                        _CJK_RUN.sub(_fts5_cjk_ngrams, d.get("text", ""))
+                        if self._cjk_ngrams
+                        else d.get("text", ""),
+                    )
+                    for d in documents
+                ),
             )
             conn.commit()
         finally:
             conn.close()
 
     def search(self, query: str, top_k: int = 5) -> list["SearchResult"]:
-        # Strip punctuation, lowercase, OR the terms together. Avoids FTS5
-        # query syntax surprises (`:`, `*`, etc.) for natural-language queries.
-        terms = re.sub(r"[^\w\s]", "", query).lower().split()
-        if not terms:
-            return []
-        fts5_query = " OR ".join(terms)
+        # Expand CJK terms to the same n-grams used at index time. Older
+        # databases retain their legacy query behaviour via PRAGMA user_version.
         conn = self._connect()
+        if self._cjk_ngrams:
+            fts5_query = _fts5_cjk_query(query)
+        else:
+            terms = re.sub(r"[^\w\s]", "", query).lower().split()
+            fts5_query = " OR ".join(terms)
+        if not fts5_query:
+            return []
         rows = conn.execute(
             "SELECT id, -bm25(bm25_passages) AS score "
             "FROM bm25_passages WHERE bm25_passages MATCH ? "
@@ -513,7 +556,14 @@ class LeannBuilder:
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
-        passage_id = metadata.get("id") or self._generate_passage_id(text)
+        # An explicit ID is honoured even when it is falsy -- integer dataset IDs start
+        # at 0 -- and is stored as a string, because PassageManager keys offsets by the
+        # same string the backend hands back for a label.
+        explicit_id = metadata.get("id")
+        if explicit_id is None or str(explicit_id) == "":
+            passage_id = self._generate_passage_id(text)
+        else:
+            passage_id = str(explicit_id)
         chunk_data = {"id": passage_id, "text": text, "metadata": metadata}
         self.chunks.append(chunk_data)
 
@@ -663,16 +713,21 @@ class LeannBuilder:
 
         Args:
             index_path: Path where the index will be saved
-            ids: List of document IDs (will be converted to strings)
+            ids: Document IDs in embedding order. Converted to strings and used as
+                passage IDs even when add_text() assigned different IDs; chunk metadata
+                is preserved.
             embeddings: numpy array of shape (n_documents, embedding_dim)
 
         Raises:
-            ValueError: If ids and embeddings counts don't match, or dimension mismatch
+            ValueError: If IDs are duplicated, counts don't match, or dimensions differ
         """
         if len(ids) != embeddings.shape[0]:
             raise ValueError(
                 f"Mismatch between number of IDs ({len(ids)}) and embeddings ({embeddings.shape[0]})"
             )
+        string_ids = [str(id_val) for id_val in ids]
+        if len(string_ids) != len(set(string_ids)):
+            raise ValueError("Document IDs must be unique after conversion to strings")
 
         # Validate/set dimensions
         embedding_dim = embeddings.shape[1]
@@ -690,15 +745,18 @@ class LeannBuilder:
             # If no text chunks provided, create placeholder text entries
             if not self.chunks:
                 logger.info("No text chunks provided, creating placeholder entries...")
-                for id_val in ids:
+                for id_val in string_ids:
                     self.add_text(
                         f"Document {id_val}",
-                        metadata={"id": str(id_val), "from_embeddings": True},
+                        metadata={"id": id_val, "from_embeddings": True},
                     )
             else:
                 raise ValueError(
                     f"Number of text chunks ({len(self.chunks)}) doesn't match number of embeddings ({len(ids)})"
                 )
+
+        for chunk, string_id in zip(self.chunks, string_ids):
+            chunk["id"] = string_id
 
         # Build file structure
         path = Path(index_path)
@@ -729,7 +787,6 @@ class LeannBuilder:
             pickle.dump(offset_map, f)
 
         # Build the vector index using precomputed embeddings
-        string_ids = [str(id_val) for id_val in ids]
         # Persist ID map (order == embeddings order)
         try:
             idmap_file = (
@@ -922,8 +979,16 @@ class LeannBuilder:
                 continue
             metadata = chunk.setdefault("metadata", {})
             passage_id = chunk.get("id") or metadata.get("id")
-            if passage_id and passage_id in existing_ids:
+            # ``add_text()`` also stores a generated ID in ``chunk["id"]``, and under the
+            # sequential scheme that ID is this builder's insertion position -- it says
+            # nothing about the index being updated, so it must not be treated as taken.
+            positional_id = not metadata.get("id") and (
+                self.passage_id_scheme == PASSAGE_ID_SCHEME_SEQUENTIAL
+            )
+            if passage_id and not positional_id and passage_id in existing_ids:
                 raise ValueError(f"Passage ID '{passage_id}' already exists in the index.")
+            if positional_id:
+                chunk["id"] = None
             valid_chunks.append(chunk)
 
         if not valid_chunks:
@@ -933,6 +998,16 @@ class LeannBuilder:
                 json.dump(meta, f, indent=2)
             self.chunks.clear()
             return
+
+        next_id = 0
+        for chunk in valid_chunks:
+            if chunk["id"] is not None:
+                continue
+            while str(next_id) in existing_ids:
+                next_id += 1
+            chunk["id"] = str(next_id)
+            existing_ids.add(chunk["id"])
+            next_id += 1
 
         texts_to_embed = [chunk["text"] for chunk in valid_chunks]
         embeddings = compute_embeddings(
@@ -1148,6 +1223,8 @@ class LeannBuilder:
         self.chunks.clear()
 
         if needs_recompute:
+            from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
+
             prune_hnsw_embeddings_inplace(str(index_file))
 
 
