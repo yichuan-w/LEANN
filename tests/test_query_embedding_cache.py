@@ -47,3 +47,28 @@ class TestQueryEmbeddingCache:
         cache.put("q", np.ones(2, dtype=np.float32))
         cache.clear()
         assert cache.get("q") is None
+
+
+def test_eviction_is_lru_not_fifo():
+    """A recently-read entry must outlive an older untouched one.
+
+    `get` previously did not reorder, so eviction fell back to insertion
+    order: a hot query could be dropped while a never-reused one survived.
+    """
+    cache = QueryEmbeddingCache(max_size=2)
+    cache.put("a", np.ones(4, dtype=np.float32))
+    cache.put("b", np.full(4, 2.0, dtype=np.float32))
+
+    assert cache.get("a") is not None  # 'a' becomes most-recently-used
+    cache.put("c", np.full(4, 3.0, dtype=np.float32))
+
+    assert cache.get("a") is not None, "LRU must keep the recently-read entry"
+    assert cache.get("b") is None, "least-recently-used entry should be evicted"
+    assert cache.get("c") is not None
+
+
+def test_key_is_scoped_to_the_embedding_model():
+    """Two caches on different models must not collide on the same query."""
+    a = QueryEmbeddingCache(max_size=4, embedding_model="model-A")
+    b = QueryEmbeddingCache(max_size=4, embedding_model="model-B")
+    assert a._hash_query("same query") != b._hash_query("same query")

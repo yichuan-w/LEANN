@@ -1,6 +1,7 @@
 import hashlib
 import json
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -11,17 +12,19 @@ from .interface import LeannBackendSearcherInterface
 
 
 class QueryEmbeddingCache:
-    """Hash-based cache for query embeddings to avoid recomputation."""
+    """LRU cache for query embeddings to avoid recomputation."""
 
-    def __init__(self, max_size: int = 1000):
-        self.cache: dict[str, np.ndarray] = {}
+    def __init__(self, max_size: int = 1000, embedding_model: Optional[str] = None):
+        self.cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self.max_size = max_size
+        self.embedding_model = embedding_model or ""
 
     def _hash_query(self, query: str, query_template: Optional[str] = None) -> str:
         """Create hash key for query."""
         key_data = {
             "query": query,
             "template": query_template or "",
+            "model": self.embedding_model,
         }
         key_str = json.dumps(key_data, sort_keys=True)
         return hashlib.sha256(key_str.encode()).hexdigest()
@@ -36,6 +39,9 @@ class QueryEmbeddingCache:
         cached = self.cache.get(key)
         if cached is None:
             return None
+        # Mark as most-recently-used; without this, eviction below is FIFO and
+        # a hot query can be dropped while a never-reused one survives.
+        self.cache.move_to_end(key)
         return cached.copy()
 
     def put(self, query: str, embedding: np.ndarray, query_template: Optional[str] = None):
@@ -45,11 +51,10 @@ class QueryEmbeddingCache:
         # Normalize to 1-D so cache hits always return a consistent shape
         vec = np.asarray(embedding, dtype=np.float32).reshape(-1)
 
-        # Simple LRU: remove oldest if cache is full
-        if len(self.cache) >= self.max_size and key not in self.cache:
-            # Remove first item (oldest)
-            first_key = next(iter(self.cache))
-            del self.cache[first_key]
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        elif len(self.cache) >= self.max_size:
+            self.cache.popitem(last=False)  # evict least-recently-used
 
         self.cache[key] = vec.copy()
 
@@ -112,15 +117,16 @@ class ReusableZMQConnection:
 
         if socket is not None:
             try:
-                socket.close()
+                socket.close(linger=0)
             except Exception:
                 pass
 
-        if context is not None:
-            try:
-                context.term()
-            except Exception:
-                pass
+        # Deliberately no context.term() here. close() is reached from
+        # __del__, and terminating a ZMQ context during interpreter shutdown
+        # can block or abort the process with no traceback. Closing the socket
+        # with linger=0 releases the fd; the context is freed when its last
+        # reference goes.
+        del context
 
     def __del__(self):
         """Cleanup on deletion."""
@@ -173,7 +179,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         # Optimization: Query embedding cache
         cache_size = kwargs.get("query_cache_size", 1000)
-        self.query_cache = QueryEmbeddingCache(max_size=cache_size)
+        self.query_cache = QueryEmbeddingCache(
+            max_size=cache_size, embedding_model=self.embedding_model
+        )
 
         # Optimization: Reusable ZMQ connection
         self.zmq_connection = ReusableZMQConnection()
