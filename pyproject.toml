@@ -30,7 +30,7 @@ dependencies = [
     # PDF parsing dependencies - essential for document processing
     "PyPDF2>=3.0.0",
     "pdfplumber>=0.11.0",
-    "pymupdf>=1.26.0",
+    "pymupdf>=1.26.0,<2",
     "pypdfium2>=4.30.0",
     # LlamaIndex core and readers - updated versions
     "llama-index>=0.12.44",
