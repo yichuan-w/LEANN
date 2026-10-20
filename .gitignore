@@ -124,3 +124,7 @@ localtestmcp/
 
 # Personal dev notes (not tracked)
 docs/dev/
+
+# Runtime index store: `leann build` writes indexes to ./.leann/indexes
+# (see cli.py -- Path.cwd() / ".leann" / "indexes"). Generated data, never source.
+.leann/
