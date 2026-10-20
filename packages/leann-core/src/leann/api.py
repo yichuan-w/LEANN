@@ -11,12 +11,12 @@ import re
 import subprocess
 import time
 import warnings
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
 
 import numpy as np
-from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
 
 from leann.interactive_utils import create_api_session
 from leann.interface import LeannBackendSearcherInterface
@@ -25,9 +25,45 @@ from .chat import get_llm
 from .embedding_server_manager import EmbeddingServerManager
 from .interface import LeannBackendFactoryInterface
 from .metadata_filter import MetadataFilterEngine
-from .registry import BACKEND_REGISTRY
+from .registry import BACKEND_REGISTRY, autodiscover_backends
 
 logger = logging.getLogger(__name__)
+
+# Passage ID schemes recorded in <index>.meta.json["passage_id_scheme"].
+# - "sequential": today's default; IDs are str(insertion_index) (api.py:add_text).
+# - "content-hash": planned in #329; IDs are sha256(text)[:16], stable across
+#   file moves and reorderings.
+# Older indexes have no passage_id_scheme field — readers must default to
+# "sequential" when the key is absent. See #329 for the rollout plan.
+PASSAGE_ID_SCHEME_SEQUENTIAL = "sequential"
+PASSAGE_ID_SCHEME_CONTENT_HASH = "content-hash"
+
+_CJK_CHARACTERS = "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af"
+_CJK_RUN = re.compile(f"[{_CJK_CHARACTERS}]+")
+
+
+def _fts5_cjk_ngrams(match: re.Match[str]) -> str:
+    """Expand a CJK run into unigram and bigram tokens for SQLite FTS5."""
+    text = match.group()
+    tokens = " ".join([*text, *(text[i : i + 2] for i in range(len(text) - 1))])
+    # Keep adjacent non-CJK words separate from the first and last n-grams.
+    return f" {tokens} "
+
+
+def _fts5_cjk_query(query: str) -> str:
+    """Build a safe FTS5 query that requires every CJK bigram in each term."""
+    # Unicode \w includes CJK, so exclude it from the non-CJK alternative.
+    tokens = re.findall(rf"[{_CJK_CHARACTERS}]+|[^\W{_CJK_CHARACTERS}]+", query.lower())
+    terms = []
+    for token in tokens:
+        if _CJK_RUN.fullmatch(token):
+            ngrams = (
+                [token] if len(token) == 1 else [token[i : i + 2] for i in range(len(token) - 1)]
+            )
+            terms.append("(" + " AND ".join(f'"{ngram}"' for ngram in ngrams) + ")")
+        else:
+            terms.append(f'"{token}"')
+    return " OR ".join(terms)
 
 
 def get_registered_backends() -> list[str]:
@@ -276,16 +312,140 @@ class PassageManager:
         return self._total_count
 
 
+class BM25Index(ABC):
+    """Minimal contract for a BM25-style sparse index over LEANN passages."""
+
+    @abstractmethod
+    def fit(self, documents: list[dict[str, Any]]) -> None:
+        """Build the index from a corpus.
+
+        `documents` is a list of `{"id": str, "text": str, ...}` entries. Extra
+        fields are ignored by BM25 implementations but preserved by the caller
+        for use elsewhere.
+        """
+
+    @abstractmethod
+    def search(self, query: str, top_k: int = 5) -> list["SearchResult"]:
+        """Return up to `top_k` SearchResult entries ranked by descending score.
+
+        Returned SearchResults have `id` and `score` populated; `text` and
+        `metadata` are filled in by `LeannSearcher` from the passage store.
+        """
+
+
+class Fts5BM25Index(BM25Index):
+    """BM25 over a SQLite FTS5 virtual table, persisted on disk.
+
+    Built once at `leann build` time, queried memory-bounded at search time.
+    SQLite owns the on-disk term/posting data; queries hit `bm25()` directly.
+    """
+
+    # SQLite's FTS5 bm25() returns lower-is-better. We negate so the rest of
+    # LeannSearcher (and the hybrid fusion math) can keep higher-is-better.
+    _SCHEMA = (
+        "CREATE VIRTUAL TABLE bm25_passages USING fts5("
+        "id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2'"
+        ")"
+    )
+
+    def __init__(self, db_path: str, cjk_ngrams: Optional[bool] = None):
+        self._db_path = db_path
+        self._conn: Optional[Any] = None
+        self._cjk_ngrams = cjk_ngrams
+
+    def _connect(self):
+        import sqlite3
+
+        if self._conn is None:
+            self._conn = sqlite3.connect(self._db_path)
+            if self._cjk_ngrams is None:
+                self._cjk_ngrams = bool(self._conn.execute("PRAGMA user_version").fetchone()[0])
+        return self._conn
+
+    def fit(self, documents: list[dict[str, Any]]) -> None:
+        import sqlite3
+
+        # Fresh DB every fit — fit() is a one-shot bulk-load.
+        if os.path.exists(self._db_path):
+            os.unlink(self._db_path)
+        if self._cjk_ngrams is None:
+            self._cjk_ngrams = True
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.execute(self._SCHEMA)
+            conn.execute(f"PRAGMA user_version = {int(self._cjk_ngrams)}")
+            conn.executemany(
+                "INSERT INTO bm25_passages(id, text) VALUES (?, ?)",
+                (
+                    (
+                        d["id"],
+                        _CJK_RUN.sub(_fts5_cjk_ngrams, d.get("text", ""))
+                        if self._cjk_ngrams
+                        else d.get("text", ""),
+                    )
+                    for d in documents
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def search(self, query: str, top_k: int = 5) -> list["SearchResult"]:
+        # Expand CJK terms to the same n-grams used at index time. Older
+        # databases retain their legacy query behaviour via PRAGMA user_version.
+        conn = self._connect()
+        if self._cjk_ngrams:
+            fts5_query = _fts5_cjk_query(query)
+        else:
+            terms = re.sub(r"[^\w\s]", "", query).lower().split()
+            fts5_query = " OR ".join(terms)
+        if not fts5_query:
+            return []
+        rows = conn.execute(
+            "SELECT id, -bm25(bm25_passages) AS score "
+            "FROM bm25_passages WHERE bm25_passages MATCH ? "
+            "ORDER BY score DESC LIMIT ?",
+            (fts5_query, top_k),
+        ).fetchall()
+        return [
+            SearchResult(id=doc_id, score=float(score), text="", metadata={})
+            for doc_id, score in rows
+        ]
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+
 class LeannBuilder:
     def __init__(
         self,
         backend_name: str,
-        embedding_model: str = "facebook/contriever",
+        embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
         dimensions: Optional[int] = None,
         embedding_mode: str = "sentence-transformers",
         embedding_options: Optional[dict[str, Any]] = None,
+        prebuild_bm25: bool = False,
+        bm25_backend: str = "fts5",
+        passage_id_scheme: str = PASSAGE_ID_SCHEME_SEQUENTIAL,
         **backend_kwargs,
     ):
+        if bm25_backend != "fts5":
+            logger.warning(f"bm25_backend={bm25_backend!r} is deprecated; using 'fts5'.")
+            bm25_backend = "fts5"
+        self.bm25_backend = bm25_backend
+        self.prebuild_bm25 = prebuild_bm25 or bm25_backend == "fts5"
+        if passage_id_scheme not in (
+            PASSAGE_ID_SCHEME_SEQUENTIAL,
+            PASSAGE_ID_SCHEME_CONTENT_HASH,
+        ):
+            raise ValueError(
+                f"Unknown passage_id_scheme: {passage_id_scheme!r}. "
+                f"Expected one of: {PASSAGE_ID_SCHEME_SEQUENTIAL!r}, "
+                f"{PASSAGE_ID_SCHEME_CONTENT_HASH!r}."
+            )
+        self.passage_id_scheme = passage_id_scheme
         self.backend_name = backend_name
         # Normalize incompatible combinations early (for consistent metadata)
         if backend_name == "hnsw":
@@ -380,10 +540,30 @@ class LeannBuilder:
         self.backend_kwargs = backend_kwargs
         self.chunks: list[dict[str, Any]] = []
 
+    def _generate_passage_id(self, text: str) -> str:
+        """Generate a passage ID per the configured scheme.
+
+        sequential: str(insertion index) — fast, position-dependent, current default.
+        content-hash: sha256(text)[:16] — content-stable, dedup-friendly across
+        file moves and reorderings. See #329 for the design.
+        """
+        if self.passage_id_scheme == PASSAGE_ID_SCHEME_CONTENT_HASH:
+            import hashlib
+
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+        return str(len(self.chunks))
+
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
-        passage_id = metadata.get("id", str(len(self.chunks)))
+        # An explicit ID is honoured even when it is falsy -- integer dataset IDs start
+        # at 0 -- and is stored as a string, because PassageManager keys offsets by the
+        # same string the backend hands back for a label.
+        explicit_id = metadata.get("id")
+        if explicit_id is None or str(explicit_id) == "":
+            passage_id = self._generate_passage_id(text)
+        else:
+            passage_id = str(explicit_id)
         chunk_data = {"id": passage_id, "text": text, "metadata": metadata}
         self.chunks.append(chunk_data)
 
@@ -473,12 +653,13 @@ class LeannBuilder:
         builder_instance.build(embeddings, string_ids, index_path, **current_backend_kwargs)
         leann_meta_path = index_dir / f"{index_name}.meta.json"
         meta_data = {
-            "version": "1.0",
+            "version": "1.1",
             "backend_name": self.backend_name,
             "embedding_model": self.embedding_model,
             "dimensions": self.dimensions,
             "backend_kwargs": self.backend_kwargs,
             "embedding_mode": self.embedding_mode,
+            "passage_id_scheme": self.passage_id_scheme,
             "passage_sources": [
                 {
                     "type": "jsonl",
@@ -501,35 +682,52 @@ class LeannBuilder:
             is_recompute = self.backend_kwargs.get("is_recompute", True)
             meta_data["is_compact"] = is_compact
             meta_data["is_pruned"] = bool(is_recompute)
+
+        if self.prebuild_bm25:
+            self._build_bm25_fts5(index_dir, index_name)
+            meta_data["bm25_backend"] = "fts5"
+            meta_data["bm25_db"] = f"{index_name}.bm25.sqlite"
+
         with open(leann_meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
 
-    def build_index_from_embeddings(self, index_path: str, embeddings_file: str):
+    def _build_bm25_fts5(self, index_dir: Path, index_name: str) -> None:
+        """Build a SQLite FTS5 BM25 index alongside the vector index.
+
+        Queries via SQLite's bm25() function — memory-bounded at search time
+        (the term/posting data lives on disk, not in RAM). Replaces
+        BM25Scorer's full-corpus-in-memory model for paper-scale corpora.
         """
-        Build an index from pre-computed embeddings stored in a pickle file.
+        db_path = index_dir / f"{index_name}.bm25.sqlite"
+        index = Fts5BM25Index(str(db_path))
+        index.fit(self.chunks)
+        index.close()
+        logger.info(f"Wrote BM25 FTS5 index to {db_path}")
+
+    def build_index_from_arrays(self, index_path: str, ids: list, embeddings: np.ndarray):
+        """Build an index from pre-computed embedding arrays.
+
+        This is the core method for building indexes from pre-computed embeddings.
+        Use this when embeddings are already in memory (e.g., from MLX, GPU computation,
+        or database queries). For pickle-file based workflows, use build_index_from_embeddings().
 
         Args:
             index_path: Path where the index will be saved
-            embeddings_file: Path to pickle file containing (ids, embeddings) tuple
+            ids: Document IDs in embedding order. Converted to strings and used as
+                passage IDs even when add_text() assigned different IDs; chunk metadata
+                is preserved.
+            embeddings: numpy array of shape (n_documents, embedding_dim)
+
+        Raises:
+            ValueError: If IDs are duplicated, counts don't match, or dimensions differ
         """
-        # Load pre-computed embeddings
-        with open(embeddings_file, "rb") as f:
-            data = pickle.load(f)
-
-        if not isinstance(data, tuple) or len(data) != 2:
-            raise ValueError(
-                f"Invalid embeddings file format. Expected tuple with 2 elements, got {type(data)}"
-            )
-
-        ids, embeddings = data
-
-        if not isinstance(embeddings, np.ndarray):
-            raise ValueError(f"Expected embeddings to be numpy array, got {type(embeddings)}")
-
         if len(ids) != embeddings.shape[0]:
             raise ValueError(
                 f"Mismatch between number of IDs ({len(ids)}) and embeddings ({embeddings.shape[0]})"
             )
+        string_ids = [str(id_val) for id_val in ids]
+        if len(string_ids) != len(set(string_ids)):
+            raise ValueError("Document IDs must be unique after conversion to strings")
 
         # Validate/set dimensions
         embedding_dim = embeddings.shape[1]
@@ -547,15 +745,18 @@ class LeannBuilder:
             # If no text chunks provided, create placeholder text entries
             if not self.chunks:
                 logger.info("No text chunks provided, creating placeholder entries...")
-                for id_val in ids:
+                for id_val in string_ids:
                     self.add_text(
                         f"Document {id_val}",
-                        metadata={"id": str(id_val), "from_embeddings": True},
+                        metadata={"id": id_val, "from_embeddings": True},
                     )
             else:
                 raise ValueError(
                     f"Number of text chunks ({len(self.chunks)}) doesn't match number of embeddings ({len(ids)})"
                 )
+
+        for chunk, string_id in zip(self.chunks, string_ids):
+            chunk["id"] = string_id
 
         # Build file structure
         path = Path(index_path)
@@ -586,7 +787,6 @@ class LeannBuilder:
             pickle.dump(offset_map, f)
 
         # Build the vector index using precomputed embeddings
-        string_ids = [str(id_val) for id_val in ids]
         # Persist ID map (order == embeddings order)
         try:
             idmap_file = (
@@ -605,12 +805,13 @@ class LeannBuilder:
         # Create metadata file
         leann_meta_path = index_dir / f"{index_name}.meta.json"
         meta_data = {
-            "version": "1.0",
+            "version": "1.1",
             "backend_name": self.backend_name,
             "embedding_model": self.embedding_model,
             "dimensions": self.dimensions,
             "backend_kwargs": self.backend_kwargs,
             "embedding_mode": self.embedding_mode,
+            "passage_id_scheme": self.passage_id_scheme,
             "passage_sources": [
                 {
                     "type": "jsonl",
@@ -623,7 +824,6 @@ class LeannBuilder:
                 }
             ],
             "built_from_precomputed_embeddings": True,
-            "embeddings_source": str(embeddings_file),
         }
 
         if self.embedding_options:
@@ -641,10 +841,61 @@ class LeannBuilder:
 
         logger.info(f"Index built successfully from precomputed embeddings: {index_path}")
 
-    def update_index(self, index_path: str):
-        """Append new passages and vectors to an existing HNSW index."""
-        if not self.chunks:
-            raise ValueError("No new chunks provided for update.")
+    def build_index_from_embeddings(self, index_path: str, embeddings_file: str):
+        """
+        Build an index from pre-computed embeddings stored in a pickle file.
+
+        Args:
+            index_path: Path where the index will be saved
+            embeddings_file: Path to pickle file containing (ids, embeddings) tuple
+        """
+        # Load pre-computed embeddings
+        with open(embeddings_file, "rb") as f:
+            data = pickle.load(f)
+
+        if not isinstance(data, tuple) or len(data) != 2:
+            raise ValueError(
+                f"Invalid embeddings file format. Expected tuple with 2 elements, got {type(data)}"
+            )
+
+        ids, embeddings = data
+
+        if not isinstance(embeddings, np.ndarray):
+            raise ValueError(f"Expected embeddings to be numpy array, got {type(embeddings)}")
+
+        self.build_index_from_arrays(index_path, ids, embeddings)
+
+    @staticmethod
+    def _compact_passages(
+        passages_file: Path, offset_file: Path, offset_map: dict[str, int]
+    ) -> None:
+        """Rewrite passages.jsonl keeping only entries referenced by offset_map."""
+        live_entries: list[str] = []
+        for _pid, offset in sorted(offset_map.items(), key=lambda x: x[1]):
+            with open(passages_file, encoding="utf-8") as f:
+                f.seek(offset)
+                live_entries.append(f.readline())
+
+        tmp_file = passages_file.with_suffix(".jsonl.tmp")
+        new_offset_map: dict[str, int] = {}
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            for line in live_entries:
+                data = json.loads(line)
+                new_offset_map[data["id"]] = f.tell()
+                f.write(line if line.endswith("\n") else line + "\n")
+
+        tmp_file.replace(passages_file)
+        offset_map.clear()
+        offset_map.update(new_offset_map)
+        with open(offset_file, "wb") as f:
+            pickle.dump(offset_map, f)
+
+    def update_index(self, index_path: str, remove_passage_ids: Optional[list[str]] = None) -> None:
+        """Append new passages and vectors to an existing index (HNSW or IVF).
+        For IVF, optional remove_passage_ids removes those ids first (e.g. from file-change API).
+        """
+        if not self.chunks and not remove_passage_ids:
+            raise ValueError("No new chunks or passage ids to remove provided for update.")
 
         path = Path(index_path)
         index_dir = path.parent
@@ -659,7 +910,7 @@ class LeannBuilder:
         if not meta_path.exists() or not passages_file.exists() or not offset_file.exists():
             raise FileNotFoundError("Index metadata or passage files are missing; cannot update.")
         if not index_file.exists():
-            raise FileNotFoundError(f"HNSW index file not found: {index_file}")
+            raise FileNotFoundError(f"Index file not found: {index_file}")
 
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
@@ -669,12 +920,48 @@ class LeannBuilder:
                 f"Index was built with backend '{backend_name}', cannot update with '{self.backend_name}'."
             )
 
+        with open(offset_file, "rb") as f:
+            offset_map: dict[str, int] = pickle.load(f)
+        existing_ids = set(offset_map.keys())
+
+        # IVF: optional delete (for reindex / file-change: remove then re-insert)
+        if remove_passage_ids and backend_name == "ivf":
+            try:
+                from leann_backend_ivf import remove_ids as ivf_remove_ids
+
+                nremoved = ivf_remove_ids(str(path), remove_passage_ids)
+                if nremoved < len(remove_passage_ids):
+                    logger.warning(
+                        "IVF update_index: removed %d of %d requested passage IDs "
+                        "(some may have been stale).",
+                        nremoved,
+                        len(remove_passage_ids),
+                    )
+            except ImportError:
+                raise RuntimeError(
+                    "IVF backend required for remove_ids. Install leann-backend-ivf."
+                )
+            for pid in remove_passage_ids:
+                offset_map.pop(pid, None)
+            existing_ids -= set(remove_passage_ids)
+
+            # Compact passages.jsonl: rewrite keeping only entries in offset_map
+            self._compact_passages(passages_file, offset_file, offset_map)
+
+        if not self.chunks:
+            meta["total_passages"] = len(offset_map)
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self.chunks.clear()
+            return
+
         meta_backend_kwargs = meta.get("backend_kwargs", {})
-        index_is_compact = meta.get("is_compact", meta_backend_kwargs.get("is_compact", True))
-        if index_is_compact:
-            raise ValueError(
-                "Compact HNSW indices do not support in-place updates. Rebuild required."
-            )
+        if backend_name == "hnsw":
+            index_is_compact = meta.get("is_compact", meta_backend_kwargs.get("is_compact", True))
+            if index_is_compact:
+                raise ValueError(
+                    "Compact HNSW indices do not support in-place updates. Rebuild required."
+                )
 
         distance_metric = meta_backend_kwargs.get(
             "distance_metric", self.backend_kwargs.get("distance_metric", "mips")
@@ -685,10 +972,6 @@ class LeannBuilder:
             or self.backend_kwargs.get("is_recompute")
         )
 
-        with open(offset_file, "rb") as f:
-            offset_map: dict[str, int] = pickle.load(f)
-        existing_ids = set(offset_map.keys())
-
         valid_chunks: list[dict[str, Any]] = []
         for chunk in self.chunks:
             text = chunk.get("text", "")
@@ -696,12 +979,35 @@ class LeannBuilder:
                 continue
             metadata = chunk.setdefault("metadata", {})
             passage_id = chunk.get("id") or metadata.get("id")
-            if passage_id and passage_id in existing_ids:
+            # ``add_text()`` also stores a generated ID in ``chunk["id"]``, and under the
+            # sequential scheme that ID is this builder's insertion position -- it says
+            # nothing about the index being updated, so it must not be treated as taken.
+            positional_id = not metadata.get("id") and (
+                self.passage_id_scheme == PASSAGE_ID_SCHEME_SEQUENTIAL
+            )
+            if passage_id and not positional_id and passage_id in existing_ids:
                 raise ValueError(f"Passage ID '{passage_id}' already exists in the index.")
+            if positional_id:
+                chunk["id"] = None
             valid_chunks.append(chunk)
 
         if not valid_chunks:
-            raise ValueError("No valid chunks to append.")
+            # Remove-only or file emptied: we may have already removed ids, just update meta
+            meta["total_passages"] = len(offset_map)
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self.chunks.clear()
+            return
+
+        next_id = 0
+        for chunk in valid_chunks:
+            if chunk["id"] is not None:
+                continue
+            while str(next_id) in existing_ids:
+                next_id += 1
+            chunk["id"] = str(next_id)
+            existing_ids.add(chunk["id"])
+            next_id += 1
 
         texts_to_embed = [chunk["text"] for chunk in valid_chunks]
         embeddings = compute_embeddings(
@@ -720,13 +1026,68 @@ class LeannBuilder:
                 f"Dimension mismatch during update: existing index uses {expected_dim}, got {embedding_dim}."
             )
 
-        from leann_backend_hnsw import faiss  # type: ignore
-
         embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
         if distance_metric == "cosine":
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
             norms[norms == 0] = 1
             embeddings = embeddings / norms
+
+        # IVF: add_vectors then append passages/offset (no ZMQ/server)
+        if backend_name == "ivf":
+            for i, chunk in enumerate(valid_chunks):
+                pid = chunk.get("id") or chunk.get("metadata", {}).get("id")
+                if not pid:
+                    pid = str(len(offset_map) + i)
+                chunk.setdefault("metadata", {})["id"] = pid
+                chunk["id"] = pid
+            passage_ids = [c["id"] for c in valid_chunks]
+            try:
+                from leann_backend_ivf import add_vectors as ivf_add_vectors
+
+                ivf_add_vectors(str(path), embeddings, passage_ids)
+            except ImportError:
+                raise RuntimeError("IVF backend required. Install leann-backend-ivf.")
+            rollback_passages_size = passages_file.stat().st_size if passages_file.exists() else 0
+            offset_map_backup = offset_map.copy()
+            try:
+                with open(passages_file, "a", encoding="utf-8") as f:
+                    for chunk in valid_chunks:
+                        off = f.tell()
+                        json.dump(
+                            {
+                                "id": chunk["id"],
+                                "text": chunk["text"],
+                                "metadata": chunk.get("metadata", {}),
+                            },
+                            f,
+                            ensure_ascii=False,
+                        )
+                        f.write("\n")
+                        offset_map[chunk["id"]] = off
+                with open(offset_file, "wb") as f:
+                    pickle.dump(offset_map, f)
+                meta["total_passages"] = len(offset_map)
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+                logger.info(
+                    "Appended %d passages to IVF index '%s'. Total: %d",
+                    len(valid_chunks),
+                    index_path,
+                    len(offset_map),
+                )
+            except Exception:
+                if passages_file.exists():
+                    with open(passages_file, "rb+") as f:
+                        f.truncate(rollback_passages_size)
+                offset_map = offset_map_backup
+                with open(offset_file, "wb") as f:
+                    pickle.dump(offset_map, f)
+                raise
+            self.chunks.clear()
+            return
+
+        # HNSW path below
+        from leann_backend_hnsw import faiss
 
         index = faiss.read_index(str(index_file))
         if hasattr(index, "is_recompute"):
@@ -807,6 +1168,8 @@ class LeannBuilder:
                         embedding_mode=passage_meta_mode,
                         passages_file=str(meta_path),
                         distance_metric=distance_metric,
+                        use_daemon=False,
+                        enable_warmup=False,
                         provider_options=passage_provider_options,
                     )
                     if not server_started:
@@ -860,11 +1223,21 @@ class LeannBuilder:
         self.chunks.clear()
 
         if needs_recompute:
+            from leann_backend_hnsw.convert_to_csr import prune_hnsw_embeddings_inplace
+
             prune_hnsw_embeddings_inplace(str(index_file))
 
 
 class LeannSearcher:
-    def __init__(self, index_path: str, enable_warmup: bool = False, **backend_kwargs):
+    def __init__(
+        self,
+        index_path: str,
+        enable_warmup: bool = True,
+        recompute_embeddings: bool = True,
+        use_daemon: bool = True,
+        daemon_ttl_seconds: int = 900,
+        **backend_kwargs,
+    ):
         # Fix path resolution for Colab and other environments
         if not Path(index_path).is_absolute():
             index_path = str(Path(index_path).resolve())
@@ -895,13 +1268,51 @@ class LeannSearcher:
         backend_factory = BACKEND_REGISTRY.get(backend_name)
         if backend_factory is None:
             raise ValueError(f"Backend '{backend_name}' not found.")
+
+        # Global recompute flag for this searcher (explicit knob, default True)
+        self.recompute_embeddings: bool = bool(recompute_embeddings)
+
+        # Warmup flag: keep using the existing enable_warmup parameter,
+        # but default it to True so cold-start happens earlier.
+        self._warmup: bool = bool(enable_warmup)
+        self._use_daemon: bool = bool(use_daemon)
+        self._daemon_ttl_seconds: int = int(daemon_ttl_seconds)
+
         final_kwargs = {**self.meta_data.get("backend_kwargs", {}), **backend_kwargs}
-        final_kwargs["enable_warmup"] = enable_warmup
+        final_kwargs["enable_warmup"] = self._warmup
+        final_kwargs["use_daemon"] = self._use_daemon
+        final_kwargs["daemon_ttl_seconds"] = self._daemon_ttl_seconds
         if self.embedding_options:
             final_kwargs.setdefault("embedding_options", self.embedding_options)
         self.backend_impl: LeannBackendSearcherInterface = backend_factory.searcher(
             index_path, **final_kwargs
         )
+        self.bm25_scorer: Optional[BM25Index] = None
+
+        # Surface the index's passage ID scheme so callers can introspect.
+        # Older indexes (pre-#330) don't record this field — they're sequential.
+        self.passage_id_scheme: str = self.meta_data.get(
+            "passage_id_scheme", PASSAGE_ID_SCHEME_SEQUENTIAL
+        )
+
+        # Optional query log path: set via LEANN_QUERY_LOG=<path>. When set, each
+        # search appends a JSON line containing the query, embedding (if computed),
+        # top_k, and result IDs/scores. Useful for offline benchmark replay.
+        self._query_log_path: Optional[str] = os.environ.get("LEANN_QUERY_LOG") or None
+
+        # Optional one-shot warmup at construction time to hide cold-start latency.
+        if self._warmup:
+            self.warmup()
+
+    def warmup(self) -> None:
+        """Warm up embedding path so first user query is faster."""
+        try:
+            _ = self.backend_impl.compute_query_embedding(
+                "__LEANN_WARMUP__",
+                use_server_if_available=self.recompute_embeddings,
+            )
+        except Exception as exc:
+            logger.warning(f"Warmup embedding failed (ignored): {exc}")
 
     def search(
         self,
@@ -910,12 +1321,13 @@ class LeannSearcher:
         complexity: int = 64,
         beam_width: int = 1,
         prune_ratio: float = 0.0,
-        recompute_embeddings: bool = True,
+        recompute_embeddings: Optional[bool] = None,
         pruning_strategy: Literal["global", "local", "proportional"] = "global",
         expected_zmq_port: int = 5557,
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
+        vector_weight: float = 1.0,
         provider_options: Optional[dict[str, Any]] = None,
         **kwargs,
     ) -> list[SearchResult]:
@@ -928,7 +1340,8 @@ class LeannSearcher:
             complexity: Search complexity/candidate list size, higher = more accurate but slower
             beam_width: Number of parallel search paths/IO requests per iteration
             prune_ratio: Ratio of neighbors to prune via approximate distance (0.0-1.0)
-            recompute_embeddings: Whether to fetch fresh embeddings from server vs use stored codes
+            recompute_embeddings: (Deprecated) Per-call override for recompute mode.
+                Configure this at LeannSearcher(..., recompute_embeddings=...) instead.
             pruning_strategy: Candidate selection strategy - "global" (default), "local", or "proportional"
             expected_zmq_port: ZMQ port for embedding server communication
             metadata_filters: Optional filters to apply to search results based on metadata.
@@ -938,11 +1351,26 @@ class LeannSearcher:
                 - Membership: "in", "not_in"
                 - String: "contains", "starts_with", "ends_with"
                 Example: {"chapter": {"<=": 5}, "tags": {"in": ["fiction", "drama"]}}
-            **kwargs: Backend-specific parameters
+            vector_weight: Weight of vector search in hybrid scoring (0.0-1.0).
+                1.0 = pure vector search (default), 0.0 = pure BM25 keyword search,
+                anything in between linearly fuses the two.
+            **kwargs: Backend-specific parameters. Accepts a deprecated `gemma=` alias
+                for `vector_weight`; passing it emits a DeprecationWarning.
 
         Returns:
             List of SearchResult objects with text, metadata, and similarity scores
         """
+        # Accept the legacy `gemma=` kwarg (typo of "gamma") as a deprecated alias
+        # for vector_weight. Pop before forwarding to backend so it doesn't leak.
+        if "gemma" in kwargs:
+            warnings.warn(
+                "search(gemma=...) is deprecated and will be removed in a future release; "
+                "use vector_weight= instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            vector_weight = kwargs.pop("gemma")
+
         # Handle grep search
         if use_grep:
             return self._grep_search(query, top_k)
@@ -965,65 +1393,120 @@ class LeannSearcher:
             )
             logger.warning(f"  ✅ Auto-adjusted top_k to {top_k} to match available documents")
 
-        zmq_port = None
+        # Initialize so it's in scope for the query-log path even when only BM25 runs.
+        query_embedding: Optional[np.ndarray] = None
 
-        start_time = time.time()
-        if recompute_embeddings:
-            zmq_port = self.backend_impl._ensure_server_running(
-                self.meta_path_str,
-                port=expected_zmq_port,
-                **kwargs,
+        # Handle pure keyword search
+        if vector_weight == 0.0:
+            start_time = time.time()
+            bm25_results = self._bm25_search(query, top_k)
+            # Convert BM25 results to the expected format
+            results = {
+                "labels": [[r.id for r in bm25_results]],
+                "distances": [[r.score for r in bm25_results]],
+            }
+        else:
+            # Perform vector search
+            zmq_port = None
+
+            # Resolve effective recompute flag for this search.
+            if recompute_embeddings is not None:
+                logger.warning(
+                    "LeannSearcher.search(..., recompute_embeddings=...) is deprecated and "
+                    "will be removed in a future version. Configure recompute at "
+                    "LeannSearcher(..., recompute_embeddings=...) instead."
+                )
+                effective_recompute = bool(recompute_embeddings)
+            else:
+                effective_recompute = self.recompute_embeddings
+
+            start_time = time.time()
+            if effective_recompute:
+                zmq_port = self.backend_impl._ensure_server_running(
+                    self.meta_path_str,
+                    port=expected_zmq_port,
+                    enable_warmup=self._warmup,
+                    use_daemon=self._use_daemon,
+                    daemon_ttl_seconds=self._daemon_ttl_seconds,
+                    **kwargs,
+                )
+                del expected_zmq_port
+            zmq_time = time.time() - start_time
+            logger.info(f"  Launching server time: {zmq_time} seconds")
+
+            start_time = time.time()
+
+            # Extract query template from stored embedding_options with fallback chain:
+            # 1. Check provider_options override (highest priority)
+            # 2. Check query_prompt_template (new format)
+            # 3. Check prompt_template (old format for backward compat)
+            # 4. None (no template)
+            query_template = None
+            if provider_options and "prompt_template" in provider_options:
+                query_template = provider_options["prompt_template"]
+            elif "query_prompt_template" in self.embedding_options:
+                query_template = self.embedding_options["query_prompt_template"]
+            elif "prompt_template" in self.embedding_options:
+                query_template = self.embedding_options["prompt_template"]
+
+            query_embedding = self.backend_impl.compute_query_embedding(
+                query,
+                use_server_if_available=effective_recompute,
+                zmq_port=zmq_port,
+                query_template=query_template,
             )
-            del expected_zmq_port
-        zmq_time = time.time() - start_time
-        logger.info(f"  Launching server time: {zmq_time} seconds")
+            logger.info(f"  Generated embedding shape: {query_embedding.shape}")
+            embedding_time = time.time() - start_time
+            logger.info(f"  Embedding time: {embedding_time} seconds")
 
-        start_time = time.time()
+            start_time = time.time()
+            backend_search_kwargs: dict[str, Any] = {
+                "complexity": complexity,
+                "beam_width": beam_width,
+                "prune_ratio": prune_ratio,
+                "recompute_embeddings": effective_recompute,
+                "pruning_strategy": pruning_strategy,
+                "zmq_port": zmq_port,
+            }
+            # Only HNSW supports batching; forward conditionally
+            if self.backend_name == "hnsw":
+                backend_search_kwargs["batch_size"] = batch_size
 
-        # Extract query template from stored embedding_options with fallback chain:
-        # 1. Check provider_options override (highest priority)
-        # 2. Check query_prompt_template (new format)
-        # 3. Check prompt_template (old format for backward compat)
-        # 4. None (no template)
-        query_template = None
-        if provider_options and "prompt_template" in provider_options:
-            query_template = provider_options["prompt_template"]
-        elif "query_prompt_template" in self.embedding_options:
-            query_template = self.embedding_options["query_prompt_template"]
-        elif "prompt_template" in self.embedding_options:
-            query_template = self.embedding_options["prompt_template"]
+            # Merge any extra kwargs last
+            backend_search_kwargs.update(kwargs)
 
-        query_embedding = self.backend_impl.compute_query_embedding(
-            query,
-            use_server_if_available=recompute_embeddings,
-            zmq_port=zmq_port,
-            query_template=query_template,
-        )
-        logger.info(f"  Generated embedding shape: {query_embedding.shape}")
-        embedding_time = time.time() - start_time
-        logger.info(f"  Embedding time: {embedding_time} seconds")
+            results = self.backend_impl.search(
+                query_embedding,
+                top_k,
+                **backend_search_kwargs,
+            )
 
-        start_time = time.time()
-        backend_search_kwargs: dict[str, Any] = {
-            "complexity": complexity,
-            "beam_width": beam_width,
-            "prune_ratio": prune_ratio,
-            "recompute_embeddings": recompute_embeddings,
-            "pruning_strategy": pruning_strategy,
-            "zmq_port": zmq_port,
-        }
-        # Only HNSW supports batching; forward conditionally
-        if self.backend_name == "hnsw":
-            backend_search_kwargs["batch_size"] = batch_size
+        # Handle hybrid search
+        if 0.0 < vector_weight < 1.0:
+            logger.info(f"  🌟 Hybrid search enabled with vector_weight={vector_weight}")
+            bm25_weight = 1.0 - vector_weight
+            bm25_results = self._bm25_search(query, top_k)
+            hybrid_scores: dict[str, float] = {}
+            # Add vector search scores (weighted by vector_weight)
+            if "labels" in results and "distances" in results:
+                for doc_id, score in zip(results["labels"][0], results["distances"][0]):
+                    hybrid_scores[doc_id] = vector_weight * score
+            # Add BM25 scores (weighted by bm25_weight)
+            for bm25_result in bm25_results:
+                doc_id = bm25_result.id
+                if doc_id in hybrid_scores:
+                    hybrid_scores[doc_id] += bm25_weight * bm25_result.score
+                else:
+                    hybrid_scores[doc_id] = bm25_weight * bm25_result.score
 
-        # Merge any extra kwargs last
-        backend_search_kwargs.update(kwargs)
+            sorted_hybrid = sorted(hybrid_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
+            results["labels"] = [[doc_id for doc_id, _ in sorted_hybrid]]
+            results["distances"] = [[score for _, score in sorted_hybrid]]
 
-        results = self.backend_impl.search(
-            query_embedding,
-            top_k,
-            **backend_search_kwargs,
-        )
+            logger.info(
+                f"  Combined {len(hybrid_scores)} unique documents from vector and BM25 search"
+            )
+
         search_time = time.time() - start_time
         logger.info(f"  Search time in search() LEANN searcher: {search_time} seconds")
         logger.info(f"  Backend returned: labels={len(results.get('labels', [[]])[0])} results")
@@ -1040,7 +1523,7 @@ class LeannSearcher:
                     enriched_results.append(
                         SearchResult(
                             id=string_id,
-                            score=dist,
+                            score=float(dist),
                             text=passage_data["text"],
                             metadata=passage_data.get("metadata", {}),
                         )
@@ -1075,7 +1558,101 @@ class LeannSearcher:
         GREEN = "\033[92m"
         RESET = "\033[0m"
         logger.info(f"  {GREEN}✓ Final enriched results: {len(enriched_results)} passages{RESET}")
+
+        if self._query_log_path:
+            self._log_query(query, query_embedding, top_k, enriched_results)
+
         return enriched_results
+
+    def _log_query(
+        self,
+        query: str,
+        query_embedding: Optional[np.ndarray],
+        top_k: int,
+        results: list[SearchResult],
+    ) -> None:
+        """Append a JSONL line to LEANN_QUERY_LOG for later benchmark replay."""
+        path = self._query_log_path
+        if path is None:
+            return
+        entry: dict[str, Any] = {
+            "ts": time.time(),
+            "query": query,
+            "top_k": top_k,
+            "results": [{"id": r.id, "score": r.score} for r in results],
+        }
+        if query_embedding is not None:
+            entry["embedding"] = query_embedding.flatten().tolist()
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                json.dump(entry, f)
+                f.write("\n")
+        except Exception as exc:
+            logger.warning(f"Failed to append to query log {path}: {exc}")
+
+    def _init_bm25(self) -> None:
+        """Initialize a BM25Index, preferring a build-time artifact when present."""
+        backend = self.meta_data.get("bm25_backend")
+        meta_dir = Path(self.meta_path_str).parent
+
+        if backend == "fts5":
+            db_name = self.meta_data.get("bm25_db")
+            if db_name:
+                db_path = meta_dir / db_name
+                if db_path.exists():
+                    self.bm25_scorer = Fts5BM25Index(str(db_path))
+                    logger.info(f"Using FTS5 BM25 index at {db_path}")
+                    return
+                logger.warning(
+                    f"meta.json says bm25_backend=fts5 but {db_path} is missing; "
+                    f"falling back to fit-on-search."
+                )
+
+        # No FTS5 artifact: build one on the fly from passages.
+        db_path = meta_dir / (Path(self.meta_path_str).stem.replace(".meta", "") + ".bm25.sqlite")
+        index = Fts5BM25Index(str(db_path))
+        passages = []
+        for passage_file in self.passage_manager.passage_files.values():
+            try:
+                with open(passage_file, encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            try:
+                                passages.append(json.loads(line))
+                            except json.JSONDecodeError as exc:
+                                logger.warning(f"Skipping malformed JSONL in {passage_file}: {exc}")
+            except FileNotFoundError:
+                logger.warning(f"Passage file missing: {passage_file}")
+
+        if not passages:
+            logger.error(
+                "No passages found for on-demand BM25 index. "
+                "BM25/hybrid search will return empty results. "
+                "Re-run 'leann build' to regenerate passage files."
+            )
+            return
+
+        try:
+            index.fit(passages)
+        except (PermissionError, OSError) as exc:
+            logger.error(
+                f"Cannot write BM25 index to {db_path}: {exc}. "
+                f"Ensure the index directory is writable, or rebuild with prebuild_bm25=True."
+            )
+            return
+
+        self.bm25_scorer = index
+        logger.info(f"Built FTS5 BM25 index on-demand at {db_path}")
+
+    def _bm25_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        """Perform BM25 search on raw passages"""
+        if self.bm25_scorer is None:
+            self._init_bm25()
+            logger.info("  BM25 scorer initialized")
+        scorer = self.bm25_scorer
+        if scorer is None:
+            raise RuntimeError("BM25 scorer failed to initialize")
+        return scorer.search(query, top_k)
 
     def _find_jsonl_file(self) -> Optional[str]:
         """Find the .jsonl file containing raw passages for grep search"""
@@ -1137,42 +1714,19 @@ class LeannSearcher:
                 "grep command not found. Please install grep or use semantic search."
             )
 
-    def _python_regex_search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """Fallback regex search"""
-        jsonl_file = self._find_jsonl_file()
-        if not jsonl_file:
-            raise FileNotFoundError("No .jsonl file found")
-
-        pattern = re.compile(re.escape(query), re.IGNORECASE)
-        matches = []
-
-        with open(jsonl_file, encoding="utf-8") as f:
-            for line_num, line in enumerate(f, 1):
-                if pattern.search(line):
-                    try:
-                        data = json.loads(line.strip())
-                        matches.append(
-                            SearchResult(
-                                id=data.get("id", str(line_num)),
-                                text=data.get("text", ""),
-                                metadata=data.get("metadata", {}),
-                                score=float(len(pattern.findall(data.get("text", "")))),
-                            )
-                        )
-                    except json.JSONDecodeError:
-                        continue
-
-        matches.sort(key=lambda x: x.score, reverse=True)
-        return matches[:top_k]
-
     def cleanup(self):
-        """Explicitly cleanup embedding server resources.
+        """Explicitly cleanup embedding server and backend index resources.
         This method should be called after you're done using the searcher,
         especially in test environments or batch processing scenarios.
+        On Windows, this releases file handles held by native backends
+        (e.g., DiskANN memory-mapped index files).
         """
         backend = getattr(self.backend_impl, "embedding_server_manager", None)
         if backend is not None:
             backend.stop_server()
+        close_fn = getattr(self.backend_impl, "close", None)
+        if close_fn is not None:
+            close_fn()
 
     # Enable automatic cleanup patterns
     def __enter__(self):
@@ -1223,8 +1777,17 @@ class LeannChat:
         metadata_filters: Optional[dict[str, dict[str, Union[str, int, float, bool, list]]]] = None,
         batch_size: int = 0,
         use_grep: bool = False,
+        vector_weight: float = 1.0,
         **search_kwargs,
     ):
+        if "gemma" in search_kwargs:
+            warnings.warn(
+                "ask(gemma=...) is deprecated; use vector_weight= instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            vector_weight = search_kwargs.pop("gemma")
+
         if llm_kwargs is None:
             llm_kwargs = {}
         search_time = time.time()
@@ -1238,6 +1801,8 @@ class LeannChat:
             pruning_strategy=pruning_strategy,
             expected_zmq_port=expected_zmq_port,
             metadata_filters=metadata_filters,
+            use_grep=use_grep,
+            vector_weight=vector_weight,
             batch_size=batch_size,
             **search_kwargs,
         )
@@ -1304,3 +1869,9 @@ class LeannChat:
             self.cleanup()
         except Exception:
             pass
+
+
+# Register installed ``leann-backend-*`` packages. This used to live in
+# ``leann/__init__.py``; it runs here so that anything importing ``leann.api``
+# (directly or through the lazy package attributes) still sees every backend.
+autodiscover_backends()

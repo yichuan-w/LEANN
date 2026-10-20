@@ -6,6 +6,7 @@ This example demonstrates how to build a RAG system on your iMessage conversatio
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from leann.chunking_utils import create_text_chunks
 
@@ -56,7 +57,7 @@ class IMessageRAG(BaseRAGExample):
             help="Overlap between text chunks (default: 200)",
         )
 
-    async def load_data(self, args) -> list[str]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load iMessage history and convert to text chunks."""
         print("Loading iMessage conversation history...")
 

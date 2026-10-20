@@ -50,7 +50,7 @@ class SlackMCPReader:
         self.max_messages_per_conversation = max_messages_per_conversation
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self.mcp_process = None
+        self.mcp_process: asyncio.subprocess.Process | None = None
 
     async def start_mcp_server(self):
         """Start the MCP server process."""
@@ -75,14 +75,17 @@ class SlackMCPReader:
 
     async def send_mcp_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Send a request to the MCP server and get response."""
-        if not self.mcp_process:
+        proc = self.mcp_process
+        if proc is None:
             raise RuntimeError("MCP server not started")
+        if proc.stdin is None or proc.stdout is None:
+            raise RuntimeError("MCP server stdio not available")
 
         request_json = json.dumps(request) + "\n"
-        self.mcp_process.stdin.write(request_json.encode())
-        await self.mcp_process.stdin.drain()
+        proc.stdin.write(request_json.encode())
+        await proc.stdin.drain()
 
-        response_line = await self.mcp_process.stdout.readline()
+        response_line = await proc.stdout.readline()
         if not response_line:
             raise RuntimeError("No response from MCP server")
 
@@ -177,7 +180,9 @@ class SlackMCPReader:
                     break
 
         # If we get here, all retries failed or it's not a retryable error
-        raise last_exception
+        if last_exception is not None:
+            raise last_exception
+        raise RuntimeError("Unexpected error: no exception captured during retry loop")
 
     async def fetch_slack_messages(
         self, channel: Optional[str] = None, limit: int = 100
@@ -267,7 +272,10 @@ class SlackMCPReader:
                     messages = json.loads(content["text"])
                 except json.JSONDecodeError:
                     # If not JSON, try to parse as CSV format (Slack MCP server format)
-                    messages = self._parse_csv_messages(content["text"], channel)
+                    text_content = content.get("text", "")
+                    messages = self._parse_csv_messages(
+                        text_content if text_content else "", channel or "unknown"
+                    )
             else:
                 messages = result["content"]
         else:

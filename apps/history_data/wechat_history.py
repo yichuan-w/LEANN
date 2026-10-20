@@ -86,7 +86,7 @@ class WeChatHistoryReader(BaseReader):
                 text=True,
                 timeout=5,
             )
-            return result.returncode == 0 and result.stdout.strip()
+            return result.returncode == 0 and bool(result.stdout.strip())
         except Exception:
             return False
 
@@ -314,7 +314,9 @@ class WeChatHistoryReader(BaseReader):
 
         return concatenated_groups
 
-    def _create_concatenated_content(self, message_group: dict, contact_name: str) -> str:
+    def _create_concatenated_content(
+        self, message_group: dict, contact_name: str
+    ) -> tuple[str, str]:
         """
         Create concatenated content from a group of messages.
 

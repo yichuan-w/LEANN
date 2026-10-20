@@ -48,6 +48,8 @@ def create_diskann_embedding_server(
     model_name: str = "sentence-transformers/all-mpnet-base-v2",
     embedding_mode: str = "sentence-transformers",
     distance_metric: str = "l2",
+    enable_warmup: bool = False,
+    daemon_ttl: int = 0,
 ):
     """
     Create and start a ZMQ-based embedding server for DiskANN backend.
@@ -71,6 +73,19 @@ def create_diskann_embedding_server(
         return
     finally:
         sys.path.pop(0)
+
+    if enable_warmup:
+        try:
+            logger.info("Starting warmup embedding request...")
+            _ = compute_embeddings(
+                ["__LEANN_WARMUP__"],
+                model_name,
+                mode=embedding_mode,
+                provider_options=PROVIDER_OPTIONS,
+            )
+            logger.info("Warmup complete.")
+        except Exception as exc:
+            logger.warning(f"Warmup failed (continuing): {exc}")
 
     # Check port availability
     import socket
@@ -108,8 +123,11 @@ def create_diskann_embedding_server(
         socket = context.socket(
             zmq.REP
         )  # REP socket for both BaseSearcher and DiskANN C++ REQ clients
-        socket.bind(f"tcp://*:{zmq_port}")
-        logger.info(f"DiskANN ZMQ REP server listening on port {zmq_port}")
+        zmq_host = os.getenv("LEANN_EMBEDDING_SERVER_HOST", "127.0.0.1")
+        if ":" in zmq_host and not zmq_host.startswith("["):
+            zmq_host = f"[{zmq_host}]"  # literal IPv6 needs brackets in ZMQ endpoints
+        socket.bind(f"tcp://{zmq_host}:{zmq_port}")
+        logger.info(f"DiskANN ZMQ REP server listening on {zmq_host}:{zmq_port}")
 
         socket.setsockopt(zmq.RCVTIMEO, 1000)
         socket.setsockopt(zmq.SNDTIMEO, 1000)
@@ -245,8 +263,11 @@ def create_diskann_embedding_server(
 
         context = zmq.Context()
         rep_socket = context.socket(zmq.REP)
-        rep_socket.bind(f"tcp://*:{zmq_port}")
-        logger.info(f"DiskANN ZMQ REP server listening on port {zmq_port}")
+        zmq_host = os.getenv("LEANN_EMBEDDING_SERVER_HOST", "127.0.0.1")
+        if ":" in zmq_host and not zmq_host.startswith("["):
+            zmq_host = f"[{zmq_host}]"  # literal IPv6 needs brackets in ZMQ endpoints
+        rep_socket.bind(f"tcp://{zmq_host}:{zmq_port}")
+        logger.info(f"DiskANN ZMQ REP server listening on {zmq_host}:{zmq_port}")
 
         # Set receive timeout so we can check shutdown_event periodically
         rep_socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1 second timeout
@@ -259,6 +280,7 @@ def create_diskann_embedding_server(
                     e2e_start = time.time()
                     # REP socket receives single-part messages
                     message = rep_socket.recv()
+                    last_activity[0] = time.time()
 
                     # Check for empty messages - REP socket requires response to every request
                     if not message:
@@ -385,6 +407,7 @@ def create_diskann_embedding_server(
 
     # Add shutdown coordination
     shutdown_event = threading.Event()
+    last_activity = [time.time()]
 
     def shutdown_zmq_server():
         """Gracefully shutdown ZMQ server."""
@@ -437,6 +460,12 @@ def create_diskann_embedding_server(
     # Keep the main thread alive
     try:
         while not shutdown_event.is_set():
+            if daemon_ttl > 0 and (time.time() - last_activity[0]) >= daemon_ttl:
+                logger.info(
+                    f"No requests for {daemon_ttl} seconds, shutting down daemon on port {zmq_port}"
+                )
+                shutdown_zmq_server()
+                return
             time.sleep(0.1)  # Check shutdown more frequently
     except KeyboardInterrupt:
         logger.info("DiskANN Server shutting down...")
@@ -479,6 +508,22 @@ if __name__ == "__main__":
         choices=["l2", "mips", "cosine"],
         help="Distance metric for similarity computation",
     )
+    parser.add_argument(
+        "--enable-warmup",
+        action="store_true",
+        help="Preload model by running one warmup embedding at startup",
+    )
+    parser.add_argument(
+        "--daemon-mode",
+        action="store_true",
+        help="Run as daemon mode (enables idle TTL checks)",
+    )
+    parser.add_argument(
+        "--daemon-ttl",
+        type=int,
+        default=0,
+        help="Idle TTL in seconds for daemon mode; 0 disables auto-exit",
+    )
 
     args = parser.parse_args()
 
@@ -489,4 +534,6 @@ if __name__ == "__main__":
         model_name=args.model_name,
         embedding_mode=args.embedding_mode,
         distance_metric=args.distance_metric,
+        enable_warmup=args.enable_warmup,
+        daemon_ttl=args.daemon_ttl if args.daemon_mode else 0,
     )

@@ -1,0 +1,19 @@
+[project]
+name = "leann-backend-ivf"
+version = "0.3.6"
+description = "FAISS IVF backend for LEANN with add/delete support for incremental updates."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "leann-core>=0.3.6",
+    "numpy>=1.20.0",
+    "faiss-cpu>=1.7.4",
+]
+
+[project.optional-dependencies]
+# Optional: use HNSW embedding server for query embedding (same as other backends)
+query-server = ["leann-backend-hnsw>=0.3.6", "pyzmq>=23.0.0", "msgpack>=1.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["leann_backend_ivf*"]

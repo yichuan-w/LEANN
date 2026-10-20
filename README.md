@@ -3,17 +3,21 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg" alt="Python Versions">
+  <a href="https://trendshift.io/repositories/15049" target="_blank">
+    <img src="https://trendshift.io/api/badge/repositories/15049" alt="yichuan-w/LEANN | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
+  </a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg" alt="Python Versions">
   <img src="https://github.com/yichuan-w/LEANN/actions/workflows/build-and-publish.yml/badge.svg" alt="CI Status">
-  <img src="https://img.shields.io/badge/Platform-Ubuntu%20%26%20Arch%20%26%20WSL%20%7C%20macOS%20(ARM64%2FIntel)-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Ubuntu%20%26%20Arch%20%26%20WSL%20%7C%20macOS%20(ARM64%2FIntel)%20%7C%20Windows-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/MCP-Native%20Integration-blue" alt="MCP Integration">
-  <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ckd2f6w1-OX08~NN4gkWhh10PRVBj1Q">
+  <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ol2ww9ic-Eg_kB8omwe6xmYVd0epr4Q">
     <img src="https://img.shields.io/badge/Slack-Join-4A154B?logo=slack&logoColor=white" alt="Join Slack">
   </a>
-  <a href="assets/wechat_user_group.JPG" title="Join WeChat group">
-    <img src="https://img.shields.io/badge/WeChat-Join-2DC100?logo=wechat&logoColor=white" alt="Join WeChat group">
-  </a>
+
 </p>
 
 <div align="center">
@@ -27,6 +31,15 @@
   </p>
 </div>
 
+<div align="center">
+  <h3>💬 Join our Slack community!</h3>
+  <p>
+    We'd love for you to be part of the LEANN community!<br>
+    👉 <a href="https://join.slack.com/t/leann-e2u9779/shared_invite/zt-3ol2ww9ic-Eg_kB8omwe6xmYVd0epr4Q"><b>Join LEANN Slack</b></a><br>
+    If the invite link has expired or you have trouble joining, please <a href="https://github.com/yichuan-w/LEANN/issues">open an issue</a> and we'll help you get in!
+  </p>
+</div>
+
 <h2 align="center" tabindex="-1" class="heading-element" dir="auto">
     The smallest vector index in the world. RAG Everything with LEANN!
 </h2>
@@ -36,7 +49,7 @@ LEANN is an innovative vector database that democratizes personal AI. Transform 
 
 LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration Fig →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
-**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can semantic search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)** ([WeChat](#-wechat-detective-unlock-your-golden-memories), [iMessage](#-imessage-history-your-personal-conversation-archive)), **[agent memory](#-chatgpt-chat-history-your-personal-ai-conversation-archive)** ([ChatGPT](#-chatgpt-chat-history-your-personal-ai-conversation-archive), [Claude](#-claude-chat-history-your-personal-ai-conversation-archive)), **[live data](#mcp-integration-rag-on-live-data-from-any-platform)** ([Slack](#slack-messages-search-your-team-conversations), [Twitter](#-twitter-bookmarks-your-personal-tweet-library)), **[codebase](#-claude-code-integration-transform-your-development-workflow)**\* , or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
+**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can semantic search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)** ([WeChat](#-wechat-detective-unlock-your-golden-memories), [iMessage](#-imessage-history-your-personal-conversation-archive)), **[agent memory](#-chatgpt-chat-history-your-personal-ai-conversation-archive)** ([ChatGPT](#-chatgpt-chat-history-your-personal-ai-conversation-archive), [Claude](#-claude-chat-history-your-personal-ai-conversation-archive)), **[live data](#mcp-integration-rag-on-live-data-from-any-platform)** ([Slack](#slack-messages-search-your-team-conversations), [Twitter](#-twitter-bookmarks-your-personal-tweet-library)), **[codebase](#-claude-code-integration-transform-your-development-workflow)**\*, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
 
 \* Claude Code only supports basic `grep`-style keyword search. **LEANN** is a drop-in **semantic search MCP service fully compatible with Claude Code**, unlocking intelligent retrieval without changing your workflow. 🔥 Check out [the easy setup →](packages/leann-mcp/README.md)
@@ -61,6 +74,20 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 📈 **Scalability:** Handle messy personal data that would crash traditional vector DBs, easily managing your growing personalized data and agent generated memory!
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
+
+## Making Your Coding Agent Smarter
+
+We plugged LEANN into Claude Code and compared it with BM25 on 30 SWE-Bench Pro tasks from ContextBench, keeping the model, agent, tools, and 8,192-token retrieval budget fixed.
+
+<p align="center">
+  <img src="assets/contextbench_leann_vs_bm25.png" alt="LEANN vs BM25 on ContextBench relevant-code recall, exploration coverage, and agent token usage" width="100%">
+</p>
+
+With LEANN, the agent achieved **2.1× the initial relevant-code recall** (24.2% vs. 11.4%), reached **12.6 percentage points higher relevant-code coverage after exploration** (38.4% vs. 25.8%), and used **8.4% fewer tokens** (3.22M vs. 3.51M).
+
+LEANN surfaces relevant code earlier, so coding agents can spend more of their context window reasoning about the right files instead of repeatedly scanning the repository. **[Reproduce the benchmark →](benchmarks/contextbench/README.md)**
+
+*Note: Results are macro-averaged annotated gold-line metrics over 30 SWE-Bench Pro tasks. Better context access does not guarantee issue resolution.*
 
 ## Installation
 
@@ -87,7 +114,11 @@ and install LEANN from [PyPI](https://pypi.org/project/leann/) to run them immed
 uv venv
 source .venv/bin/activate
 uv pip install leann
+
+# CPU-only (Linux): use the `cpu` extra (e.g. `leann[cpu]`)
 ```
+
+> **Linux note:** if a later `leann build` fails with `Security Violation [pathsec.open]: refusing multiply-linked file`, reinstall with `UV_LINK_MODE=copy uv pip install --reinstall ...` (or `UV_LINK_MODE=copy uv tool install --reinstall ...`) - uv's default hardlink installs trip nltk's hardened file loader bundled with llama-index. Details in the [FAQ](docs/faq.md).
 
 <!--
 > Low-resource? See "Low-resource setups" in the [Configuration Guide](docs/configuration-guide.md#low-resource-setups). -->
@@ -158,6 +189,29 @@ sudo dnf install -y libomp-devel boost-devel protobuf-compiler protobuf-devel \
 sudo dnf install -y intel-oneapi-mkl intel-oneapi-mkl-devel \
   intel-oneapi-openmp || sudo dnf install -y intel-oneapi-compiler
 source /opt/intel/oneapi/setvars.sh
+
+uv sync --extra diskann
+```
+
+**Windows:**
+
+Requires [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with the **C++ desktop development** workload, and [vcpkg](https://github.com/microsoft/vcpkg).
+
+```powershell
+# Install toolchain (if not already present)
+choco install cmake swig pkgconfiglite nuget.commandline -y
+
+# Install C++ dependencies via vcpkg
+vcpkg install zeromq:x64-windows openblas:x64-windows lapack:x64-windows `
+  boost-program-options:x64-windows protobuf:x64-windows
+
+# Set environment variables (adjust VCPKG_ROOT to your vcpkg path)
+$env:CMAKE_PREFIX_PATH = "$env:VCPKG_ROOT\installed\x64-windows"
+$env:PKG_CONFIG_PATH = "$env:VCPKG_ROOT\installed\x64-windows\lib\pkgconfig"
+$env:PKG_CONFIG_EXECUTABLE = "C:\ProgramData\chocolatey\bin\pkg-config.exe"
+$env:OPENBLAS_LIB = "$env:VCPKG_ROOT\installed\x64-windows\lib\openblas.lib"
+$env:PATH += ";$env:VCPKG_ROOT\installed\x64-windows\bin"
+$env:PATH += ";$env:VCPKG_ROOT\installed\x64-windows\tools\protobuf"
 
 uv sync --extra diskann
 ```
@@ -269,10 +323,19 @@ Below is a list of base URLs for common providers to get you started.
 | **SiliconFlow** | `https://api.siliconflow.cn/v1`                            |
 | **Zhipu (BigModel)** | `https://open.bigmodel.cn/api/paas/v4/`                |
 | **Mistral AI** | `https://api.mistral.ai/v1`                                |
-| **Anthropic** | `https://api.anthropic.com/v1`                                |
+| **Anthropic** | `https://api.anthropic.com/v1`                             |
+| **Jina AI** (Embeddings) | `https://api.jina.ai/v1`                         |
 
-
-
+> **💡 Tip: Separate Embedding Provider**
+>
+> To use a different provider for embeddings (e.g., Jina AI) while using another for LLM, use `--embedding-api-base` and `--embedding-api-key`:
+> ```bash
+> leann build my-index --docs ./docs \
+>   --embedding-mode openai \
+>   --embedding-model jina-embeddings-v3 \
+>   --embedding-api-base https://api.jina.ai/v1 \
+>   --embedding-api-key $JINA_API_KEY
+> ```
 
 If your provider isn't on this list, don't worry! Check their documentation for an OpenAI-compatible endpoint—chances are, it's OpenAI Compatible too!
 
@@ -318,6 +381,10 @@ LEANN provides flexible parameters for embedding models, search strategies, and 
 All RAG examples share these common parameters. **Interactive mode** is available in all examples - simply run without `--query` to start a continuous Q&A session where you can ask multiple questions. Type 'quit' to exit.
 
 ```bash
+# Environment Variables (GPU Device Selection)
+LEANN_EMBEDDING_DEVICE       # GPU for embedding model (e.g., cuda:0, cuda:1, cpu)
+LEANN_LLM_DEVICE             # GPU for HFChat LLM (e.g., cuda:1, or "cuda" for multi-GPU auto)
+
 # Core Parameters (General preprocessing for all examples)
 --index-dir DIR              # Directory to store the index (default: current directory)
 --query "YOUR QUESTION"      # Single query mode. Omit for interactive chat (type 'quit' to exit), and now you can play with your index interactively
@@ -842,6 +909,10 @@ Once your iMessage conversations are indexed, you can search with queries like:
 
 ### MCP Integration: RAG on Live Data from Any Platform
 
+**Web documents:** [Search and fetch with Parallel Search MCP](docs/parallel-mcp.md)
+without an API key: `python -m apps.parallel_rag` searches, indexes, and answers in one
+command, or export Markdown for `leann build`.
+
 Connect to live data sources through the Model Context Protocol (MCP). LEANN now supports real-time RAG on platforms like Slack, Twitter, and more through standardized MCP servers.
 
 **Key Benefits:**
@@ -1056,6 +1127,9 @@ leann ask my-docs --interactive
 # Ask a single question (non-interactive)
 leann ask my-docs "Where are prompts configured?"
 
+# Detect file changes since last build/watch checkpoint
+leann watch my-docs
+
 # List all your indexes
 leann list
 
@@ -1067,6 +1141,7 @@ leann remove my-docs
 - Auto-detects document formats (PDF, TXT, MD, DOCX, PPTX + code files)
 - **🧠 AST-aware chunking** for Python, Java, C#, TypeScript files
 - Smart text chunking with overlap for all other content
+- **📂 File change detection** via Merkle tree snapshots (`leann watch`)
 - Multiple LLM providers (Ollama, OpenAI, HuggingFace)
 - Organized index storage in `.leann/indexes/` (project-local)
 - Support for advanced search parameters
@@ -1074,7 +1149,7 @@ leann remove my-docs
 <details>
 <summary><strong>📋 Click to expand: Complete CLI Reference</strong></summary>
 
-You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
+You can use `leann --help`, or `leann build --help`, `leann search --help`, `leann watch --help`, `leann ask --help`, `leann list --help`, `leann remove --help` to get the complete CLI reference.
 
 **Build Command:**
 ```bash
@@ -1099,6 +1174,24 @@ Options:
   --complexity N                Search complexity (default: 64)
   --recompute / --no-recompute  Enable/disable embedding recomputation (default: enabled). Should not do a `no-recompute` search in a `recompute` build.
   --pruning-strategy {global,local,proportional}
+```
+
+**Watch Command:**
+```bash
+leann watch INDEX_NAME
+
+# Compares the current file system state against the last checkpoint (Merkle tree snapshot)
+# and reports which files have been added, removed, or modified, along with their chunk IDs.
+#
+# - Automatically saves a new checkpoint after detecting changes
+# - Each subsequent run compares against the most recent checkpoint
+# - File change detection uses SHA-256 content hashing via a Merkle tree
+#
+# Example output:
+#   === Changes since last checkpoint ===
+#   modified (1):
+#     - /path/to/file.py
+#       chunks: 42, 43, 44
 ```
 
 **Ask Command:**
@@ -1266,7 +1359,7 @@ This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.ed
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yichuan-w/LEANN&type=Date)](https://www.star-history.com/#yichuan-w/LEANN&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=yichuan-w/LEANN&type=Date)](https://star-history.dera.page/#yichuan-w/LEANN&Date)
 <p align="center">
   <strong>⭐ Star us on GitHub if Leann is useful for your research or applications!</strong>
 </p>

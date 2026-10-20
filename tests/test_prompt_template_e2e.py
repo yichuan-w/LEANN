@@ -67,7 +67,7 @@ def check_lmstudio_available() -> bool:
         return False
 
 
-def get_lmstudio_first_model() -> str:
+def get_lmstudio_first_model() -> str | None:
     """Get the first available model from LM Studio."""
     try:
         response = requests.get("http://localhost:1234/v1/models", timeout=5.0)
@@ -91,6 +91,7 @@ class TestPromptTemplateOpenAI:
         model_name = get_lmstudio_first_model()
         if not model_name:
             pytest.skip("No models loaded in LM Studio")
+        assert model_name is not None  # Type narrowing for type checker
 
         texts = ["artificial intelligence", "machine learning"]
         prompt_template = "search_query: "
@@ -120,6 +121,7 @@ class TestPromptTemplateOpenAI:
         model_name = get_lmstudio_first_model()
         if not model_name:
             pytest.skip("No models loaded in LM Studio")
+        assert model_name is not None  # Type narrowing for type checker
 
         text = "machine learning"
         base_url = "http://localhost:1234/v1"
@@ -271,6 +273,7 @@ class TestLMStudioSDK:
         model_name = get_lmstudio_first_model()
         if not model_name:
             pytest.skip("No models loaded in LM Studio")
+        assert model_name is not None  # Type narrowing for type checker
 
         try:
             from leann.embedding_compute import _query_lmstudio_context_limit

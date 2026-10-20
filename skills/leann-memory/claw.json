@@ -1,0 +1,21 @@
+{
+  "name": "leann-memory",
+  "version": "1.0.0",
+  "description": "97% storage-compressed semantic memory search with free local embeddings. Drop-in enhancement for OpenClaw memory — same search quality, 1/30th the disk space, zero API cost.",
+  "author": "leann-team",
+  "license": "MIT",
+  "permissions": ["shell"],
+  "entry": "instructions.md",
+  "tags": [
+    "memory",
+    "search",
+    "vector-database",
+    "embeddings",
+    "local",
+    "compression",
+    "rag",
+    "semantic-search"
+  ],
+  "models": ["claude-*", "gpt-*", "gemini-*", "qwen-*", "llama-*"],
+  "minOpenClawVersion": "0.8.0"
+}

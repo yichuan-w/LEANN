@@ -25,9 +25,9 @@ Usage:
 import argparse
 import json
 import os
-from typing import Optional
+from typing import Any, Optional, cast
 
-from datasets import load_dataset
+from datasets import Dataset, load_dataset
 from leann_multi_vector import (
     ViDoReBenchmarkEvaluator,
     _ensure_repo_paths_importable,
@@ -91,8 +91,8 @@ def load_vidore_v2_data(
     """
     print(f"Loading dataset: {dataset_path} (split={split}, language={language})")
 
-    # Load queries
-    query_ds = load_dataset(dataset_path, "queries", split=split, revision=revision)
+    # Load queries - cast to Dataset since we know split returns Dataset not DatasetDict
+    query_ds = cast(Dataset, load_dataset(dataset_path, "queries", split=split, revision=revision))
 
     # Check if dataset has language field before filtering
     has_language_field = len(query_ds) > 0 and "language" in query_ds.column_names
@@ -112,8 +112,9 @@ def load_vidore_v2_data(
             if len(query_ds_filtered) == 0:
                 # Try to get a sample to see actual language values
                 try:
-                    sample_ds = load_dataset(
-                        dataset_path, "queries", split=split, revision=revision
+                    sample_ds = cast(
+                        Dataset,
+                        load_dataset(dataset_path, "queries", split=split, revision=revision),
                     )
                     if len(sample_ds) > 0 and "language" in sample_ds.column_names:
                         sample_langs = set(sample_ds["language"])
@@ -126,37 +127,40 @@ def load_vidore_v2_data(
                 )
         query_ds = query_ds_filtered
 
-    queries = {}
+    queries: dict[str, str] = {}
     for row in query_ds:
-        query_id = f"query-{split}-{row['query-id']}"
-        queries[query_id] = row["query"]
+        row_dict = cast(dict[str, Any], row)
+        query_id = f"query-{split}-{row_dict['query-id']}"
+        queries[query_id] = row_dict["query"]
 
-    # Load corpus (images)
-    corpus_ds = load_dataset(dataset_path, "corpus", split=split, revision=revision)
+    # Load corpus (images) - cast to Dataset
+    corpus_ds = cast(Dataset, load_dataset(dataset_path, "corpus", split=split, revision=revision))
 
-    corpus = {}
+    corpus: dict[str, Any] = {}
     for row in corpus_ds:
-        corpus_id = f"corpus-{split}-{row['corpus-id']}"
+        row_dict = cast(dict[str, Any], row)
+        corpus_id = f"corpus-{split}-{row_dict['corpus-id']}"
         # Extract image from the dataset row
-        if "image" in row:
-            corpus[corpus_id] = row["image"]
-        elif "page_image" in row:
-            corpus[corpus_id] = row["page_image"]
+        if "image" in row_dict:
+            corpus[corpus_id] = row_dict["image"]
+        elif "page_image" in row_dict:
+            corpus[corpus_id] = row_dict["page_image"]
         else:
             raise ValueError(
-                f"No image field found in corpus. Available fields: {list(row.keys())}"
+                f"No image field found in corpus. Available fields: {list(row_dict.keys())}"
             )
 
-    # Load qrels (relevance judgments)
-    qrels_ds = load_dataset(dataset_path, "qrels", split=split, revision=revision)
+    # Load qrels (relevance judgments) - cast to Dataset
+    qrels_ds = cast(Dataset, load_dataset(dataset_path, "qrels", split=split, revision=revision))
 
-    qrels = {}
+    qrels: dict[str, dict[str, int]] = {}
     for row in qrels_ds:
-        query_id = f"query-{split}-{row['query-id']}"
-        corpus_id = f"corpus-{split}-{row['corpus-id']}"
+        row_dict = cast(dict[str, Any], row)
+        query_id = f"query-{split}-{row_dict['query-id']}"
+        corpus_id = f"corpus-{split}-{row_dict['corpus-id']}"
         if query_id not in qrels:
             qrels[query_id] = {}
-        qrels[query_id][corpus_id] = int(row["score"])
+        qrels[query_id][corpus_id] = int(row_dict["score"])
 
     print(
         f"Loaded {len(queries)} queries, {len(corpus)} corpus items, {len(qrels)} query-relevance mappings"
@@ -204,13 +208,13 @@ def evaluate_task(
         raise ValueError(f"Unknown task: {task_name}. Available: {list(VIDORE_V2_TASKS.keys())}")
 
     task_config = VIDORE_V2_TASKS[task_name]
-    dataset_path = task_config["dataset_path"]
-    revision = task_config["revision"]
+    dataset_path = str(task_config["dataset_path"])
+    revision = str(task_config["revision"])
 
     # Determine language
     if language is None:
         # Use first language if multiple available
-        languages = task_config.get("languages")
+        languages = cast(Optional[list[str]], task_config.get("languages"))
         if languages is None:
             # Task doesn't support language filtering (e.g., Vidore2ESGReportsHLRetrieval)
             language = None
@@ -269,7 +273,7 @@ def evaluate_task(
     )
 
     # Search queries
-    task_prompt = task_config.get("prompt")
+    task_prompt = cast(Optional[dict[str, str]], task_config.get("prompt"))
     results = evaluator.search_queries(
         queries=queries,
         corpus_ids=corpus_ids_ordered,

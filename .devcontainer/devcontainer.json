@@ -1,0 +1,43 @@
+{
+  "name": "LEANN Dev",
+  "build": {
+    "context": "..",
+    "dockerfile": "../docker/Dockerfile.dev",
+    "args": {
+      "PYTHON_VERSION": "3.12"
+    }
+  },
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "remoteUser": "root",
+  "overrideCommand": true,
+  "postCreateCommand": "uv sync --group lint --group test",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker",
+        "ms-toolsai.jupyter",
+        "tamasfe.even-better-toml",
+        "eamodio.gitlens",
+        "EditorConfig.EditorConfig",
+        "DavidAnson.vscode-markdownlint"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/workspaces/${localWorkspaceFolderBasename}/.venv/bin/python",
+        "python.terminal.activateEnvironment": true,
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "python.testing.pytestArgs": [
+          "tests"
+        ],
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports.ruff": "explicit",
+          "source.fixAll.ruff": "explicit"
+        }
+      }
+    }
+  }
+}

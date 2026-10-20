@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "leann-workspace"
 version = "0.1.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 dependencies = [
     "leann-core",
@@ -23,14 +23,14 @@ dependencies = [
     "ollama",
     "requests>=2.25.0",
     "sentence-transformers>=3.0.0",
-    # Pin transformers below 4.46: 4.46.0 introduced Python 3.10-only typing (PEP 604) and
-    # breaks our Python 3.9 test matrix when pulled in by sentence-transformers.
-    "transformers<4.46",
+    # Keep Py3.9 compatible below 4.46; allow newer for Py>=3.10 (e.g., ColQwen/ColPali).
+    "transformers<4.46; python_version < '3.10'",
+    "transformers>=4.53.1,<4.58; python_version >= '3.10'",
     "openai>=1.0.0",
     # PDF parsing dependencies - essential for document processing
     "PyPDF2>=3.0.0",
     "pdfplumber>=0.11.0",
-    "pymupdf>=1.26.0",
+    "pymupdf>=1.26.0,<2",
     "pypdfium2>=4.30.0",
     # LlamaIndex core and readers - updated versions
     "llama-index>=0.12.44",
@@ -66,6 +66,16 @@ diskann = [
     "leann-backend-diskann",
 ]
 
+# GPU-accelerated FlashLib (exact k-NN on Triton/CuteDSL) backend. Requires a CUDA GPU.
+flashlib = [
+    "leann-backend-flashlib",
+]
+
+# GPU-accelerated FlashLib IVF-Flat (approximate-NN) backend. Requires a CUDA GPU.
+flashlib-ivf = [
+    "leann-backend-flashlib-ivf",
+]
+
 # Add a new optional dependency group for document processing
 documents = [
     "beautifulsoup4>=4.13.0",  # For HTML parsing
@@ -88,6 +98,8 @@ wechat-exporter = "wechat_exporter.main:main"
 leann-core = { path = "packages/leann-core", editable = true }
 leann-backend-diskann = { path = "packages/leann-backend-diskann", editable = true }
 leann-backend-hnsw = { path = "packages/leann-backend-hnsw", editable = true }
+leann-backend-flashlib = { path = "packages/leann-backend-flashlib", editable = true }
+leann-backend-flashlib-ivf = { path = "packages/leann-backend-flashlib-ivf", editable = true }
 astchunk = { path = "packages/astchunk-leann", editable = true }
 
 [dependency-groups]
@@ -99,7 +111,7 @@ lint = [
 
 # Test toolchain (no heavy project runtime deps)
 test = [
-    "pytest>=7.0",
+    "pytest>=9.0",
     "pytest-cov>=4.0",
     "pytest-xdist>=3.0",
     "pytest-timeout>=2.0",
@@ -156,6 +168,19 @@ max_retries = 2
 exclude = ["localhost", "127.0.0.1", "example.com"]
 exclude_path = [".git/", ".venv/", "__pycache__/", "third_party/"]
 scheme = ["https", "http"]
+
+[tool.ty]
+# Type checking with ty (Astral's fast Python type checker)
+# ty is 10-100x faster than mypy. See: https://docs.astral.sh/ty/
+
+[tool.ty.environment]
+python-version = "3.11"
+extra-paths = ["apps", "packages/leann-core/src"]
+
+[tool.ty.rules]
+# Disable some noisy rules that have many false positives
+possibly-missing-attribute = "ignore"
+unresolved-import = "ignore"  # Many optional dependencies
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

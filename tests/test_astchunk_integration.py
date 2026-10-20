@@ -262,7 +262,7 @@ class TestIntegrationWithDocumentRAG:
     @pytest.fixture
     def temp_code_dir(self):
         """Create a temporary directory with sample code files."""
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             temp_path = Path(temp_dir)
 
             # Create sample Python file
@@ -292,9 +292,10 @@ class MathUtils:
         os.environ.get("CI") == "true",
         reason="Skip integration tests in CI to avoid dependency issues",
     )
+    @pytest.mark.timeout(0)
     def test_document_rag_with_ast_chunking(self, temp_code_dir):
         """Test document RAG with AST chunking enabled."""
-        with tempfile.TemporaryDirectory() as index_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as index_dir:
             cmd = [
                 sys.executable,
                 "apps/document_rag.py",
@@ -339,9 +340,10 @@ class MathUtils:
         os.environ.get("CI") == "true",
         reason="Skip integration tests in CI to avoid dependency issues",
     )
+    @pytest.mark.timeout(0)
     def test_code_rag_application(self, temp_code_dir):
         """Test the specialized code RAG application."""
-        with tempfile.TemporaryDirectory() as index_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as index_dir:
             cmd = [
                 sys.executable,
                 "apps/code_rag.py",

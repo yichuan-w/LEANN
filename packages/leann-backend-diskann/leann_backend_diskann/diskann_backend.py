@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import multiprocessing as mp
 import os
 import struct
 import sys
@@ -217,6 +218,21 @@ class DiskannBuilder(LeannBackendBuilderInterface):
             logger.warning(f"Converting data to float32, shape: {data.shape}")
             data = data.astype(np.float32)
 
+        # DiskANN uses 256 PQ centroids by default for product quantization.
+        # When num_vectors < 256, MKL's cblas_sgemm receives degenerate matrix dimensions
+        # and emits non-fatal "Parameter N was incorrect" errors to stderr on Windows.
+        # The index still builds correctly, but the noise can be confusing.
+        # See: https://github.com/yichuan-w/LEANN/issues/280
+        _NUM_PQ_CENTROIDS = 256
+        if data.shape[0] < _NUM_PQ_CENTROIDS:
+            logger.warning(
+                f"DiskANN dataset has only {data.shape[0]} vector(s), which is fewer than "
+                f"the default number of PQ centroids ({_NUM_PQ_CENTROIDS}). "
+                f"On Windows with Intel MKL this produces non-fatal 'cblas_sgemm parameter' "
+                f"errors in the output — the index will still build correctly. "
+                f"Consider using '--backend-name hnsw' for small datasets to avoid these messages."
+            )
+
         data_filename = f"{index_prefix}_data.bin"
         _write_vectors_to_bin(data, index_dir / data_filename)
 
@@ -251,20 +267,82 @@ class DiskannBuilder(LeannBackendBuilderInterface):
             smart_build_mem = build_kwargs.get("build_memory_maximum", 8.0)
 
         try:
-            from . import _diskannpy as diskannpy  # type: ignore
+            # Build in a child process so native crashes/exits in diskannpy
+            # do not terminate the main CLI process silently.
+            def _run_build(
+                work_dir: str,
+                metric: Any,
+                data_file: str,
+                prefix: str,
+                complexity: int,
+                graph_degree: int,
+                search_mem: float,
+                build_mem: float,
+                num_threads: int,
+                pq_disk_bytes: int,
+                out_q: "mp.Queue[tuple[bool, str]]",
+            ) -> None:
+                try:
+                    from . import _diskannpy as diskannpy  # type: ignore
 
-            with chdir(index_dir):
-                diskannpy.build_disk_float_index(
+                    with chdir(work_dir):
+                        diskannpy.build_disk_float_index(
+                            metric,
+                            data_file,
+                            prefix,
+                            complexity,
+                            graph_degree,
+                            search_mem,
+                            build_mem,
+                            num_threads,
+                            pq_disk_bytes,
+                            "",
+                        )
+                    out_q.put((True, "ok"))
+                except Exception as e:
+                    out_q.put((False, str(e)))
+
+            queue: mp.Queue[tuple[bool, str]] = mp.Queue()
+            proc = mp.Process(
+                target=_run_build,
+                args=(
+                    str(index_dir),
                     metric_enum,
                     data_filename,
                     index_prefix,
-                    build_kwargs.get("complexity", 64),
-                    build_kwargs.get("graph_degree", 32),
-                    build_kwargs.get("search_memory_maximum", smart_search_mem),
-                    build_kwargs.get("build_memory_maximum", smart_build_mem),
-                    build_kwargs.get("num_threads", 8),
-                    build_kwargs.get("pq_disk_bytes", 0),
-                    "",
+                    int(build_kwargs.get("complexity", 64)),
+                    int(build_kwargs.get("graph_degree", 32)),
+                    float(build_kwargs.get("search_memory_maximum", smart_search_mem)),
+                    float(build_kwargs.get("build_memory_maximum", smart_build_mem)),
+                    int(build_kwargs.get("num_threads", 8)),
+                    int(build_kwargs.get("pq_disk_bytes", 0)),
+                    queue,
+                ),
+            )
+            proc.start()
+            proc.join()
+
+            if proc.exitcode != 0:
+                raise RuntimeError(
+                    f"DiskANN native build process exited unexpectedly with code {proc.exitcode}. "
+                    "Re-run with LEANN_LOG_LEVEL=DEBUG and check system logs."
+                )
+            if queue.empty():
+                raise RuntimeError(
+                    "DiskANN native build exited without status message. "
+                    "This usually indicates a native termination inside diskannpy."
+                )
+            ok, msg = queue.get_nowait()
+            if not ok:
+                raise RuntimeError(f"DiskANN build failed: {msg}")
+
+            # Validate expected output to catch silent native failures.
+            expected_disk_index = index_dir / f"{index_prefix}_disk.index"
+            if not expected_disk_index.exists():
+                produced = sorted(str(p.name) for p in index_dir.glob(f"{index_prefix}*"))
+                raise RuntimeError(
+                    "DiskANN build finished but expected index file is missing: "
+                    f"{expected_disk_index.name}. Produced files: {produced}"
                 )
 
             # Auto-partition if is_recompute is enabled
@@ -358,6 +436,19 @@ class DiskannSearcher(BaseSearcher):
             self._current_zmq_port = None
             self._index = None
             logger.debug("DiskANN searcher initialized (index will be loaded on first search)")
+
+    def close(self):
+        """Release the C++ index object and its file handles.
+
+        On Windows, open memory-mapped files prevent temp directory cleanup.
+        Call this (or use LeannSearcher as a context manager) before deleting
+        the index directory.
+        """
+        self._index = None
+        self._current_zmq_port = None
+        import gc
+
+        gc.collect()
 
     def _ensure_index_loaded(self, zmq_port: int):
         """Ensure the index is loaded with the correct zmq_port."""

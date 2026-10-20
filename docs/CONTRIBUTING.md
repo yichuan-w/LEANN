@@ -21,8 +21,9 @@ We welcome contributions! Leann is built by the community, for the community.
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/LEANN-RAG/LEANN-RAG.git
-   cd LEANN-RAG
+   git clone https://github.com/yichuan-w/LEANN.git leann
+   git submodule update --init --recursive
+   cd leann
    ```
 
 3. **Install system dependencies**:
@@ -55,7 +56,7 @@ We use pre-commit hooks to ensure code quality and consistency. This runs automa
 
 1. **Install pre-commit tools**:
    ```bash
-   uv sync lint
+   uv sync --group lint
    ```
 
 2. **Install the git hooks**:
@@ -143,7 +144,7 @@ Our CI pipeline runs automatically on all pull requests. It includes:
 
 1. **Linting and Formatting**: Ensures code follows our style guidelines
 2. **Multi-platform builds**: Tests on Ubuntu and macOS
-3. **Python version matrix**: Tests on Python 3.9-3.13
+3. **Python version matrix**: Tests on Python 3.10-3.14 (see the workflow for platform-specific coverage)
 4. **Wheel building**: Ensures packages can be built and distributed
 
 ### CI Commands

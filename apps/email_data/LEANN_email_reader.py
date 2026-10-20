@@ -40,6 +40,13 @@ class EmlxReader(BaseReader):
         """
         self.include_html = include_html
 
+    def _payload_to_text(self, payload: object) -> str:
+        if isinstance(payload, bytes):
+            return payload.decode("utf-8", errors="ignore")
+        if isinstance(payload, str):
+            return payload
+        return ""
+
     def load_data(self, input_dir: str, **load_kwargs: Any) -> list[Document]:
         """
         Load data from the input directory containing .emlx files.
@@ -108,7 +115,7 @@ class EmlxReader(BaseReader):
                                             try:
                                                 payload = part.get_payload(decode=True)
                                                 if payload:
-                                                    body += payload.decode("utf-8", errors="ignore")
+                                                    body += self._payload_to_text(payload)
                                             except Exception as e:
                                                 print(f"Error decoding payload: {e}")
                                                 continue
@@ -116,7 +123,7 @@ class EmlxReader(BaseReader):
                                     try:
                                         payload = msg.get_payload(decode=True)
                                         if payload:
-                                            body = payload.decode("utf-8", errors="ignore")
+                                            body = self._payload_to_text(payload)
                                     except Exception as e:
                                         print(f"Error decoding single part payload: {e}")
                                         body = ""

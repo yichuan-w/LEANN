@@ -5,6 +5,7 @@ Supports Claude export data from JSON files.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -80,7 +81,7 @@ class ClaudeRAG(BaseRAGExample):
 
         return export_files
 
-    async def load_data(self, args) -> list[str]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load Claude export data and convert to text chunks."""
         export_path = Path(args.export_path)
 

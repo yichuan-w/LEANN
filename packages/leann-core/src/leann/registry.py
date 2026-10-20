@@ -4,6 +4,8 @@ import importlib
 import importlib.metadata
 import json
 import logging
+import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
 
@@ -14,6 +16,35 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BACKEND_REGISTRY: dict[str, "LeannBackendFactoryInterface"] = {}
+DEFAULT_INDEX_SCAN_DEPTH = 5
+INDEX_SCAN_SKIP_DIRS = frozenset(
+    {".git", ".venv", "venv", "node_modules", "__pycache__", "Library"}
+)
+
+
+def iter_index_meta_files(
+    root: Union[str, Path], max_depth: Optional[int] = DEFAULT_INDEX_SCAN_DEPTH
+) -> Iterator[Path]:
+    """Yield LEANN metadata files within an optionally bounded directory tree.
+
+    The root directory is depth zero. A max_depth of None scans all depths.
+    Known dependency, cache, and system directories are always pruned before traversal.
+    """
+    if max_depth is not None and max_depth < 0:
+        raise ValueError("max_depth must be non-negative")
+
+    root_path = Path(root)
+    for current_dir, dirnames, filenames in os.walk(root_path):
+        current_path = Path(current_dir)
+        depth = len(current_path.relative_to(root_path).parts)
+        if max_depth is not None and depth >= max_depth:
+            dirnames.clear()
+        else:
+            dirnames[:] = [name for name in dirnames if name not in INDEX_SCAN_SKIP_DIRS]
+
+        for filename in filenames:
+            if filename.endswith(".leann.meta.json"):
+                yield current_path / filename
 
 
 def register_backend(name: str):
@@ -49,7 +80,10 @@ def autodiscover_backends():
     # print("INFO: Backend auto-discovery finished.")
 
 
-def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
+def register_project_directory(
+    project_dir: Optional[Union[str, Path]] = None,
+    max_depth: Optional[int] = None,
+):
     """
     Register a project directory in the global LEANN registry.
 
@@ -57,18 +91,18 @@ def register_project_directory(project_dir: Optional[Union[str, Path]] = None):
 
     Args:
         project_dir: Directory to register. If None, uses current working directory.
+        max_depth: Maximum directory depth used when looking for App-format indexes.
+            None preserves full-depth discovery for existing API callers.
     """
     if project_dir is None:
         project_dir = Path.cwd()
     else:
         project_dir = Path(project_dir)
 
-    # Only register directories that have some kind of LEANN content
-    # Either .leann/indexes/ (CLI format) or *.leann.meta.json files (apps format)
+    # Only register directories that have some kind of LEANN content.
+    # Check CLI-format first to avoid even a bounded scan when it is unnecessary.
     has_cli_indexes = (project_dir / ".leann" / "indexes").exists()
-    has_app_indexes = any(project_dir.rglob("*.leann.meta.json"))
-
-    if not (has_cli_indexes or has_app_indexes):
+    if not has_cli_indexes and not any(iter_index_meta_files(project_dir, max_depth=max_depth)):
         # Don't register if there are no LEANN indexes
         return
 

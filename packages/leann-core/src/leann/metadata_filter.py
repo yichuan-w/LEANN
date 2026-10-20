@@ -7,7 +7,7 @@ operators for different data types including numbers, strings, booleans, and lis
 """
 
 import logging
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class MetadataFilterEngine:
         }
 
     def apply_filters(
-        self, search_results: list[dict[str, Any]], metadata_filters: MetadataFilters
+        self, search_results: list[dict[str, Any]], metadata_filters: Optional[MetadataFilters]
     ) -> list[dict[str, Any]]:
         """
         Apply metadata filters to a list of search results.
@@ -169,13 +169,15 @@ class MetadataFilterEngine:
         """Check if field value is in the expected list/collection."""
         if not isinstance(expected_value, (list, tuple, set)):
             raise ValueError("'in' operator requires a list, tuple, or set")
+        if isinstance(field_value, (list, tuple, set)):
+            return any(item in expected_value for item in field_value)
         return field_value in expected_value
 
     def _not_in(self, field_value: Any, expected_value: Any) -> bool:
         """Check if field value is not in the expected list/collection."""
         if not isinstance(expected_value, (list, tuple, set)):
             raise ValueError("'not_in' operator requires a list, tuple, or set")
-        return field_value not in expected_value
+        return not self._in(field_value, expected_value)
 
     # String operators
     def _contains(self, field_value: Any, expected_value: Any) -> bool:

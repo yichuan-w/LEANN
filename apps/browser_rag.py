@@ -6,6 +6,7 @@ Supports Chrome browser history.
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -85,19 +86,14 @@ class BrowserRAG(BaseRAGExample):
 
         return profiles
 
-    async def load_data(self, args) -> list[str]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load browser history and convert to text chunks."""
         # Determine Chrome profiles
-        if args.chrome_profile and not args.auto_find_profiles:
+        if args.chrome_profile:
             profile_dirs = [Path(args.chrome_profile)]
         else:
             print("Auto-detecting Chrome profiles...")
             profile_dirs = self._find_chrome_profiles()
-
-            # If specific profile given, filter to just that one
-            if args.chrome_profile:
-                profile_path = Path(args.chrome_profile)
-                profile_dirs = [p for p in profile_dirs if p == profile_path]
 
         if not profile_dirs:
             print("No Chrome profiles found!")

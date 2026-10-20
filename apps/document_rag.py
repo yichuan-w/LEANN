@@ -5,94 +5,101 @@ Supports PDF, TXT, MD, and other document formats.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+import importlib.util
+
 from base_rag_example import BaseRAGExample
 from chunking import create_text_chunks
 from llama_index.core import SimpleDirectoryReader
-OCR_AVAILABLE = False
-# Check if MinerU is available for OCR
-try:
-    import mineru
-    OCR_AVAILABLE = True
-except ImportError:
-    OCR_AVAILABLE = False
+
+# MinerU powers OCR for scanned PDFs. Probe for it rather than importing it:
+# the real import happens lazily in extract_pdf_with_ocr_fallback, so a run
+# that never touches a scanned PDF does not pay for it.
+OCR_AVAILABLE = importlib.util.find_spec("mineru") is not None
+
 
 def extract_pdf_with_ocr_fallback(pdf_path: str, use_ocr: bool = False) -> str:
     """
     Extract text from PDF with OCR fallback.
     Used as a custom file extractor for SimpleDirectoryReader.
-    
+
     Args:
         pdf_path: Path to PDF file
         use_ocr: Whether to try OCR if standard extraction fails
-        
+
     Returns:
         Extracted text string
     """
     # Try PyMuPDF first
     try:
         import fitz  # PyMuPDF
+
         doc = fitz.open(pdf_path)
         text = ""
         for page in doc:
             text += page.get_text()
         doc.close()
-        
+
         if text and len(text.strip()) > 100:
             return text
     except Exception:
         pass
-    
+
     # Try pdfplumber
     try:
         import pdfplumber
+
         text = ""
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
                 text += page.extract_text() or ""
-        
+
         if text and len(text.strip()) > 100:
             return text
     except Exception:
         pass
-    
+
     # Try OCR if enabled
     if use_ocr and OCR_AVAILABLE:
         try:
             result = None
             try:
                 from mineru import MinerUProcessor
+
                 processor = MinerUProcessor()
-                if hasattr(processor, 'process'):
+                if hasattr(processor, "process"):
                     result = processor.process(pdf_path)
             except (ImportError, AttributeError, TypeError):
                 try:
                     import mineru
-                    if hasattr(mineru, 'process'):
+
+                    if hasattr(mineru, "process"):
                         result = mineru.process(pdf_path)
-                    elif hasattr(mineru, 'extract_text'):
+                    elif hasattr(mineru, "extract_text"):
                         result = mineru.extract_text(pdf_path)
                 except Exception:
                     pass
-            
+
             if result:
                 if isinstance(result, str):
                     return result
-                elif hasattr(result, 'text'):
+                elif hasattr(result, "text"):
                     return result.text
-                elif hasattr(result, 'markdown'):
+                elif hasattr(result, "markdown"):
                     return result.markdown
                 elif isinstance(result, dict):
-                    return result.get('text', result.get('markdown', result.get('content', '')))
+                    return result.get("text", result.get("markdown", result.get("content", "")))
                 else:
                     return str(result)
         except Exception as e:
             print(f"  OCR failed for {pdf_path}: {e}")
-    
+
     return ""  # Return empty if all fail
+
 
 class DocumentRAG(BaseRAGExample):
     """RAG example for document processing (PDF, TXT, MD, etc.)."""
@@ -151,7 +158,7 @@ class DocumentRAG(BaseRAGExample):
             help="Disable automatic detection of scanned PDFs",
         )
 
-    async def load_data(self, args) -> list[str]:
+    async def load_data(self, args) -> list[dict[str, Any]]:
         """Load documents and convert to text chunks."""
         print(f"Loading documents from: {args.data_dir}")
         if args.file_types:
@@ -163,16 +170,16 @@ class DocumentRAG(BaseRAGExample):
         data_path = Path(args.data_dir)
         if not data_path.exists():
             raise ValueError(f"Data directory not found: {args.data_dir}")
-        
+
         use_ocr_for_all = args.use_ocr
         auto_detect_scanned = args.auto_detect_scanned and OCR_AVAILABLE
-        
+
         # Create custom PDF extractor with OCR fallback
         def pdf_extractor(file_path: str) -> str:
             """Custom extractor for PDFs with OCR support."""
             # Check if we should try OCR
             try_ocr = use_ocr_for_all
-            
+
             if not try_ocr and auto_detect_scanned:
                 # Quick check: try standard extraction first
                 text = extract_pdf_with_ocr_fallback(file_path, use_ocr=False)
@@ -180,13 +187,13 @@ class DocumentRAG(BaseRAGExample):
                 if len(text.strip()) < 100:
                     try_ocr = True
                     print(f"Detected scanned PDF: {Path(file_path).name}")
-            
+
             # Extract with OCR if needed
             text = extract_pdf_with_ocr_fallback(file_path, use_ocr=try_ocr)
             if try_ocr and text:
                 print(f"✓ OCR: {Path(file_path).name}")
             return text
-        
+
         # Load documents with custom PDF extractor
         reader_kwargs = {
             "recursive": True,
@@ -194,7 +201,7 @@ class DocumentRAG(BaseRAGExample):
         }
         if args.file_types:
             reader_kwargs["required_exts"] = args.file_types
-        
+
         # Add custom PDF extractor if we need OCR
         if use_ocr_for_all or auto_detect_scanned:
             reader_kwargs["file_extractor"] = {".pdf": pdf_extractor}
@@ -239,16 +246,14 @@ if __name__ == "__main__":
     import asyncio
 
     # Example queries for document RAG
-    print("\n📄 Document RAG Example")
+    print("\nDocument RAG Example")
     print("=" * 50)
     print("\nExample queries you can try:")
     print("- 'What are the main techniques LEANN uses?'")
     print("- 'What is the technique DLPM?'")
     print("- 'Who does Elizabeth Bennet marry?'")
-    print(
-        "- 'What is the problem of developing pan gu model Huawei meets? (盘古大模型开发中遇到什么问题?)'"
-    )
-    print("\n🚀 NEW: Code-aware chunking available!")
+    print("- 'What challenges did Huawei face while developing the Pangu model?'")
+    print("\nNEW: Code-aware chunking available!")
     print("- Use --enable-code-chunking to enable AST-aware chunking for code files")
     print("- Supports Python, Java, C#, TypeScript files")
     print("- Better semantic understanding of code structure")

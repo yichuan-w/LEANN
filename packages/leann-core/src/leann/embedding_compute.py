@@ -9,19 +9,29 @@ import logging
 import os
 import subprocess
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Protocol, cast
 
 import numpy as np
-import tiktoken
-import torch
 
 from .settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
+
+# torch and tiktoken are imported lazily inside the functions that use them, so
+# `import leann` (e.g. for MCP search over an existing index, BM25-only flows,
+# or non-embedding utilities) doesn't pull torch's ~1 GB of state into memory.
 
 # Set up logger with proper level
 logger = logging.getLogger(__name__)
 LOG_LEVEL = os.getenv("LEANN_LOG_LEVEL", "WARNING").upper()
 log_level = getattr(logging, LOG_LEVEL, logging.WARNING)
 logger.setLevel(log_level)
+
+
+class _SentenceTransformerLike(Protocol):
+    def eval(self) -> Any: ...
+    def parameters(self) -> Any: ...
+    def encode(self, *args: Any, **kwargs: Any) -> Any: ...
+    def half(self) -> Any: ...
+
 
 # Token limit registry for embedding models
 # Used as fallback when dynamic discovery fails (e.g., LM Studio, OpenAI)
@@ -111,6 +121,13 @@ def get_model_token_limit(
         _token_limit_cache[cache_key] = limit
         return limit
 
+    # Local Hugging Face models (sentence-transformers) publish their sequence limit
+    if not base_url and "/" in model_name:
+        limit = _query_huggingface_seq_limit(model_name)
+        if limit:
+            _token_limit_cache[cache_key] = limit
+            return limit
+
     # Check partial matches for common patterns
     for known_model, registry_limit in EMBEDDING_MODEL_LIMITS.items():
         if known_model in base_model_name or base_model_name in known_model:
@@ -136,6 +153,8 @@ def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
     """
     if not texts:
         return []
+
+    import tiktoken
 
     # Use tiktoken with cl100k_base encoding
     enc = tiktoken.get_encoding("cl100k_base")
@@ -185,6 +204,31 @@ def truncate_to_token_limit(texts: list[str], token_limit: int) -> list[str]:
         )
 
     return truncated_texts
+
+
+def _query_huggingface_seq_limit(model_name: str) -> Optional[int]:
+    """
+    Read ``max_seq_length`` from a Hugging Face sentence-transformers repo.
+
+    Args:
+        model_name: Hugging Face repo id, e.g. ``sentence-transformers/all-MiniLM-L6-v2``
+
+    Returns:
+        Sequence limit in tokens if published, None otherwise
+    """
+    try:
+        from huggingface_hub import hf_hub_download
+
+        config_path = hf_hub_download(model_name, "sentence_bert_config.json")
+        with open(config_path, encoding="utf-8") as f:
+            limit = json.load(f).get("max_seq_length")
+        if isinstance(limit, int) and limit > 0:
+            logger.info(f"Detected {model_name} sequence limit: {limit} tokens")
+            return limit
+    except Exception as e:
+        logger.debug(f"Failed to read Hugging Face sequence limit: {e}")
+
+    return None
 
 
 def _query_ollama_context_limit(model_name: str, base_url: str) -> Optional[int]:
@@ -308,6 +352,104 @@ def _query_lmstudio_context_limit(model_name: str, base_url: str) -> Optional[in
 # Global model cache to avoid repeated loading
 _model_cache: dict[str, Any] = {}
 
+_DEFAULT_CUDA_BATCH_SIZE = 256
+_DEFAULT_MPS_BATCH_SIZE = 128
+
+
+def _parse_positive_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using default %d", name, raw, default)
+        return default
+    if value < 1:
+        logger.warning("%s must be >= 1; using default %d", name, default)
+        return default
+    return value
+
+
+def _resolve_cpu_thread_count() -> int:
+    return _parse_positive_int_env("LEANN_CPU_THREADS", min(8, os.cpu_count() or 4))
+
+
+def _resolve_adaptive_batch_size(device: str, model_name: str) -> int:
+    if device == "cuda":
+        return _parse_positive_int_env("LEANN_CUDA_BATCH_SIZE", _DEFAULT_CUDA_BATCH_SIZE)
+    if device == "mps":
+        default = 32 if model_name == "Qwen/Qwen3-Embedding-0.6B" else _DEFAULT_MPS_BATCH_SIZE
+        return _parse_positive_int_env("LEANN_MPS_BATCH_SIZE", default)
+    return 32
+
+
+def _cap_cuda_batch_by_vram(requested: int, max_length: int = 512) -> int:
+    auto = os.getenv("LEANN_CUDA_AUTO_BATCH", "1").lower()
+    if auto in ("0", "false", "no"):
+        return requested
+    import torch
+
+    if not torch.cuda.is_available():
+        return requested
+    try:
+        free_bytes, _total = torch.cuda.mem_get_info()
+    except Exception:
+        return requested
+
+    # Eager-attention peak memory scales ~O(seq^2) per sequence in the batch.
+    bytes_per_seq = max(8_000_000, max_length * max_length * 32)
+    budget = int(free_bytes * 0.2)
+    max_by_vram = max(1, budget // bytes_per_seq)
+    capped = min(requested, max_by_vram)
+    if capped < requested:
+        logger.info(
+            "Capping CUDA embedding batch size %d -> %d (%.2f GiB free VRAM)",
+            requested,
+            capped,
+            free_bytes / (1024**3),
+        )
+    return capped
+
+
+def _encode_with_oom_retry(
+    model: _SentenceTransformerLike,
+    texts: list[str],
+    batch_size: int,
+    *,
+    is_build: bool,
+    device: str,
+) -> Any:
+    import torch
+
+    current = batch_size
+    while True:
+        try:
+            with torch.inference_mode():
+                return model.encode(
+                    texts,
+                    batch_size=current,
+                    show_progress_bar=is_build,
+                    convert_to_numpy=True,
+                    normalize_embeddings=False,
+                    device=device,
+                )
+        except RuntimeError as exc:
+            oom = "out of memory" in str(exc).lower()
+            if torch.cuda.is_available():
+                oom = oom or isinstance(exc, torch.cuda.OutOfMemoryError)
+            if not oom or current <= 1:
+                raise
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            next_batch = max(1, current // 2)
+            logger.warning(
+                "CUDA OOM at embedding batch_size=%d; retrying with batch_size=%d",
+                current,
+                next_batch,
+            )
+            current = next_batch
+
 
 def compute_embeddings(
     texts: list[str],
@@ -335,9 +477,19 @@ def compute_embeddings(
         Normalized embeddings array, shape: (len(texts), embedding_dim)
     """
     provider_options = provider_options or {}
+    wrapper_start_time = time.time()
+    logger.debug(
+        f"[compute_embeddings] entry: mode={mode}, model='{model_name}', text_count={len(texts)}"
+    )
+
+    # Allow batch_size override from provider_options (disables adaptive_optimization)
+    if "batch_size" in provider_options:
+        batch_size = provider_options["batch_size"]
+        adaptive_optimization = False  # User-specified batch_size takes precedence
 
     if mode == "sentence-transformers":
-        return compute_embeddings_sentence_transformers(
+        inner_start_time = time.time()
+        result = compute_embeddings_sentence_transformers(
             texts,
             model_name,
             is_build=is_build,
@@ -346,6 +498,14 @@ def compute_embeddings(
             manual_tokenize=manual_tokenize,
             max_length=max_length,
         )
+        inner_end_time = time.time()
+        wrapper_end_time = time.time()
+        logger.debug(
+            "[compute_embeddings] sentence-transformers timings: "
+            f"inner={inner_end_time - inner_start_time:.6f}s, "
+            f"wrapper_total={wrapper_end_time - wrapper_start_time:.6f}s"
+        )
+        return result
     elif mode == "openai":
         return compute_embeddings_openai(
             texts,
@@ -353,9 +513,10 @@ def compute_embeddings(
             base_url=provider_options.get("base_url"),
             api_key=provider_options.get("api_key"),
             provider_options=provider_options,
+            is_build=is_build,
         )
     elif mode == "mlx":
-        return compute_embeddings_mlx(texts, model_name)
+        return compute_embeddings_mlx(texts, model_name, is_build=is_build)
     elif mode == "ollama":
         return compute_embeddings_ollama(
             texts,
@@ -393,6 +554,9 @@ def compute_embeddings_sentence_transformers(
         is_build: Whether this is a build operation (shows progress bar)
         adaptive_optimization: Whether to use adaptive optimization based on batch size
     """
+    import torch
+
+    outer_start_time = time.time()
     # Handle empty input
     if not texts:
         raise ValueError("Cannot compute embeddings for empty text list")
@@ -402,31 +566,42 @@ def compute_embeddings_sentence_transformers(
 
     # Auto-detect device
     if device == "auto":
-        if torch.cuda.is_available():
+        # Check environment variable first
+        env_device = os.getenv("LEANN_EMBEDDING_DEVICE")
+        if env_device:
+            device = env_device
+            logger.info(f"Using device from LEANN_EMBEDDING_DEVICE: {device}")
+        elif torch.cuda.is_available():
             device = "cuda"
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             device = "mps"
         else:
             device = "cpu"
 
+    # CPU torch ships no fp16 kernels for several ops (LayerNorm raises
+    # "LayerNormKernelImpl" not implemented for 'Half') - force fp32 on CPU.
+    if device == "cpu" and use_fp16:
+        use_fp16 = False
+        logger.info("CPU device detected: disabling fp16 (no fp16 CPU kernels)")
+
     # Apply optimizations based on benchmark results
     if adaptive_optimization:
-        # Use optimal batch_size constants for different devices based on benchmark results
-        if device == "mps":
-            batch_size = 128  # MPS optimal batch size from benchmark
-            if model_name == "Qwen/Qwen3-Embedding-0.6B":
-                batch_size = 32
-        elif device == "cuda":
-            batch_size = 256  # CUDA optimal batch size
-        # Keep original batch_size for CPU
+        batch_size = _resolve_adaptive_batch_size(device, model_name)
 
     # Create cache key
     cache_key = f"sentence_transformers_{model_name}_{device}_{use_fp16}_optimized"
 
+    pre_model_init_end_time = time.time()
+    logger.debug(
+        "compute_embeddings_sentence_transformers pre-model-init time "
+        f"(device/batch selection etc.): {pre_model_init_end_time - outer_start_time:.6f}s"
+    )
+
     # Check if model is already cached
+    start_time = time.time()
     if cache_key in _model_cache:
         logger.info(f"Using cached optimized model: {model_name}")
-        model = _model_cache[cache_key]
+        model = cast(_SentenceTransformerLike, _model_cache[cache_key])
     else:
         logger.info(f"Loading and caching optimized SentenceTransformer model: {model_name}")
         from sentence_transformers import SentenceTransformer
@@ -442,14 +617,13 @@ def compute_embeddings_sentence_transformers(
             torch.backends.cudnn.deterministic = False
             torch.cuda.set_per_process_memory_fraction(0.9)
         elif device == "mps":
-            try:
-                if hasattr(torch.mps, "set_per_process_memory_fraction"):
-                    torch.mps.set_per_process_memory_fraction(0.9)
-            except AttributeError:
-                logger.warning("Some MPS optimizations not available in this PyTorch version")
+            # No device-level init for MPS. set_per_process_memory_fraction causes
+            # greedy allocation; torch.compile causes graph buffer bloat. Cache
+            # clearing is handled per-batch in the compute loop below.
+            pass
         elif device == "cpu":
             # TODO: Haven't tested this yet
-            torch.set_num_threads(min(8, os.cpu_count() or 4))
+            torch.set_num_threads(_resolve_cpu_thread_count())
             try:
                 torch.backends.mkldnn.enabled = True
             except AttributeError:
@@ -547,12 +721,14 @@ def compute_embeddings_sentence_transformers(
                 logger.warning(f"FP16 optimization failed: {e}")
 
         # Apply torch.compile optimization
-        if device in ["cuda", "mps"]:
+        if device == "cuda":
             try:
                 model = torch.compile(model, mode="reduce-overhead", dynamic=True)
                 logger.info(f"Applied torch.compile optimization: {model_name}")
             except Exception as e:
                 logger.warning(f"torch.compile optimization failed: {e}")
+
+        model = cast(_SentenceTransformerLike, model)
 
         # Set model to eval mode and disable gradients for inference
         model.eval()
@@ -563,23 +739,27 @@ def compute_embeddings_sentence_transformers(
         _model_cache[cache_key] = model
         logger.info(f"Model cached: {cache_key}")
 
-    # Compute embeddings with optimized inference mode
-    logger.info(
-        f"Starting embedding computation... (batch_size: {batch_size}, manual_tokenize={manual_tokenize})"
-    )
+        end_time = time.time()
+
+        # Compute embeddings with optimized inference mode
+        logger.info(
+            f"Starting embedding computation... (batch_size: {batch_size}, manual_tokenize={manual_tokenize})"
+        )
+        logger.info(f"start sentence transformers {model} takes {end_time - start_time}")
+
+    if device == "cuda" and adaptive_optimization:
+        batch_size = _cap_cuda_batch_by_vram(batch_size, max_length=max_length)
 
     start_time = time.time()
     if not manual_tokenize:
         # Use SentenceTransformer's optimized encode path (default)
-        with torch.inference_mode():
-            embeddings = model.encode(
-                texts,
-                batch_size=batch_size,
-                show_progress_bar=is_build,  # Don't show progress bar in server environment
-                convert_to_numpy=True,
-                normalize_embeddings=False,
-                device=device,
-            )
+        embeddings = _encode_with_oom_retry(
+            model,
+            texts,
+            batch_size,
+            is_build=is_build,
+            device=device,
+        )
         # Synchronize if CUDA to measure accurate wall time
         try:
             if torch.cuda.is_available():
@@ -587,32 +767,44 @@ def compute_embeddings_sentence_transformers(
         except Exception:
             pass
     else:
-        # Manual tokenization + forward pass using HF AutoTokenizer/AutoModel
+        # Manual tokenization + forward pass using HF AutoTokenizer/AutoModel.
+        # This path is reserved for an aggressively optimized FP pipeline
+        # (no quantization), mainly for experimentation.
         try:
-            from transformers import AutoModel, AutoTokenizer  # type: ignore
+            from transformers import AutoModel, AutoTokenizer
         except Exception as e:
             raise ImportError(f"transformers is required for manual_tokenize=True: {e}")
 
-        # Cache tokenizer and model
         tok_cache_key = f"hf_tokenizer_{model_name}"
-        mdl_cache_key = f"hf_model_{model_name}_{device}_{use_fp16}"
+        mdl_cache_key = f"hf_model_{model_name}_{device}_{use_fp16}_fp"
+
         if tok_cache_key in _model_cache and mdl_cache_key in _model_cache:
             hf_tokenizer = _model_cache[tok_cache_key]
             hf_model = _model_cache[mdl_cache_key]
-            logger.info("Using cached HF tokenizer/model for manual path")
+            logger.info("Using cached HF tokenizer/model for manual FP path")
         else:
-            logger.info("Loading HF tokenizer/model for manual tokenization path")
+            logger.info("Loading HF tokenizer/model for manual FP path")
             hf_tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+
             torch_dtype = torch.float16 if (use_fp16 and device == "cuda") else torch.float32
-            hf_model = AutoModel.from_pretrained(model_name, torch_dtype=torch_dtype)
+            hf_model = AutoModel.from_pretrained(
+                model_name,
+                torch_dtype=torch_dtype,
+            )
             hf_model.to(device)
+
             hf_model.eval()
             # Optional compile on supported devices
-            if device in ["cuda", "mps"]:
+            if device == "cuda":
                 try:
-                    hf_model = torch.compile(hf_model, mode="reduce-overhead", dynamic=True)  # type: ignore
-                except Exception:
-                    pass
+                    hf_model = torch.compile(hf_model, mode="reduce-overhead", dynamic=True)
+                    logger.info(
+                        f"Applied torch.compile to HF model for {model_name} "
+                        f"(device={device}, dtype={torch_dtype})"
+                    )
+                except Exception as exc:
+                    logger.warning(f"torch.compile optimization failed: {exc}")
+
             _model_cache[tok_cache_key] = hf_tokenizer
             _model_cache[mdl_cache_key] = hf_model
 
@@ -621,7 +813,7 @@ def compute_embeddings_sentence_transformers(
         show_progress = is_build or len(texts) > 32
         try:
             if show_progress:
-                from tqdm import tqdm  # type: ignore
+                from tqdm import tqdm
 
                 batch_iter = tqdm(
                     range(0, len(texts), batch_size),
@@ -638,7 +830,6 @@ def compute_embeddings_sentence_transformers(
             for start_index in batch_iter:
                 end_index = min(start_index + batch_size, len(texts))
                 batch_texts = texts[start_index:end_index]
-                tokenize_start_time = time.time()
                 inputs = hf_tokenizer(
                     batch_texts,
                     padding=True,
@@ -646,36 +837,24 @@ def compute_embeddings_sentence_transformers(
                     max_length=max_length,
                     return_tensors="pt",
                 )
-                tokenize_end_time = time.time()
-                logger.info(
-                    f"Tokenize time taken: {tokenize_end_time - tokenize_start_time} seconds"
-                )
-                # Print shapes of all input tensors for debugging
-                for k, v in inputs.items():
-                    print(f"inputs[{k!r}] shape: {getattr(v, 'shape', type(v))}")
-                to_device_start_time = time.time()
                 inputs = {k: v.to(device) for k, v in inputs.items()}
-                to_device_end_time = time.time()
-                logger.info(
-                    f"To device time taken: {to_device_end_time - to_device_start_time} seconds"
-                )
-                forward_start_time = time.time()
                 outputs = hf_model(**inputs)
-                forward_end_time = time.time()
-                logger.info(f"Forward time taken: {forward_end_time - forward_start_time} seconds")
                 last_hidden_state = outputs.last_hidden_state  # (B, L, H)
                 attention_mask = inputs.get("attention_mask")
                 if attention_mask is None:
-                    # Fallback: assume all tokens are valid
                     pooled = last_hidden_state.mean(dim=1)
                 else:
                     mask = attention_mask.unsqueeze(-1).to(last_hidden_state.dtype)
                     masked = last_hidden_state * mask
                     lengths = mask.sum(dim=1).clamp(min=1)
                     pooled = masked.sum(dim=1) / lengths
-                # Move to CPU float32
                 batch_embeddings = pooled.detach().to("cpu").float().numpy()
                 all_embeddings.append(batch_embeddings)
+                if device == "mps":
+                    try:
+                        torch.mps.empty_cache()
+                    except (RuntimeError, AttributeError):
+                        pass
 
         embeddings = np.vstack(all_embeddings).astype(np.float32, copy=False)
         try:
@@ -693,6 +872,12 @@ def compute_embeddings_sentence_transformers(
     if np.isnan(embeddings).any() or np.isinf(embeddings).any():
         raise RuntimeError(f"Detected NaN or Inf values in embeddings, model: {model_name}")
 
+    outer_end_time = time.time()
+    logger.debug(
+        "compute_embeddings_sentence_transformers total time "
+        f"(function entry -> return): {outer_end_time - outer_start_time:.6f}s"
+    )
+
     return embeddings
 
 
@@ -702,8 +887,8 @@ def compute_embeddings_openai(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
     provider_options: Optional[dict[str, Any]] = None,
+    is_build: bool = False,
 ) -> np.ndarray:
-    # TODO: @yichuan-w add progress bar only in build mode
     """Compute embeddings using OpenAI API"""
     try:
         import openai
@@ -737,7 +922,6 @@ def compute_embeddings_openai(
     logger.info(
         f"Computing embeddings for {len(texts)} texts using OpenAI API, model: '{model_name}'"
     )
-    print(f"len of texts: {len(texts)}")
 
     # Apply prompt template if provided
     # Priority: build_prompt_template (new format) > prompt_template (old format)
@@ -759,10 +943,30 @@ def compute_embeddings_openai(
     all_embeddings = []
     # get the avg len of texts
     avg_len = sum(len(text) for text in texts) / len(texts)
-    print(f"avg len of texts: {avg_len}")
     # if avg len is less than 1000, use the max batch size
     if avg_len > 300:
         max_batch_size = 500
+
+    # Gemini's OpenAI-compatible endpoint hard-limits embedding batches to 100 inputs per request.
+    # If we exceed this, the API returns:
+    #   "BatchEmbedContentsRequest.requests: at most 100 requests can be in one batch"
+    if "generativelanguage.googleapis.com" in (resolved_base_url or ""):
+        max_batch_size = min(max_batch_size, 100)
+        logger.info(
+            "Detected Gemini OpenAI-compatible base_url; capping embedding batch_size to %d.",
+            max_batch_size,
+        )
+
+    # Alibaba Cloud DashScope's OpenAI-compatible endpoint hard-limits embedding batches
+    # to 10 inputs per request (e.g. text-embedding-v4). Exceeding this returns HTTP 400:
+    #   "InternalError.Algo.InvalidParameter: Value error, batch size is invalid,
+    #    it should not be larger than 10.: input.contents"
+    if "dashscope" in (resolved_base_url or ""):
+        max_batch_size = min(max_batch_size, 10)
+        logger.info(
+            "Detected DashScope OpenAI-compatible base_url; capping embedding batch_size to %d.",
+            max_batch_size,
+        )
 
     # if avg len is less than 1000, use the max batch size
 
@@ -771,9 +975,12 @@ def compute_embeddings_openai(
 
         total_batches = (len(texts) + max_batch_size - 1) // max_batch_size
         batch_range = range(0, len(texts), max_batch_size)
-        batch_iterator = tqdm(
-            batch_range, desc="Computing embeddings", unit="batch", total=total_batches
-        )
+        if is_build:
+            batch_iterator = tqdm(
+                batch_range, desc="Computing embeddings", unit="batch", total=total_batches
+            )
+        else:
+            batch_iterator = batch_range
     except ImportError:
         # Fallback when tqdm is not available
         batch_iterator = range(0, len(texts), max_batch_size)
@@ -799,12 +1006,12 @@ def compute_embeddings_openai(
 
     embeddings = np.array(all_embeddings, dtype=np.float32)
     logger.info(f"Generated {len(embeddings)} embeddings, dimension: {embeddings.shape[1]}")
-    print(f"len of embeddings: {len(embeddings)}")
     return embeddings
 
 
-def compute_embeddings_mlx(chunks: list[str], model_name: str, batch_size: int = 16) -> np.ndarray:
-    # TODO: @yichuan-w add progress bar only in build mode
+def compute_embeddings_mlx(
+    chunks: list[str], model_name: str, batch_size: int = 16, is_build: bool = False
+) -> np.ndarray:
     """Computes embeddings using an MLX model."""
     try:
         import mlx.core as mx
@@ -835,9 +1042,11 @@ def compute_embeddings_mlx(chunks: list[str], model_name: str, batch_size: int =
     try:
         from tqdm import tqdm
 
-        batch_iterator = tqdm(
-            range(0, len(chunks), batch_size), desc="Computing embeddings", unit="batch"
-        )
+        batch_range = range(0, len(chunks), batch_size)
+        if is_build:
+            batch_iterator = tqdm(batch_range, desc="Computing embeddings", unit="batch")
+        else:
+            batch_iterator = batch_range
     except ImportError:
         batch_iterator = range(0, len(chunks), batch_size)
 
@@ -847,7 +1056,7 @@ def compute_embeddings_mlx(chunks: list[str], model_name: str, batch_size: int =
         # Tokenize all chunks in the batch
         batch_token_ids = []
         for chunk in batch_chunks:
-            token_ids = tokenizer.encode(chunk)  # type: ignore
+            token_ids = tokenizer.encode(chunk)
             batch_token_ids.append(token_ids)
 
         # Pad sequences to the same length for batch processing

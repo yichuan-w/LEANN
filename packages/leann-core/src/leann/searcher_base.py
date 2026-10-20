@@ -9,6 +9,91 @@ from .embedding_server_manager import EmbeddingServerManager
 from .interface import LeannBackendSearcherInterface
 
 
+class ReusableZMQConnection:
+    """Persistent ZMQ REQ connection to the embedding server.
+
+    The socket is created once and reused across searches instead of being
+    rebuilt per query. It lives on the searcher for the searcher's lifetime,
+    and `LeannChat` and the LlamaIndex retrievers hold a searcher for as long
+    as they live.
+
+    **A `zmq.Socket` is not thread-safe.** A searcher sharing this connection
+    must not have `search` called concurrently from multiple threads; give
+    each thread its own searcher. The previous per-query socket did not carry
+    this constraint.
+
+    """
+
+    def __init__(self):
+        self.context = None
+        self.socket = None
+        self.port = None
+
+    def connect(self, port: int):
+        """Connect to ZMQ server on given port."""
+        import zmq
+
+        if self.port == port and self.socket is not None:
+            # Already connected to this port
+            return
+
+        # Close existing connection
+        self.close()
+
+        # Create new connection
+        self.context = zmq.Context()
+        self.socket = self.context.socket(zmq.REQ)
+        self.socket.setsockopt(zmq.RCVTIMEO, 30000)  # 30 second timeout
+        self.socket.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+        self.socket.connect(f"tcp://127.0.0.1:{port}")
+        self.port = port
+
+    def send_recv(self, data: list) -> list:
+        """Send data and receive response."""
+        import msgpack
+
+        if self.socket is None:
+            raise RuntimeError("ZMQ connection not established")
+
+        # Send request
+        request_bytes = msgpack.packb(data)
+        self.socket.send(request_bytes)
+
+        # Receive response
+        response_bytes = self.socket.recv()
+        response = msgpack.unpackb(response_bytes)
+
+        return response
+
+    def close(self):
+        """Close ZMQ connection safely (tolerates partial/torn-down state)."""
+        socket = self.socket
+        context = self.context
+        self.socket = None
+        self.context = None
+        self.port = None
+
+        if socket is not None:
+            try:
+                socket.close(linger=0)
+            except Exception:
+                pass
+
+        # Deliberately no context.term() here. close() is reached from
+        # __del__, and terminating a ZMQ context during interpreter shutdown
+        # can block or abort the process with no traceback. Closing the socket
+        # with linger=0 releases the fd; the context is freed when its last
+        # reference goes.
+        del context
+
+    def __del__(self):
+        """Cleanup on deletion."""
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
 class BaseSearcher(LeannBackendSearcherInterface, ABC):
     """
     Abstract base class for Leann searchers, containing common logic for
@@ -42,10 +127,19 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
 
         self.embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
         self.embedding_options = self.meta.get("embedding_options", {})
+        self.enable_warmup = bool(kwargs.get("enable_warmup", True))
+        self.use_daemon = bool(kwargs.get("use_daemon", True))
+        self.daemon_ttl_seconds = int(kwargs.get("daemon_ttl_seconds", 900))
 
         self.embedding_server_manager = EmbeddingServerManager(
             backend_module_name=backend_module_name,
         )
+
+        # Optimization: Query embedding cache
+
+        # Optimization: Reusable ZMQ connection
+        self.zmq_connection = ReusableZMQConnection()
+        self._zmq_port: Optional[int] = None
 
     def _load_meta(self) -> dict[str, Any]:
         """Loads the metadata file associated with the index."""
@@ -56,7 +150,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         with open(meta_path, encoding="utf-8") as f:
             return json.load(f)
 
-    def _ensure_server_running(self, passages_source_file: str, port: int, **kwargs) -> int:
+    def _ensure_server_running(
+        self, passages_source_file: str, port: Optional[int], **kwargs
+    ) -> int:
         """
         Ensures the embedding server is running if recompute is needed.
         This is a helper for subclasses.
@@ -81,16 +177,22 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         }
 
         server_started, actual_port = self.embedding_server_manager.start_server(
-            port=port,
+            port=port if port is not None else 5557,
             model_name=self.embedding_model,
             embedding_mode=self.embedding_mode,
             passages_file=passages_source_file,
             distance_metric=distance_metric,
-            enable_warmup=kwargs.get("enable_warmup", False),
+            enable_warmup=kwargs.get("enable_warmup", self.enable_warmup),
+            use_daemon=kwargs.get("use_daemon", self.use_daemon),
+            daemon_ttl_seconds=kwargs.get("daemon_ttl_seconds", self.daemon_ttl_seconds),
             provider_options=search_provider_options,
         )
         if not server_started:
             raise RuntimeError(f"Failed to start embedding server on port {actual_port}")
+
+        # Remember port so the reusable ZMQ client can reconnect only when needed.
+        # Do not connect here — the server may still be warming; connect on first send.
+        self._zmq_port = actual_port
 
         return actual_port
 
@@ -98,11 +200,11 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         self,
         query: str,
         use_server_if_available: bool = True,
-        zmq_port: int = 5557,
+        zmq_port: Optional[int] = None,
         query_template: Optional[str] = None,
     ) -> np.ndarray:
         """
-        Compute embedding for a query string.
+        Compute embedding for a query string with caching and connection reuse.
 
         Args:
             query: The query string to embed
@@ -111,7 +213,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             query_template: Optional prompt template to prepend to query
 
         Returns:
-            Query embedding as numpy array
+            Query embedding as numpy array with shape (1, D)
         """
         # Apply query template BEFORE any computation path
         # This ensures template is applied consistently for both server and fallback paths
@@ -121,20 +223,22 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         # Try to use embedding server if available and requested
         if use_server_if_available:
             try:
-                # TODO: Maybe we can directly use this port here?
-                # For this internal method, it's ok to assume that the server is running
-                # on that port?
-
                 # Ensure we have a server with passages_file for compatibility
                 passages_source_file = self.index_dir / f"{self.index_path.name}.meta.json"
                 # Convert to absolute path to ensure server can find it
                 zmq_port = self._ensure_server_running(
-                    str(passages_source_file.resolve()), zmq_port
+                    str(passages_source_file.resolve()),
+                    zmq_port,
+                    enable_warmup=self.enable_warmup,
+                    use_daemon=self.use_daemon,
+                    daemon_ttl_seconds=self.daemon_ttl_seconds,
                 )
 
-                return self._compute_embedding_via_server([query], zmq_port)[
+                embedding = self._compute_embedding_via_server([query], zmq_port)[
                     0:1
                 ]  # Return (1, D) shape
+
+                return embedding
             except Exception as e:
                 print(f"⚠️ Embedding server failed: {e}")
                 print("⏭️ Falling back to direct model loading...")
@@ -143,35 +247,24 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         from .embedding_compute import compute_embeddings
 
         embedding_mode = self.meta.get("embedding_mode", "sentence-transformers")
-        return compute_embeddings(
+        embedding = compute_embeddings(
             [query],
             self.embedding_model,
             embedding_mode,
             provider_options=self.embedding_options,
         )
 
+        return embedding
+
     def _compute_embedding_via_server(self, chunks: list, zmq_port: int) -> np.ndarray:
-        """Compute embeddings using the ZMQ embedding server."""
-        import msgpack
-        import zmq
+        """Compute embeddings using the ZMQ embedding server with connection reuse."""
+        # Ensure connection is established (lazy — first request only / port change)
+        self.zmq_connection.connect(zmq_port)
+        self._zmq_port = zmq_port
 
         try:
-            context = zmq.Context()
-            socket = context.socket(zmq.REQ)
-            socket.setsockopt(zmq.RCVTIMEO, 30000)  # 30 second timeout
-            socket.connect(f"tcp://localhost:{zmq_port}")
-
-            # Send embedding request
-            request = chunks
-            request_bytes = msgpack.packb(request)
-            socket.send(request_bytes)
-
-            # Wait for response
-            response_bytes = socket.recv()
-            response = msgpack.unpackb(response_bytes)
-
-            socket.close()
-            context.term()
+            # Send request and get response using reusable connection
+            response = self.zmq_connection.send_recv(chunks)
 
             # Convert response to numpy array
             if isinstance(response, list) and len(response) > 0:
@@ -180,6 +273,12 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
                 raise RuntimeError("Invalid response from embedding server")
 
         except Exception as e:
+            # Drop broken connection so the next call reconnects cleanly
+            try:
+                self.zmq_connection.close()
+            except Exception:
+                pass
+            self._zmq_port = None
             raise RuntimeError(f"Failed to compute embeddings via server: {e}")
 
     @abstractmethod
@@ -215,6 +314,8 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         pass
 
     def __del__(self):
-        """Ensures the embedding server is stopped when the searcher is destroyed."""
+        """Ensures cleanup when the searcher is destroyed."""
+        if hasattr(self, "zmq_connection"):
+            self.zmq_connection.close()
         if hasattr(self, "embedding_server_manager"):
             self.embedding_server_manager.stop_server()

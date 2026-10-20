@@ -22,7 +22,7 @@ def test_data_dir():
 )
 def test_document_rag_simulated(test_data_dir):
     """Test document_rag with simulated LLM."""
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         # Use a subdirectory that doesn't exist yet to force index creation
         index_dir = Path(temp_dir) / "test_index"
         cmd = [
@@ -63,7 +63,7 @@ def test_document_rag_simulated(test_data_dir):
 )
 def test_document_rag_with_ast_chunking(test_data_dir):
     """Test document_rag with AST-aware chunking enabled."""
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         # Use a subdirectory that doesn't exist yet to force index creation
         index_dir = Path(temp_dir) / "test_ast_index"
         cmd = [
@@ -108,7 +108,7 @@ def test_document_rag_with_ast_chunking(test_data_dir):
 )
 def test_document_rag_openai(test_data_dir):
     """Test document_rag with OpenAI embeddings."""
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         # Use a subdirectory that doesn't exist yet to force index creation
         index_dir = Path(temp_dir) / "test_index_openai"
         cmd = [
@@ -149,7 +149,7 @@ def test_document_rag_openai(test_data_dir):
 
 def test_document_rag_error_handling(test_data_dir):
     """Test document_rag with invalid parameters."""
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         cmd = [
             sys.executable,
             "apps/document_rag.py",
