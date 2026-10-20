@@ -46,4 +46,3 @@ python benchmarks/ocr_benchmark/evaluate_ocr_bench.py --max-samples 50
 ## Reference
 
 Based on the olmOCR-Bench paper and dataset from AllenAI.
-

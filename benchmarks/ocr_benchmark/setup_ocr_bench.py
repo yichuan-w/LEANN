@@ -16,30 +16,30 @@ def download_olmocr_bench(data_dir: Path):
     print("Fetching olmOCR-Bench dataset info from HuggingFace...")
     print("Dataset: allenai/olmOCR-bench")
     print("-" * 60)
-    
+
     try:
-        import requests
-        import json
         from urllib.parse import quote
-        
+
+        import requests
+
         # Use HuggingFace Datasets Server API to get split info
         base_url = "https://datasets-server.huggingface.co"
         dataset_name = "allenai/olmOCR-bench"
         config = "olmocr-bench"
-        
+
         splits = [
             "arxiv_math",
-            "headers_footers", 
+            "headers_footers",
             "long_tiny_text",
             "multi_column",
             "old_scans",
             "old_scans_math",
-            "table_tests"
+            "table_tests",
         ]
-        
+
         split_counts = {}
         split_info = {}
-        
+
         print("Fetching split information...")
         for split in splits:
             try:
@@ -47,9 +47,9 @@ def download_olmocr_bench(data_dir: Path):
                 url = f"{base_url}/first-rows?dataset={quote(dataset_name)}&config={quote(config)}&split={quote(split)}"
                 response = requests.get(url, timeout=30)
                 response.raise_for_status()
-                
+
                 data = response.json()
-                
+
                 # Get split info (number of rows)
                 info_url = f"{base_url}/info?dataset={quote(dataset_name)}"
                 info_response = requests.get(info_url, timeout=30)
@@ -63,7 +63,7 @@ def download_olmocr_bench(data_dir: Path):
                                 split_counts[split] = num_rows
                                 split_info[split] = {
                                     "num_rows": num_rows,
-                                    "features": data.get("features", [])
+                                    "features": data.get("features", []),
                                 }
                                 print(f"  ✓ {split}: {num_rows} samples")
                                 break
@@ -79,36 +79,36 @@ def download_olmocr_bench(data_dir: Path):
                     # Fallback: just mark as available
                     split_counts[split] = 0
                     print(f"  ✓ {split}: available (size unknown)")
-                    
+
             except requests.exceptions.RequestException as e:
                 print(f"  ⚠ {split}: failed to fetch ({e})")
                 continue
             except Exception as e:
                 print(f"  ⚠ {split}: error ({e})")
                 continue
-        
+
         # Save dataset info
         info_file = data_dir / "dataset_info.txt"
         with open(info_file, "w") as f:
-            f.write(f"Dataset: allenai/olmOCR-bench\n")
-            f.write(f"API: https://datasets-server.huggingface.co\n")
+            f.write("Dataset: allenai/olmOCR-bench\n")
+            f.write("API: https://datasets-server.huggingface.co\n")
             f.write(f"Config: {config}\n")
             f.write(f"Splits: {list(split_counts.keys())}\n")
             for split_name, count in split_counts.items():
                 f.write(f"  {split_name}: {count} samples\n")
-        
-        print(f"\n✓ Dataset info fetched!")
+
+        print("\n✓ Dataset info fetched!")
         print(f"  Splits available: {list(split_counts.keys())}")
-        print(f"  Using HuggingFace Datasets Server API")
-        
+        print("  Using HuggingFace Datasets Server API")
+
         return {
             "api_base": base_url,
             "dataset": dataset_name,
             "config": config,
             "splits": split_counts,
-            "split_info": split_info
+            "split_info": split_info,
         }
-        
+
     except ImportError:
         print("❌ Error: 'requests' package not installed")
         print("  Install with: pip install requests")
@@ -127,11 +127,11 @@ def main():
     benchmark_dir = Path(__file__).resolve().parent
     data_dir = benchmark_dir / "data" / "olmocr_bench"
     data_dir.mkdir(parents=True, exist_ok=True)
-    
-    print(f"Setting up olmOCR-Bench dataset")
+
+    print("Setting up olmOCR-Bench dataset")
     print(f"Cache directory: {data_dir}")
     print("=" * 60)
-    
+
     # Check if dataset already exists
     if (data_dir / "dataset_info.txt").exists():
         print("✓ Dataset already downloaded")
@@ -139,10 +139,10 @@ def main():
             print(f.read())
         print("\nTo re-download, delete the cache directory and run again.")
         return
-    
+
     # Download dataset
     dataset = download_olmocr_bench(data_dir)
-    
+
     if dataset:
         print("\n✓ Setup complete!")
         print(f"  Dataset location: {data_dir}")
@@ -154,4 +154,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
