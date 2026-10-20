@@ -341,10 +341,7 @@ def resolve_leann_integration(target_dir: Path) -> dict[str, str]:
     mode = "none"
     if requested_mode == "mcp" and leann_index_exists:
         mode = "mcp"
-        print(
-            f"   -> 🔍 LEANN MCP enabled (server: {mcp_server_name}, "
-            f"forced top_k={LEANN_TOP_K})"
-        )
+        print(f"   -> 🔍 LEANN MCP enabled (server: {mcp_server_name}, forced top_k={LEANN_TOP_K})")
     elif requested_mode == "mcp":
         print("   -> ⚠️ LEANN enabled but no .leann index found; continuing without LEANN")
 

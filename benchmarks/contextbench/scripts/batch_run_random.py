@@ -5,7 +5,9 @@ import subprocess
 import time
 from pathlib import Path
 
-from auto_run import prefetch_task_repositories, run_single_task
+# run_single_task is used by the task-running block below, which ships
+# commented out so this script selects and prefetches without executing.
+from auto_run import prefetch_task_repositories, run_single_task  # noqa: F401
 from datasets import load_dataset
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,8 +90,9 @@ def main():
     else:
         print("⏭️ PREFETCH_REPOS=0; skipping prefetch step.")
 
-    success_count = 0
-    failure_count = 0
+    # Incremented by the commented-out task-running block below.
+    success_count = 0  # noqa: F841
+    failure_count = 0  # noqa: F841
     for i, task in enumerate(selected_tasks):
         instance_id = task["instance_id"]
         repo_url = task["repo_url"]
