@@ -56,3 +56,23 @@ npm install -g @lmstudio/sdk
 ```
 
 See [Configuration Guide: LM Studio Auto-Detection](configuration-guide.md#lm-studio-auto-detection-optional) for details.
+
+## 5. `leann build` fails with `Security Violation [pathsec.open]: refusing multiply-linked file` (Linux)
+
+uv installs packages by **hardlinking** files from its cache into the environment by default. Recent nltk releases ship a hardened file loader (`nltk/pathsec.py`) that refuses to open multiply-linked files (`st_nlink > 1`, CWE-59 guard) - and llama-index, which LEANN uses for document parsing, loads its bundled nltk stopwords through exactly that path. The result on an uv-installed LEANN:
+
+```text
+PermissionError: Security Violation [pathsec.open]: refusing multiply-linked file
+'.../site-packages/llama_index/core/_static/nltk_cache/corpora/stopwords/english' (st_nlink=2);
+a hardlink can point at an outside-root inode (CWE-59)
+```
+
+**Fix:** reinstall with copy mode so no hardlinks are created:
+
+```bash
+UV_LINK_MODE=copy uv pip install --reinstall leann
+# or, for the global CLI/MCP install:
+UV_LINK_MODE=copy uv tool install --reinstall leann-core --with leann
+```
+
+`--reinstall` matters: without it uv leaves the already-hardlinked packages in place (satisfied requirements are skipped, and `uv tool install` refuses to overwrite an existing tool), so the error persists. pip installs are unaffected (pip copies by default).

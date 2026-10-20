@@ -493,6 +493,8 @@ Respond with exactly one word: "CORRECT" if the generated answer is factually ac
                 max_tokens=10,
                 temperature=0,
             )
+            if not judge_response.choices or judge_response.choices[0].message is None:
+                raise ValueError("LLM returned empty or filtered response")
             judgment = judge_response.choices[0].message.content.strip().upper()
             return judgment == "CORRECT"
         except Exception as e:

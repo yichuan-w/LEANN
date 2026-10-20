@@ -121,3 +121,6 @@ test-code/
 localtestmcp/
 *.csv
 *.pickle
+
+# Personal dev notes (not tracked)
+docs/dev/

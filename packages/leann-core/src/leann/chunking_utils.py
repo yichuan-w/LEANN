@@ -4,6 +4,7 @@ Packaged within leann-core so installed wheels can import it reliably.
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -13,6 +14,18 @@ logger = logging.getLogger(__name__)
 
 # Flag to ensure AST token warning only shown once per session
 _ast_token_warning_shown = False
+
+
+# Chunk sizes are counted in tiktoken tokens, but BERT-style WordPiece tokenizers
+# count ~30% more on web text and code, and SentenceSplitter overshoots on spans it
+# cannot split (tables, long lines). At 70% of the model limit, <1% of chunk text is
+# truncated by all-MiniLM-L6-v2 (256 tokens) on web pages and Python sources.
+CHUNK_TOKEN_BUDGET_RATIO = 0.7
+
+
+def cap_chunk_size(chunk_size: int, model_token_limit: int) -> int:
+    """Cap a SentenceSplitter chunk size (tiktoken tokens) so chunks fit the embedding model."""
+    return min(chunk_size, max(1, int(model_token_limit * CHUNK_TOKEN_BUDGET_RATIO)))
 
 
 def estimate_token_count(text: str) -> int:
@@ -40,7 +53,7 @@ def estimate_token_count(text: str) -> int:
 
 def calculate_safe_chunk_size(
     model_token_limit: int,
-    overlap_tokens: int,
+    overlap_size: int,
     chunking_mode: str = "traditional",
     safety_factor: float = 0.9,
 ) -> int:
@@ -49,7 +62,7 @@ def calculate_safe_chunk_size(
 
     Args:
         model_token_limit: Maximum tokens supported by embedding model
-        overlap_tokens: Overlap size (tokens for traditional, chars for AST)
+        overlap_size: Overlap units (tokens for traditional, chars for AST)
         chunking_mode: "traditional" (tokens) or "ast" (characters)
         safety_factor: Safety margin (0.9 = 10% safety margin)
 
@@ -61,11 +74,11 @@ def calculate_safe_chunk_size(
     if chunking_mode == "traditional":
         # Traditional chunking uses tokens
         # Max chunk = chunk_size + overlap, so chunk_size = limit - overlap
-        return max(1, safe_limit - overlap_tokens)
+        return max(1, safe_limit - overlap_size)
     else:  # AST chunking
         # AST uses characters, need to convert
         # Conservative estimate: 1.2 tokens per char for code
-        overlap_chars = int(overlap_tokens * 3)  # ~3 chars per token for code
+        overlap_chars = int(overlap_size * 3)  # ~3 chars per token for code
         safe_chars = int(safe_limit / 1.2)
         return max(1, safe_chars - overlap_chars)
 
@@ -172,6 +185,27 @@ def get_language_from_extension(file_path: str) -> Optional[str]:
     return CODE_EXTENSIONS.get(ext)
 
 
+def _parse_ast_chunk_output(chunk: Any) -> tuple[str | None, dict[str, Any]]:
+    """Normalize the various chunk output formats from ASTChunkBuilder.
+
+    astchunk can return objects (with a ``.text`` attr), plain strings, or
+    dicts (``{"content": ..., "metadata": ...}``).  This helper returns a
+    uniform ``(text, metadata)`` pair regardless of the input shape.
+    """
+    if hasattr(chunk, "text"):
+        return (str(chunk.text) if chunk.text else None, {})
+    if isinstance(chunk, str):
+        return (chunk, {})
+    if isinstance(chunk, dict):
+        meta = chunk.get("metadata", {})
+        if "content" in chunk:
+            return (chunk["content"], meta)
+        if "text" in chunk:
+            return (chunk["text"], meta)
+        return (str(chunk), {})
+    return (str(chunk), {})
+
+
 def create_ast_chunks(
     documents,
     max_chunk_size: int = 512,
@@ -190,14 +224,14 @@ def create_ast_chunks(
     except ImportError as e:
         logger.error(f"astchunk not available: {e}")
         logger.info("Falling back to traditional chunking for code files")
-        return _traditional_chunks_as_dicts(documents, max_chunk_size, chunk_overlap)
+        return create_traditional_chunks(documents, max_chunk_size, chunk_overlap)
 
     all_chunks = []
     for doc in documents:
         language = doc.metadata.get("language")
         if not language:
             logger.warning("No language detected; falling back to traditional chunking")
-            all_chunks.extend(_traditional_chunks_as_dicts([doc], max_chunk_size, chunk_overlap))
+            all_chunks.extend(create_traditional_chunks([doc], max_chunk_size, chunk_overlap))
             continue
 
         try:
@@ -240,24 +274,7 @@ def create_ast_chunks(
 
             chunks = chunk_builder.chunkify(code_content)
             for chunk in chunks:
-                chunk_text: str | None = None
-                astchunk_metadata: dict[str, Any] = {}
-
-                if hasattr(chunk, "text"):
-                    chunk_text = str(chunk.text) if chunk.text else None
-                elif isinstance(chunk, str):
-                    chunk_text = chunk
-                elif isinstance(chunk, dict):
-                    # Handle astchunk format: {"content": "...", "metadata": {...}}
-                    if "content" in chunk:
-                        chunk_text = chunk["content"]
-                        astchunk_metadata = chunk.get("metadata", {})
-                    elif "text" in chunk:
-                        chunk_text = chunk["text"]
-                    else:
-                        chunk_text = str(chunk)  # Last resort
-                else:
-                    chunk_text = str(chunk)
+                chunk_text, astchunk_metadata = _parse_ast_chunk_output(chunk)
 
                 if chunk_text and chunk_text.strip():
                     # Extract document-level metadata
@@ -274,7 +291,16 @@ def create_ast_chunks(
                     # Merge document metadata + astchunk metadata
                     combined_metadata = {**doc_metadata, **astchunk_metadata}
 
-                    all_chunks.append({"text": chunk_text.strip(), "metadata": combined_metadata})
+                    # Trim partial first line left by overlap if using line numbers
+                    # (a valid line starts with digits followed by '|')
+                    stripped = chunk_text.strip()
+                    if stripped:
+                        first_line = stripped.split("\n", 1)[0]
+                        if "|" in first_line and not re.match(r"^\s*\d+\|", first_line):
+                            first_nl = stripped.find("\n")
+                            if first_nl != -1:
+                                stripped = stripped[first_nl + 1 :]
+                    all_chunks.append({"text": stripped, "metadata": combined_metadata})
 
             logger.info(
                 f"Created {len(chunks)} AST chunks from {language} file: {doc.metadata.get('file_name', 'unknown')}"
@@ -282,26 +308,61 @@ def create_ast_chunks(
         except Exception as e:
             logger.warning(f"AST chunking failed for {language} file: {e}")
             logger.info("Falling back to traditional chunking")
-            all_chunks.extend(_traditional_chunks_as_dicts([doc], max_chunk_size, chunk_overlap))
+            all_chunks.extend(create_traditional_chunks([doc], max_chunk_size, chunk_overlap))
 
     return all_chunks
 
 
 def create_traditional_chunks(
-    documents, chunk_size: int = 256, chunk_overlap: int = 128
+    documents,
+    chunk_size: int = 256,
+    chunk_overlap: int = 128,
+    max_tokens_per_chunk: int | None = None,
 ) -> list[dict[str, Any]]:
     """Create traditional text chunks using LlamaIndex SentenceSplitter.
 
+    Args:
+        documents: LlamaIndex Document list.
+        chunk_size: Target chunk size in **characters** (approximate tokens).
+        chunk_overlap: Overlap between adjacent chunks in characters.
+        max_tokens_per_chunk: If set, cap ``chunk_size`` (see ``cap_chunk_size``)
+            so each chunk fits the embedding model, and truncate any chunk that
+            still exceeds the limit.
+
     Returns:
-        List of dicts with {"text": str, "metadata": dict}
+        List of dicts with ``{"text": str, "metadata": dict}``.
     """
     if chunk_size <= 0:
         logger.warning(f"Invalid chunk_size={chunk_size}, using default value of 256")
         chunk_size = 256
     if chunk_overlap < 0:
         chunk_overlap = 0
+
+    # ── Token-aware cap ───────────────────────────────────────────────
+    if max_tokens_per_chunk and max_tokens_per_chunk > 0:
+        capped = cap_chunk_size(chunk_size, max_tokens_per_chunk)
+        if capped < chunk_size:
+            logger.info(
+                "Token-aware chunking: model limit=%d tokens → chunk_size %d → %d",
+                max_tokens_per_chunk,
+                chunk_size,
+                capped,
+            )
+            chunk_size = capped
+            chunk_overlap = min(chunk_overlap, capped // 2)
+
+    # Revalidate after scaling
     if chunk_overlap >= chunk_size:
-        chunk_overlap = chunk_size // 2
+        old_overlap = chunk_overlap
+        chunk_overlap = max(0, chunk_size // 2)
+        logger.warning(
+            "Token-aware scaling reduced chunk_size below chunk_overlap "
+            "(%d → %d); overlap reduced %d → %d",
+            chunk_size,
+            old_overlap,
+            old_overlap,
+            chunk_overlap,
+        )
 
     node_parser = SentenceSplitter(
         chunk_size=chunk_size,
@@ -312,16 +373,10 @@ def create_traditional_chunks(
 
     result = []
     for doc in documents:
-        # Extract document-level metadata
-        doc_metadata = {
-            "file_path": doc.metadata.get("file_path", ""),
-            "file_name": doc.metadata.get("file_name", ""),
-            "source": doc.metadata.get("source", ""),
-        }
-        if "creation_date" in doc.metadata:
-            doc_metadata["creation_date"] = doc.metadata["creation_date"]
-        if "last_modified_date" in doc.metadata:
-            doc_metadata["last_modified_date"] = doc.metadata["last_modified_date"]
+        doc_metadata = dict(doc.metadata) if doc.metadata else {}
+        doc_metadata.setdefault("file_path", "")
+        doc_metadata.setdefault("file_name", "")
+        doc_metadata.setdefault("source", "")
 
         try:
             nodes = node_parser.get_nodes_from_documents([doc])
@@ -334,17 +389,37 @@ def create_traditional_chunks(
             if content and content.strip():
                 result.append({"text": content.strip(), "metadata": doc_metadata})
 
+    # ── Post-chunk validation ─────────────────────────────────────────
+    if max_tokens_per_chunk and max_tokens_per_chunk > 0 and result:
+        _texts = [c["text"] for c in result]
+        _validated, _n = validate_chunk_token_limits(_texts, max_tokens_per_chunk)
+        if _n > 0:
+            logger.warning(
+                "Token-aware chunking: %d/%d chunks truncated to fit %d-token limit",
+                _n,
+                len(result),
+                max_tokens_per_chunk,
+            )
+        for i, chunk_dict in enumerate(result):
+            if i < len(_validated):
+                chunk_dict["text"] = _validated[i]
+
     return result
 
 
 def _traditional_chunks_as_dicts(
-    documents, chunk_size: int = 256, chunk_overlap: int = 128
+    documents,
+    chunk_size: int = 256,
+    chunk_overlap: int = 128,
+    max_tokens_per_chunk: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Helper: Traditional chunking that returns dict format for consistency.
-
-    This is now just an alias for create_traditional_chunks for backwards compatibility.
-    """
-    return create_traditional_chunks(documents, chunk_size, chunk_overlap)
+    """Backward-compatible alias for create_traditional_chunks."""
+    return create_traditional_chunks(
+        documents,
+        chunk_size,
+        chunk_overlap,
+        max_tokens_per_chunk=max_tokens_per_chunk,
+    )
 
 
 def create_text_chunks(
@@ -356,11 +431,20 @@ def create_text_chunks(
     ast_chunk_overlap: int = 64,
     code_file_extensions: Optional[list[str]] = None,
     ast_fallback_traditional: bool = True,
+    max_tokens_per_chunk: int | None = None,
 ) -> list[dict[str, Any]]:
     """Create text chunks from documents with optional AST support for code files.
 
+    Args:
+        documents: LlamaIndex Document list.
+        chunk_size: Characters per traditional chunk.
+        chunk_overlap: Character overlap between traditional chunks.
+        max_tokens_per_chunk: If set, auto-scale chunk_size to keep each
+            chunk within the embedding model's token budget.  Also runs
+            post-chunk validation and truncation when necessary.
+
     Returns:
-        List of dicts with {"text": str, "metadata": dict}
+        List of dicts with ``{"text": str, "metadata": dict}``.
     """
     if not documents:
         logger.warning("No documents provided for chunking")
@@ -387,8 +471,25 @@ def create_text_chunks(
         code_docs, text_docs = detect_code_files(documents, local_code_extensions)
         if code_docs:
             try:
+                # AST chunking: auto-scale if token limit given
+                ast_size = ast_chunk_size
+                if max_tokens_per_chunk and max_tokens_per_chunk > 0:
+                    ast_size = min(
+                        ast_chunk_size,
+                        calculate_safe_chunk_size(
+                            max_tokens_per_chunk, ast_chunk_overlap, chunking_mode="ast"
+                        ),
+                    )
+                    logger.info(
+                        "Token-aware AST chunking: limit=%d → safe ast_chunk_size=%d chars "
+                        "(overlap=%d, safety=0.9)",
+                        max_tokens_per_chunk,
+                        ast_size,
+                        ast_chunk_overlap,
+                    )
+
                 ast_chunks = create_ast_chunks(
-                    code_docs, max_chunk_size=ast_chunk_size, chunk_overlap=ast_chunk_overlap
+                    code_docs, max_chunk_size=ast_size, chunk_overlap=ast_chunk_overlap
                 )
                 # Prepend line numbers to code chunks for navigation
                 for chunk in ast_chunks:
@@ -405,17 +506,32 @@ def create_text_chunks(
                 logger.error(f"AST chunking failed: {e}")
                 if ast_fallback_traditional:
                     all_chunks.extend(
-                        _traditional_chunks_as_dicts(code_docs, chunk_size, chunk_overlap)
+                        create_traditional_chunks(
+                            code_docs,
+                            chunk_size,
+                            chunk_overlap,
+                            max_tokens_per_chunk=max_tokens_per_chunk,
+                        )
                     )
                 else:
                     raise
         if text_docs:
-            all_chunks.extend(_traditional_chunks_as_dicts(text_docs, chunk_size, chunk_overlap))
+            all_chunks.extend(
+                create_traditional_chunks(
+                    text_docs,
+                    chunk_size,
+                    chunk_overlap,
+                    max_tokens_per_chunk=max_tokens_per_chunk,
+                )
+            )
     else:
-        all_chunks = _traditional_chunks_as_dicts(documents, chunk_size, chunk_overlap)
+        all_chunks = create_traditional_chunks(
+            documents,
+            chunk_size,
+            chunk_overlap,
+            max_tokens_per_chunk=max_tokens_per_chunk,
+        )
 
     logger.info(f"Total chunks created: {len(all_chunks)}")
 
-    # Note: Token truncation is now handled at embedding time with dynamic model limits
-    # See get_model_token_limit() and truncate_to_token_limit() in embedding_compute.py
     return all_chunks

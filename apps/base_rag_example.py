@@ -29,10 +29,24 @@ from leann.registry import register_project_directory
 
 # Optional import: older PyPI builds may not include settings
 try:
-    from leann.settings import resolve_ollama_host, resolve_openai_api_key, resolve_openai_base_url
+    from leann.settings import (
+        resolve_atlascloud_api_key,
+        resolve_atlascloud_base_url,
+        resolve_litellm_api_key,
+        resolve_litellm_base_url,
+        resolve_ollama_host,
+        resolve_openai_api_key,
+        resolve_openai_base_url,
+    )
 except ImportError:
     # Minimal fallbacks if settings helpers are unavailable
     import os
+
+    def resolve_litellm_api_key(value: str | None) -> str | None:
+        return value or os.getenv("LITELLM_API_KEY") or os.getenv("LEANN_LITELLM_API_KEY")
+
+    def resolve_litellm_base_url(value: str | None) -> str | None:
+        return value or os.getenv("LITELLM_BASE_URL") or os.getenv("LITELLM_API_BASE")
 
     def resolve_ollama_host(value: str | None) -> str | None:
         return value or os.getenv("LEANN_OLLAMA_HOST") or os.getenv("OLLAMA_HOST")
@@ -42,6 +56,17 @@ except ImportError:
 
     def resolve_openai_base_url(value: str | None) -> str | None:
         return value or os.getenv("OPENAI_BASE_URL")
+
+    def resolve_atlascloud_api_key(value: str | None) -> str | None:
+        return value or os.getenv("ATLASCLOUD_API_KEY") or os.getenv("ATLAS_CLOUD_API_KEY")
+
+    def resolve_atlascloud_base_url(value: str | None) -> str | None:
+        return (
+            value
+            or os.getenv("ATLASCLOUD_BASE_URL")
+            or os.getenv("ATLAS_CLOUD_BASE_URL")
+            or "https://api.atlascloud.ai/v1"
+        )
 
 
 dotenv.load_dotenv()
@@ -135,8 +160,17 @@ class BaseRAGExample(ABC):
             "--llm",
             type=str,
             default="openai",
-            choices=["openai", "ollama", "hf", "simulated"],
-            help="LLM backend: openai, ollama, or hf (default: openai)",
+            choices=[
+                "openai",
+                "ollama",
+                "hf",
+                "litellm",
+                "simulated",
+                "atlascloud",
+                "atlas-cloud",
+                "atlas",
+            ],
+            help="LLM backend: openai, ollama, hf, litellm, atlascloud, or simulated (default: openai)",
         )
         llm_group.add_argument(
             "--llm-model",
@@ -220,8 +254,8 @@ class BaseRAGExample(ABC):
             "--backend-name",
             type=str,
             default="hnsw",
-            choices=["hnsw", "diskann"],
-            help="Backend to use for index (default: hnsw)",
+            choices=["hnsw", "diskann", "ivf", "flashlib"],
+            help="Backend to use for index (default: hnsw). 'flashlib' requires a CUDA GPU.",
         )
         index_group.add_argument(
             "--graph-degree",
@@ -271,6 +305,21 @@ class BaseRAGExample(ABC):
             resolved_key = resolve_openai_api_key(args.llm_api_key)
             if resolved_key:
                 config["api_key"] = resolved_key
+        elif args.llm == "litellm":
+            config["model"] = args.llm_model or "gpt-4o"
+            base_url = resolve_litellm_base_url(args.llm_api_base)
+            if base_url:
+                config["base_url"] = base_url
+            resolved_key = resolve_litellm_api_key(args.llm_api_key)
+            if resolved_key:
+                config["api_key"] = resolved_key
+        elif args.llm in {"atlascloud", "atlas-cloud", "atlas"}:
+            config["type"] = "atlascloud"
+            config["model"] = args.llm_model or "deepseek-ai/deepseek-v4-pro"
+            config["base_url"] = resolve_atlascloud_base_url(args.llm_api_base)
+            resolved_key = resolve_atlascloud_api_key(args.llm_api_key)
+            if resolved_key:
+                config["api_key"] = resolved_key
         elif args.llm == "ollama":
             config["model"] = args.llm_model or "llama3.2:1b"
             config["host"] = resolve_ollama_host(args.llm_host)
@@ -282,12 +331,39 @@ class BaseRAGExample(ABC):
 
         return config
 
+    @staticmethod
+    def _resolve_chunk_token_limit(args) -> int | None:
+        """Resolve the embedding model's token limit for token-aware chunking.
+
+        Returns ``None`` if the limit cannot be determined (e.g. model unknown).
+        Apps can pass the result as ``max_tokens_per_chunk=`` to
+        ``create_text_chunks()``.
+        """
+        try:
+            from leann.embedding_compute import get_model_token_limit
+
+            base_url = getattr(args, "embedding_api_base", None)
+            return get_model_token_limit(args.embedding_model, base_url)
+        except Exception:
+            return None
+
     async def build_index(self, args, texts: list[dict[str, Any]]) -> str:
         """Build LEANN index from text chunks (dicts with 'text' and 'metadata' keys)."""
         index_path = str(Path(args.index_dir) / f"{self.default_index_name}.leann")
 
         print(f"\n[Building Index] Creating {self.name} index...")
         print(f"Total text chunks: {len(texts)}")
+
+        # Warn if any chunks may exceed the embedding model's token limit
+        limit = self._resolve_chunk_token_limit(args)
+        if limit:
+            try:
+                from leann.chunking_utils import validate_chunk_token_limits
+
+                _texts = [t["text"] if isinstance(t, dict) else t for t in texts]
+                validate_chunk_token_limits(_texts, limit)
+            except Exception:
+                pass
 
         embedding_options: dict[str, Any] = {}
         if args.embedding_mode == "ollama":

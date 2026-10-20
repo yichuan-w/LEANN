@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg" alt="Python Versions">
+  <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg" alt="Python Versions">
   <img src="https://github.com/yichuan-w/LEANN/actions/workflows/build-and-publish.yml/badge.svg" alt="CI Status">
   <img src="https://img.shields.io/badge/Platform-Ubuntu%20%26%20Arch%20%26%20WSL%20%7C%20macOS%20(ARM64%2FIntel)%20%7C%20Windows-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
@@ -49,7 +49,7 @@ LEANN is an innovative vector database that democratizes personal AI. Transform 
 
 LEANN achieves this through *graph-based selective recomputation* with *high-degree preserving pruning*, computing embeddings on-demand instead of storing them all. [Illustration Fig →](#️-architecture--how-it-works) | [Paper →](https://arxiv.org/abs/2506.08276)
 
-**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can semantic search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)** ([WeChat](#-wechat-detective-unlock-your-golden-memories), [iMessage](#-imessage-history-your-personal-conversation-archive)), **[agent memory](#-chatgpt-chat-history-your-personal-ai-conversation-archive)** ([ChatGPT](#-chatgpt-chat-history-your-personal-ai-conversation-archive), [Claude](#-claude-chat-history-your-personal-ai-conversation-archive)), **[live data](#mcp-integration-rag-on-live-data-from-any-platform)** ([Slack](#slack-messages-search-your-team-conversations), [Twitter](#-twitter-bookmarks-your-personal-tweet-library)), **[codebase](#-claude-code-integration-transform-your-development-workflow)**\* , or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
+**Ready to RAG Everything?** Transform your laptop into a personal AI assistant that can semantic search your **[file system](#-personal-data-manager-process-any-documents-pdf-txt-md)**, **[emails](#-your-personal-email-secretary-rag-on-apple-mail)**, **[browser history](#-time-machine-for-the-web-rag-your-entire-browser-history)**, **[chat history](#-wechat-detective-unlock-your-golden-memories)** ([WeChat](#-wechat-detective-unlock-your-golden-memories), [iMessage](#-imessage-history-your-personal-conversation-archive)), **[agent memory](#-chatgpt-chat-history-your-personal-ai-conversation-archive)** ([ChatGPT](#-chatgpt-chat-history-your-personal-ai-conversation-archive), [Claude](#-claude-chat-history-your-personal-ai-conversation-archive)), **[live data](#mcp-integration-rag-on-live-data-from-any-platform)** ([Slack](#slack-messages-search-your-team-conversations), [Twitter](#-twitter-bookmarks-your-personal-tweet-library)), **[codebase](#-claude-code-integration-transform-your-development-workflow)**\*, or external knowledge bases (i.e., 60M documents) - all on your laptop, with zero cloud costs and complete privacy.
 
 
 \* Claude Code only supports basic `grep`-style keyword search. **LEANN** is a drop-in **semantic search MCP service fully compatible with Claude Code**, unlocking intelligent retrieval without changing your workflow. 🔥 Check out [the easy setup →](packages/leann-mcp/README.md)
@@ -74,6 +74,20 @@ LEANN achieves this through *graph-based selective recomputation* with *high-deg
 📈 **Scalability:** Handle messy personal data that would crash traditional vector DBs, easily managing your growing personalized data and agent generated memory!
 
 ✨ **No Accuracy Loss:** Maintain the same search quality as heavyweight solutions while using 97% less storage.
+
+## Making Your Coding Agent Smarter
+
+We plugged LEANN into Claude Code and compared it with BM25 on 30 SWE-Bench Pro tasks from ContextBench, keeping the model, agent, tools, and 8,192-token retrieval budget fixed.
+
+<p align="center">
+  <img src="assets/contextbench_leann_vs_bm25.png" alt="LEANN vs BM25 on ContextBench relevant-code recall, exploration coverage, and agent token usage" width="100%">
+</p>
+
+With LEANN, the agent achieved **2.1× the initial relevant-code recall** (24.2% vs. 11.4%), reached **12.6 percentage points higher relevant-code coverage after exploration** (38.4% vs. 25.8%), and used **8.4% fewer tokens** (3.22M vs. 3.51M).
+
+LEANN surfaces relevant code earlier, so coding agents can spend more of their context window reasoning about the right files instead of repeatedly scanning the repository. **[Reproduce the benchmark →](benchmarks/contextbench/README.md)**
+
+*Note: Results are macro-averaged annotated gold-line metrics over 30 SWE-Bench Pro tasks. Better context access does not guarantee issue resolution.*
 
 ## Installation
 
@@ -103,6 +117,8 @@ uv pip install leann
 
 # CPU-only (Linux): use the `cpu` extra (e.g. `leann[cpu]`)
 ```
+
+> **Linux note:** if a later `leann build` fails with `Security Violation [pathsec.open]: refusing multiply-linked file`, reinstall with `UV_LINK_MODE=copy uv pip install --reinstall ...` (or `UV_LINK_MODE=copy uv tool install --reinstall ...`) - uv's default hardlink installs trip nltk's hardened file loader bundled with llama-index. Details in the [FAQ](docs/faq.md).
 
 <!--
 > Low-resource? See "Low-resource setups" in the [Configuration Guide](docs/configuration-guide.md#low-resource-setups). -->
@@ -893,6 +909,10 @@ Once your iMessage conversations are indexed, you can search with queries like:
 
 ### MCP Integration: RAG on Live Data from Any Platform
 
+**Web documents:** [Search and fetch with Parallel Search MCP](docs/parallel-mcp.md)
+without an API key: `python -m apps.parallel_rag` searches, indexes, and answers in one
+command, or export Markdown for `leann build`.
+
 Connect to live data sources through the Model Context Protocol (MCP). LEANN now supports real-time RAG on platforms like Slack, Twitter, and more through standardized MCP servers.
 
 **Key Benefits:**
@@ -1339,7 +1359,7 @@ This work is done at [**Berkeley Sky Computing Lab**](https://sky.cs.berkeley.ed
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yichuan-w/LEANN&type=Date)](https://www.star-history.com/#yichuan-w/LEANN&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=yichuan-w/LEANN&type=Date)](https://star-history.dera.page/#yichuan-w/LEANN&Date)
 <p align="center">
   <strong>⭐ Star us on GitHub if Leann is useful for your research or applications!</strong>
 </p>

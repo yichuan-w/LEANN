@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leann-core"
-version = "0.3.7"
+version = "0.3.8"
 description = "Core API and plugin system for LEANN"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,7 +35,7 @@ dependencies = [
     "requests>=2.25.0",
     "accelerate>=0.20.0",
     "PyPDF2>=3.0.0",
-    "pymupdf>=1.23.0",
+    "pymupdf>=1.23.0,<2",
     "pdfplumber>=0.10.0",
     "nbconvert>=7.0.0",  # For .ipynb file support
     "gitignore-parser>=0.1.12",  # For proper .gitignore handling
@@ -44,6 +44,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+litellm = [
+    # Unified gateway to 100+ LLM providers. Floor at 1.85 (recent stable with
+    # supports_reasoning/drop_params); capped below 2.0 to avoid a future
+    # major-version break.
+    "litellm>=1.85.0,<2.0",
+]
 cpu = [
     "torch==2.2.2; platform_system == 'Linux' and python_version < '3.13'",
 ]

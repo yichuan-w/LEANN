@@ -283,20 +283,6 @@ class ReActAgent:
                 }
             )
 
-            if results_count == 0 and iteration >= 2:
-                logger.warning("No results found, asking LLM for final answer...")
-                final_prompt = f"""Based on the previous searches, provide your best answer to the question.
-
-Question: {question}
-
-Previous searches and results:
-{chr(10).join(all_context)}
-
-Since no new results were found, provide your final answer based on what you know.
-"""
-                final_answer = self.llm.ask(final_prompt)
-                return final_answer.strip()
-
         logger.warning(f"Reached max iterations ({self.max_iterations}), getting final answer...")
         final_prompt = f"""Based on all the searches performed, provide your final answer to the question.
 

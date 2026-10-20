@@ -37,8 +37,10 @@ claude mcp list | cat
 
 Once connected, you'll have access to these powerful semantic search tools in Claude Code:
 
+- **`leann_search`** - Semantic code search with file paths, scores, and context
 - **`leann_list`** - List all available indexes across your projects
-- **`leann_search`** - Perform semantic searches across code and documents
+- **`leann_build`** - Build or incrementally update an index (keeps it current as code changes)
+- **`leann_status`** - Show index details: backend, embedding model, chunk count, file count, size
 
 
 ## 🎯 Quick Start Example

@@ -102,6 +102,30 @@ export LEANN_OLLAMA_HOST="http://localhost:11434"   # falls back to OLLAMA_HOST 
 
 LEANN also recognises `LEANN_LOCAL_LLM_HOST` (highest priority), `LEANN_OPENAI_BASE_URL`, and `LOCAL_OPENAI_BASE_URL`, so existing scripts continue to work.
 
+### Embedding Server Bind Address
+
+The backend embedding servers (HNSW and DiskANN) listen on `127.0.0.1` by
+default, so an index build or search does not expose an embedding endpoint to
+the rest of the network. Override the bind address only when something outside
+the machine genuinely needs to reach it — a container sidecar, or a searcher on
+another host:
+
+```bash
+# Listen on every interface (containers, cross-host setups)
+export LEANN_EMBEDDING_SERVER_HOST="0.0.0.0"
+
+# Or bind one specific interface
+export LEANN_EMBEDDING_SERVER_HOST="10.0.0.5"
+
+# IPv6 works too; brackets are added automatically
+export LEANN_EMBEDDING_SERVER_HOST="::1"
+```
+
+The server speaks an unauthenticated ZMQ REP protocol, so anything that can
+reach the port can request embeddings. Prefer the loopback default, and if you
+must widen it, restrict access at the firewall or container network rather than
+exposing the port publicly.
+
 ### Passing Hosts Per Command
 
 ```bash
@@ -315,6 +339,22 @@ leann build my-docs \
 - **Pros**: Free tier available, huge model selection, direct model loading (vs Ollama's server-based approach)
 - **Cons**: More complex initial setup
 - **Models**: `Qwen/Qwen3-1.7B-FP8`
+
+**LiteLLM** (`--llm litellm`)
+- **Pros**: One provider for 100+ backends (OpenAI, Anthropic, Gemini, Bedrock, Vertex, Azure, Groq, OpenRouter, ...) via a single interface; the model prefix picks the backend
+- **Cons**: Requires the optional dependency (`pip install "leann-core[litellm]"`)
+- **Models**: prefix the model with its provider, e.g. `gpt-4o` (OpenAI), `anthropic/claude-haiku-4-5`, `gemini/gemini-2.5-flash`, `openrouter/meta-llama/llama-3.1-70b-instruct`
+- **Credentials**: reads each provider's own env var automatically (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...). To route through a self-hosted LiteLLM proxy instead, pass `--api-base http://localhost:4000 --api-key <virtual-key>` (or set `LITELLM_BASE_URL` / `LITELLM_API_KEY`)
+- **Thinking Budget**: `--thinking-budget low/medium/high` maps to LiteLLM's unified `reasoning_effort` and is dropped for models that don't reason
+
+```bash
+# Ask via LiteLLM, routing to Anthropic (reads ANTHROPIC_API_KEY):
+leann ask my-docs --llm litellm --llm-model anthropic/claude-haiku-4-5
+
+# Or point at a self-hosted LiteLLM proxy:
+leann ask my-docs --llm litellm --llm-model gpt-4o \
+  --api-base http://localhost:4000 --api-key sk-my-virtual-key
+```
 
 ## Parameter Tuning Guide
 

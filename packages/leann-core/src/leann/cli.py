@@ -6,6 +6,7 @@ import io
 import json
 import os
 import pickle
+import re
 import sys
 import time
 import uuid
@@ -16,19 +17,52 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from tqdm import tqdm
 
-from .api import LeannBuilder, LeannChat, LeannSearcher
+from .api import Fts5BM25Index, LeannBuilder, LeannChat, LeannSearcher
 from .embedding_server_manager import EmbeddingServerManager
 from .interactive_utils import create_cli_session
-from .registry import register_project_directory
+from .registry import DEFAULT_INDEX_SCAN_DEPTH, iter_index_meta_files, register_project_directory
 from .settings import (
     resolve_anthropic_base_url,
+    resolve_atlascloud_api_key,
+    resolve_atlascloud_base_url,
+    resolve_litellm_api_key,
+    resolve_litellm_base_url,
     resolve_minimax_api_key,
     resolve_minimax_base_url,
     resolve_ollama_host,
     resolve_openai_api_key,
     resolve_openai_base_url,
 )
-from .sync import FileSynchronizer
+from .sync import DEFAULT_INDEX_EXTENSIONS, FileSynchronizer, parse_include_extensions
+
+
+def _non_negative_int(value: str) -> int:
+    parsed_value = int(value)
+    if parsed_value < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed_value
+
+
+def _default_embedding_model() -> str:
+    """Pick a sensible default embedding model based on platform.
+
+    | Platform   | Default model                                  |
+    |------------|------------------------------------------------|
+    | NVIDIA GPU | BAAI/bge-base-en-v1.5                          |
+    | macOS      | sentence-transformers/all-MiniLM-L6-v2         |
+    | Other/CPU  | sentence-transformers/all-MiniLM-L6-v2         |
+    """
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "BAAI/bge-base-en-v1.5"
+    except ImportError:
+        pass
+
+    # macOS (MPS or CPU) and all other platforms: lightweight model
+    return "sentence-transformers/all-MiniLM-L6-v2"
 
 
 def _normalize_path(path: str) -> str:
@@ -36,6 +70,45 @@ def _normalize_path(path: str) -> str:
     if not path:
         return path
     return str(Path(path).resolve())
+
+
+def _cleanup_path(path: Path) -> None:
+    if path.is_dir():
+        import shutil
+
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
+def _existing_index_artifacts(index_dir: Path) -> bool:
+    return (
+        (index_dir / "documents.leann.meta.json").exists()
+        and (index_dir / "documents.leann.passages.jsonl").exists()
+        and (index_dir / "documents.leann.passages.idx").exists()
+    )
+
+
+def _publish_rebuilt_index(staging_dir: Path, index_dir: Path) -> None:
+    """Publish a staged full rebuild, restoring the previous directory if publish fails."""
+    backup_dir = index_dir.with_name(f".{index_dir.name}.backup-{uuid.uuid4().hex}")
+    live_moved = False
+    published = False
+    try:
+        if index_dir.exists():
+            os.replace(index_dir, backup_dir)
+            live_moved = True
+        os.replace(staging_dir, index_dir)
+        published = True
+    except Exception:
+        if published:
+            _cleanup_path(index_dir)
+        if live_moved and backup_dir.exists():
+            os.replace(backup_dir, index_dir)
+        raise
+    else:
+        if backup_dir.exists():
+            _cleanup_path(backup_dir)
 
 
 @contextlib.contextmanager
@@ -53,9 +126,15 @@ def suppress_cpp_output(suppress: bool = True):
         yield
         return
 
-    # 1. Duplicate the original OS file descriptors
-    saved_stdout_fd = os.dup(1)
-    saved_stderr_fd = os.dup(2)
+    # 1. Duplicate the original OS file descriptors.
+    #    May fail in no-console environments (e.g. pythonw, Windows GUI apps)
+    #    where fd 1/2 are not valid — in that case, skip suppression.
+    try:
+        saved_stdout_fd = os.dup(1)
+        saved_stderr_fd = os.dup(2)
+    except OSError:
+        yield
+        return
 
     # 2. Build Python file objects that write to the saved (real) fds.
     #    closefd=False so closing these wrappers won't close the duped fds.
@@ -99,6 +178,11 @@ def suppress_cpp_output(suppress: bool = True):
 def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
     """Extract text from PDF using PyMuPDF for better quality."""
     try:
+        if os.path.getsize(file_path) == 0:
+            # Empty file: nothing to extract, skip instead of letting
+            # fitz.EmptyFileError abort the whole build.
+            return ""
+
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
@@ -110,11 +194,18 @@ def extract_pdf_text_with_pymupdf(file_path: str) -> str | None:
     except ImportError:
         # Fallback to default reader
         return None
+    except Exception:
+        # Skip corrupted PDFs instead of aborting the whole build
+        return ""
 
 
 def extract_pdf_text_with_pdfplumber(file_path: str) -> str | None:
     """Extract text from PDF using pdfplumber for better quality."""
     try:
+        if os.path.getsize(file_path) == 0:
+            # Empty file: nothing to extract, skip instead of aborting the build.
+            return ""
+
         import pdfplumber
 
         text = ""
@@ -125,6 +216,9 @@ def extract_pdf_text_with_pdfplumber(file_path: str) -> str | None:
     except ImportError:
         # Fallback to default reader
         return None
+    except Exception:
+        # Skip corrupted PDFs instead of aborting the whole build
+        return ""
 
 
 class LeannCLI:
@@ -196,6 +290,40 @@ Examples:
 
         subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+        def add_embedding_args(target_parser: argparse.ArgumentParser) -> None:
+            """Add common embedding arguments to a parser."""
+            target_parser.add_argument(
+                "--embedding-model",
+                type=str,
+                default="facebook/contriever",
+                help="Embedding model (default: facebook/contriever)",
+            )
+            target_parser.add_argument(
+                "--embedding-mode",
+                type=str,
+                default="sentence-transformers",
+                choices=["sentence-transformers", "openai", "mlx", "ollama"],
+                help="Embedding backend mode (default: sentence-transformers)",
+            )
+            target_parser.add_argument(
+                "--embedding-host",
+                type=str,
+                default=None,
+                help="Override Ollama-compatible embedding host",
+            )
+            target_parser.add_argument(
+                "--embedding-api-base",
+                type=str,
+                default=None,
+                help="Base URL for OpenAI-compatible embedding services",
+            )
+            target_parser.add_argument(
+                "--embedding-api-key",
+                type=str,
+                default=None,
+                help="API key for embedding service (defaults to OPENAI_API_KEY)",
+            )
+
         # Build command
         build_parser = subparsers.add_parser("build", help="Build document index")
         build_parser.add_argument(
@@ -215,11 +343,12 @@ Examples:
             choices=["hnsw", "diskann", "ivf"],
             help="Backend to use (default: hnsw)",
         )
+        _default_model = _default_embedding_model()
         build_parser.add_argument(
             "--embedding-model",
             type=str,
-            default="facebook/contriever",
-            help="Embedding model (default: facebook/contriever)",
+            default=_default_model,
+            help=f"Embedding model (default: {_default_model})",
         )
         build_parser.add_argument(
             "--embedding-mode",
@@ -251,6 +380,12 @@ Examples:
             type=str,
             default=None,
             help="Prompt template to prepend to all texts for embedding (e.g., 'query: ' for search)",
+        )
+        build_parser.add_argument(
+            "--embedding-batch-size",
+            type=int,
+            default=None,
+            help="Embedding batch size for sentence-transformers (overrides device defaults; also set LEANN_CUDA_BATCH_SIZE env)",
         )
         build_parser.add_argument(
             "--query-prompt-template",
@@ -298,7 +433,7 @@ Examples:
             "--doc-chunk-size",
             type=int,
             default=256,
-            help="Document chunk size in TOKENS (default: 256). Final chunks may be larger due to overlap. For 512 token models: recommended 350 tokens (350 + 128 overlap = 478 max)",
+            help="Document chunk size in TOKENS (default: 256), including overlap. Capped to 70%% of the embedding model's sequence limit so chunks are fully embedded (e.g. 179 for all-MiniLM-L6-v2)",
         )
         build_parser.add_argument(
             "--doc-chunk-overlap",
@@ -310,7 +445,7 @@ Examples:
             "--code-chunk-size",
             type=int,
             default=512,
-            help="Code chunk size in TOKENS (default: 512). Final chunks may be larger due to overlap. For 512 token models: recommended 400 tokens (400 + 50 overlap = 450 max)",
+            help="Code chunk size in TOKENS (default: 512), including overlap. Capped to 70%% of the embedding model's sequence limit so chunks are fully embedded (e.g. 179 for all-MiniLM-L6-v2)",
         )
         build_parser.add_argument(
             "--code-chunk-overlap",
@@ -341,6 +476,37 @@ Examples:
             default=True,
             help="Fall back to traditional chunking if AST chunking fails (default: True)",
         )
+        build_parser.add_argument(
+            "--id-scheme",
+            choices=["sequential", "content-hash"],
+            default="sequential",
+            help=(
+                "How passage IDs are assigned. 'sequential' (default) keys by insertion "
+                "order; 'content-hash' uses sha256(text)[:16], stable across file moves "
+                "and reorderings. See #329."
+            ),
+        )
+
+        # Slack indexing command
+        slack_parser = subparsers.add_parser("index-slack", help="Index Slack workspace via MCP")
+        slack_parser.add_argument(
+            "index_name", nargs="?", default="slack", help="Index name (default: slack)"
+        )
+        slack_parser.add_argument(
+            "--mcp-server",
+            type=str,
+            required=True,
+            help="MCP server command (e.g., 'slack-mcp-server')",
+        )
+        slack_parser.add_argument("--workspace-name", type=str, help="Slack workspace name")
+        slack_parser.add_argument(
+            "--channels",
+            type=str,
+            nargs="+",
+            default=[],
+            help="Specific channels to index (optional)",
+        )
+        add_embedding_args(slack_parser)
 
         # Watch command
         watch_parser = subparsers.add_parser(
@@ -363,6 +529,38 @@ Examples:
             "--dry-run",
             action="store_true",
             help="Report changes without rebuilding (original watch behavior)",
+        )
+
+        migrate_parser = subparsers.add_parser(
+            "migrate-ids",
+            help=(
+                "Rewrite an existing index's passage IDs to content-hash form. "
+                "Irreversible; back up the index first."
+            ),
+        )
+        migrate_parser.add_argument("index_name", help="Index name")
+        migrate_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Show what would change without writing anything.",
+        )
+        migrate_parser.add_argument(
+            "-y",
+            "--yes",
+            action="store_true",
+            help="Skip the interactive confirmation prompt.",
+        )
+
+        rebuild_parser = subparsers.add_parser(
+            "rebuild",
+            help="Rebuild an existing index using its stored config (delta by default; --force for full rebuild)",
+        )
+        rebuild_parser.add_argument("index_name", help="Index name")
+        rebuild_parser.add_argument(
+            "-f",
+            "--force",
+            action="store_true",
+            help="Full rebuild from scratch instead of incremental delta",
         )
 
         # Search command
@@ -510,7 +708,19 @@ Examples:
             "--llm",
             type=str,
             default="ollama",
-            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax", "novita"],
+            choices=[
+                "simulated",
+                "ollama",
+                "hf",
+                "openai",
+                "anthropic",
+                "litellm",
+                "minimax",
+                "novita",
+                "atlascloud",
+                "atlas-cloud",
+                "atlas",
+            ],
             help="LLM provider (default: ollama)",
         )
         ask_parser.add_argument(
@@ -560,7 +770,18 @@ Examples:
             "--api-key",
             type=str,
             default=None,
-            help="API key for cloud LLM providers (OpenAI, Anthropic)",
+            help="API key for cloud LLM providers",
+        )
+        ask_parser.add_argument(
+            "--metadata-filters",
+            type=str,
+            default=None,
+            help=(
+                "Filter retrieved chunks by metadata fields before answering (JSON string). "
+                'Format: \'{"field": {"operator": value}}\'. '
+                "Operators: ==, !=, <, <=, >, >=, in, not_in, contains, starts_with, ends_with. "
+                'Example: \'{"chapter": {"<=": 5}, "genre": {"==": "fiction"}}\''
+            ),
         )
 
         # React command (multiturn retrieval agent)
@@ -573,7 +794,19 @@ Examples:
             "--llm",
             type=str,
             default="ollama",
-            choices=["simulated", "ollama", "hf", "openai", "anthropic", "minimax", "novita"],
+            choices=[
+                "simulated",
+                "ollama",
+                "hf",
+                "openai",
+                "anthropic",
+                "litellm",
+                "minimax",
+                "novita",
+                "atlascloud",
+                "atlas-cloud",
+                "atlas",
+            ],
             help="LLM provider (default: ollama)",
         )
         react_parser.add_argument(
@@ -604,7 +837,7 @@ Examples:
             "--api-key",
             type=str,
             default=None,
-            help="API key for cloud LLM providers (OpenAI, Anthropic)",
+            help="API key for cloud LLM providers",
         )
         react_parser.add_argument(
             "--serper-api-key",
@@ -647,6 +880,12 @@ Examples:
                 help="OpenAI-compatible embedding base URL",
             )
             p.add_argument("--embedding-api-key", type=str, default=None, help="Embedding API key")
+            p.add_argument(
+                "--embedding-batch-size",
+                type=int,
+                default=None,
+                help="Embedding batch size for sentence-transformers",
+            )
             p.add_argument(
                 "--max-count", type=int, default=1000, help="Max items to index (default: 1000)"
             )
@@ -699,7 +938,16 @@ Examples:
         )
 
         # List command
-        subparsers.add_parser("list", help="List all indexes")
+        list_parser = subparsers.add_parser("list", help="List all indexes")
+        list_parser.add_argument(
+            "--max-depth",
+            type=_non_negative_int,
+            default=DEFAULT_INDEX_SCAN_DEPTH,
+            help=(
+                "Maximum directory depth for app index discovery "
+                f"(default: {DEFAULT_INDEX_SCAN_DEPTH})"
+            ),
+        )
 
         # Remove command
         remove_parser = subparsers.add_parser("remove", help="Remove an index")
@@ -790,7 +1038,24 @@ Examples:
             # If anything goes wrong, assume it's not a submodule
             return False
 
-    def list_indexes(self):
+    @staticmethod
+    def _project_has_discoverable_indexes(project_path: Path, max_depth: int) -> bool:
+        """Return whether a project contains an index within the scan boundary."""
+        cli_indexes_dir = project_path / ".leann" / "indexes"
+        return cli_indexes_dir.exists() or any(
+            iter_index_meta_files(project_path, max_depth=max_depth)
+        )
+
+    @staticmethod
+    def _nested_project_dirs(project_path: Path, projects: list[Path]) -> list[Path]:
+        """Return registered project roots nested below a project."""
+        return [
+            candidate
+            for candidate in projects
+            if candidate != project_path and candidate.is_relative_to(project_path)
+        ]
+
+    def list_indexes(self, max_depth: int = DEFAULT_INDEX_SCAN_DEPTH):
         # Get all project directories with .leann
         global_registry = Path.home() / ".leann" / "projects.json"
         all_projects = []
@@ -804,16 +1069,21 @@ Examples:
             except Exception:
                 pass
 
-        # Filter to only existing directories with .leann
+        # Filter to existing projects with a discoverable CLI- or App-format index.
         valid_projects = []
         for project_dir in all_projects:
             project_path = Path(project_dir)
-            if project_path.exists() and (project_path / ".leann" / "indexes").exists():
+            if project_path.exists() and self._project_has_discoverable_indexes(
+                project_path, max_depth
+            ):
                 valid_projects.append(project_path)
 
-        # Add current project if it has .leann but not in registry
+        # Add current project if it has a discoverable index but is not in registry.
         current_path = Path.cwd()
-        if (current_path / ".leann" / "indexes").exists() and current_path not in valid_projects:
+        if (
+            self._project_has_discoverable_indexes(current_path, max_depth)
+            and current_path not in valid_projects
+        ):
             valid_projects.append(current_path)
 
         # Separate current and other projects
@@ -822,6 +1092,10 @@ Examples:
         for project_path in valid_projects:
             if project_path != current_path:
                 other_projects.append(project_path)
+
+        # Exclude only registered projects nested below the current project.
+        # Registered ancestors must not hide indexes owned by the current directory.
+        current_exclude_dirs = self._nested_project_dirs(current_path, valid_projects)
 
         print("📚 LEANN Indexes")
         print("=" * 50)
@@ -835,7 +1109,7 @@ Examples:
         print("   " + "─" * 45)
 
         current_indexes = self._discover_indexes_in_project(
-            current_path, exclude_dirs=other_projects
+            current_path, exclude_dirs=current_exclude_dirs, max_depth=max_depth
         )
         if current_indexes:
             for idx in current_indexes:
@@ -854,7 +1128,10 @@ Examples:
             print("   " + "─" * 45)
 
             for project_path in other_projects:
-                project_indexes = self._discover_indexes_in_project(project_path)
+                nested_projects = self._nested_project_dirs(project_path, valid_projects)
+                project_indexes = self._discover_indexes_in_project(
+                    project_path, exclude_dirs=nested_projects, max_depth=max_depth
+                )
                 if not project_indexes:
                     continue
 
@@ -878,9 +1155,14 @@ Examples:
             projects_count = 0
             for p in valid_projects:
                 if p == current_path:
-                    discovered = self._discover_indexes_in_project(p, exclude_dirs=other_projects)
+                    discovered = self._discover_indexes_in_project(
+                        p, exclude_dirs=current_exclude_dirs, max_depth=max_depth
+                    )
                 else:
-                    discovered = self._discover_indexes_in_project(p)
+                    nested_projects = self._nested_project_dirs(p, valid_projects)
+                    discovered = self._discover_indexes_in_project(
+                        p, exclude_dirs=nested_projects, max_depth=max_depth
+                    )
                 if len(discovered) > 0:
                     projects_count += 1
             print(f"📊 Total: {total_indexes} indexes across {projects_count} projects")
@@ -900,13 +1182,18 @@ Examples:
                 print("   leann build my-docs --docs ./documents")
 
     def _discover_indexes_in_project(
-        self, project_path: Path, exclude_dirs: Optional[list[Path]] = None
+        self,
+        project_path: Path,
+        exclude_dirs: Optional[list[Path]] = None,
+        max_depth: Optional[int] = None,
     ):
         """Discover all indexes in a project directory (both CLI and apps formats)
 
         exclude_dirs: when provided, skip any APP-format index files that are
         located under these directories. This prevents duplicates when the
         current project is a parent directory of other registered projects.
+        max_depth: maximum number of directories to descend for APP-format indexes.
+            None preserves full-depth discovery for non-CLI callers.
         """
         indexes = []
         exclude_dirs = exclude_dirs or []
@@ -943,9 +1230,9 @@ Examples:
                         }
                     )
 
-        # 2. Apps format: *.leann.meta.json files anywhere in the project
+        # 2. Apps format: *.leann.meta.json files within the configured scan depth
         cli_indexes_dir = project_path / ".leann" / "indexes"
-        for meta_file in project_path.rglob("*.leann.meta.json"):
+        for meta_file in iter_index_meta_files(project_path, max_depth=max_depth):
             if meta_file.is_file():
                 # Skip CLI-built indexes (which store meta under .leann/indexes/<name>/)
                 try:
@@ -1387,7 +1674,10 @@ Examples:
                 files_by_dir = defaultdict(list)
                 for file_path in files:
                     file_path_obj = Path(file_path)
-                    if not include_hidden and _path_has_hidden_segment(file_path_obj):
+                    # Judge an explicitly named file by its own name: testing every
+                    # ancestor made the result depend on whether the user typed a
+                    # relative or an absolute path.
+                    if not include_hidden and file_path_obj.name.startswith("."):
                         print(f"  ⚠️  Skipping hidden file: {file_path}")
                         continue
                     parent_dir = str(file_path_obj.parent)
@@ -1425,61 +1715,7 @@ Examples:
             # Ensure extensions start with a dot
             code_extensions = [ext if ext.startswith(".") else f".{ext}" for ext in code_extensions]
         else:
-            # Use default supported file types
-            code_extensions = [
-                # Original document types
-                ".txt",
-                ".md",
-                ".docx",
-                ".pptx",
-                # Code files for Claude Code integration
-                ".py",
-                ".js",
-                ".ts",
-                ".jsx",
-                ".tsx",
-                ".java",
-                ".cpp",
-                ".c",
-                ".h",
-                ".hpp",
-                ".cs",
-                ".go",
-                ".rs",
-                ".rb",
-                ".php",
-                ".swift",
-                ".kt",
-                ".scala",
-                ".r",
-                ".sql",
-                ".sh",
-                ".bash",
-                ".zsh",
-                ".fish",
-                ".ps1",
-                ".bat",
-                # Config and markup files
-                ".json",
-                ".yaml",
-                ".yml",
-                ".xml",
-                ".toml",
-                ".ini",
-                ".cfg",
-                ".conf",
-                ".html",
-                ".css",
-                ".scss",
-                ".less",
-                ".vue",
-                ".svelte",
-                # Data science
-                ".ipynb",
-                ".R",
-                ".py",
-                ".jl",
-            ]
+            code_extensions = list(DEFAULT_INDEX_EXTENSIONS)
 
         # Process each directory
         if directories:
@@ -1724,20 +1960,19 @@ Examples:
                     text = node.get_content()
                     # For code chunks, trim a partial first line left by overlap
                     # (a valid line starts with digits followed by '|')
-                    if is_code_file and text and not text[0].isdigit():
-                        first_nl = text.find("\n")
-                        if first_nl != -1:
-                            text = text[first_nl + 1 :]
+                    if is_code_file and text:
+                        first_line = text.split("\n", 1)[0]
+                        if "|" in first_line and not re.match(r"^\s*\d+\|", first_line):
+                            first_nl = text.find("\n")
+                            if first_nl != -1:
+                                text = text[first_nl + 1 :]
                     all_texts.append({"text": text, "metadata": chunk_metadata.copy()})
 
         print(f"Loaded {len(documents)} documents, {len(all_texts)} chunks")
         return all_texts
 
-    def _parse_file_types(self, custom_file_types: Optional[str]) -> Optional[list[str]]:
-        if not custom_file_types:
-            return None
-        extensions = [ext.strip() for ext in custom_file_types.split(",") if ext.strip()]
-        return [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+    def _parse_file_types(self, custom_file_types: Optional[str]) -> list[str]:
+        return parse_include_extensions(custom_file_types)
 
     def _sync_ignore_patterns(self, include_hidden: bool) -> Optional[list[str]]:
         if include_hidden:
@@ -1760,40 +1995,111 @@ Examples:
             opts["query_prompt_template"] = args.query_prompt_template
         elif args.embedding_prompt_template:
             opts["prompt_template"] = args.embedding_prompt_template
+        batch_size = getattr(args, "embedding_batch_size", None)
+        if batch_size is not None:
+            opts["batch_size"] = batch_size
         return opts
 
-    def _resolve_sync_roots(self, docs_paths: list[str]) -> list[str]:
-        roots: set[str] = set()
+    def _build_config_from_args(
+        self,
+        args,
+        docs_paths: list[str],
+        *,
+        doc_chunk_size: Optional[int] = None,
+        doc_chunk_overlap: Optional[int] = None,
+        code_chunk_size: Optional[int] = None,
+        code_chunk_overlap: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Capture the CLI build settings needed to replay `leann build`."""
+        embedding_options = self._build_embedding_options(args)
+        config: dict[str, Any] = {
+            "docs": [str(Path(path).resolve()) for path in docs_paths],
+            "file_types": args.file_types,
+            "include_hidden": bool(args.include_hidden),
+            "doc_chunk_size": doc_chunk_size
+            if doc_chunk_size is not None
+            else int(args.doc_chunk_size),
+            "doc_chunk_overlap": doc_chunk_overlap
+            if doc_chunk_overlap is not None
+            else int(args.doc_chunk_overlap),
+            "code_chunk_size": code_chunk_size
+            if code_chunk_size is not None
+            else int(args.code_chunk_size),
+            "code_chunk_overlap": code_chunk_overlap
+            if code_chunk_overlap is not None
+            else int(args.code_chunk_overlap),
+            "use_ast_chunking": bool(args.use_ast_chunking),
+            "ast_chunk_size": int(args.ast_chunk_size),
+            "ast_chunk_overlap": int(args.ast_chunk_overlap),
+            "ast_fallback_traditional": bool(args.ast_fallback_traditional),
+            "graph_degree": int(args.graph_degree),
+            "complexity": int(args.complexity),
+            "num_threads": int(args.num_threads),
+            "compact": bool(args.compact),
+            "recompute": bool(args.recompute),
+        }
+        if "host" in embedding_options:
+            config["embedding_host"] = embedding_options["host"]
+        if "base_url" in embedding_options:
+            config["embedding_api_base"] = embedding_options["base_url"]
+        if args.embedding_prompt_template:
+            config["embedding_prompt_template"] = args.embedding_prompt_template
+        if args.query_prompt_template:
+            config["query_prompt_template"] = args.query_prompt_template
+        return config
+
+    def _resolve_sync_scope(self, docs_paths: list[str]) -> tuple[list[str], list[str]]:
+        directories: list[str] = []
+        files: list[str] = []
         for path in docs_paths:
             path_obj = Path(path).resolve()
             if path_obj.is_dir():
-                roots.add(str(path_obj))
+                directories.append(str(path_obj))
             elif path_obj.is_file():
-                roots.add(str(path_obj.parent))
-        return sorted(roots)
+                files.append(str(path_obj))
+        return sorted(directories), sorted(files)
+
+    def _resolve_sync_roots(self, docs_paths: list[str]) -> list[str]:
+        """Directory roots only (legacy). Prefer _resolve_sync_scope."""
+        directories, _files = self._resolve_sync_scope(docs_paths)
+        return directories
 
     def _create_synchronizers(
         self,
         index_dir: Path,
-        roots: list[str],
-        include_extensions: Optional[list[str]] = None,
-        ignore_patterns: Optional[list[str]] = None,
+        directories: list[str],
+        explicit_files: list[str],
+        include_extensions: list[str],
+        include_hidden: bool = False,
     ) -> list[FileSynchronizer]:
         """Create FileSynchronizers with snapshots stored in the index dir. Shared by build and watch."""
         synchronizers: list[FileSynchronizer] = []
-        for root in roots:
+        for root in directories:
             tag = hashlib.sha256(root.encode()).hexdigest()[:12]
             snapshot_path = str(index_dir / f"sync_{tag}.pickle")
             try:
                 fs = FileSynchronizer(
                     root_dir=root,
-                    ignore_patterns=ignore_patterns,
                     include_extensions=include_extensions,
+                    include_hidden=include_hidden,
                     snapshot_path=snapshot_path,
                 )
                 synchronizers.append(fs)
             except Exception as exc:
                 print(f"Warning: Failed to init synchronizer for {root}: {exc}")
+        if explicit_files:
+            tag = hashlib.sha256("|".join(explicit_files).encode()).hexdigest()[:12]
+            snapshot_path = str(index_dir / f"sync_files_{tag}.pickle")
+            try:
+                fs = FileSynchronizer(
+                    explicit_files=explicit_files,
+                    include_extensions=include_extensions,
+                    include_hidden=include_hidden,
+                    snapshot_path=snapshot_path,
+                )
+                synchronizers.append(fs)
+            except Exception as exc:
+                print(f"Warning: Failed to init synchronizer for explicit files: {exc}")
         return synchronizers
 
     def _build_synchronizers(
@@ -1804,10 +2110,11 @@ Examples:
         include_hidden: bool = False,
     ) -> list[FileSynchronizer]:
         """Create FileSynchronizers for build from docs_paths."""
-        roots = self._resolve_sync_roots(docs_paths)
+        directories, files = self._resolve_sync_scope(docs_paths)
         include_extensions = self._parse_file_types(file_types)
-        ignore_patterns = self._sync_ignore_patterns(include_hidden)
-        return self._create_synchronizers(index_dir, roots, include_extensions, ignore_patterns)
+        return self._create_synchronizers(
+            index_dir, directories, files, include_extensions, include_hidden
+        )
 
     def _detect_build_changes(
         self,
@@ -1863,7 +2170,32 @@ Examples:
             in paths
         ]
 
+    def _existing_index_id_scheme(self, index_path: str) -> Optional[str]:
+        """Return the passage_id_scheme recorded in an existing index's meta.json.
+
+        Returns None when the index doesn't exist yet. Older indexes pre-#330
+        have a meta file without passage_id_scheme and must be treated as
+        sequential so incremental updates never mix ID schemes.
+        """
+        meta_path = Path(index_path).with_suffix(".leann.meta.json")
+        if not meta_path.exists():
+            return None
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                return json.load(f).get("passage_id_scheme", "sequential")
+        except Exception:
+            return None
+
     def _make_incremental_builder(self, args) -> "LeannBuilder":
+        # For incremental updates, the existing index's scheme wins. Otherwise
+        # IDs would mix schemes within one index, which breaks lookups.
+        existing_scheme = self._existing_index_id_scheme(self.get_index_path(args.index_name))
+        scheme = existing_scheme or getattr(args, "id_scheme", "sequential")
+        if existing_scheme and getattr(args, "id_scheme", existing_scheme) != existing_scheme:
+            print(
+                f"Note: --id-scheme={args.id_scheme} ignored — index '{args.index_name}' "
+                f"was built with passage_id_scheme={existing_scheme!r}, keeping that."
+            )
         return LeannBuilder(
             backend_name=args.backend_name,
             embedding_model=args.embedding_model,
@@ -1874,6 +2206,7 @@ Examples:
             is_compact=args.compact,
             is_recompute=args.recompute,
             num_threads=args.num_threads,
+            passage_id_scheme=scheme,
         )
 
     def _incremental_add_only(
@@ -2056,30 +2389,62 @@ Examples:
     def _write_sync_config(
         self,
         index_dir: Path,
-        roots: list[str],
-        include_extensions: Optional[list[str]],
-        ignore_patterns: Optional[list[str]],
+        directories: list[str],
+        explicit_files: list[str],
+        include_extensions: list[str],
+        include_hidden: bool,
+        build_config: Optional[dict[str, Any]] = None,
     ) -> None:
         sync_config_path = index_dir / "sync_roots.json"
         config = {
-            "roots": roots,
+            "directories": directories,
+            "files": explicit_files,
+            "roots": directories,
             "include_extensions": include_extensions,
-            "ignore_patterns": ignore_patterns,
+            "ignore_patterns": self._sync_ignore_patterns(include_hidden),
         }
+        if build_config is not None:
+            config["build_config"] = build_config
         with open(sync_config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
-    def _load_sync_roots(self, index_dir: Path) -> list[str]:
-        """Load sync roots from index dir (for path resolution in incremental updates)."""
+    def _write_sync_config_for_docs(
+        self,
+        index_dir: Path,
+        docs_paths: list[str],
+        args,
+        build_config: Optional[dict[str, Any]] = None,
+    ) -> None:
+        directories, files = self._resolve_sync_scope(docs_paths)
+        self._write_sync_config(
+            index_dir,
+            directories,
+            files,
+            self._parse_file_types(args.file_types),
+            args.include_hidden,
+            build_config,
+        )
+
+    def _load_sync_scope(self, index_dir: Path) -> tuple[list[str], list[str], list[str], bool]:
+        """Load sync scope from index dir (directories, files, extensions, include_hidden)."""
         sync_config_path = index_dir / "sync_roots.json"
         if not sync_config_path.exists():
-            return []
+            return [], [], list(DEFAULT_INDEX_EXTENSIONS), False
         try:
             with open(sync_config_path, encoding="utf-8") as f:
                 config = json.load(f)
-            return config.get("roots") or []
         except (json.JSONDecodeError, OSError):
-            return []
+            return [], [], list(DEFAULT_INDEX_EXTENSIONS), False
+        directories = config.get("directories") or config.get("roots") or []
+        files = config.get("files") or []
+        include_extensions = config.get("include_extensions") or list(DEFAULT_INDEX_EXTENSIONS)
+        include_hidden = config.get("ignore_patterns") is None
+        return directories, files, include_extensions, include_hidden
+
+    def _load_sync_roots(self, index_dir: Path) -> list[str]:
+        """Load directory + explicit file paths for chunk ID lookup."""
+        directories, files, _, _ = self._load_sync_scope(index_dir)
+        return directories + files
 
     def _resolve_index_for_watch(self, index_name: str) -> Optional[dict[str, Path]]:
         if self.index_exists(index_name):
@@ -2151,6 +2516,49 @@ Examples:
                     chunk_ids_by_file.setdefault(file_path, []).append(str(chunk_id))
         return chunk_ids_by_file
 
+    async def index_slack(self, args):
+        """Build an index from Slack workspace via MCP."""
+        from .readers import SlackMCPReader
+
+        index_name = args.index_name
+        index_dir = self.indexes_dir / index_name
+        index_path = str(index_dir / "documents.leann")
+
+        print("📱 Indexing Slack workspace...")
+
+        reader = SlackMCPReader(
+            mcp_server_command=args.mcp_server,
+            workspace_name=args.workspace_name,
+        )
+        documents = await reader.load_data(channels=args.channels)
+
+        if not documents:
+            print("❌ No Slack data found. Make sure MCP server is running.")
+            return
+
+        print(f"📚 Loaded {len(documents)} messages. Building index...")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        embedding_options = {}
+        if args.embedding_mode == "ollama":
+            embedding_options["host"] = resolve_ollama_host(None)
+
+        builder = LeannBuilder(
+            backend_name="hnsw",
+            embedding_model=args.embedding_model,
+            embedding_mode=args.embedding_mode,
+            embedding_options=embedding_options or None,
+            is_recompute=False,
+            is_compact=False,
+        )
+
+        for doc in documents:
+            builder.add_text(doc.text, metadata=doc.metadata)
+
+        builder.build_index(index_path)
+        print(f"✅ Slack index built at: {index_path}")
+        print(f'   Usage: leann search {index_name} "query"')
+
     async def build_index(self, args):
         docs_paths = args.docs
         # Use current directory name if index_name not provided
@@ -2181,14 +2589,36 @@ Examples:
         # Guard against invalid configurations
         doc_chunk_size = max(1, int(args.doc_chunk_size))
         doc_chunk_overlap = max(0, int(args.doc_chunk_overlap))
+        code_chunk_size = max(1, int(args.code_chunk_size))
+        code_chunk_overlap = max(0, int(args.code_chunk_overlap))
+
+        # Text beyond the embedding model's sequence limit is never embedded, so cap
+        # chunk sizes to fit it (e.g. all-MiniLM-L6-v2 reads only 256 tokens).
+        from .chunking_utils import cap_chunk_size
+        from .embedding_compute import get_model_token_limit
+
+        embedding_options = self._build_embedding_options(args)
+        token_limit = get_model_token_limit(
+            args.embedding_model,
+            base_url=embedding_options.get("host") or embedding_options.get("base_url"),
+        )
+        capped_doc = cap_chunk_size(doc_chunk_size, token_limit)
+        capped_code = cap_chunk_size(code_chunk_size, token_limit)
+        if capped_doc < doc_chunk_size or capped_code < code_chunk_size:
+            print(
+                f"📏 {args.embedding_model} reads {token_limit} tokens: chunk size "
+                f"doc {doc_chunk_size} → {capped_doc}, code {code_chunk_size} → {capped_code}"
+            )
+            doc_chunk_overlap = min(doc_chunk_overlap, capped_doc // 2)
+            code_chunk_overlap = min(code_chunk_overlap, capped_code // 2)
+            doc_chunk_size, code_chunk_size = capped_doc, capped_code
+
         if doc_chunk_overlap >= doc_chunk_size:
             print(
                 f"⚠️  Adjusting doc chunk overlap from {doc_chunk_overlap} to {doc_chunk_size - 1} (must be < chunk size)"
             )
             doc_chunk_overlap = doc_chunk_size - 1
 
-        code_chunk_size = max(1, int(args.code_chunk_size))
-        code_chunk_overlap = max(0, int(args.code_chunk_overlap))
         if code_chunk_overlap >= code_chunk_size:
             print(
                 f"⚠️  Adjusting code chunk overlap from {code_chunk_overlap} to {code_chunk_size - 1} (must be < chunk size)"
@@ -2206,6 +2636,14 @@ Examples:
             chunk_overlap=code_chunk_overlap,
             separator="\n",
             paragraph_separator="\n\n",
+        )
+        build_config = self._build_config_from_args(
+            args,
+            docs_paths,
+            doc_chunk_size=doc_chunk_size,
+            doc_chunk_overlap=doc_chunk_overlap,
+            code_chunk_size=code_chunk_size,
+            code_chunk_overlap=code_chunk_overlap,
         )
 
         # Detect changes first so we can skip load_documents for remove-only
@@ -2241,8 +2679,15 @@ Examples:
                 is_compact = meta.get(
                     "is_compact", meta.get("backend_kwargs", {}).get("is_compact", True)
                 )
+
+                # Normalize model names for comparison — e.g. "all-MiniLM-L6-v2"
+                # should match "sentence-transformers/all-MiniLM-L6-v2"
+                def _normalize_model_name(name: str) -> str:
+                    return name.rsplit("/", 1)[-1] if name else name
+
                 same_embedding = (
-                    meta.get("embedding_model") == args.embedding_model
+                    _normalize_model_name(meta.get("embedding_model", ""))
+                    == _normalize_model_name(args.embedding_model)
                     and meta.get("embedding_mode") == args.embedding_mode
                 )
 
@@ -2264,18 +2709,13 @@ Examples:
                     )
                     if result:
                         self._commit_synchronizers(synchronizers)
-                        self._write_sync_config(
-                            index_dir,
-                            self._resolve_sync_roots(docs_paths),
-                            self._parse_file_types(args.file_types),
-                            self._sync_ignore_patterns(args.include_hidden),
-                        )
+                        self._write_sync_config_for_docs(index_dir, docs_paths, args, build_config)
                         self.register_project_dir()
                         return
 
-                # Load only changed files (no need to load/chunk the entire corpus)
-                # Resolve paths relative to sync roots (sync returns paths relative to each root)
-                roots = self._resolve_sync_roots(docs_paths)
+                # Resolve paths relative to sync scope (directories + explicit files).
+                sync_dirs, sync_files = self._resolve_sync_scope(docs_paths)
+                scope_roots = sync_dirs + sync_files
                 paths_to_load = new_paths | modified_paths
                 resolved_paths: list[str] = []
                 for p in paths_to_load:
@@ -2283,7 +2723,7 @@ Examples:
                     if path_obj.is_absolute() and path_obj.exists():
                         resolved_paths.append(p)
                     else:
-                        for root in roots:
+                        for root in scope_roots:
                             candidate = Path(root) / p
                             if candidate.exists():
                                 resolved_paths.append(str(candidate.resolve()))
@@ -2310,16 +2750,11 @@ Examples:
                         new_paths,
                         removed_paths,
                         modified_paths,
-                        roots,
+                        scope_roots,
                     )
                     if result:
                         self._commit_synchronizers(synchronizers)
-                        self._write_sync_config(
-                            index_dir,
-                            self._resolve_sync_roots(docs_paths),
-                            self._parse_file_types(args.file_types),
-                            self._sync_ignore_patterns(args.include_hidden),
-                        )
+                        self._write_sync_config_for_docs(index_dir, docs_paths, args, build_config)
                         self.register_project_dir()
                         return
 
@@ -2332,17 +2767,17 @@ Examples:
                     )
                     if result:
                         self._commit_synchronizers(synchronizers)
-                        self._write_sync_config(
-                            index_dir,
-                            self._resolve_sync_roots(docs_paths),
-                            self._parse_file_types(args.file_types),
-                            self._sync_ignore_patterns(args.include_hidden),
-                        )
+                        self._write_sync_config_for_docs(index_dir, docs_paths, args, build_config)
                         self.register_project_dir()
                         return
 
                 else:
                     self._log_rebuild_reason(meta, args, new_paths, removed_paths, modified_paths)
+                    # Force full reload — the partial all_texts from incremental
+                    # path only contains changed files, not the full corpus.
+                    all_texts = self.load_documents(
+                        docs_paths, args.file_types, include_hidden=args.include_hidden, args=args
+                    )
 
         # Full rebuild: load documents if not already loaded (first build or force)
         try:
@@ -2356,6 +2791,12 @@ Examples:
             return
 
         print(f"Building index '{index_name}' with {args.backend_name} backend...")
+        publish_from_staging = _existing_index_artifacts(index_dir)
+        target_index_dir = index_dir
+        target_index_path = index_path
+        if publish_from_staging:
+            target_index_dir = index_dir.with_name(f".{index_dir.name}.rebuild-{uuid.uuid4().hex}")
+            target_index_path = str(target_index_dir / "documents.leann")
 
         builder = LeannBuilder(
             backend_name=args.backend_name,
@@ -2367,20 +2808,35 @@ Examples:
             is_compact=args.compact,
             is_recompute=args.recompute,
             num_threads=args.num_threads,
+            passage_id_scheme=getattr(args, "id_scheme", "sequential"),
         )
 
         for chunk in all_texts:
             builder.add_text(chunk["text"], metadata=chunk["metadata"])
 
-        builder.build_index(index_path)
-        for fs in synchronizers:
-            fs.create_snapshot()
-        self._write_sync_config(
-            index_dir,
-            self._resolve_sync_roots(docs_paths),
-            self._parse_file_types(args.file_types),
-            self._sync_ignore_patterns(args.include_hidden),
-        )
+        try:
+            builder.build_index(target_index_path)
+            target_synchronizers = (
+                self._build_synchronizers(
+                    docs_paths,
+                    target_index_dir,
+                    file_types=args.file_types,
+                    include_hidden=args.include_hidden,
+                )
+                if publish_from_staging
+                else synchronizers
+            )
+            for fs in target_synchronizers:
+                fs.create_snapshot()
+            self._write_sync_config_for_docs(target_index_dir, docs_paths, args, build_config)
+            if publish_from_staging:
+                _publish_rebuilt_index(target_index_dir, index_dir)
+        except Exception:
+            if publish_from_staging and target_index_dir.exists():
+                import shutil
+
+                shutil.rmtree(target_index_dir)
+            raise
         print(f"Index built at {index_path}")
         self.register_project_dir()
 
@@ -2395,18 +2851,16 @@ Examples:
         if not sync_config_path.exists():
             return set(), set(), set()
 
-        with open(sync_config_path, encoding="utf-8") as f:
-            config = json.load(f)
-
-        roots = config.get("roots") or []
-        if not roots:
+        directories, files, include_extensions, include_hidden = self._load_sync_scope(index_dir)
+        if not directories and not files:
             return set(), set(), set()
 
         synchronizers = self._create_synchronizers(
             index_dir,
-            roots,
-            include_extensions=config.get("include_extensions"),
-            ignore_patterns=config.get("ignore_patterns"),
+            directories,
+            files,
+            include_extensions,
+            include_hidden,
         )
         return self._detect_build_changes(synchronizers)
 
@@ -2443,34 +2897,55 @@ Examples:
                 print(f"  - {file_path}")
                 print(f"    chunks: {chunk_display}")
 
-    async def _watch_trigger_build(self, index_name: str) -> None:
-        """Trigger an idempotent build for the given index, reusing its stored config."""
+    def _reconstruct_build_args(
+        self, index_name: str, *, force: bool = False, verbose: bool = False
+    ) -> Optional[list[str]]:
+        """Reconstruct the `leann build` CLI args for an existing index from its
+        stored config (.meta.json + sync_roots.json).
+
+        Returns None when the index can't be rebuilt this way (no sync config,
+        missing metadata, etc.). With verbose=True the reason gets printed (for
+        the user-driven `leann rebuild` path); with verbose=False the failures
+        are silent (for the watch loop, which polls and shouldn't spam logs).
+        """
         resolved = self._resolve_index_for_watch(index_name)
         if not resolved:
-            return
+            return None
         index_dir = resolved["index_dir"]
         sync_config_path = index_dir / "sync_roots.json"
         if not sync_config_path.exists():
-            return
+            if verbose:
+                print(
+                    f"Cannot rebuild '{index_name}': no sync config at {sync_config_path}. "
+                    f"This usually means the index was built via the Python API rather than "
+                    f"`leann build --docs <dir>`, so the original docs roots aren't recorded."
+                )
+            return None
         with open(sync_config_path, encoding="utf-8") as f:
             config = json.load(f)
         roots = config.get("roots") or []
         if not roots:
-            return
+            if verbose:
+                print(f"Cannot rebuild '{index_name}': sync config has no document roots.")
+            return None
 
         meta_path = index_dir / "documents.leann.meta.json"
         if not meta_path.exists():
-            print(f"Index metadata missing for '{index_name}', cannot rebuild.")
-            return
+            if verbose:
+                print(f"Cannot rebuild '{index_name}': index metadata missing at {meta_path}.")
+            else:
+                print(f"Index metadata missing for '{index_name}', cannot rebuild.")
+            return None
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
 
-        parser = self.create_parser()
+        build_config = config.get("build_config") or meta.get("build_config") or {}
+        docs = build_config.get("docs") or roots
         build_args_list = [
             "build",
             index_name,
             "--docs",
-            *roots,
+            *[str(doc) for doc in docs],
             "--backend-name",
             meta.get("backend_name", "hnsw"),
             "--embedding-model",
@@ -2479,13 +2954,251 @@ Examples:
             meta.get("embedding_mode", "sentence-transformers"),
         ]
         bkw = meta.get("backend_kwargs", {})
-        if not bkw.get("is_compact", False):
-            build_args_list.append("--no-compact")
-        if bkw.get("is_recompute", True):
-            build_args_list.append("--recompute")
 
+        def add_option(flag: str, value: Any) -> None:
+            if value is not None:
+                build_args_list.extend([flag, str(value)])
+
+        def add_bool(true_flag: str, false_flag: str, value: Any) -> None:
+            if value is None:
+                return
+            build_args_list.append(true_flag if bool(value) else false_flag)
+
+        def config_or_backend(config_key: str, backend_key: str) -> Any:
+            if config_key in build_config:
+                return build_config[config_key]
+            return bkw.get(backend_key)
+
+        add_option("--graph-degree", config_or_backend("graph_degree", "graph_degree"))
+        add_option("--complexity", config_or_backend("complexity", "complexity"))
+        add_option("--num-threads", config_or_backend("num_threads", "num_threads"))
+
+        compact = (
+            build_config["compact"]
+            if "compact" in build_config
+            else meta.get("is_compact", bkw.get("is_compact"))
+        )
+        recompute = (
+            build_config["recompute"]
+            if "recompute" in build_config
+            else meta.get("is_recompute", bkw.get("is_recompute"))
+        )
+        add_bool("--compact", "--no-compact", compact)
+        add_bool("--recompute", "--no-recompute", recompute)
+
+        file_types = build_config.get("file_types")
+        if file_types is None:
+            include_extensions = config.get("include_extensions")
+            if include_extensions:
+                file_types = ",".join(include_extensions)
+        add_option("--file-types", file_types)
+
+        include_hidden = build_config.get("include_hidden")
+        if include_hidden is None:
+            include_hidden = config.get("ignore_patterns") is None
+        if include_hidden:
+            build_args_list.append("--include-hidden")
+
+        add_option("--doc-chunk-size", build_config.get("doc_chunk_size"))
+        add_option("--doc-chunk-overlap", build_config.get("doc_chunk_overlap"))
+        add_option("--code-chunk-size", build_config.get("code_chunk_size"))
+        add_option("--code-chunk-overlap", build_config.get("code_chunk_overlap"))
+        if build_config.get("use_ast_chunking"):
+            build_args_list.append("--use-ast-chunking")
+        add_option("--ast-chunk-size", build_config.get("ast_chunk_size"))
+        add_option("--ast-chunk-overlap", build_config.get("ast_chunk_overlap"))
+        if build_config.get("ast_fallback_traditional"):
+            build_args_list.append("--ast-fallback-traditional")
+
+        embedding_options = meta.get("embedding_options") or {}
+        embedding_host = build_config.get("embedding_host", embedding_options.get("host"))
+        embedding_api_base = build_config.get(
+            "embedding_api_base", embedding_options.get("base_url")
+        )
+        embedding_prompt_template = build_config.get("embedding_prompt_template")
+        if embedding_prompt_template is None:
+            embedding_prompt_template = embedding_options.get(
+                "build_prompt_template", embedding_options.get("prompt_template")
+            )
+        query_prompt_template = build_config.get(
+            "query_prompt_template", embedding_options.get("query_prompt_template")
+        )
+        add_option("--embedding-host", embedding_host)
+        add_option("--embedding-api-base", embedding_api_base)
+        add_option("--embedding-prompt-template", embedding_prompt_template)
+        add_option("--query-prompt-template", query_prompt_template)
+        if force:
+            build_args_list.append("--force")
+        return build_args_list
+
+    async def rebuild_index(self, args) -> None:
+        """Rebuild an existing index using its stored config.
+
+        By default this is an incremental delta (leann build is idempotent and
+        only re-indexes added/changed/removed files). Pass --force to do a full
+        rebuild from scratch.
+        """
+        build_args_list = self._reconstruct_build_args(
+            args.index_name, force=getattr(args, "force", False), verbose=True
+        )
+        if build_args_list is None:
+            return
+        parser = self.create_parser()
         build_args = parser.parse_args(build_args_list)
         await self.build_index(build_args)
+
+    async def _watch_trigger_build(self, index_name: str) -> None:
+        """Trigger an idempotent build for the given index, reusing its stored config."""
+        build_args_list = self._reconstruct_build_args(index_name, verbose=False)
+        if build_args_list is None:
+            return
+        parser = self.create_parser()
+        build_args = parser.parse_args(build_args_list)
+        await self.build_index(build_args)
+
+    def migrate_ids(self, args) -> None:
+        """Rewrite an existing index's passage IDs to content-hash form.
+
+        Migration is purely a Python-side rewrite — the vector graph isn't
+        touched, so FAISS labels stay valid. What gets rewritten:
+          - <index>.passages.jsonl  : new IDs in each line's "id" field
+          - <index>.passages.idx    : new offset map keyed by new IDs
+          - <index>.ids.txt         : new label → ID mapping for FAISS
+          - <index>.meta.json       : passage_id_scheme = "content-hash"
+          - <index>.bm25.sqlite     : BM25 IDs, when an FTS5 artifact is configured
+
+        Identical-text chunks collide on the same sha256 prefix; the later
+        occurrence wins in the offset map (dedup). A `--preserve-duplicates`
+        knob to suffix collisions can land separately.
+
+        Irreversible. Prompts for confirmation unless --yes is passed.
+        """
+        import hashlib
+        import shutil
+
+        index_name = args.index_name
+        index_path = self._resolve_index_path(index_name, purpose="migrate")
+        if not index_path:
+            return
+        meta_path = Path(index_path).with_suffix(".leann.meta.json")
+        if not meta_path.exists():
+            print(f"Cannot migrate '{index_name}': metadata missing at {meta_path}.")
+            return
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+        current_scheme = meta.get("passage_id_scheme", "sequential")
+        if current_scheme == "content-hash":
+            print(f"Index '{index_name}' already uses content-hash IDs. Nothing to do.")
+            return
+
+        # Locate the sibling artifacts using the same conventions as build_index.
+        index_dir = Path(index_path).parent
+        index_base = Path(index_path).name
+        passages_file = index_dir / f"{index_base}.passages.jsonl"
+        offset_file = index_dir / f"{index_base}.passages.idx"
+        base_no_leann = (
+            index_base[: -len(".leann")] if index_base.endswith(".leann") else index_base
+        )
+        idmap_file = index_dir / f"{base_no_leann}.ids.txt"
+
+        for p in (passages_file, offset_file):
+            if not p.exists():
+                print(f"Cannot migrate: required artifact missing at {p}.")
+                return
+
+        # Stream the passages to plan the rewrite and surface collision count
+        # before committing to anything irreversible.
+        old_ids: list[str] = []
+        new_ids: list[str] = []
+        with open(passages_file, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                data = json.loads(line)
+                old_ids.append(data["id"])
+                new_ids.append(hashlib.sha256(data["text"].encode("utf-8")).hexdigest()[:16])
+
+        unique_new = len(set(new_ids))
+        collisions = len(new_ids) - unique_new
+        print(
+            f"Migrating '{index_name}': {len(new_ids)} passages → {unique_new} unique "
+            f"content-hash IDs ({collisions} collision(s) will dedup)."
+        )
+
+        if args.dry_run:
+            print("(dry-run; not writing anything)")
+            return
+        if not args.yes:
+            confirm = input(
+                "Proceed? This rewrites passages.jsonl, .idx, .ids.txt, .meta.json. [y/N] "
+            )
+            if confirm.strip().lower() not in ("y", "yes"):
+                print("Aborted.")
+                return
+
+        # Stage writes into siblings, then atomically rename.
+        new_passages = passages_file.with_suffix(passages_file.suffix + ".migrate")
+        new_offsets: dict[str, int] = {}
+        rewritten_passages: list[dict[str, Any]] = []
+        with (
+            open(passages_file, encoding="utf-8") as src,
+            open(new_passages, "w", encoding="utf-8") as dst,
+        ):
+            idx = 0
+            for line in src:
+                if not line.strip():
+                    continue
+                data = json.loads(line)
+                data["id"] = new_ids[idx]
+                offset = dst.tell()
+                json.dump(data, dst, ensure_ascii=False)
+                dst.write("\n")
+                new_offsets[new_ids[idx]] = offset
+                rewritten_passages.append(data)
+                idx += 1
+
+        new_idx = offset_file.with_suffix(offset_file.suffix + ".migrate")
+        with open(new_idx, "wb") as f:
+            pickle.dump(new_offsets, f)
+
+        new_idmap: Optional[Path] = None
+        if idmap_file.exists():
+            new_idmap = idmap_file.with_suffix(idmap_file.suffix + ".migrate")
+            with open(new_idmap, "w", encoding="utf-8") as f:
+                for nid in new_ids:
+                    f.write(nid + "\n")
+
+        bm25_db_name = meta.get("bm25_db")
+        should_rebuild_bm25 = meta.get("bm25_backend") == "fts5"
+        if should_rebuild_bm25 and not bm25_db_name:
+            bm25_db_name = f"{index_base}.bm25.sqlite"
+        new_bm25: Optional[Path] = None
+        bm25_file: Optional[Path] = None
+        if should_rebuild_bm25 and bm25_db_name:
+            bm25_file = index_dir / bm25_db_name
+            new_bm25 = bm25_file.with_suffix(bm25_file.suffix + ".migrate")
+            bm25_index = Fts5BM25Index(str(new_bm25))
+            bm25_index.fit(rewritten_passages)
+            bm25_index.close()
+
+        shutil.move(str(new_passages), str(passages_file))
+        shutil.move(str(new_idx), str(offset_file))
+        if new_idmap is not None:
+            shutil.move(str(new_idmap), str(idmap_file))
+        if new_bm25 is not None and bm25_file is not None:
+            shutil.move(str(new_bm25), str(bm25_file))
+
+        meta["passage_id_scheme"] = "content-hash"
+        meta["version"] = "1.1"
+        if should_rebuild_bm25 and bm25_db_name:
+            meta["bm25_backend"] = "fts5"
+            meta["bm25_db"] = bm25_db_name
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+
+        print(
+            f"✓ Migrated '{index_name}' to content-hash IDs. {collisions} collisions were deduped."
+        )
 
     async def watch_index(self, args):
         index_name = args.index_name
@@ -2642,12 +3355,16 @@ Examples:
                 print(f"Error: --metadata-filters is not valid JSON: {e}")
                 return
 
+        saved_fd = None
         if json_mode:
             sys.stdout.flush()
-            saved_fd = os.dup(1)
-            devnull = os.open(os.devnull, os.O_WRONLY)
-            os.dup2(devnull, 1)
-            os.close(devnull)
+            try:
+                saved_fd = os.dup(1)
+                devnull = os.open(os.devnull, os.O_WRONLY)
+                os.dup2(devnull, 1)
+                os.close(devnull)
+            except OSError:
+                saved_fd = None
 
         try:
             searcher = LeannSearcher(
@@ -2668,7 +3385,7 @@ Examples:
                 metadata_filters=metadata_filters,
             )
         finally:
-            if json_mode:
+            if saved_fd is not None:
                 sys.stdout.flush()
                 os.dup2(saved_fd, 1)
                 os.close(saved_fd)
@@ -2677,7 +3394,7 @@ Examples:
             json_results = [
                 {
                     "id": r.id,
-                    "score": r.score,
+                    "score": float(r.score),
                     "text": r.text,
                     "metadata": r.metadata,
                 }
@@ -2834,11 +3551,46 @@ Examples:
                 llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
             if args.api_key:
                 llm_config["api_key"] = args.api_key
+        elif args.llm == "litellm":
+            # LiteLLM infers the provider from the model prefix and reads that
+            # provider's own env var; base_url/api_key are only for a proxy.
+            base_url = resolve_litellm_base_url(args.api_base)
+            if base_url:
+                llm_config["base_url"] = base_url
+            resolved_api_key = resolve_litellm_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
         elif args.llm == "minimax":
             llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
             resolved_api_key = resolve_minimax_api_key(args.api_key)
             if resolved_api_key:
                 llm_config["api_key"] = resolved_api_key
+        elif args.llm in {"atlascloud", "atlas-cloud", "atlas"}:
+            llm_config["type"] = "atlascloud"
+            if args.model == "qwen3:8b":
+                llm_config["model"] = "deepseek-ai/deepseek-v4-pro"
+            llm_config["base_url"] = resolve_atlascloud_base_url(args.api_base)
+            resolved_api_key = resolve_atlascloud_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
+
+        # Parse --metadata-filters JSON string (mirrors `leann search`).
+        # Run before constructing LeannChat so invalid filters fail fast without
+        # spinning up an embedding server.
+        metadata_filters = None
+        raw_filters = getattr(args, "metadata_filters", None)
+        if raw_filters:
+            try:
+                metadata_filters = json.loads(raw_filters)
+                if not isinstance(metadata_filters, dict):
+                    print(
+                        "Error: --metadata-filters must be a JSON object, "
+                        'e.g. \'{"chapter": {"<=": 5}}\''
+                    )
+                    return
+            except json.JSONDecodeError as e:
+                print(f"Error: --metadata-filters is not valid JSON: {e}")
+                return
 
         chat = LeannChat(index_path=index_path, llm_config=llm_config)
 
@@ -2856,6 +3608,7 @@ Examples:
                 prune_ratio=args.prune_ratio,
                 recompute_embeddings=args.recompute_embeddings,
                 pruning_strategy=args.pruning_strategy,
+                metadata_filters=metadata_filters,
                 llm_kwargs=llm_kwargs,
             )
             query_completion_time = time.time() - query_start_time
@@ -3102,9 +3855,26 @@ Examples:
                 llm_config["base_url"] = resolve_anthropic_base_url(args.api_base)
             if args.api_key:
                 llm_config["api_key"] = args.api_key
+        elif args.llm == "litellm":
+            # LiteLLM infers the provider from the model prefix and reads that
+            # provider's own env var; base_url/api_key are only for a proxy.
+            base_url = resolve_litellm_base_url(args.api_base)
+            if base_url:
+                llm_config["base_url"] = base_url
+            resolved_api_key = resolve_litellm_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
         elif args.llm == "minimax":
             llm_config["base_url"] = resolve_minimax_base_url(args.api_base)
             resolved_api_key = resolve_minimax_api_key(args.api_key)
+            if resolved_api_key:
+                llm_config["api_key"] = resolved_api_key
+        elif args.llm in {"atlascloud", "atlas-cloud", "atlas"}:
+            llm_config["type"] = "atlascloud"
+            if args.model == "qwen3:8b":
+                llm_config["model"] = "deepseek-ai/deepseek-v4-pro"
+            llm_config["base_url"] = resolve_atlascloud_base_url(args.api_base)
+            resolved_api_key = resolve_atlascloud_api_key(args.api_key)
             if resolved_api_key:
                 llm_config["api_key"] = resolved_api_key
 
@@ -3180,7 +3950,7 @@ Examples:
         suppress = not getattr(args, "verbose", False)
 
         if args.command == "list":
-            self.list_indexes()
+            self.list_indexes(args.max_depth)
         elif args.command == "remove":
             self.remove_index(args.index_name, args.force)
         elif args.command == "build":
@@ -3188,6 +3958,11 @@ Examples:
                 await self.build_index(args)
         elif args.command == "watch":
             await self.watch_index(args)
+        elif args.command == "migrate-ids":
+            self.migrate_ids(args)
+        elif args.command == "rebuild":
+            with suppress_cpp_output(suppress):
+                await self.rebuild_index(args)
         elif args.command == "search":
             with suppress_cpp_output(suppress):
                 await self.search_documents(args)
@@ -3204,26 +3979,30 @@ Examples:
                 await self.react_agent(args)
         elif args.command == "serve":
             await self.serve_api(args)
-        elif args.command in (
-            "index-browser",
-            "index-email",
-            "index-calendar",
-            "index-imessage",
-            "index-wechat",
-            "index-chatgpt",
-            "index-claude",
-        ):
-            handler = {
-                "index-browser": self.index_browser,
-                "index-email": self.index_email,
-                "index-calendar": self.index_calendar,
-                "index-imessage": self.index_imessage,
-                "index-wechat": self.index_wechat,
-                "index-chatgpt": self.index_chatgpt,
-                "index-claude": self.index_claude,
-            }[args.command]
+        elif args.command == "index-browser":
             with suppress_cpp_output(suppress):
-                await handler(args)
+                await self.index_browser(args)
+        elif args.command == "index-email":
+            with suppress_cpp_output(suppress):
+                await self.index_email(args)
+        elif args.command == "index-calendar":
+            with suppress_cpp_output(suppress):
+                await self.index_calendar(args)
+        elif args.command == "index-wechat":
+            with suppress_cpp_output(suppress):
+                await self.index_wechat(args)
+        elif args.command == "index-imessage":
+            with suppress_cpp_output(suppress):
+                await self.index_imessage(args)
+        elif args.command == "index-slack":
+            with suppress_cpp_output(suppress):
+                await self.index_slack(args)
+        elif args.command == "index-chatgpt":
+            with suppress_cpp_output(suppress):
+                await self.index_chatgpt(args)
+        elif args.command == "index-claude":
+            with suppress_cpp_output(suppress):
+                await self.index_claude(args)
         else:
             parser.print_help()
 
