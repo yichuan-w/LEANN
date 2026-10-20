@@ -4,6 +4,7 @@ Packaged within leann-core so installed wheels can import it reliably.
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -13,6 +14,18 @@ logger = logging.getLogger(__name__)
 
 # Flag to ensure AST token warning only shown once per session
 _ast_token_warning_shown = False
+
+
+# Chunk sizes are counted in tiktoken tokens, but BERT-style WordPiece tokenizers
+# count ~30% more on web text and code, and SentenceSplitter overshoots on spans it
+# cannot split (tables, long lines). At 70% of the model limit, <1% of chunk text is
+# truncated by all-MiniLM-L6-v2 (256 tokens) on web pages and Python sources.
+CHUNK_TOKEN_BUDGET_RATIO = 0.7
+
+
+def cap_chunk_size(chunk_size: int, model_token_limit: int) -> int:
+    """Cap a SentenceSplitter chunk size (tiktoken tokens) so chunks fit the embedding model."""
+    return min(chunk_size, max(1, int(model_token_limit * CHUNK_TOKEN_BUDGET_RATIO)))
 
 
 def estimate_token_count(text: str) -> int:
@@ -278,7 +291,16 @@ def create_ast_chunks(
                     # Merge document metadata + astchunk metadata
                     combined_metadata = {**doc_metadata, **astchunk_metadata}
 
-                    all_chunks.append({"text": chunk_text.strip(), "metadata": combined_metadata})
+                    # Trim partial first line left by overlap if using line numbers
+                    # (a valid line starts with digits followed by '|')
+                    stripped = chunk_text.strip()
+                    if stripped:
+                        first_line = stripped.split("\n", 1)[0]
+                        if "|" in first_line and not re.match(r"^\s*\d+\|", first_line):
+                            first_nl = stripped.find("\n")
+                            if first_nl != -1:
+                                stripped = stripped[first_nl + 1 :]
+                    all_chunks.append({"text": stripped, "metadata": combined_metadata})
 
             logger.info(
                 f"Created {len(chunks)} AST chunks from {language} file: {doc.metadata.get('file_name', 'unknown')}"
@@ -303,10 +325,9 @@ def create_traditional_chunks(
         documents: LlamaIndex Document list.
         chunk_size: Target chunk size in **characters** (approximate tokens).
         chunk_overlap: Overlap between adjacent chunks in characters.
-        max_tokens_per_chunk: If set, auto-scale ``chunk_size`` so each
-            chunk stays within the model's token budget.  Uses
-            ``calculate_safe_chunk_size`` with a 10 % safety margin.
-            Additionaly runs ``validate_chunk_token_limits`` post-chunk.
+        max_tokens_per_chunk: If set, cap ``chunk_size`` (see ``cap_chunk_size``)
+            so each chunk fits the embedding model, and truncate any chunk that
+            still exceeds the limit.
 
     Returns:
         List of dicts with ``{"text": str, "metadata": dict}``.
@@ -317,18 +338,18 @@ def create_traditional_chunks(
     if chunk_overlap < 0:
         chunk_overlap = 0
 
-    # ── Token-aware auto-scaling ──────────────────────────────────────
+    # ── Token-aware cap ───────────────────────────────────────────────
     if max_tokens_per_chunk and max_tokens_per_chunk > 0:
-        chunk_size = calculate_safe_chunk_size(
-            max_tokens_per_chunk, chunk_overlap, chunking_mode="traditional"
-        )
-        logger.info(
-            "Token-aware chunking: model limit=%d tokens → safe chunk_size=%d chars "
-            "(overlap=%d, safety=0.9)",
-            max_tokens_per_chunk,
-            chunk_size,
-            chunk_overlap,
-        )
+        capped = cap_chunk_size(chunk_size, max_tokens_per_chunk)
+        if capped < chunk_size:
+            logger.info(
+                "Token-aware chunking: model limit=%d tokens → chunk_size %d → %d",
+                max_tokens_per_chunk,
+                chunk_size,
+                capped,
+            )
+            chunk_size = capped
+            chunk_overlap = min(chunk_overlap, capped // 2)
 
     # Revalidate after scaling
     if chunk_overlap >= chunk_size:
@@ -453,8 +474,11 @@ def create_text_chunks(
                 # AST chunking: auto-scale if token limit given
                 ast_size = ast_chunk_size
                 if max_tokens_per_chunk and max_tokens_per_chunk > 0:
-                    ast_size = calculate_safe_chunk_size(
-                        max_tokens_per_chunk, ast_chunk_overlap, chunking_mode="ast"
+                    ast_size = min(
+                        ast_chunk_size,
+                        calculate_safe_chunk_size(
+                            max_tokens_per_chunk, ast_chunk_overlap, chunking_mode="ast"
+                        ),
                     )
                     logger.info(
                         "Token-aware AST chunking: limit=%d → safe ast_chunk_size=%d chars "

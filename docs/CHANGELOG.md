@@ -76,3 +76,15 @@ fixes). Newest entries at the bottom.
 
 - Keep Latin words and numbers separate from adjacent Chinese, Japanese, and Korean n-grams when building SQLite FTS5 indexes and parsing keyword queries. For example, `Python数据库SQL` can be retrieved by `Python`, `SQL`, or a mixed-script query.
 - Existing BM25 artifacts remain readable. Rebuild indexes containing mixed-script text to regenerate tokens that were previously joined at script boundaries.
+
+## 2026-10-12: Parallel Search MCP web reader (#433)
+
+- Added `apps/parallel_data`: anonymous Parallel Search MCP search/fetch (no API key) exported as Markdown named `<url-slug>-<hash>.md` for `leann build`.
+- Added `apps/parallel_rag.py`: one-command web search → chunk → index → ask, keeping each chunk's title and source URL.
+
+## 2026-10-12: Fit chunk sizes to the embedding model's sequence limit
+
+- `leann build` now caps `--doc-chunk-size` / `--code-chunk-size` at 70% of the embedding model's sequence limit. Previously the macOS default model `all-MiniLM-L6-v2` (reads 256 tokens) got 512-token code chunks, so ~43% of indexed code text was never embedded. On `leann-core` sources, code retrieval MRR@10 rose from 0.30 to 0.54 (18 queries, real `leann build` indexes).
+- `get_model_token_limit()` reads `max_seq_length` from Hugging Face sentence-transformers repos instead of assuming 2048 tokens for them.
+- `create_text_chunks(max_tokens_per_chunk=...)` now only shrinks `chunk_size`; it previously replaced it, growing 256-token chunks to ~1700 for unknown models.
+- Existing indexes are unchanged; rebuild with `--force` to re-chunk with the new sizes.

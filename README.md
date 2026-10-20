@@ -909,6 +909,10 @@ Once your iMessage conversations are indexed, you can search with queries like:
 
 ### MCP Integration: RAG on Live Data from Any Platform
 
+**Web documents:** [Search and fetch with Parallel Search MCP](docs/parallel-mcp.md)
+without an API key: `python -m apps.parallel_rag` searches, indexes, and answers in one
+command, or export Markdown for `leann build`.
+
 Connect to live data sources through the Model Context Protocol (MCP). LEANN now supports real-time RAG on platforms like Slack, Twitter, and more through standardized MCP servers.
 
 **Key Benefits:**

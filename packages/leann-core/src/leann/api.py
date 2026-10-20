@@ -25,7 +25,7 @@ from .chat import get_llm
 from .embedding_server_manager import EmbeddingServerManager
 from .interface import LeannBackendFactoryInterface
 from .metadata_filter import MetadataFilterEngine
-from .registry import BACKEND_REGISTRY
+from .registry import BACKEND_REGISTRY, autodiscover_backends
 
 logger = logging.getLogger(__name__)
 
@@ -556,7 +556,14 @@ class LeannBuilder:
     def add_text(self, text: str, metadata: Optional[dict[str, Any]] = None):
         if metadata is None:
             metadata = {}
-        passage_id = metadata.get("id") or self._generate_passage_id(text)
+        # An explicit ID is honoured even when it is falsy -- integer dataset IDs start
+        # at 0 -- and is stored as a string, because PassageManager keys offsets by the
+        # same string the backend hands back for a label.
+        explicit_id = metadata.get("id")
+        if explicit_id is None or str(explicit_id) == "":
+            passage_id = self._generate_passage_id(text)
+        else:
+            passage_id = str(explicit_id)
         chunk_data = {"id": passage_id, "text": text, "metadata": metadata}
         self.chunks.append(chunk_data)
 
@@ -706,16 +713,21 @@ class LeannBuilder:
 
         Args:
             index_path: Path where the index will be saved
-            ids: List of document IDs (will be converted to strings)
+            ids: Document IDs in embedding order. Converted to strings and used as
+                passage IDs even when add_text() assigned different IDs; chunk metadata
+                is preserved.
             embeddings: numpy array of shape (n_documents, embedding_dim)
 
         Raises:
-            ValueError: If ids and embeddings counts don't match, or dimension mismatch
+            ValueError: If IDs are duplicated, counts don't match, or dimensions differ
         """
         if len(ids) != embeddings.shape[0]:
             raise ValueError(
                 f"Mismatch between number of IDs ({len(ids)}) and embeddings ({embeddings.shape[0]})"
             )
+        string_ids = [str(id_val) for id_val in ids]
+        if len(string_ids) != len(set(string_ids)):
+            raise ValueError("Document IDs must be unique after conversion to strings")
 
         # Validate/set dimensions
         embedding_dim = embeddings.shape[1]
@@ -733,15 +745,18 @@ class LeannBuilder:
             # If no text chunks provided, create placeholder text entries
             if not self.chunks:
                 logger.info("No text chunks provided, creating placeholder entries...")
-                for id_val in ids:
+                for id_val in string_ids:
                     self.add_text(
                         f"Document {id_val}",
-                        metadata={"id": str(id_val), "from_embeddings": True},
+                        metadata={"id": id_val, "from_embeddings": True},
                     )
             else:
                 raise ValueError(
                     f"Number of text chunks ({len(self.chunks)}) doesn't match number of embeddings ({len(ids)})"
                 )
+
+        for chunk, string_id in zip(self.chunks, string_ids):
+            chunk["id"] = string_id
 
         # Build file structure
         path = Path(index_path)
@@ -772,7 +787,6 @@ class LeannBuilder:
             pickle.dump(offset_map, f)
 
         # Build the vector index using precomputed embeddings
-        string_ids = [str(id_val) for id_val in ids]
         # Persist ID map (order == embeddings order)
         try:
             idmap_file = (
@@ -965,8 +979,16 @@ class LeannBuilder:
                 continue
             metadata = chunk.setdefault("metadata", {})
             passage_id = chunk.get("id") or metadata.get("id")
-            if passage_id and passage_id in existing_ids:
+            # ``add_text()`` also stores a generated ID in ``chunk["id"]``, and under the
+            # sequential scheme that ID is this builder's insertion position -- it says
+            # nothing about the index being updated, so it must not be treated as taken.
+            positional_id = not metadata.get("id") and (
+                self.passage_id_scheme == PASSAGE_ID_SCHEME_SEQUENTIAL
+            )
+            if passage_id and not positional_id and passage_id in existing_ids:
                 raise ValueError(f"Passage ID '{passage_id}' already exists in the index.")
+            if positional_id:
+                chunk["id"] = None
             valid_chunks.append(chunk)
 
         if not valid_chunks:
@@ -976,6 +998,16 @@ class LeannBuilder:
                 json.dump(meta, f, indent=2)
             self.chunks.clear()
             return
+
+        next_id = 0
+        for chunk in valid_chunks:
+            if chunk["id"] is not None:
+                continue
+            while str(next_id) in existing_ids:
+                next_id += 1
+            chunk["id"] = str(next_id)
+            existing_ids.add(chunk["id"])
+            next_id += 1
 
         texts_to_embed = [chunk["text"] for chunk in valid_chunks]
         embeddings = compute_embeddings(
@@ -1837,3 +1869,9 @@ class LeannChat:
             self.cleanup()
         except Exception:
             pass
+
+
+# Register installed ``leann-backend-*`` packages. This used to live in
+# ``leann/__init__.py``; it runs here so that anything importing ``leann.api``
+# (directly or through the lazy package attributes) still sees every backend.
+autodiscover_backends()
