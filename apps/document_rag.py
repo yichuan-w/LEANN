@@ -66,35 +66,12 @@ def extract_pdf_with_ocr_fallback(pdf_path: str, use_ocr: bool = False) -> str:
     # Try OCR if enabled
     if use_ocr and OCR_AVAILABLE:
         try:
-            result = None
-            try:
-                from mineru import MinerUProcessor
+            from mineru import parse
 
-                processor = MinerUProcessor()
-                if hasattr(processor, "process"):
-                    result = processor.process(pdf_path)
-            except (ImportError, AttributeError, TypeError):
-                try:
-                    import mineru
-
-                    if hasattr(mineru, "process"):
-                        result = mineru.process(pdf_path)
-                    elif hasattr(mineru, "extract_text"):
-                        result = mineru.extract_text(pdf_path)
-                except Exception:
-                    pass
-
-            if result:
-                if isinstance(result, str):
-                    return result
-                elif hasattr(result, "text"):
-                    return result.text
-                elif hasattr(result, "markdown"):
-                    return result.markdown
-                elif isinstance(result, dict):
-                    return result.get("text", result.get("markdown", result.get("content", "")))
-                else:
-                    return str(result)
+            # ocr_mode="ocr" forces the OCR pipeline instead of letting MinerU
+            # pick: we only get here once the text layer has already proven
+            # unusable, so its "auto" heuristic has nothing left to decide.
+            return parse(pdf_path, ocr_mode="ocr").markdown()
         except Exception as e:
             print(f"  OCR failed for {pdf_path}: {e}")
 
@@ -263,7 +240,7 @@ if __name__ == "__main__":
         print("- Use --auto-detect-scanned (default) to automatically detect scanned PDFs")
     else:
         print("\n📄 OCR Support: Install mineru for scanned PDF processing:")
-        print("  pip install mineru  or  uv pip install -e .[ocr]")
+        print('  pip install "mineru>=4.0,<5"')
     print("\nOr run without --query for interactive mode\n")
 
     rag = DocumentRAG()
