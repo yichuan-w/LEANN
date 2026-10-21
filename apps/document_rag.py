@@ -29,11 +29,24 @@ def extract_pdf_with_ocr_fallback(pdf_path: str, use_ocr: bool = False) -> str:
 
     Args:
         pdf_path: Path to PDF file
-        use_ocr: Whether to try OCR if standard extraction fails
+        use_ocr: Whether to force MinerU OCR instead of trying text extraction
 
     Returns:
         Extracted text string
     """
+    if use_ocr:
+        if not OCR_AVAILABLE:
+            return ""
+        try:
+            from mineru import parse
+
+            # Only call MinerU after the caller has decided OCR should be used.
+            # This keeps --use-ocr authoritative for PDFs that have a text layer.
+            return parse(pdf_path, ocr_mode="ocr").markdown()
+        except Exception as e:
+            print(f"  OCR failed for {pdf_path}: {e}")
+            return ""
+
     # Try PyMuPDF first
     try:
         import fitz  # PyMuPDF
@@ -62,18 +75,6 @@ def extract_pdf_with_ocr_fallback(pdf_path: str, use_ocr: bool = False) -> str:
             return text
     except Exception:
         pass
-
-    # Try OCR if enabled
-    if use_ocr and OCR_AVAILABLE:
-        try:
-            from mineru import parse
-
-            # ocr_mode="ocr" forces the OCR pipeline instead of letting MinerU
-            # pick: we only get here once the text layer has already proven
-            # unusable, so its "auto" heuristic has nothing left to decide.
-            return parse(pdf_path, ocr_mode="ocr").markdown()
-        except Exception as e:
-            print(f"  OCR failed for {pdf_path}: {e}")
 
     return ""  # Return empty if all fail
 
