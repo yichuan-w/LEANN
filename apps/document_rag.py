@@ -168,7 +168,7 @@ class DocumentRAG(BaseRAGExample):
             # Extract with OCR if needed
             text = extract_pdf_with_ocr_fallback(file_path, use_ocr=try_ocr)
             if try_ocr and text:
-                print(f"✓ OCR: {Path(file_path).name}")
+                print(f"OCR complete: {Path(file_path).name}")
             return text
 
         # Load documents with custom PDF extractor
@@ -234,12 +234,15 @@ if __name__ == "__main__":
     print("- Use --enable-code-chunking to enable AST-aware chunking for code files")
     print("- Supports Python, Java, C#, TypeScript files")
     print("- Better semantic understanding of code structure")
+    # Keep this file ASCII-only: tests/test_ci_minimal.py runs it as a subprocess,
+    # and Windows stdout defaults to cp1252, which cannot encode emoji. This banner
+    # prints before argparse, so one unencodable character breaks even --help.
     if OCR_AVAILABLE:
-        print("\n📄 OCR Support: Scanned PDF processing available!")
+        print("\nOCR Support: Scanned PDF processing available!")
         print("- Use --use-ocr to force OCR for all PDFs")
         print("- Use --auto-detect-scanned (default) to automatically detect scanned PDFs")
     else:
-        print("\n📄 OCR Support: Install mineru for scanned PDF processing:")
+        print("\nOCR Support: Install mineru for scanned PDF processing:")
         print('  pip install "mineru>=4.0,<5"')
     print("\nOr run without --query for interactive mode\n")
 
