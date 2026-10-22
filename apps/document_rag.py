@@ -14,7 +14,8 @@ import importlib.util
 
 from base_rag_example import BaseRAGExample
 from chunking import create_text_chunks
-from llama_index.core import SimpleDirectoryReader
+from llama_index.core import Document, SimpleDirectoryReader
+from llama_index.core.readers.base import BaseReader
 
 # MinerU powers OCR for scanned PDFs. Probe for it rather than importing it:
 # the real import happens lazily in extract_pdf_with_ocr_fallback, so a run
@@ -40,8 +41,6 @@ def extract_pdf_with_ocr_fallback(pdf_path: str, use_ocr: bool = False) -> str:
         try:
             from mineru import parse
 
-            # Only call MinerU after the caller has decided OCR should be used.
-            # This keeps --use-ocr authoritative for PDFs that have a text layer.
             return parse(pdf_path, ocr_mode="ocr").markdown()
         except Exception as e:
             print(f"  OCR failed for {pdf_path}: {e}")
@@ -77,6 +76,38 @@ def extract_pdf_with_ocr_fallback(pdf_path: str, use_ocr: bool = False) -> str:
         pass
 
     return ""  # Return empty if all fail
+
+
+class OcrPDFReader(BaseReader):
+    def __init__(self, *, use_ocr: bool = False, auto_detect_scanned: bool = False):
+        self.use_ocr = use_ocr
+        self.auto_detect_scanned = auto_detect_scanned
+
+    def load_data(
+        self,
+        file: Path,
+        extra_info: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> list[Document]:
+        file_path = str(file)
+        used_ocr = self.use_ocr
+        text = extract_pdf_with_ocr_fallback(file_path, use_ocr=used_ocr)
+
+        if not used_ocr and self.auto_detect_scanned:
+            if len(text.strip()) < 100:
+                print(f"Detected scanned PDF: {Path(file_path).name}")
+                text = extract_pdf_with_ocr_fallback(file_path, use_ocr=True)
+                used_ocr = True
+
+        if used_ocr and text:
+            print(f"OCR complete: {Path(file_path).name}")
+        if not text.strip():
+            return []
+
+        metadata = {"file_name": Path(file_path).name}
+        if extra_info:
+            metadata.update(extra_info)
+        return [Document(text=text, metadata=metadata)]
 
 
 class DocumentRAG(BaseRAGExample):
@@ -152,26 +183,6 @@ class DocumentRAG(BaseRAGExample):
         use_ocr_for_all = args.use_ocr
         auto_detect_scanned = args.auto_detect_scanned and OCR_AVAILABLE
 
-        # Create custom PDF extractor with OCR fallback
-        def pdf_extractor(file_path: str) -> str:
-            """Custom extractor for PDFs with OCR support."""
-            # Check if we should try OCR
-            try_ocr = use_ocr_for_all
-
-            if not try_ocr and auto_detect_scanned:
-                # Quick check: try standard extraction first
-                text = extract_pdf_with_ocr_fallback(file_path, use_ocr=False)
-                # If we got very little text, it's likely scanned
-                if len(text.strip()) < 100:
-                    try_ocr = True
-                    print(f"Detected scanned PDF: {Path(file_path).name}")
-
-            # Extract with OCR if needed
-            text = extract_pdf_with_ocr_fallback(file_path, use_ocr=try_ocr)
-            if try_ocr and text:
-                print(f"OCR complete: {Path(file_path).name}")
-            return text
-
         # Load documents with custom PDF extractor
         reader_kwargs = {
             "recursive": True,
@@ -182,7 +193,12 @@ class DocumentRAG(BaseRAGExample):
 
         # Add custom PDF extractor if we need OCR
         if use_ocr_for_all or auto_detect_scanned:
-            reader_kwargs["file_extractor"] = {".pdf": pdf_extractor}
+            reader_kwargs["file_extractor"] = {
+                ".pdf": OcrPDFReader(
+                    use_ocr=use_ocr_for_all,
+                    auto_detect_scanned=auto_detect_scanned,
+                )
+            }
 
         documents = SimpleDirectoryReader(args.data_dir, **reader_kwargs).load_data(
             show_progress=True
