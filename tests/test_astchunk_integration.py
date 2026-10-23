@@ -625,6 +625,22 @@ class TestASTContentExtraction:
         # Should not have stringified the empty dict
         assert "'content': ''" not in chunk["text"]
 
+    def test_first_line_containing_pipe_is_kept(self):
+        """A chunk whose first line contains '|' (e.g. a union type hint) must not lose it."""
+        code = "def merge(a: dict | None) -> dict:\n    return a or {}"
+        mock_builder = Mock()
+        mock_builder.chunkify.return_value = [
+            {"content": code, "metadata": {"start_line_no": 0, "end_line_no": 1}}
+        ]
+        mock_astchunk = Mock()
+        mock_astchunk.ASTChunkBuilder = Mock(return_value=mock_builder)
+
+        doc = MockDocument(code, "/test/merge.py", {"language": "python"})
+        with patch.dict("sys.modules", {"astchunk": mock_astchunk}):
+            chunks = create_ast_chunks([doc])
+
+        assert [c["text"] for c in chunks] == [code]
+
 
 class TestASTMetadataPreservation:
     """Test metadata preservation in AST chunk dictionaries.
