@@ -12,7 +12,14 @@ from .interface import LeannBackendSearcherInterface
 
 
 class QueryEmbeddingCache:
-    """LRU cache for query embeddings to avoid recomputation."""
+    """LRU cache for query embeddings to avoid recomputation.
+
+    Args:
+        max_size: Maximum number of cached queries per searcher. Values <= 0
+            disable the cache.
+        embedding_model: Model name used to scope cache keys. An entry is never
+            served to a different model.
+    """
 
     def __init__(self, max_size: int = 1000, embedding_model: Optional[str] = None):
         self.cache: OrderedDict[str, np.ndarray] = OrderedDict()
@@ -69,7 +76,19 @@ class QueryEmbeddingCache:
 
 
 class ReusableZMQConnection:
-    """Reusable ZMQ connection to avoid creating new context/socket per request."""
+    """Persistent ZMQ REQ connection to the embedding server.
+
+    The socket is created once and reused across searches instead of being
+    rebuilt per query. It lives on the searcher for the searcher's lifetime,
+    and `LeannChat` and the LlamaIndex retrievers hold a searcher for as long
+    as they live.
+
+    **A `zmq.Socket` is not thread-safe.** A searcher sharing this connection
+    must not have `search` called concurrently from multiple threads; give
+    each thread its own searcher. The previous per-query socket did not carry
+    this constraint.
+
+    """
 
     def __init__(self):
         self.context = None
@@ -155,7 +174,9 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             index_path: Path to the Leann index file (e.g., '.../my_index.leann').
             backend_module_name: The specific embedding server module to use
                                  (e.g., 'leann_backend_hnsw.hnsw_embedding_server').
-            **kwargs: Additional keyword arguments.
+            **kwargs: Additional keyword arguments. `query_cache_size` (default
+                1000) caps the per-searcher query embedding cache; pass 0 to
+                disable it.
         """
         self.index_path = Path(index_path)
         self.index_dir = self.index_path.parent
