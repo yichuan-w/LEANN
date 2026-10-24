@@ -896,3 +896,70 @@ class TestQueryTemplateApplicationInComputeEmbedding:
 
         # Empty string is falsy, so no template should be applied
         assert captured_queries[0] == "vector database"
+
+    @pytest.mark.parametrize(
+        "embedding_options, query_template",
+        [
+            (
+                {
+                    "build_prompt_template": "title: none | text: ",
+                    "query_prompt_template": "task: search result | query: ",
+                },
+                "task: search result | query: ",
+            ),
+            ({"prompt_template": "search_query: "}, "search_query: "),
+        ],
+    )
+    def test_fallback_path_does_not_add_build_template(
+        self, temp_index_with_template, embedding_options, query_template
+    ):
+        """The provider must see only the query template, not the build template on top."""
+        from leann.searcher_base import BaseSearcher
+
+        class TestSearcher(BaseSearcher):
+            def search(
+                self,
+                query,
+                top_k,
+                complexity=64,
+                beam_width=1,
+                prune_ratio=0.0,
+                recompute_embeddings=False,
+                pruning_strategy="global",
+                zmq_port=None,
+                **kwargs,
+            ):
+                return {"labels": [], "distances": []}
+
+        searcher = object.__new__(TestSearcher)
+        searcher.index_path = Path(temp_index_with_template)
+        searcher.index_dir = searcher.index_path.parent
+        with open(searcher.index_dir / f"{searcher.index_path.name}.meta.json") as f:
+            searcher.meta = json.load(f)
+        searcher.embedding_model = searcher.meta["embedding_model"]
+        searcher.embedding_mode = searcher.meta["embedding_mode"]
+        searcher.embedding_options = {"api_key": "test-key", **embedding_options}
+        searcher.meta["embedding_options"] = searcher.embedding_options
+        searcher.query_cache = Mock()
+        searcher.query_cache.get.return_value = None
+
+        sent_inputs = []
+
+        def create(model, input, **kwargs):
+            sent_inputs.extend(input)
+            return Mock(data=[Mock(embedding=[0.1] * 768) for _ in input])
+
+        client = Mock()
+        client.embeddings.create.side_effect = create
+
+        with (
+            patch("openai.OpenAI", return_value=client),
+            patch("leann.embedding_compute.get_model_token_limit", return_value=8192),
+        ):
+            searcher.compute_query_embedding(
+                query="vector database",
+                use_server_if_available=False,
+                query_template=query_template,
+            )
+
+        assert sent_inputs == [f"{query_template}vector database"]

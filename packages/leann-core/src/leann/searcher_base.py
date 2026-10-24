@@ -213,6 +213,15 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
         self.zmq_connection = ReusableZMQConnection()
         self._zmq_port: Optional[int] = None
 
+    def _search_provider_options(self) -> dict[str, Any]:
+        # compute_query_embedding applies the query template itself; a build template
+        # left in here would be prepended to the query by the provider as well.
+        return {
+            k: v
+            for k, v in self.embedding_options.items()
+            if k not in ("build_prompt_template", "query_prompt_template", "prompt_template")
+        }
+
     def _load_meta(self) -> dict[str, Any]:
         """Loads the metadata file associated with the index."""
         # This is the corrected logic for finding the meta file.
@@ -239,14 +248,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             or "mips"
         )
 
-        # Filter out ALL prompt templates from provider_options during search
-        # Templates are applied in compute_query_embedding (line 109-110) BEFORE server call
-        # The server should never apply templates during search to avoid double-templating
-        search_provider_options = {
-            k: v
-            for k, v in self.embedding_options.items()
-            if k not in ("build_prompt_template", "query_prompt_template", "prompt_template")
-        }
+        search_provider_options = self._search_provider_options()
 
         server_started, actual_port = self.embedding_server_manager.start_server(
             port=port if port is not None else 5557,
@@ -335,7 +337,7 @@ class BaseSearcher(LeannBackendSearcherInterface, ABC):
             [query],
             self.embedding_model,
             embedding_mode,
-            provider_options=self.embedding_options,
+            provider_options=self._search_provider_options(),
         )
 
         # Cache the result (use original query before template)
